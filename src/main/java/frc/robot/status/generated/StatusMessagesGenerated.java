@@ -5,7 +5,7 @@ import java.util.Map;
 
 /** AUTO-GENERATED FILE. Do not modify; changes will be lost on regeneration. */
 public final class StatusMessagesGenerated {
-  public static final String GENERATED_FROM_HASH = "b6ad8dd4a8eadd0e1c360a5c352c5dc481ff11ff358c40fc49d9c6e9e49660e0";
+  public static final String GENERATED_FROM_HASH = "de338bf268bea7597b64e340be5068b543130eabc4b0cbee1a318f4948108368";
   private static final Map<Integer, String> TABLE = new HashMap<>();
 
   static {
@@ -18,12 +18,25 @@ public final class StatusMessagesGenerated {
     TABLE.put(131099, "Required value missing: {field}.");
     TABLE.put(196616, "Success.");
     TABLE.put(196626, "Operation cancelled.");
-    TABLE.put(196635, "Command failed.");
-    TABLE.put(196643, "Internal error.");
-    TABLE.put(196651, "Operation not supported.");
-    TABLE.put(262155, "Invalid device field: {field}.");
-    TABLE.put(262163, "Device not defined: {device}.");
-    TABLE.put(262171, "Device not found: {device}.");
+    TABLE.put(196634, "Probe completed with warnings.");
+    TABLE.put(196643, "Command failed.");
+    TABLE.put(196651, "Internal error.");
+    TABLE.put(196659, "Operation not supported.");
+    TABLE.put(262152, "Device present: {device}.");
+    TABLE.put(262162, "Device degraded: {device}.");
+    TABLE.put(262170, "Invalid telemetry from device: {device}.");
+    TABLE.put(262178, "Active faults reported by device: {device}.");
+    TABLE.put(262186, "Active warnings reported by device: {device}.");
+    TABLE.put(262194, "Weak communication evidence for device: {device}.");
+    TABLE.put(262203, "Device absent: {device}.");
+    TABLE.put(262211, "Invalid device field: {field}.");
+    TABLE.put(262219, "Device not defined: {device}.");
+    TABLE.put(262227, "Device not found: {device}.");
+    TABLE.put(262235, "Unsupported device model: {model}.");
+    TABLE.put(262243, "Invalid probe target: {device}.");
+    TABLE.put(262251, "Timed out probing device: {device}.");
+    TABLE.put(262259, "CAN disconnected for device: {device}.");
+    TABLE.put(262267, "Probe exception for device: {device}.");
     TABLE.put(327690, "Group has no members: {group}.");
     TABLE.put(327699, "Invalid binding.");
     TABLE.put(327707, "Group member not found: {device}.");

@@ -101,6 +101,17 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
     return motorModelOverride;
   }
 
+  /**
+   * NAME
+   *   getActiveHandleForProbe - Return the current runtime-owned SparkMax handle.
+   *
+   * RETURNS
+   *   Active SparkMax instance, or null when the runtime has not created it.
+   */
+  public SparkMax getActiveHandleForProbe() {
+    return device != null && !closed ? device : null;
+  }
+
   @Override
   public boolean isCreated() {
     return device != null && !closed;

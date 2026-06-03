@@ -1,6 +1,8 @@
 package frc.robot;
 
 import edu.wpi.first.cameraserver.CameraServer;
+import edu.wpi.first.networktables.NetworkTable;
+import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.XboxController;
 import frc.robot.commands.local.RobotLocalAxisCommandId;
@@ -44,6 +46,8 @@ public class Robot extends TimedRobot {
   private final XboxController controller0 = controllerMap.get("controller0");
   private final BindingsManager bindings = new BindingsManager();
   private final SampledTelemetrySampler sampledTelemetry = new SampledTelemetrySampler();
+  private final NetworkTable diagTable =
+      NetworkTableInstance.getDefault().getTable("bringup").getSubTable("diag");
   // Local bringup behaviors for device creation and health.
   private BringupCore core;
   // Edge-detect state for one-shot actions.
@@ -66,7 +70,7 @@ public class Robot extends TimedRobot {
   public void robotInit() {
     // Load profile before devices are created.
     BringupUtil.applyProfileFromArgs();
-    core = new BringupCore(sampledTelemetry);
+    core = new BringupCore(sampledTelemetry, diagTable);
     printStartupInfo();
     validateCanIds();
     CameraServer.startAutomaticCapture();

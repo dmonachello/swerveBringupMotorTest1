@@ -33,6 +33,7 @@ class ConsoleRule:
     scope: str
     event_type: str
     device_id_group: Optional[int] = None
+    device_label: Optional[str] = None
 
 
 @dataclass
@@ -196,6 +197,11 @@ class ConsoleMonitor:
                 group = device_group
             else:
                 group = None
+            device_label = rule.get("device_label")
+            if isinstance(device_label, str):
+                device_label = device_label.strip() or None
+            else:
+                device_label = None
             self._rules.append(
                 ConsoleRule(
                     name=name,
@@ -204,6 +210,7 @@ class ConsoleMonitor:
                     scope=scope,
                     event_type=event_type,
                     device_id_group=group,
+                    device_label=device_label,
                 )
             )
 
@@ -407,12 +414,17 @@ class ConsoleMonitor:
             if not match:
                 continue
             device_id = None
+            device_label = rule.device_label
             if rule.scope == "device" and rule.device_id_group is not None:
                 try:
                     device_id = int(match.group(rule.device_id_group))
                 except Exception:
                     device_id = None
-            if rule.scope == "device" and device_id is not None:
+            if rule.scope == "device" and device_label is None and device_id is not None:
+                device_label = self._resolve_device_label(device_id)
+            if rule.scope == "device" and device_label:
+                key = f"device:{rule.event_type}:{device_label}"
+            elif rule.scope == "device" and device_id is not None:
                 key = f"device:{rule.event_type}:{device_id}"
             else:
                 key = f"system:{rule.event_type}"
@@ -423,7 +435,7 @@ class ConsoleMonitor:
                         key=key,
                         event_type=rule.event_type,
                         device_id=device_id,
-                        device_label=self._resolve_device_label(device_id),
+                        device_label=device_label,
                         severity=rule.severity,
                         active=True,
                         count=1,

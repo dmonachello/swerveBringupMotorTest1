@@ -45,6 +45,8 @@ public interface RobotLocalCommandHost {
 
   void dumpReport();
 
+  RobotLocalExecutionResult runActivePresenceProbe();
+
   void selectPreviousTest();
 
   void selectNextTest();

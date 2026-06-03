@@ -132,6 +132,8 @@ LIVE_SOURCE_FILE = "file"
 LIVE_CLOCK_FORMAT = "%H:%M:%S"
 LIVE_CLOCK_LABEL = "Clock:"
 PROFILE_NONE = "(none)"
+NT_UI_STATE_SELECTED_PROFILE = "state/selectedProfile"
+NT_UI_STATE_ACTIVE_RUNTIME_PROFILE = "state/activeRuntimeProfile"
 DEFAULT_RUNTIME_STATE_RATE_HZ = 2.0
 DEFAULT_RUNTIME_STATE_RATE_TEXT = "2"
 BUTTON_RUNTIME_ACTIVATE = "Runtime Activate"
@@ -195,6 +197,8 @@ VIS_COL_IDENTITY = "Identity"
 VIS_COL_LAST_SEEN = "Last Seen"
 VIS_COL_PACKETS = "Packets"
 VIS_COL_RATE = "Rate"
+VIS_COL_PROBE_BUCKET = "Probe"
+VIS_COL_PROBE_SCORE = "Probe Score"
 VIS_COL_VISIBLE = "Visible"
 VIS_VALUE_YES = "Y"
 VIS_VALUE_NO = "N"
@@ -297,7 +301,14 @@ VIS_COL_IDENTITY_WIDTH = 110
 VIS_COL_LAST_SEEN_WIDTH = 90
 VIS_COL_PACKETS_WIDTH = 80
 VIS_COL_RATE_WIDTH = 80
+VIS_COL_PROBE_BUCKET_WIDTH = 90
+VIS_COL_PROBE_SCORE_WIDTH = 92
 VIS_COL_SOURCE_WIDTH = 72
+ATTACHMENT_KEY_TYPE = "type"
+ATTACHMENT_TYPE_ACTIVE_PRESENCE_PROBE = "activePresenceProbe"
+RUNTIME_PROBE_KEY_BUCKET = "bucket"
+RUNTIME_PROBE_KEY_SCORE = "score"
+RUNTIME_PROBE_KEY_MAX_SCORE = "maxScore"
 VIS_RAW_COL_ARB_WIDTH = 96
 VIS_RAW_COL_PACKETS_WIDTH = 72
 VIS_RAW_COL_RATE_WIDTH = 72
@@ -646,6 +657,54 @@ def _build_visibility_expected_devices(devices: List[Dict[str, Any]]) -> List[Tu
     return expected
 
 
+def _runtime_active_probe_attachment(device: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    NAME
+        _runtime_active_probe_attachment - Return the active probe attachment from one runtime-state device.
+    """
+    if not isinstance(device, dict):
+        return None
+    attachments = device.get("attachments")
+    if not isinstance(attachments, list):
+        return None
+    for attachment in attachments:
+        if not isinstance(attachment, dict):
+            continue
+        attachment_type = str(attachment.get(ATTACHMENT_KEY_TYPE, "")).strip()
+        if attachment_type == ATTACHMENT_TYPE_ACTIVE_PRESENCE_PROBE:
+            return attachment
+    return None
+
+
+def _format_runtime_probe_bucket(device: Optional[Dict[str, Any]]) -> str:
+    """
+    NAME
+        _format_runtime_probe_bucket - Format the active probe bucket for table display.
+    """
+    attachment = _runtime_active_probe_attachment(device or {})
+    if not isinstance(attachment, dict):
+        return VIS_VALUE_UNKNOWN
+    bucket = str(attachment.get(RUNTIME_PROBE_KEY_BUCKET, NT_VALUE_EMPTY)).strip()
+    return bucket if bucket else VIS_VALUE_UNKNOWN
+
+
+def _format_runtime_probe_score(device: Optional[Dict[str, Any]]) -> str:
+    """
+    NAME
+        _format_runtime_probe_score - Format the active probe score for table display.
+    """
+    attachment = _runtime_active_probe_attachment(device or {})
+    if not isinstance(attachment, dict):
+        return VIS_LAST_SEEN_UNKNOWN
+    score = attachment.get(RUNTIME_PROBE_KEY_SCORE)
+    max_score = attachment.get(RUNTIME_PROBE_KEY_MAX_SCORE)
+    if isinstance(score, (int, float)) and isinstance(max_score, (int, float)):
+        return f"{int(score)}/{int(max_score)}"
+    if isinstance(score, (int, float)):
+        return str(int(score))
+    return VIS_LAST_SEEN_UNKNOWN
+
+
 class BringupControlUI(tk.Tk):
     """
     NAME
@@ -749,6 +808,7 @@ class BringupControlUI(tk.Tk):
         self._runtime_event_notice_level = "warn"
         self._runtime_state_path: Optional[str] = None
         self._runtime_state_path_mtime: Optional[float] = None
+        self._latest_runtime_devices: Dict[str, Dict[str, Any]] = {}
         self._presence_overrides_file: Dict[str, str] = {}
         self._presence_timeline: List[Dict[str, Any]] = []
         self._presence_timeline_start = PRESENCE_TIME_NONE
@@ -771,6 +831,9 @@ class BringupControlUI(tk.Tk):
         self._manual_duty_last_sent_at = 0.0
         self._manual_duty_pending_after: Optional[str] = None
         self._profile_devices: Dict[str, Dict[str, Any]] = {}
+        self._robot_selected_profile = PROFILE_NONE
+        self._robot_active_runtime_profile = PROFILE_NONE
+        self._last_profile_context = PROFILE_NONE
         self._ui_command_prefs = _load_ui_command_prefs()
         self._ui_auto_select_default_profile = _load_ui_auto_select_default_pref()
         self._ui_show_visibility_tab = _load_ui_show_visibility_tab_pref()
@@ -1195,6 +1258,35 @@ class BringupControlUI(tk.Tk):
             return PROFILE_NONE
         return _normalize_profile_name(self._profile_box.get())
 
+    def _diagnostic_profile_context_name(self) -> str:
+        """
+        NAME
+            _diagnostic_profile_context_name - Return the profile context used by diagnostics views.
+
+        DESCRIPTION
+            Prefers the robot's active runtime profile, then the robot's selected
+            profile, then the local UI selection.
+        """
+        active_name = _normalize_profile_name(self._robot_active_runtime_profile)
+        if active_name != PROFILE_NONE:
+            return active_name
+        robot_selected = _normalize_profile_name(self._robot_selected_profile)
+        if robot_selected != PROFILE_NONE:
+            return robot_selected
+        return self._selected_profile_name()
+
+    def _sync_diagnostic_profile_context(self, reload_views: bool) -> None:
+        """
+        NAME
+            _sync_diagnostic_profile_context - Re-anchor diagnostics surfaces to one profile context.
+        """
+        name = self._diagnostic_profile_context_name()
+        self._refresh_profile_devices(name)
+        if reload_views and name != self._last_profile_context:
+            for live_view in self._iter_live_views():
+                live_view.reload_profile(name)
+        self._last_profile_context = name
+
     def _apply_profile_selection(self, profile_name: object, reload_views: bool) -> None:
         """
         NAME
@@ -1207,11 +1299,8 @@ class BringupControlUI(tk.Tk):
             across startup, refresh, and selection callbacks.
         """
         name = _normalize_profile_name(profile_name)
-        self._refresh_profile_devices(name)
         self._refresh_tests_for_profile(name)
-        if reload_views:
-            for live_view in self._iter_live_views():
-                live_view.reload_profile(name)
+        self._sync_diagnostic_profile_context(reload_views=reload_views)
 
     def _refresh_profile_devices(self, profile_name: object) -> None:
         """
@@ -1583,12 +1672,15 @@ class BringupControlUI(tk.Tk):
             visibility = device.get(VIS_KEY_VISIBILITY) if isinstance(device.get(VIS_KEY_VISIBILITY), dict) else {}
             metrics = device.get(VIS_KEY_METRICS) if isinstance(device.get(VIS_KEY_METRICS), dict) else {}
             raw_ids = device.get(VIS_KEY_RAW_IDS) if isinstance(device.get(VIS_KEY_RAW_IDS), list) else []
+            runtime_device = self._latest_runtime_devices.get(label.strip().lower(), {})
             values: List[str] = [
                 device_name,
                 self._format_visibility_identity(device),
                 self._format_visibility_last_seen(metrics),
                 self._format_visibility_packet_count(metrics),
                 self._format_visibility_packet_rate(metrics),
+                _format_runtime_probe_bucket(runtime_device),
+                _format_runtime_probe_score(runtime_device),
             ]
             visible_true_count = 0
             visible_false_count = 0
@@ -1663,7 +1755,15 @@ class BringupControlUI(tk.Tk):
         NAME
             _configure_visibility_table_columns - Apply the shared visibility table column layout.
         """
-        columns = [VIS_COL_DEVICE, VIS_COL_IDENTITY, VIS_COL_LAST_SEEN, VIS_COL_PACKETS, VIS_COL_RATE] + source_ids
+        columns = [
+            VIS_COL_DEVICE,
+            VIS_COL_IDENTITY,
+            VIS_COL_LAST_SEEN,
+            VIS_COL_PACKETS,
+            VIS_COL_RATE,
+            VIS_COL_PROBE_BUCKET,
+            VIS_COL_PROBE_SCORE,
+        ] + source_ids
         table[VIS_TREE_COLUMNS] = columns
         table.heading(VIS_COL_DEVICE, text=VIS_COL_DEVICE, anchor=VIS_TREE_ANCHOR_W)
         table.column(
@@ -1696,6 +1796,20 @@ class BringupControlUI(tk.Tk):
         table.column(
             VIS_COL_RATE,
             width=VIS_COL_RATE_WIDTH,
+            anchor=VIS_TREE_ANCHOR_CENTER,
+            stretch=False,
+        )
+        table.heading(VIS_COL_PROBE_BUCKET, text=VIS_COL_PROBE_BUCKET, anchor=VIS_TREE_ANCHOR_CENTER)
+        table.column(
+            VIS_COL_PROBE_BUCKET,
+            width=VIS_COL_PROBE_BUCKET_WIDTH,
+            anchor=VIS_TREE_ANCHOR_CENTER,
+            stretch=False,
+        )
+        table.heading(VIS_COL_PROBE_SCORE, text=VIS_COL_PROBE_SCORE, anchor=VIS_TREE_ANCHOR_CENTER)
+        table.column(
+            VIS_COL_PROBE_SCORE,
+            width=VIS_COL_PROBE_SCORE_WIDTH,
             anchor=VIS_TREE_ANCHOR_CENTER,
             stretch=False,
         )
@@ -3216,6 +3330,13 @@ class BringupControlUI(tk.Tk):
             estopped = self._ui_table.getEntry("state/estopped").getBoolean(False)
             mode = self._ui_table.getEntry("state/mode").getString("disabled")
             last_ack_ms = self._ui_table.getEntry("state/lastAckMs").getDouble(0.0)
+            self._robot_selected_profile = _normalize_profile_name(
+                self._ui_table.getEntry(NT_UI_STATE_SELECTED_PROFILE).getString(PROFILE_NONE)
+            )
+            self._robot_active_runtime_profile = _normalize_profile_name(
+                self._ui_table.getEntry(NT_UI_STATE_ACTIVE_RUNTIME_PROFILE).getString(PROFILE_NONE)
+            )
+            self._sync_diagnostic_profile_context(reload_views=True)
             nt_connected = True
         else:
             enabled = True
@@ -3428,9 +3549,26 @@ class BringupControlUI(tk.Tk):
         NAME
             _apply_runtime_state_payload - Apply live runtime-state JSON.
         """
+        latest_runtime_devices: Dict[str, Dict[str, Any]] = {}
         runtime_active = payload.get("runtimeActive")
         if isinstance(runtime_active, bool):
             self._runtime_active_known = runtime_active
+        selected_profile = _normalize_profile_name(payload.get("selectedProfile"))
+        active_runtime_profile = _normalize_profile_name(
+            payload.get("activeRuntimeProfile")
+        )
+        self._robot_selected_profile = selected_profile
+        self._robot_active_runtime_profile = active_runtime_profile
+        self._sync_diagnostic_profile_context(reload_views=True)
+        devices = payload.get("devices")
+        if isinstance(devices, list):
+            for device in devices:
+                if not isinstance(device, dict):
+                    continue
+                label = str(device.get("label", "")).strip()
+                if label:
+                    latest_runtime_devices[label.lower()] = device
+        self._latest_runtime_devices = latest_runtime_devices
         live_views = self._iter_live_views()
         if not live_views:
             return
@@ -3593,6 +3731,7 @@ class BringupControlUI(tk.Tk):
                 "runtimedeactivate",
                 "manualdevicedutyset",
                 "manualdevicedutyclear",
+                "activepresenceprobe",
             }:
                 self.after_idle(self._request_runtime_state_refresh)
 

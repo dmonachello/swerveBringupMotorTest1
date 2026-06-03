@@ -3,8 +3,11 @@ package frc.robot;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.wpilibj.Timer;
 import frc.robot.devices.DeviceUnit;
+import frc.robot.diag.probe.ActiveDevicePresenceProbe;
+import frc.robot.diag.snapshots.ActivePresenceProbeAttachment;
 import frc.robot.diag.snapshots.DeviceSnapshot;
 import frc.robot.diag.snapshots.SnapshotDetail;
 import frc.robot.diag.snapshots.EncoderAttachment;
@@ -58,6 +61,7 @@ public final class BringupCore {
   private static final long TEST_RUN_ID_NONE = 0L;
   private static final double TEST_START_SEC_NONE = 0.0;
   private static final boolean INSTANTIATE_ALL_DEVICES = true;
+  private static final String BUCKET_UNKNOWN = "unknown";
   private static final String TEST_RUN_STATE_IDLE = "idle";
   private static final String TEST_RUN_STATE_RUNNING = "running";
   private static final String TEST_RUN_STATE_PASSED = "passed";
@@ -120,6 +124,9 @@ public final class BringupCore {
   private static final double SAFETY_COOLDOWN_SEC = 5.0;
   private BringupTestContext testContext;
   private final SampledTelemetrySampler sampledTelemetry;
+  private final ActiveDevicePresenceProbe activePresenceProbe = new ActiveDevicePresenceProbe();
+  private final Map<String, ActivePresenceProbeAttachment> latestActivePresenceByLabel = new HashMap<>();
+  private final NetworkTable diagTable;
 
   /**
    * NAME
@@ -128,8 +135,9 @@ public final class BringupCore {
    * SIDE EFFECTS
    *   Loads bringup tests and initializes device groups.
    */
-  public BringupCore(SampledTelemetrySampler sampledTelemetry) {
+  public BringupCore(SampledTelemetrySampler sampledTelemetry, NetworkTable diagTable) {
     this.sampledTelemetry = sampledTelemetry;
+    this.diagTable = diagTable;
     testContext = new BringupTestContext(manufacturerGroups);
     syncProfileRuntimeFromRegistry();
   }
@@ -2953,6 +2961,20 @@ public final class BringupCore {
 
   /**
    * NAME
+   *   runActivePresenceProbe - Execute the one-shot active presence probe.
+   *
+   * RETURNS
+   *   Structured probe session result for the current active runtime devices.
+   */
+  public ActiveDevicePresenceProbe.ProbeSessionResult runActivePresenceProbe() {
+    ActiveDevicePresenceProbe.ProbeSessionResult session =
+        activePresenceProbe.runOnce(this, diagTable, true);
+    cacheActivePresenceProbeSession(session, System.currentTimeMillis());
+    return session;
+  }
+
+  /**
+   * NAME
    *   hasCreatedDevices - Return whether any runtime devices are instantiated.
    *
    * RETURNS
@@ -3008,11 +3030,27 @@ public final class BringupCore {
       }
       Map<String, SampledSignalSummary> summaries = sampledTelemetry.getDeviceSummaries(device);
       if (summaries.isEmpty()) {
+        attachActivePresenceProbe(snapshot);
         continue;
       }
       SampledSignalsAttachment sampled = new SampledSignalsAttachment();
       sampled.signals.addAll(summaries.values());
       snapshot.addAttachment(sampled);
+      attachActivePresenceProbe(snapshot);
+    }
+  }
+
+  private void attachActivePresenceProbe(DeviceSnapshot snapshot) {
+    if (snapshot == null || snapshot.label == null || snapshot.label.isBlank()) {
+      return;
+    }
+    if (snapshot.getAttachment(ActivePresenceProbeAttachment.class) != null) {
+      return;
+    }
+    ActivePresenceProbeAttachment probe =
+        latestActivePresenceByLabel.get(snapshot.label.trim().toLowerCase());
+    if (probe != null) {
+      snapshot.addAttachment(probe.copy());
     }
   }
 
@@ -3082,7 +3120,31 @@ public final class BringupCore {
         }
       }
     }
+    attachActivePresenceProbe(snap);
     return snap;
+  }
+
+  private void cacheActivePresenceProbeSession(
+      ActiveDevicePresenceProbe.ProbeSessionResult session,
+      long nowMs) {
+    latestActivePresenceByLabel.clear();
+    if (session == null || session.devices == null) {
+      return;
+    }
+    for (ActiveDevicePresenceProbe.ProbeDeviceResult result : session.devices) {
+      if (result == null || result.label == null || result.label.isBlank()) {
+        continue;
+      }
+      ActivePresenceProbeAttachment attachment = new ActivePresenceProbeAttachment();
+      attachment.code = result.code;
+      attachment.status = result.status != null ? result.status : "";
+      attachment.message = result.message != null ? result.message : "";
+      attachment.bucket = result.bucket != null ? result.bucket : BUCKET_UNKNOWN;
+      attachment.score = result.score;
+      attachment.maxScore = result.maxScore;
+      attachment.updatedAtMs = nowMs;
+      latestActivePresenceByLabel.put(result.label.trim().toLowerCase(), attachment);
+    }
   }
 
   /**

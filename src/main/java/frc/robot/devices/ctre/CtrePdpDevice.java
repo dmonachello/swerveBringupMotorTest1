@@ -68,6 +68,17 @@ public final class CtrePdpDevice implements DeviceUnit {
     return HEADER;
   }
 
+  /**
+   * NAME
+   *   getActiveReaderForProbe - Return the current runtime-owned PDP reader.
+   *
+   * RETURNS
+   *   Active PdpStatusReader instance, or null when the runtime has not attached it.
+   */
+  public PdpStatusReader getActiveReaderForProbe() {
+    return reader;
+  }
+
   @Override
   public boolean isCreated() {
     return reader != null;

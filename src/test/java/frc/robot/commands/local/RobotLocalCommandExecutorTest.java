@@ -230,6 +230,11 @@ class RobotLocalCommandExecutorTest {
     public void dumpReport() {}
 
     @Override
+    public RobotLocalExecutionResult runActivePresenceProbe() {
+      return RobotLocalExecutionResult.complete("activePresenceProbe");
+    }
+
+    @Override
     public void selectPreviousTest() {}
 
     @Override

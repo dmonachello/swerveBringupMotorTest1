@@ -4,9 +4,23 @@
 .IDENT /DEVICE-V1/
 .FACILITY DEVICE,4 /PREFIX=DEVICE_
 
+.SEVERITY SUCCESS
+PRESENT, "Device present: {device}."
+.SEVERITY WARNING
+DEGRADED, "Device degraded: {device}."
+TELEMETRY_INVALID, "Invalid telemetry from device: {device}."
+FAULTS_ACTIVE, "Active faults reported by device: {device}."
+WARNINGS_ACTIVE, "Active warnings reported by device: {device}."
+COMMUNICATION_WEAK, "Weak communication evidence for device: {device}."
 .SEVERITY ERROR
+ABSENT, "Device absent: {device}."
 INVALID_FIELD, "Invalid device field: {field}."
 NOT_DEFINED, "Device not defined: {device}."
 NOT_FOUND, "Device not found: {device}."
+PROBE_UNSUPPORTED_MODEL, "Unsupported device model: {model}."
+PROBE_INVALID_TARGET, "Invalid probe target: {device}."
+PROBE_TIMEOUT, "Timed out probing device: {device}."
+CAN_DISCONNECTED, "CAN disconnected for device: {device}."
+PROBE_EXCEPTION, "Probe exception for device: {device}."
 
 .END

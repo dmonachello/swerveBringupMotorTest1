@@ -2,7 +2,7 @@ package frc.robot.status.generated;
 
 /** AUTO-GENERATED FILE. Do not modify; changes will be lost on regeneration. */
 public final class StatusCatalogGenerated {
-  public static final String GENERATED_FROM_HASH = "b6ad8dd4a8eadd0e1c360a5c352c5dc481ff11ff358c40fc49d9c6e9e49660e0";
+  public static final String GENERATED_FROM_HASH = "de338bf268bea7597b64e340be5068b543130eabc4b0cbee1a318f4948108368";
 
   public static final class Severity {
     public static final int SUCCESS = 0;
@@ -42,15 +42,28 @@ public final class StatusCatalogGenerated {
     public static final class EXECUTOR {
       public static final int SUCCESS = 1;
       public static final int CANCELLED = 2;
-      public static final int FAILED = 3;
-      public static final int INTERNAL_ERROR = 4;
-      public static final int NOT_SUPPORTED = 5;
+      public static final int COMPLETED_WITH_WARNINGS = 3;
+      public static final int FAILED = 4;
+      public static final int INTERNAL_ERROR = 5;
+      public static final int NOT_SUPPORTED = 6;
       private EXECUTOR() {}
     }
     public static final class DEVICE {
-      public static final int INVALID_FIELD = 1;
-      public static final int NOT_DEFINED = 2;
-      public static final int NOT_FOUND = 3;
+      public static final int PRESENT = 1;
+      public static final int DEGRADED = 2;
+      public static final int TELEMETRY_INVALID = 3;
+      public static final int FAULTS_ACTIVE = 4;
+      public static final int WARNINGS_ACTIVE = 5;
+      public static final int COMMUNICATION_WEAK = 6;
+      public static final int ABSENT = 7;
+      public static final int INVALID_FIELD = 8;
+      public static final int NOT_DEFINED = 9;
+      public static final int NOT_FOUND = 10;
+      public static final int PROBE_UNSUPPORTED_MODEL = 11;
+      public static final int PROBE_INVALID_TARGET = 12;
+      public static final int PROBE_TIMEOUT = 13;
+      public static final int CAN_DISCONNECTED = 14;
+      public static final int PROBE_EXCEPTION = 15;
       private DEVICE() {}
     }
     public static final class GROUP {
@@ -102,12 +115,25 @@ public final class StatusCatalogGenerated {
   public static final int SS__CLI_VALIDATOR__REQUIRED = encode(Severity.ERROR, Facility.CLI_VALIDATOR, Message.CLI_VALIDATOR.REQUIRED);
   public static final int SS__EXECUTOR__SUCCESS = encode(Severity.SUCCESS, Facility.EXECUTOR, Message.EXECUTOR.SUCCESS);
   public static final int SS__EXECUTOR__CANCELLED = encode(Severity.WARNING, Facility.EXECUTOR, Message.EXECUTOR.CANCELLED);
+  public static final int SS__EXECUTOR__COMPLETED_WITH_WARNINGS = encode(Severity.WARNING, Facility.EXECUTOR, Message.EXECUTOR.COMPLETED_WITH_WARNINGS);
   public static final int SS__EXECUTOR__FAILED = encode(Severity.ERROR, Facility.EXECUTOR, Message.EXECUTOR.FAILED);
   public static final int SS__EXECUTOR__INTERNAL_ERROR = encode(Severity.ERROR, Facility.EXECUTOR, Message.EXECUTOR.INTERNAL_ERROR);
   public static final int SS__EXECUTOR__NOT_SUPPORTED = encode(Severity.ERROR, Facility.EXECUTOR, Message.EXECUTOR.NOT_SUPPORTED);
+  public static final int SS__DEVICE__PRESENT = encode(Severity.SUCCESS, Facility.DEVICE, Message.DEVICE.PRESENT);
+  public static final int SS__DEVICE__DEGRADED = encode(Severity.WARNING, Facility.DEVICE, Message.DEVICE.DEGRADED);
+  public static final int SS__DEVICE__TELEMETRY_INVALID = encode(Severity.WARNING, Facility.DEVICE, Message.DEVICE.TELEMETRY_INVALID);
+  public static final int SS__DEVICE__FAULTS_ACTIVE = encode(Severity.WARNING, Facility.DEVICE, Message.DEVICE.FAULTS_ACTIVE);
+  public static final int SS__DEVICE__WARNINGS_ACTIVE = encode(Severity.WARNING, Facility.DEVICE, Message.DEVICE.WARNINGS_ACTIVE);
+  public static final int SS__DEVICE__COMMUNICATION_WEAK = encode(Severity.WARNING, Facility.DEVICE, Message.DEVICE.COMMUNICATION_WEAK);
+  public static final int SS__DEVICE__ABSENT = encode(Severity.ERROR, Facility.DEVICE, Message.DEVICE.ABSENT);
   public static final int SS__DEVICE__INVALID_FIELD = encode(Severity.ERROR, Facility.DEVICE, Message.DEVICE.INVALID_FIELD);
   public static final int SS__DEVICE__NOT_DEFINED = encode(Severity.ERROR, Facility.DEVICE, Message.DEVICE.NOT_DEFINED);
   public static final int SS__DEVICE__NOT_FOUND = encode(Severity.ERROR, Facility.DEVICE, Message.DEVICE.NOT_FOUND);
+  public static final int SS__DEVICE__PROBE_UNSUPPORTED_MODEL = encode(Severity.ERROR, Facility.DEVICE, Message.DEVICE.PROBE_UNSUPPORTED_MODEL);
+  public static final int SS__DEVICE__PROBE_INVALID_TARGET = encode(Severity.ERROR, Facility.DEVICE, Message.DEVICE.PROBE_INVALID_TARGET);
+  public static final int SS__DEVICE__PROBE_TIMEOUT = encode(Severity.ERROR, Facility.DEVICE, Message.DEVICE.PROBE_TIMEOUT);
+  public static final int SS__DEVICE__CAN_DISCONNECTED = encode(Severity.ERROR, Facility.DEVICE, Message.DEVICE.CAN_DISCONNECTED);
+  public static final int SS__DEVICE__PROBE_EXCEPTION = encode(Severity.ERROR, Facility.DEVICE, Message.DEVICE.PROBE_EXCEPTION);
   public static final int SS__GROUP__EMPTY = encode(Severity.WARNING, Facility.GROUP, Message.GROUP.EMPTY);
   public static final int SS__GROUP__BINDING_INVALID = encode(Severity.ERROR, Facility.GROUP, Message.GROUP.BINDING_INVALID);
   public static final int SS__GROUP__MEMBER_MISSING = encode(Severity.ERROR, Facility.GROUP, Message.GROUP.MEMBER_MISSING);

@@ -99,6 +99,17 @@ public final class CtreTalonFxDevice implements DeviceUnit {
     return motorModelOverride;
   }
 
+  /**
+   * NAME
+   *   getActiveHandleForProbe - Return the current runtime-owned TalonFX handle.
+   *
+   * RETURNS
+   *   Active TalonFX instance, or null when the runtime has not created it.
+   */
+  public TalonFX getActiveHandleForProbe() {
+    return device;
+  }
+
   @Override
   public boolean isCreated() {
     return device != null;

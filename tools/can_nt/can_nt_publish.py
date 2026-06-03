@@ -62,6 +62,25 @@ CONFIDENCE_NONE = "NONE"
 STATUS_OK = "OK"
 STATUS_CONTROL_ONLY = "CONTROL_ONLY"
 STATUS_MISSING = "MISSING"
+VALUE_NOT_SEEN = -1.0
+
+
+def _clear_device_row(table, label: str) -> None:
+    """
+    NAME
+        _clear_device_row - Reset one dev/<labelKey> row to neutral values.
+    """
+    label_key = encode_label_for_nt(label)
+    base = f"{KEY_DEV_BASE}/{label_key}"
+    table.getEntry(f"{base}/{KEY_LABEL}").setString(label)
+    table.getEntry(f"{base}/{KEY_STATUS}").setString(STATUS_MISSING)
+    table.getEntry(f"{base}/{KEY_AGE_SEC}").setDouble(float(VALUE_NOT_SEEN))
+    table.getEntry(f"{base}/{KEY_MSG_COUNT}").setDouble(0.0)
+    table.getEntry(f"{base}/{KEY_LAST_SEEN}").setDouble(float(VALUE_NOT_SEEN))
+    table.getEntry(f"{base}/{KEY_PRESENCE_SOURCE}").setString(PRESENCE_NONE)
+    table.getEntry(f"{base}/{KEY_PRESENCE_CONFIDENCE}").setString(CONFIDENCE_NONE)
+    table.getEntry(f"{base}/{KEY_TRAFFIC_AGE_SEC}").setDouble(float(VALUE_NOT_SEEN))
+    table.getEntry(f"{base}/{KEY_STATUS_AGE_SEC}").setDouble(float(VALUE_NOT_SEEN))
 
 
 def publish_devices(
@@ -92,6 +111,14 @@ def publish_devices(
     SIDE EFFECTS
         Writes multiple NetworkTables entries under dev/<labelKey>.
     """
+    published_labels = {
+        str(spec.get(KEY_LABEL, "")).strip()
+        for spec in devices
+        if isinstance(spec, dict) and str(spec.get(KEY_LABEL, "")).strip()
+    }
+    stale_labels = getattr(publish_devices, "_last_labels", set()) - published_labels
+    for stale_label in sorted(stale_labels):
+        _clear_device_row(table, stale_label)
     for spec in devices:
         label = str(spec.get(KEY_LABEL, ""))
         label_key = encode_label_for_nt(label)
@@ -136,7 +163,7 @@ def publish_devices(
                 status = STATUS_MISSING
                 age = -1.0
 
-        last_seen_value = traffic_ts if traffic_ts is not None else -1.0
+        last_seen_value = traffic_ts if traffic_ts is not None else VALUE_NOT_SEEN
 
         base = f"{KEY_DEV_BASE}/{label_key}"
         table.getEntry(f"{base}/{KEY_LABEL}").setString(label)
@@ -148,3 +175,4 @@ def publish_devices(
         table.getEntry(f"{base}/{KEY_PRESENCE_CONFIDENCE}").setString(confidence)
         table.getEntry(f"{base}/{KEY_TRAFFIC_AGE_SEC}").setDouble(float(traffic_age))
         table.getEntry(f"{base}/{KEY_STATUS_AGE_SEC}").setDouble(float(status_age))
+    publish_devices._last_labels = published_labels

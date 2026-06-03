@@ -1,6 +1,7 @@
 package frc.robot;
 
 import edu.wpi.first.networktables.NetworkTable;
+import frc.robot.diag.probe.ActiveDevicePresenceProbe;
 import frc.robot.telemetry.SampledTelemetrySampler;
 import java.util.Collections;
 import java.util.List;
@@ -280,6 +281,17 @@ public final class BringupRuntime {
 
   /**
    * NAME
+   *   runActivePresenceProbe - Execute the one-shot active presence probe on the active runtime.
+   *
+   * RETURNS
+   *   Probe session result, or null when no core is available.
+   */
+  public ActiveDevicePresenceProbe.ProbeSessionResult runActivePresenceProbe() {
+    return core != null ? core.runActivePresenceProbe() : null;
+  }
+
+  /**
+   * NAME
    *   clearAllFaults - Clear device faults.
    */
   public void clearAllFaults() {
@@ -490,7 +502,7 @@ public final class BringupRuntime {
   }
 
   private void replaceCore() {
-    core = new BringupCore(sampledTelemetry);
+    core = new BringupCore(sampledTelemetry, diagTable);
     core.setRunTestBindingLabel(runTestBindingLabel);
     if (diagnostics == null) {
       diagnostics = new DiagnosticsReporter(core, canHealth, diagTable);

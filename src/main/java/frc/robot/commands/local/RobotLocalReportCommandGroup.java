@@ -88,6 +88,22 @@ final class RobotLocalReportCommandGroup {
         "Printed CAN diagnostics.");
   }
 
+  RobotLocalCommand activePresenceProbe() {
+    return new RobotLocalCommand() {
+      private static final String MESSAGE_RUNTIME_INACTIVE =
+          "Runtime inactive. Click Runtime Activate.";
+
+      @Override
+      public RobotLocalExecutionResult execute(RobotLocalCommandParams params) {
+        RobotLocalExecutionResult result = params.host().runActivePresenceProbe();
+        if (result != null) {
+          return result;
+        }
+        return RobotLocalExecutionResult.failed(MESSAGE_RUNTIME_INACTIVE);
+      }
+    };
+  }
+
   RobotLocalCommand dumpReport() {
     return new RobotLocalHostVoidCommand(false, "", "", "dumpReport", "Dumped report.");
   }

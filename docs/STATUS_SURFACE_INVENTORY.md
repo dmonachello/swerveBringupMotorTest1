@@ -8,10 +8,10 @@ Inventory canonical status-coded definitions and unstructured status/error strin
 
 ## Summary
 
-- Generated At (UTC): `2026-04-22T18:00:15.302637+00:00`
+- Generated At (UTC): `2026-06-02T18:38:37.527116+00:00`
 - Canonical Python status message entries: `36`
-- Unstructured Python candidates: `1607`
-- Unstructured Java text candidates: `503`
+- Unstructured Python candidates: `2059`
+- Unstructured Java text candidates: `679`
 - Java ack/status literal candidates: `0`
 
 ## Top Canonical Python Entries
@@ -62,26 +62,26 @@ Inventory canonical status-coded definitions and unstructured status/error strin
 
 ## Top Unstructured Java Candidates
 
-- `src\main\java\frc\robot\BridgeGroupManager.java:287` *   Group instance or null when not found.
-- `src\main\java\frc\robot\BridgeGroupManager.java:315` *   True when created, false if invalid or already exists.
-- `src\main\java\frc\robot\BridgeGroupManager.java:334` *   True when removed, false if missing.
-- `src\main\java\frc\robot\BridgeGroupManager.java:413` *   True when removed, false if missing.
-- `src\main\java\frc\robot\BridgeGroupManager.java:436` *   True when updated, false if missing.
-- `src\main\java\frc\robot\BridgeGroupManager.java:460` *   True when toggled, false if missing.
-- `src\main\java\frc\robot\BridgeGroupManager.java:483` *   True when cleared, false if missing.
-- `src\main\java\frc\robot\BridgeGroupManager.java:505` *   True when binding added, false if group or kind invalid.
-- `src\main\java\frc\robot\BridgeUiCommandHandler.java:103` private static final String WARNING_WRAPPED = "WARNING: device list wrapped to first entry.";
-- `src\main\java\frc\robot\BridgeUiCommandHandler.java:104` private static final String WARNING_NO_ELIGIBLE_ADD = "WARNING: no eligible next device for active add.";
-- `src\main\java\frc\robot\BridgeUiCommandHandler.java:105` private static final String WARNING_NO_ELIGIBLE_NEXT = "WARNING: no eligible next device for active next.";
-- `src\main\java\frc\robot\BridgeUiCommandHandler.java:106` private static final String WARNING_DUPLICATE_PREFIX = "WARNING: device already in active-group: ";
-- `src\main\java\frc\robot\BridgeUiCommandHandler.java:107` private static final String WARNING_SKIPPED_PREFIX = "WARNING: skipped not-ready device: ";
-- `src\main\java\frc\robot\BridgeUiCommandHandler.java:109` "WARNING: command rejected while TEST_RUNNING.";
-- `src\main\java\frc\robot\BridgeUiCommandHandler.java:112` private static final String MESSAGE_ACTIVE_NOT_FOUND = "Active group not found.";
-- `src\main\java\frc\robot\BridgeUiCommandHandler.java:116` private static final String JSON_KEY_OK = "ok";
-- `src\main\java\frc\robot\BridgeUiCommandHandler.java:163` private static final String TEXT_DEVICE_NOT_FOUND = "Device: (not found)";
-- `src\main\java\frc\robot\BridgeUiCommandHandler.java:194` private static final String TEXT_PROFILE_ACTIVATE_FAIL = "Profile activation failed.";
-- `src\main\java\frc\robot\BridgeUiCommandHandler.java:196` private static final String TEXT_PROFILES_RELOAD_FAILED = "Profiles reload failed: %s";
-- `src\main\java\frc\robot\BridgeUiCommandHandler.java:198` private static final String TEXT_PROFILES_APPLY_FAILED = "Profiles apply failed.";
+- `src\main\java\frc\robot\BridgeGroupManager.java:276` *   Group instance or null when not found.
+- `src\main\java\frc\robot\BridgeGroupManager.java:313` *   True when created, false if invalid or already exists.
+- `src\main\java\frc\robot\BridgeGroupManager.java:332` *   True when removed, false if missing.
+- `src\main\java\frc\robot\BridgeGroupManager.java:404` *   True when removed, false if missing.
+- `src\main\java\frc\robot\BridgeGroupManager.java:426` *   True when updated, false if missing.
+- `src\main\java\frc\robot\BridgeGroupManager.java:450` *   True when toggled, false if missing.
+- `src\main\java\frc\robot\BridgeGroupManager.java:473` *   True when cleared, false if missing.
+- `src\main\java\frc\robot\BridgeGroupManager.java:495` *   True when binding added, false if group or kind invalid.
+- `src\main\java\frc\robot\BridgeUiCommandDispatcher.java:24` private static final String TEXT_UNKNOWN_COMMAND_PREFIX = "Unknown command: ";
+- `src\main\java\frc\robot\BridgeUiCommandDispatcher.java:42` result.ok = false;
+- `src\main\java\frc\robot\BridgeUiCommandExecutor.java:27` result.ok = false;
+- `src\main\java\frc\robot\BridgeUiCommandHandler.java:65` public final boolean ok;
+- `src\main\java\frc\robot\BridgeUiCommandHandler.java:72` boolean ok,
+- `src\main\java\frc\robot\BridgeUiCommandHandler.java:77` this.ok = ok;
+- `src\main\java\frc\robot\BridgeUiCommandHandler.java:158` private static final String WARNING_WRAPPED = "WARNING: device list wrapped to first entry.";
+- `src\main\java\frc\robot\BridgeUiCommandHandler.java:159` private static final String WARNING_NO_ELIGIBLE_ADD = "WARNING: no eligible next device for active add.";
+- `src\main\java\frc\robot\BridgeUiCommandHandler.java:160` private static final String WARNING_NO_ELIGIBLE_NEXT = "WARNING: no eligible next device for active next.";
+- `src\main\java\frc\robot\BridgeUiCommandHandler.java:161` private static final String WARNING_DUPLICATE_PREFIX = "WARNING: device already in active-group: ";
+- `src\main\java\frc\robot\BridgeUiCommandHandler.java:162` private static final String WARNING_SKIPPED_PREFIX = "WARNING: skipped not-ready device: ";
+- `src\main\java\frc\robot\BridgeUiCommandHandler.java:164` "WARNING: command rejected while TEST_RUNNING.";
 
 ## Java ACK Status Literal Candidates
 

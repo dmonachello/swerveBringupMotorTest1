@@ -1,0 +1,2143 @@
+test 0 : all devices connected:
+- diagram 0
+
+=== Bringup reset (profilesApplyActivate @ 1780502265511): no motors instantiated ===
+Warning: missing motor spec for FALCON 9
+Warning: missing motor spec for FALCON 9
+Warning: duplicate CAN ID: 0
+Warning: duplicate CAN ID: 0
+Warning: duplicate CAN IDs can cause bringup confusion.
+=== Bringup reset (profilesApplyActivate @ 1780502265534): no motors instantiated ===
+Warning: missing motor spec for FALCON 9
+Device created: NEO index 0 CAN 25
+Device created: FALCON index 0 CAN 9
+Device created: PDP index 0 CAN 20
+Device created: roboRIO index 0 CAN 0
+Device created: Limit Switch index 0 DIO channel 0
+Device created: Xbox Controller index 0 USB port 0
+Added all configured devices.
+=== Profile Updated ===
+Build: bringup-core-state-v3
+CAN profile: test_minimal_25_9
+CTRE FALCON CAN IDs: 9
+CTRE PDP CAN IDs: 20
+Microsoft xboxController USB ports: 0
+NI limitSwitch DIO channels: 0
+NI roboRIO CAN IDs: 0
+REV NEO CAN IDs: 25
+========================
+[CAN] High utilization: 99.3%
+[CAN] Utilization recovered: 10.8%
+[CAN] High utilization: 81.1%
+[CAN] Utilization recovered: 6.4%
+
+-------
+
+test 1: - disconnected the PDP
+- see diagram 1
+Safety: outputs stopped (teleopInit).
+=== Profile Updated ===
+Build: bringup-core-state-v3
+CAN profile: test_minimal_25_9 (inactive)
+CTRE FALCON CAN IDs: 9
+CTRE PDP CAN IDs: 20
+Microsoft xboxController USB ports: 0
+NI limitSwitch DIO channels: 0
+NI roboRIO CAN IDs: 0
+REV NEO CAN IDs: 25
+========================
+=== Bringup reset (profilesApplyActivate @ 1780502394092): no motors instantiated ===
+Warning: missing motor spec for FALCON 9
+Warning: missing motor spec for FALCON 9
+Warning: duplicate CAN ID: 0
+Warning: duplicate CAN ID: 0
+Warning: duplicate CAN IDs can cause bringup confusion.
+=== Bringup reset (profilesApplyActivate @ 1780502394114): no motors instantiated ===
+Warning: missing motor spec for FALCON 9
+Device created: NEO index 0 CAN 25
+Device created: FALCON index 0 CAN 9
+Device created: PDP index 0 CAN 20
+Device created: roboRIO index 0 CAN 0
+Device created: Limit Switch index 0 DIO channel 0
+Device created: Xbox Controller index 0 USB port 0
+Added all configured devices.
+=== Profile Updated ===
+Build: bringup-core-state-v3
+CAN profile: test_minimal_25_9
+CTRE FALCON CAN IDs: 9
+CTRE PDP CAN IDs: 20
+Microsoft xboxController USB ports: 0
+NI limitSwitch DIO channels: 0
+NI roboRIO CAN IDs: 0
+REV NEO CAN IDs: 25
+========================
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:39): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getTemperature(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getTemperature(PowerDistribution.java:113)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:39)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+Loop time of 0.02s overrun
+Warning at edu.wpi.first.wpilibj.IterativeRobotBase.printLoopOverrunMessage(IterativeRobotBase.java:436): Loop time of 0.02s overrun
+teleopPeriodic(): 0.031776s
+SmartDashboard.updateValues(): 0.000019s
+robotPeriodic(): 0.000853s
+LiveWindow.updateValues(): 0.000000s
+Shuffleboard.update(): 0.000000s
+Warning at edu.wpi.first.wpilibj.Tracer.lambda$printEpochs$0(Tracer.java:62): teleopPeriodic(): 0.031776s
+SmartDashboard.updateValues(): 0.000019s
+robotPeriodic(): 0.000853s
+LiveWindow.updateValues(): 0.000000s
+Shuffleboard.update(): 0.000000s
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+
+----
+test 2: - reconnect pdp
+- disconnect falcon 9
+- see diagram 2
+=== Profile Updated ===
+Build: bringup-core-state-v3
+CAN profile: test_minimal_25_9 (inactive)
+CTRE FALCON CAN IDs: 9
+CTRE PDP CAN IDs: 20
+Microsoft xboxController USB ports: 0
+NI limitSwitch DIO channels: 0
+NI roboRIO CAN IDs: 0
+REV NEO CAN IDs: 25
+========================
+=== Bringup reset (profilesApplyActivate @ 1780502652075): no motors instantiated ===
+Warning: missing motor spec for FALCON 9
+Warning: missing motor spec for FALCON 9
+Warning: duplicate CAN ID: 0
+Warning: duplicate CAN ID: 0
+Warning: duplicate CAN IDs can cause bringup confusion.
+=== Bringup reset (profilesApplyActivate @ 1780502652092): no motors instantiated ===
+Warning: missing motor spec for FALCON 9
+Device created: NEO index 0 CAN 25
+Device created: FALCON index 0 CAN 9
+Device created: PDP index 0 CAN 20
+Device created: roboRIO index 0 CAN 0
+Device created: Limit Switch index 0 DIO channel 0
+Device created: Xbox Controller index 0 USB port 0
+Added all configured devices.
+=== Profile Updated ===
+Build: bringup-core-state-v3
+CAN profile: test_minimal_25_9
+CTRE FALCON CAN IDs: 9
+CTRE PDP CAN IDs: 20
+Microsoft xboxController USB ports: 0
+NI limitSwitch DIO channels: 0
+NI roboRIO CAN IDs: 0
+REV NEO CAN IDs: 25
+========================
+Loop time of 0.02s overrun
+Warning at edu.wpi.first.wpilibj.IterativeRobotBase.printLoopOverrunMessage(IterativeRobotBase.java:436): Loop time of 0.02s overrun
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+[CAN] BUS OFF event detected! Check wiring/termination/noise.
+teleopPeriodic(): 0.001799s
+SmartDashboard.updateValues(): 0.000018s
+robotPeriodic(): 0.101896s
+LiveWindow.updateValues(): 0.000000s
+Shuffleboard.update(): 0.000000s
+Warning at edu.wpi.first.wpilibj.Tracer.lambda$printEpochs$0(Tracer.java:62): teleopPeriodic(): 0.001799s
+SmartDashboard.updateValues(): 0.000018s
+robotPeriodic(): 0.101896s
+LiveWindow.updateValues(): 0.000000s
+Shuffleboard.update(): 0.000000s
+[CAN] BUS OFF event detected! Check wiring/termination/noise.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+
+----
+test 3: - reconnect falcon 9
+- disconnect sparkmax
+- diagram 3 and 4
+
+
+Safety: outputs stopped (teleopInit).
+=== Profile Updated ===
+Build: bringup-core-state-v3
+CAN profile: test_minimal_25_9 (inactive)
+CTRE FALCON CAN IDs: 9
+CTRE PDP CAN IDs: 20
+Microsoft xboxController USB ports: 0
+NI limitSwitch DIO channels: 0
+NI roboRIO CAN IDs: 0
+REV NEO CAN IDs: 25
+========================
+=== Bringup reset (profilesApplyActivate @ 1780502962446): no motors instantiated ===
+Warning: missing motor spec for FALCON 9
+Warning: missing motor spec for FALCON 9
+Warning: duplicate CAN ID: 0
+Warning: duplicate CAN ID: 0
+Warning: duplicate CAN IDs can cause bringup confusion.
+=== Bringup reset (profilesApplyActivate @ 1780502962461): no motors instantiated ===
+Warning: missing motor spec for FALCON 9
+Device created: NEO index 0 CAN 25
+Device created: FALCON index 0 CAN 9
+Device created: PDP index 0 CAN 20
+Device created: roboRIO index 0 CAN 0
+Device created: Limit Switch index 0 DIO channel 0
+Device created: Xbox Controller index 0 USB port 0
+Added all configured devices.
+=== Profile Updated ===
+Build: bringup-core-state-v3
+CAN profile: test_minimal_25_9
+CTRE FALCON CAN IDs: 9
+CTRE PDP CAN IDs: 20
+Microsoft xboxController USB ports: 0
+NI limitSwitch DIO channels: 0
+NI roboRIO CAN IDs: 0
+REV NEO CAN IDs: 25
+========================
+[CAN] BUS OFF event detected! Check wiring/termination/noise.
+[CAN] Error spike: rx=50 tx=0 (delta rx=50 tx=0)
+[CAN] BUS OFF event detected! Check wiring/termination/noise.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+[CAN] BUS OFF event detected! Check wiring/termination/noise.
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+[Spark Max] IDs: 25, timed out while waiting for Frame Mgr: Period Status 0: HAL: CAN Receive has Timed Out
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+[Spark Max] IDs: 25, timed out while waiting for Frame Mgr: Period Status 0: HAL: CAN Receive has Timed Out
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+[Spark Max] IDs: 25, timed out while waiting for Frame Mgr: Period Status 0: HAL: CAN Receive has Timed Out
+
+---
+
+
+test 4 - disconnect roborio from the can bus
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+Loop time of 0.02s overrun
+Warning at edu.wpi.first.wpilibj.IterativeRobotBase.printLoopOverrunMessage(IterativeRobotBase.java:436): Loop time of 0.02s overrun
+teleopPeriodic(): 0.024059s
+SmartDashboard.updateValues(): 0.000018s
+robotPeriodic(): 0.000483s
+LiveWindow.updateValues(): 0.000000s
+Shuffleboard.update(): 0.000000s
+Warning at edu.wpi.first.wpilibj.Tracer.lambda$printEpochs$0(Tracer.java:62): teleopPeriodic(): 0.024059s
+SmartDashboard.updateValues(): 0.000018s
+robotPeriodic(): 0.000483s
+LiveWindow.updateValues(): 0.000000s
+Shuffleboard.update(): 0.000000s
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:54): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getChannelCurrent(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getCurrent(PowerDistribution.java:123)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:54)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+CAN message is stale, data is valid but old. Check the CAN bus wiring, CAN bus utilization, and power to the device.
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)
+[Spark Max] IDs: 25, timed out while waiting for Period Status 0: HAL: CAN Receive has Timed Out
+HAL: CAN Receive has Timed Out
+Error at frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36): HAL: CAN Receive has Timed Out
+edu.wpi.first.hal.PowerDistributionJNI.getVoltage(Native Method)
+edu.wpi.first.wpilibj.PowerDistribution.getVoltage(PowerDistribution.java:102)
+frc.robot.manufacturers.ctre.util.PdpStatusReader.snapshot(PdpStatusReader.java:36)
+frc.robot.devices.ctre.CtrePdpDevice.snapshot(CtrePdpDevice.java:116)
+frc.robot.manufacturers.CtreDeviceGroup.snapshotDevice(CtreDeviceGroup.java:448)
+frc.robot.manufacturers.CtreDeviceGroup.captureSnapshots(CtreDeviceGroup.java:305)
+frc.robot.manufacturers.ManufacturerGroup.captureSnapshots(ManufacturerGroup.java:161)
+frc.robot.BringupCore.captureSnapshots(BringupCore.java:2889)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateDevices(BridgeUiCommandHandler.java:3194)
+frc.robot.BridgeUiCommandHandler.buildRuntimeStateJson(BridgeUiCommandHandler.java:3012)
+frc.robot.RobotV2$RestCallbacksImpl.buildRuntimeStateJson(RobotV2.java:629)
+frc.robot.rest.BringupRestServer.runImmediateCommandLocked(BringupRestServer.java:796)
+frc.robot.rest.BringupRestServer.handleCommandSubmit(BringupRestServer.java:537)
+frc.robot.rest.BringupRestServer.handleCommands(BringupRestServer.java:482)
+frc.robot.rest.BringupRestServer.route(BringupRestServer.java:319)
+frc.robot.rest.BringupRestServer$RootHandler.handle(BringupRestServer.java:278)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(Unknown Source)
+jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Unknown Source)
+jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+java.base/java.lang.Thread.run(Unknown Source)

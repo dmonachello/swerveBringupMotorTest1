@@ -1,0 +1,1204 @@
+package frc.robot.diag.probe;
+
+import com.ctre.phoenix6.BaseStatusSignal;
+import com.ctre.phoenix6.StatusCode;
+import com.ctre.phoenix6.hardware.TalonFX;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.revrobotics.REVLibError;
+import com.revrobotics.spark.SparkBase;
+import com.revrobotics.spark.SparkFlex;
+import com.revrobotics.spark.SparkMax;
+import edu.wpi.first.networktables.NetworkTable;
+import edu.wpi.first.units.Units;
+import frc.robot.BringupCore;
+import frc.robot.BringupUtil;
+import frc.robot.devices.DeviceUnit;
+import frc.robot.devices.ctre.CtrePdpDevice;
+import frc.robot.devices.ctre.CtreTalonFxDevice;
+import frc.robot.devices.rev.RevFlexVortexDevice;
+import frc.robot.devices.rev.RevPdhDevice;
+import frc.robot.devices.rev.RevSparkMaxNeo550Device;
+import frc.robot.devices.rev.RevSparkMaxNeoDevice;
+import frc.robot.manufacturers.ctre.diag.CtreReaderUtil;
+import frc.robot.manufacturers.ctre.diag.PdpStatusAttachment;
+import frc.robot.manufacturers.ctre.util.PdpStatusReader;
+import frc.robot.manufacturers.rev.diag.PdhStatusAttachment;
+import frc.robot.manufacturers.rev.diag.RevReaderUtil;
+import frc.robot.manufacturers.rev.util.PdhStatusReader;
+import frc.robot.status.generated.StatusCatalogGenerated;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+
+/**
+ * NAME
+ *   ActiveDevicePresenceProbe - One-shot active vendor-API presence probe for runtime-owned devices.
+ *
+ * DESCRIPTION
+ *   Probes the currently active runtime-owned CAN devices using already-open
+ *   vendor handles. The probe never commands motion and returns a structured
+ *   score/bucket result plus compact operator text.
+ */
+public final class ActiveDevicePresenceProbe {
+  private static final String MODE_ONE_SHOT = "oneShot";
+  private static final String STATUS_OK = "ok";
+  private static final String STATUS_WARNING = "warning";
+  private static final String STATUS_ERROR = "error";
+  private static final String BUCKET_PRESENT = "present";
+  private static final String BUCKET_DEGRADED = "degraded";
+  private static final String BUCKET_ABSENT = "absent";
+  private static final String BUCKET_UNKNOWN = "unknown";
+  private static final String DEVICE_INTERFACE_CAN = "CAN";
+  private static final String VENDOR_CTRE = "CTRE";
+  private static final String VENDOR_REV = "REV";
+  private static final String MODEL_TALON_FX = "TALON_FX";
+  private static final String MODEL_SPARK_MAX = "SPARK_MAX";
+  private static final String MODEL_SPARK_FLEX = "SPARK_FLEX";
+  private static final String MODEL_PDP = "PDP";
+  private static final String MODEL_PDH = "PDH";
+  private static final String MODEL_UNSUPPORTED = "UNSUPPORTED";
+  private static final String TEXT_SESSION_SUCCESS = "Probe completed successfully.";
+  private static final String TEXT_SESSION_WARN = "Probe completed with warnings.";
+  private static final String TEXT_SESSION_EMPTY = "No active CAN devices were available for probing.";
+  private static final String TEXT_SESSION_UNSUPPORTED = "No supported active CAN probe targets were found.";
+  private static final String TEXT_INVALID_TARGET = "Invalid probe target.";
+  private static final String TEXT_UNSUPPORTED_MODEL_PREFIX = "Unsupported device model: ";
+  private static final String TEXT_RUNTIME_DEVICE_MISSING = "Runtime device handle unavailable.";
+  private static final String TEXT_STATUS_NOT_OK = "One or more Phoenix status reads were not OK.";
+  private static final String TEXT_STATUS_FORCE_ABSENT = "Phoenix status was stale or transmit failed.";
+  private static final String TEXT_PD_WEAK = "Power-distribution API evidence was too weak for a confident absence call.";
+  private static final String TEXT_EXCEPTION_PREFIX = "Probe exception: ";
+  private static final String TEXT_FIELD_SEPARATOR = " | ";
+  private static final String TEXT_EVIDENCE_PREFIX = "  ";
+  private static final String TEXT_PASS_PREFIX = "+ ";
+  private static final String TEXT_FAIL_PREFIX = "- ";
+  private static final String TEXT_NEWLINE = "\n";
+  private static final String TEXT_EQUALS = " = ";
+  private static final String TEXT_EMPTY = "";
+  private static final String OBSERVED_OK = "OK";
+  private static final String OBSERVED_NOT_OK = "NOT_OK";
+  private static final String CODE_OBJECT_CONSTRUCTED = "OBJECT_CONSTRUCTED";
+  private static final String CODE_OBJECT_HANDLE_REUSED = "OBJECT_HANDLE_REUSED";
+  private static final String CODE_CLEAR_STICKY_OK = "CLEAR_STICKY_OK";
+  private static final String CODE_CLEAR_STICKY_FAILED = "CLEAR_STICKY_FAILED";
+  private static final String CODE_STATUS_REFRESH_OK = "STATUS_REFRESH_OK";
+  private static final String CODE_BUS_VOLTAGE_VALID = "BUS_VOLTAGE_VALID";
+  private static final String CODE_TEMPERATURE_READ_VALID = "TEMPERATURE_READ_VALID";
+  private static final String CODE_CURRENT_READ_VALID = "CURRENT_READ_VALID";
+  private static final String CODE_POSITION_READ_VALID = "POSITION_READ_VALID";
+  private static final String CODE_NO_ACTIVE_FAULTS = "NO_ACTIVE_FAULTS";
+  private static final String CODE_NO_STICKY_FAULTS = "NO_STICKY_FAULTS";
+  private static final String CODE_LAST_ERROR_OK = "LAST_ERROR_OK";
+  private static final String CODE_APPLIED_OUTPUT_VALID = "APPLIED_OUTPUT_VALID";
+  private static final String CODE_NO_ACTIVE_WARNINGS = "NO_ACTIVE_WARNINGS";
+  private static final String CODE_SWITCHABLE_READ_VALID = "SWITCHABLE_READ_VALID";
+  private static final String CODE_POWER_FRESHNESS_GATE = "POWER_FRESHNESS_GATE";
+  private static final String CODE_CONSOLE_EVENT_ACTIVE = "CONSOLE_EVENT_ACTIVE";
+  private static final String CODE_EXCEPTION_THROWN = "EXCEPTION_THROWN";
+  private static final int MAX_SCORE = 100;
+  private static final int PRESENT_THRESHOLD = 70;
+  private static final int DEGRADED_THRESHOLD = 35;
+  private static final int WEIGHT_CONSTRUCT = 5;
+  private static final int TALON_STATUS_OK = 30;
+  private static final int TALON_BUS_VOLTAGE = 15;
+  private static final int TALON_TEMPERATURE = 10;
+  private static final int TALON_CURRENT = 10;
+  private static final int TALON_POSITION = 10;
+  private static final int TALON_NO_ACTIVE_FAULTS = 10;
+  private static final int TALON_NO_STICKY_FAULTS = 10;
+  private static final int REV_LAST_ERROR_OK = 25;
+  private static final int REV_BUS_VOLTAGE = 20;
+  private static final int REV_CURRENT = 10;
+  private static final int REV_TEMPERATURE = 10;
+  private static final int REV_APPLIED_OUTPUT = 10;
+  private static final int REV_NO_ACTIVE_FAULTS = 10;
+  private static final int REV_NO_ACTIVE_WARNINGS = 10;
+  private static final int PD_BUS_VOLTAGE = 25;
+  private static final int PD_TOTAL_CURRENT = 20;
+  private static final int PD_TEMPERATURE = 20;
+  private static final int PD_SWITCHABLE = 15;
+  private static final int PD_NO_ACTIVE_FAULTS = 15;
+  private static final double MIN_VALID_BUS_VOLTAGE = 1.0;
+  private static final double MAX_VALID_BUS_VOLTAGE = 30.0;
+  private static final double MAX_VALID_CURRENT_A = 500.0;
+  private static final double MAX_VALID_TEMP_C = 250.0;
+  private static final double MAX_VALID_DUTY = 1.05;
+  private static final double MIN_MEANINGFUL_CURRENT_A = 0.05;
+  private static final double MIN_MEANINGFUL_POWER_TEMP_C = 1.0;
+  private static final int EXPECTED_RESET_BITS = 0;
+  private static final String NT_CONSOLE = "console";
+  private static final String NT_DEVICES = "devices";
+  private static final String NT_SYSTEM = "system";
+  private static final String NT_ACTIVE = "Active";
+  private static final String NT_MESSAGE = "Message";
+  private static final String NT_SEVERITY = "Severity";
+  private static final String SEVERITY_WARN = "WARN";
+  private static final String SEVERITY_ERROR = "ERROR";
+  private static final String SEVERITY_FATAL = "FATAL";
+  private static final String EVENT_HAL_CAN_RECEIVE_TIMEOUT = "HAL_CAN_RECEIVE_TIMEOUT";
+  private static final String EVENT_PDP_STATUS_READER_TIMEOUT = "PDP_STATUS_READER_TIMEOUT";
+  private static final String EVENT_PDH_STATUS_READER_TIMEOUT = "PDH_STATUS_READER_TIMEOUT";
+  private static final String MESSAGE_CONSOLE_TIMEOUT_PREFIX = "Active console timeout evidence: ";
+
+  /**
+   * NAME
+   *   runOnce - Probe supported active runtime-owned CAN devices once.
+   *
+   * PARAMETERS
+   *   core - active runtime core that owns the current device handles.
+   *   preclearSticky - when true, clear sticky faults where safely supported.
+   *
+   * RETURNS
+   *   Session result containing per-device evidence plus text/JSON output.
+   */
+  public ProbeSessionResult runOnce(BringupCore core, NetworkTable diagTable, boolean preclearSticky) {
+    if (core == null) {
+      return ProbeSessionResult.failed(TEXT_SESSION_EMPTY);
+    }
+    List<ProbeDeviceResult> results = new ArrayList<>();
+    int unsupportedCount = 0;
+    int canCount = 0;
+    for (BringupUtil.DeviceEntry entry : BringupUtil.getActiveDevicesSorted()) {
+      if (!isCanEntry(entry)) {
+        continue;
+      }
+      canCount++;
+      DeviceUnit device = core.findDeviceByLabel(entry.label);
+      ProbeTarget target = resolveTarget(entry, device);
+      if (MODEL_UNSUPPORTED.equals(target.model)) {
+        unsupportedCount++;
+        continue;
+      }
+      results.add(probeTarget(target, device, diagTable, preclearSticky));
+    }
+    if (results.isEmpty()) {
+      if (canCount == 0) {
+        return ProbeSessionResult.failed(TEXT_SESSION_EMPTY);
+      }
+      return ProbeSessionResult.failed(TEXT_SESSION_UNSUPPORTED);
+    }
+    return ProbeSessionResult.fromDevices(results, unsupportedCount);
+  }
+
+  private boolean isCanEntry(BringupUtil.DeviceEntry entry) {
+    if (entry == null) {
+      return false;
+    }
+    String iface = entry.deviceInterface;
+    return iface != null && DEVICE_INTERFACE_CAN.equalsIgnoreCase(iface.trim());
+  }
+
+  private ProbeTarget resolveTarget(BringupUtil.DeviceEntry entry, DeviceUnit device) {
+    String label = entry != null && entry.label != null ? entry.label : TEXT_EMPTY;
+    int canId = entry != null ? entry.id : -1;
+    String vendor = entry != null && entry.vendor != null ? entry.vendor : TEXT_EMPTY;
+    String model = MODEL_UNSUPPORTED;
+    if (device instanceof CtreTalonFxDevice) {
+      vendor = VENDOR_CTRE;
+      model = MODEL_TALON_FX;
+    } else if (device instanceof RevSparkMaxNeoDevice || device instanceof RevSparkMaxNeo550Device) {
+      vendor = VENDOR_REV;
+      model = MODEL_SPARK_MAX;
+    } else if (device instanceof RevFlexVortexDevice) {
+      vendor = VENDOR_REV;
+      model = MODEL_SPARK_FLEX;
+    } else if (device instanceof CtrePdpDevice) {
+      vendor = VENDOR_CTRE;
+      model = MODEL_PDP;
+    } else if (device instanceof RevPdhDevice) {
+      vendor = VENDOR_REV;
+      model = MODEL_PDH;
+    }
+    return new ProbeTarget(label, canId, normalizeVendor(vendor), model);
+  }
+
+  private String normalizeVendor(String vendor) {
+    if (vendor == null || vendor.isBlank()) {
+      return TEXT_EMPTY;
+    }
+    return vendor.trim().toUpperCase(Locale.ROOT);
+  }
+
+  private ProbeDeviceResult probeTarget(
+      ProbeTarget target,
+      DeviceUnit device,
+      NetworkTable diagTable,
+      boolean preclearSticky) {
+    if (target == null || target.label == null || target.label.isBlank() || target.canId < 0) {
+      return invalidTarget(target, TEXT_INVALID_TARGET);
+    }
+    if (MODEL_UNSUPPORTED.equals(target.model)) {
+      return unsupportedTarget(target, TEXT_UNSUPPORTED_MODEL_PREFIX + target.label);
+    }
+    if (device == null || !device.isCreated()) {
+      return missingRuntimeDevice(target);
+    }
+    return switch (target.model) {
+      case MODEL_TALON_FX -> probeTalonFx(target, (CtreTalonFxDevice) device, diagTable, preclearSticky);
+      case MODEL_SPARK_MAX -> probeSparkMax(target, device, diagTable, preclearSticky);
+      case MODEL_SPARK_FLEX -> probeSparkFlex(target, (RevFlexVortexDevice) device, diagTable, preclearSticky);
+      case MODEL_PDP -> probePdp(target, (CtrePdpDevice) device, diagTable, preclearSticky);
+      case MODEL_PDH -> probePdh(target, (RevPdhDevice) device, diagTable, preclearSticky);
+      default -> unsupportedTarget(target, TEXT_UNSUPPORTED_MODEL_PREFIX + target.model);
+    };
+  }
+
+  private ProbeDeviceResult probeTalonFx(
+      ProbeTarget target,
+      CtreTalonFxDevice device,
+      NetworkTable diagTable,
+      boolean preclearSticky) {
+    ProbeAccumulator acc = new ProbeAccumulator(target);
+    TalonFX talon = device.getActiveHandleForProbe();
+    if (talon == null) {
+      return missingRuntimeDevice(target);
+    }
+    acc.pass(CODE_OBJECT_HANDLE_REUSED, "Using runtime-owned TalonFX handle.", WEIGHT_CONSTRUCT,
+        Integer.toString(target.canId));
+    try {
+      if (preclearSticky) {
+        StatusCode clearStatus = talon.clearStickyFaults();
+        if (clearStatus == StatusCode.OK) {
+          acc.pass(CODE_CLEAR_STICKY_OK, "Cleared Phoenix sticky faults.", 0, OBSERVED_OK);
+        } else {
+          acc.warn(CODE_CLEAR_STICKY_FAILED, "Phoenix sticky-fault clear did not return OK.", 0,
+              String.valueOf(clearStatus), StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK);
+        }
+      }
+      var supplyVoltage = talon.getSupplyVoltage();
+      var dutyCycle = talon.getDutyCycle();
+      var faultField = talon.getFaultField();
+      var stickyFaultField = talon.getStickyFaultField();
+      var deviceTemp = talon.getDeviceTemp();
+      var supplyCurrent = talon.getSupplyCurrent();
+      var position = talon.getPosition();
+      BaseStatusSignal.refreshAll(
+          supplyVoltage,
+          dutyCycle,
+          faultField,
+          stickyFaultField,
+          deviceTemp,
+          supplyCurrent,
+          position);
+      boolean allOk = true;
+      allOk &= isOkStatus(supplyVoltage.getStatus());
+      allOk &= isOkStatus(dutyCycle.getStatus());
+      allOk &= isOkStatus(faultField.getStatus());
+      allOk &= isOkStatus(stickyFaultField.getStatus());
+      allOk &= isOkStatus(deviceTemp.getStatus());
+      allOk &= isOkStatus(supplyCurrent.getStatus());
+      allOk &= isOkStatus(position.getStatus());
+      if (allOk) {
+        acc.pass(CODE_STATUS_REFRESH_OK, "All Phoenix status reads returned OK.", TALON_STATUS_OK, OBSERVED_OK);
+      } else {
+        acc.fail(CODE_STATUS_REFRESH_OK, TEXT_STATUS_NOT_OK, TALON_STATUS_OK, OBSERVED_NOT_OK);
+      }
+      double busV = supplyVoltage.getValue().in(Units.Volts);
+      addTelemetryCheck(
+          acc,
+          allOk && isReasonableBusVoltage(busV),
+          CODE_BUS_VOLTAGE_VALID,
+          "Bus voltage looks valid.",
+          allOk ? "Bus voltage not in expected range." : "Bus voltage ignored because Phoenix status was not fresh.",
+          TALON_BUS_VOLTAGE,
+          formatDouble(busV));
+      double tempC = deviceTemp.getValue().in(Units.Celsius);
+      addTelemetryCheck(
+          acc,
+          allOk && isFiniteInRange(tempC, 0.0, MAX_VALID_TEMP_C),
+          CODE_TEMPERATURE_READ_VALID,
+          "Temperature read succeeded.",
+          allOk ? "Temperature read failed." : "Temperature ignored because Phoenix status was not fresh.",
+          TALON_TEMPERATURE,
+          formatDouble(tempC));
+      double currentA = supplyCurrent.getValue().in(Units.Amps);
+      addTelemetryCheck(
+          acc,
+          allOk && isFiniteInRange(currentA, 0.0, MAX_VALID_CURRENT_A),
+          CODE_CURRENT_READ_VALID,
+          "Current read succeeded.",
+          allOk ? "Current read failed." : "Current ignored because Phoenix status was not fresh.",
+          TALON_CURRENT,
+          formatDouble(currentA));
+      long faultsRaw = faultField.getValue();
+      long stickyFaultsRaw = stickyFaultField.getValue();
+      List<String> activeFaultNames = new ArrayList<>();
+      List<String> stickyFaultNames = new ArrayList<>();
+      CtreReaderUtil.collectFaultFlags(talon, activeFaultNames);
+      CtreReaderUtil.collectStickyFaultFlags(talon, stickyFaultNames);
+      if (allOk && faultsRaw == 0L) {
+        acc.pass(CODE_NO_ACTIVE_FAULTS, "No active Phoenix fault bits.", TALON_NO_ACTIVE_FAULTS, "0");
+      } else {
+        acc.fail(CODE_NO_ACTIVE_FAULTS,
+            allOk ? "Active Phoenix fault bits were reported." : "Active-fault check ignored because Phoenix status was not fresh.",
+            TALON_NO_ACTIVE_FAULTS,
+            "faults=" + faultsRaw);
+        if (allOk) {
+          acc.warnEntries("Active CTRE fault", activeFaultNames, StatusCatalogGenerated.SS__DEVICE__FAULTS_ACTIVE);
+        }
+      }
+      if (allOk && stickyFaultsRaw == 0L) {
+        acc.pass(CODE_NO_STICKY_FAULTS, "No Phoenix sticky fault bits.", TALON_NO_STICKY_FAULTS, "0");
+      } else {
+        acc.fail(CODE_NO_STICKY_FAULTS,
+            allOk ? "Phoenix sticky fault bits were reported." : "Sticky-fault check ignored because Phoenix status was not fresh.",
+            TALON_NO_STICKY_FAULTS,
+            "sticky=" + stickyFaultsRaw);
+        if (allOk) {
+          acc.warnEntries("Sticky CTRE fault", stickyFaultNames, StatusCatalogGenerated.SS__DEVICE__FAULTS_ACTIVE);
+        }
+      }
+      double positionRot = position.getValue().in(Units.Rotations);
+      addTelemetryCheck(
+          acc,
+          allOk && Double.isFinite(positionRot),
+          CODE_POSITION_READ_VALID,
+          "Position read succeeded.",
+          allOk ? "Position read failed." : "Position ignored because Phoenix status was not fresh.",
+          TALON_POSITION,
+          formatDouble(positionRot));
+      if (!allOk) {
+        acc.forceBucket(BUCKET_ABSENT, StatusCatalogGenerated.SS__DEVICE__ABSENT, TEXT_STATUS_FORCE_ABSENT);
+      }
+      applyConsoleEvidence(acc, target, diagTable);
+      return acc.finish();
+    } catch (Exception ex) {
+      acc.error(CODE_EXCEPTION_THROWN, TEXT_EXCEPTION_PREFIX + ex.getClass().getSimpleName(),
+          MAX_SCORE, safeExceptionMessage(ex), StatusCatalogGenerated.SS__DEVICE__PROBE_EXCEPTION);
+      applyConsoleEvidence(acc, target, diagTable);
+      return acc.finish();
+    }
+  }
+
+  private ProbeDeviceResult probeSparkMax(
+      ProbeTarget target,
+      DeviceUnit device,
+      NetworkTable diagTable,
+      boolean preclearSticky) {
+    SparkMax spark = null;
+    if (device instanceof RevSparkMaxNeoDevice neo) {
+      spark = neo.getActiveHandleForProbe();
+    } else if (device instanceof RevSparkMaxNeo550Device neo550) {
+      spark = neo550.getActiveHandleForProbe();
+    }
+    return probeRevSparkBase(target, spark, diagTable, preclearSticky);
+  }
+
+  private ProbeDeviceResult probeSparkFlex(
+      ProbeTarget target,
+      RevFlexVortexDevice device,
+      NetworkTable diagTable,
+      boolean preclearSticky) {
+    return probeRevSparkBase(target, device.getActiveHandleForProbe(), diagTable, preclearSticky);
+  }
+
+  private ProbeDeviceResult probeRevSparkBase(
+      ProbeTarget target,
+      SparkBase device,
+      NetworkTable diagTable,
+      boolean preclearSticky) {
+    ProbeAccumulator acc = new ProbeAccumulator(target);
+    if (device == null) {
+      return missingRuntimeDevice(target);
+    }
+    acc.pass(CODE_OBJECT_HANDLE_REUSED, "Using runtime-owned REV handle.", WEIGHT_CONSTRUCT,
+        Integer.toString(target.canId));
+    try {
+      if (preclearSticky) {
+        device.clearFaults();
+        REVLibError clearError = device.getLastError();
+        if (clearError == REVLibError.kOk) {
+          acc.pass(CODE_CLEAR_STICKY_OK, "Cleared REV sticky faults.", 0, OBSERVED_OK);
+        } else {
+          acc.warn(CODE_CLEAR_STICKY_FAILED, "REV clearFaults did not return kOk.", 0,
+              String.valueOf(clearError), StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK);
+        }
+      }
+      double busV = device.getBusVoltage();
+      double appliedOutput = device.getAppliedOutput();
+      double currentA = device.getOutputCurrent();
+      double tempC = device.getMotorTemperature();
+      var faults = device.getFaults();
+      var stickyFaults = device.getStickyFaults();
+      var warnings = device.getWarnings();
+      var stickyWarnings = device.getStickyWarnings();
+      REVLibError lastError = device.getLastError();
+      boolean commHealthy = lastError == REVLibError.kOk;
+      if (commHealthy) {
+        acc.pass(CODE_LAST_ERROR_OK, "REV last error returned kOk.", REV_LAST_ERROR_OK, String.valueOf(lastError));
+      } else {
+        acc.fail(CODE_LAST_ERROR_OK, "REV last error was not kOk.", REV_LAST_ERROR_OK, String.valueOf(lastError));
+      }
+      addTelemetryCheck(
+          acc,
+          commHealthy && isReasonableBusVoltage(busV),
+          CODE_BUS_VOLTAGE_VALID,
+          "Bus voltage looks valid.",
+          commHealthy ? "Bus voltage not in expected range." : "Bus voltage ignored because communication was not healthy.",
+          REV_BUS_VOLTAGE,
+          formatDouble(busV));
+      addTelemetryCheck(
+          acc,
+          commHealthy && isFiniteInRange(currentA, 0.0, MAX_VALID_CURRENT_A),
+          CODE_CURRENT_READ_VALID,
+          "Current read succeeded.",
+          commHealthy ? "Current read failed." : "Current ignored because communication was not healthy.",
+          REV_CURRENT,
+          formatDouble(currentA));
+      addTelemetryCheck(
+          acc,
+          commHealthy && isFiniteInRange(tempC, 0.0, MAX_VALID_TEMP_C),
+          CODE_TEMPERATURE_READ_VALID,
+          "Temperature read succeeded.",
+          commHealthy ? "Temperature read failed." : "Temperature ignored because communication was not healthy.",
+          REV_TEMPERATURE,
+          formatDouble(tempC));
+      addTelemetryCheck(
+          acc,
+          commHealthy && isFiniteInRange(Math.abs(appliedOutput), 0.0, MAX_VALID_DUTY),
+          CODE_APPLIED_OUTPUT_VALID,
+          "Applied output read succeeded.",
+          commHealthy ? "Applied output read failed." : "Applied output ignored because communication was not healthy.",
+          REV_APPLIED_OUTPUT,
+          formatDouble(appliedOutput));
+      if (commHealthy && faults.rawBits == EXPECTED_RESET_BITS) {
+        acc.pass(CODE_NO_ACTIVE_FAULTS, "No active REV faults.", REV_NO_ACTIVE_FAULTS, "0");
+      } else {
+        acc.fail(CODE_NO_ACTIVE_FAULTS,
+            commHealthy ? "Active REV faults were reported." : "REV faults ignored because communication was not healthy.",
+            REV_NO_ACTIVE_FAULTS,
+            Integer.toString(faults.rawBits));
+        if (commHealthy) {
+          List<String> names = new ArrayList<>();
+          RevReaderUtil.collectFaultFlags(faults, names);
+          acc.warnEntries("Active REV fault", names, StatusCatalogGenerated.SS__DEVICE__FAULTS_ACTIVE);
+          List<String> stickyNames = new ArrayList<>();
+          RevReaderUtil.collectFaultFlags(stickyFaults, stickyNames);
+          acc.warnEntries("Sticky REV fault", stickyNames, StatusCatalogGenerated.SS__DEVICE__FAULTS_ACTIVE);
+        }
+      }
+      if (commHealthy && warnings.rawBits == EXPECTED_RESET_BITS) {
+        acc.pass(CODE_NO_ACTIVE_WARNINGS, "No active REV warnings.", REV_NO_ACTIVE_WARNINGS, "0");
+      } else {
+        acc.fail(CODE_NO_ACTIVE_WARNINGS,
+            commHealthy ? "Active REV warnings were reported." : "REV warnings ignored because communication was not healthy.",
+            REV_NO_ACTIVE_WARNINGS,
+            Integer.toString(warnings.rawBits));
+        if (commHealthy) {
+          List<String> names = new ArrayList<>();
+          RevReaderUtil.collectWarningFlags(warnings, names);
+          acc.warnEntries("Active REV warning", names, StatusCatalogGenerated.SS__DEVICE__WARNINGS_ACTIVE);
+          List<String> stickyNames = new ArrayList<>();
+          RevReaderUtil.collectWarningFlags(stickyWarnings, stickyNames);
+          acc.warnEntries("Sticky REV warning", stickyNames, StatusCatalogGenerated.SS__DEVICE__WARNINGS_ACTIVE);
+        }
+      }
+      if (lastError == REVLibError.kCANDisconnected) {
+        acc.error(CODE_LAST_ERROR_OK, "REV reported CAN disconnected.", MAX_SCORE,
+            String.valueOf(lastError), StatusCatalogGenerated.SS__DEVICE__CAN_DISCONNECTED);
+        acc.forceBucket(BUCKET_ABSENT, StatusCatalogGenerated.SS__DEVICE__ABSENT, "REV communication reported CAN disconnected.");
+      } else if (!commHealthy) {
+        acc.warn(CODE_LAST_ERROR_OK, "REV communication evidence was weak.", 0,
+            String.valueOf(lastError), StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK);
+      }
+      applyConsoleEvidence(acc, target, diagTable);
+      return acc.finish();
+    } catch (Exception ex) {
+      acc.error(CODE_EXCEPTION_THROWN, TEXT_EXCEPTION_PREFIX + ex.getClass().getSimpleName(),
+          MAX_SCORE, safeExceptionMessage(ex), StatusCatalogGenerated.SS__DEVICE__PROBE_EXCEPTION);
+      applyConsoleEvidence(acc, target, diagTable);
+      return acc.finish();
+    }
+  }
+
+  private ProbeDeviceResult probePdp(
+      ProbeTarget target,
+      CtrePdpDevice device,
+      NetworkTable diagTable,
+      boolean preclearSticky) {
+    ProbeAccumulator acc = new ProbeAccumulator(target);
+    PdpStatusReader reader = device.getActiveReaderForProbe();
+    if (reader == null) {
+      return missingRuntimeDevice(target);
+    }
+    acc.pass(CODE_OBJECT_HANDLE_REUSED, "Using runtime-owned PDP reader.", WEIGHT_CONSTRUCT,
+        Integer.toString(target.canId));
+    try {
+      if (preclearSticky) {
+        reader.clearStickyFaults();
+        acc.pass(CODE_CLEAR_STICKY_OK, "Cleared PDP sticky faults.", 0, OBSERVED_OK);
+      }
+      PdpStatusAttachment status = reader.snapshot();
+      scorePowerStatus(acc, status.voltage, status.totalCurrent, status.temperature,
+          status.switchableEnabled, status.brownout || status.canWarning || status.hardwareFault,
+          status.stickyBrownout || status.stickyCanWarning || status.stickyCanBusOff || status.stickyHasReset);
+      applyConsoleEvidence(acc, target, diagTable);
+      if (!hasStrongPowerPresenceEvidence(status.voltage, status.temperature, status.totalCurrent, status.channelCurrentA)) {
+        acc.warn(
+            CODE_POWER_FRESHNESS_GATE,
+            "PDP freshness gate failed; default-like telemetry is not strong presence evidence.",
+            0,
+            formatPowerEvidenceObserved(status.voltage, status.temperature, status.totalCurrent, status.channelCurrentA),
+            StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK);
+        acc.forceBucket(BUCKET_UNKNOWN, StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK, TEXT_PD_WEAK);
+      } else if (acc.score() < PRESENT_THRESHOLD) {
+        acc.forceBucket(BUCKET_UNKNOWN, StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK, TEXT_PD_WEAK);
+      }
+      return acc.finish();
+    } catch (Exception ex) {
+      acc.warn(CODE_EXCEPTION_THROWN, TEXT_EXCEPTION_PREFIX + ex.getClass().getSimpleName(), 0,
+          safeExceptionMessage(ex), StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK);
+      applyConsoleEvidence(acc, target, diagTable);
+      acc.forceBucket(BUCKET_UNKNOWN, StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK, TEXT_PD_WEAK);
+      return acc.finish();
+    }
+  }
+
+  private ProbeDeviceResult probePdh(
+      ProbeTarget target,
+      RevPdhDevice device,
+      NetworkTable diagTable,
+      boolean preclearSticky) {
+    ProbeAccumulator acc = new ProbeAccumulator(target);
+    PdhStatusReader reader = device.getActiveReaderForProbe();
+    if (reader == null) {
+      return missingRuntimeDevice(target);
+    }
+    acc.pass(CODE_OBJECT_HANDLE_REUSED, "Using runtime-owned PDH reader.", WEIGHT_CONSTRUCT,
+        Integer.toString(target.canId));
+    try {
+      if (preclearSticky) {
+        reader.clearStickyFaults();
+        acc.pass(CODE_CLEAR_STICKY_OK, "Cleared PDH sticky faults.", 0, OBSERVED_OK);
+      }
+      PdhStatusAttachment status = reader.snapshot();
+      scorePowerStatus(acc, status.voltage, status.totalCurrent, status.temperature,
+          status.switchableEnabled, status.brownout || status.canWarning || status.hardwareFault,
+          status.stickyBrownout || status.stickyCanWarning || status.stickyCanBusOff || status.stickyHasReset);
+      applyConsoleEvidence(acc, target, diagTable);
+      if (!hasStrongPowerPresenceEvidence(status.voltage, status.temperature, status.totalCurrent, status.channelCurrentA)) {
+        acc.warn(
+            CODE_POWER_FRESHNESS_GATE,
+            "PDH freshness gate failed; default-like telemetry is not strong presence evidence.",
+            0,
+            formatPowerEvidenceObserved(status.voltage, status.temperature, status.totalCurrent, status.channelCurrentA),
+            StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK);
+        acc.forceBucket(BUCKET_UNKNOWN, StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK, TEXT_PD_WEAK);
+      } else if (acc.score() < PRESENT_THRESHOLD) {
+        acc.forceBucket(BUCKET_UNKNOWN, StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK, TEXT_PD_WEAK);
+      }
+      return acc.finish();
+    } catch (Exception ex) {
+      acc.warn(CODE_EXCEPTION_THROWN, TEXT_EXCEPTION_PREFIX + ex.getClass().getSimpleName(), 0,
+          safeExceptionMessage(ex), StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK);
+      applyConsoleEvidence(acc, target, diagTable);
+      acc.forceBucket(BUCKET_UNKNOWN, StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK, TEXT_PD_WEAK);
+      return acc.finish();
+    }
+  }
+
+  private void applyConsoleEvidence(ProbeAccumulator acc, ProbeTarget target, NetworkTable diagTable) {
+    if (acc == null || target == null || diagTable == null || target.label == null || target.label.isBlank()) {
+      return;
+    }
+    NetworkTable consoleTable = diagTable.getSubTable(NT_CONSOLE);
+    String labelKey = BringupUtil.encodeLabelForNt(target.label);
+    NetworkTable deviceEvents =
+        consoleTable.getSubTable(NT_DEVICES).getSubTable(labelKey);
+    boolean sawStrongTimeout = false;
+    for (String eventType : deviceEvents.getSubTables()) {
+      NetworkTable eventTable = deviceEvents.getSubTable(eventType);
+      if (!eventTable.getEntry(NT_ACTIVE).getBoolean(false)) {
+        continue;
+      }
+      String severity = eventTable.getEntry(NT_SEVERITY).getString(TEXT_EMPTY);
+      String message = eventTable.getEntry(NT_MESSAGE).getString(TEXT_EMPTY);
+      String evidenceMessage = buildConsoleEvidenceMessage(eventType, severity, message);
+      acc.warn(
+          CODE_CONSOLE_EVENT_ACTIVE,
+          evidenceMessage,
+          0,
+          buildConsoleObservedValue(eventType, severity),
+          StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK);
+      if (isStrongTimeoutEvent(eventType, severity)) {
+        sawStrongTimeout = true;
+      }
+    }
+    if (!sawStrongTimeout) {
+      sawStrongTimeout = hasActiveSystemTimeout(consoleTable);
+    }
+    if (sawStrongTimeout && isPowerDistributionModel(target.model)) {
+      acc.forceBucket(BUCKET_UNKNOWN, StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK, TEXT_PD_WEAK);
+    }
+  }
+
+  private boolean hasActiveSystemTimeout(NetworkTable consoleTable) {
+    if (consoleTable == null) {
+      return false;
+    }
+    NetworkTable eventTable =
+        consoleTable.getSubTable(NT_SYSTEM).getSubTable(EVENT_HAL_CAN_RECEIVE_TIMEOUT);
+    if (!eventTable.getEntry(NT_ACTIVE).getBoolean(false)) {
+      return false;
+    }
+    String severity = eventTable.getEntry(NT_SEVERITY).getString(TEXT_EMPTY);
+    return isSeverityWarningOrWorse(severity);
+  }
+
+  private String buildConsoleEvidenceMessage(String eventType, String severity, String message) {
+    StringBuilder sb = new StringBuilder(128);
+    sb.append(MESSAGE_CONSOLE_TIMEOUT_PREFIX);
+    sb.append(eventType != null && !eventType.isBlank() ? eventType : "consoleEvent");
+    if (severity != null && !severity.isBlank()) {
+      sb.append(" [").append(severity).append(']');
+    }
+    if (message != null && !message.isBlank()) {
+      sb.append(": ").append(message);
+    }
+    return sb.toString();
+  }
+
+  private String buildConsoleObservedValue(String eventType, String severity) {
+    StringBuilder sb = new StringBuilder(64);
+    sb.append(eventType != null ? eventType : TEXT_EMPTY);
+    if (severity != null && !severity.isBlank()) {
+      sb.append(':').append(severity);
+    }
+    return sb.toString();
+  }
+
+  private boolean isPowerDistributionModel(String model) {
+    return MODEL_PDP.equals(model) || MODEL_PDH.equals(model);
+  }
+
+  private boolean isStrongTimeoutEvent(String eventType, String severity) {
+    if (!isSeverityWarningOrWorse(severity)) {
+      return false;
+    }
+    return EVENT_PDP_STATUS_READER_TIMEOUT.equals(eventType)
+        || EVENT_PDH_STATUS_READER_TIMEOUT.equals(eventType)
+        || EVENT_HAL_CAN_RECEIVE_TIMEOUT.equals(eventType);
+  }
+
+  private boolean isSeverityWarningOrWorse(String severity) {
+    if (severity == null || severity.isBlank()) {
+      return false;
+    }
+    return SEVERITY_WARN.equalsIgnoreCase(severity)
+        || SEVERITY_ERROR.equalsIgnoreCase(severity)
+        || SEVERITY_FATAL.equalsIgnoreCase(severity);
+  }
+
+  private void scorePowerStatus(
+      ProbeAccumulator acc,
+      double voltage,
+      double totalCurrent,
+      double temperature,
+      boolean switchableEnabled,
+      boolean activeFaults,
+      boolean stickyFaults) {
+    addTelemetryCheck(
+        acc,
+        isReasonableBusVoltage(voltage),
+        CODE_BUS_VOLTAGE_VALID,
+        "Bus voltage looks valid.",
+        "Bus voltage not in expected range.",
+        PD_BUS_VOLTAGE,
+        formatDouble(voltage));
+    addTelemetryCheck(
+        acc,
+        isFiniteInRange(totalCurrent, 0.0, MAX_VALID_CURRENT_A),
+        CODE_CURRENT_READ_VALID,
+        "Total current read succeeded.",
+        "Total current read failed.",
+        PD_TOTAL_CURRENT,
+        formatDouble(totalCurrent));
+    addTelemetryCheck(
+        acc,
+        isFiniteInRange(temperature, 0.0, MAX_VALID_TEMP_C),
+        CODE_TEMPERATURE_READ_VALID,
+        "Temperature read succeeded.",
+        "Temperature read failed.",
+        PD_TEMPERATURE,
+        formatDouble(temperature));
+    acc.pass(CODE_SWITCHABLE_READ_VALID, "Switchable-channel read succeeded.", PD_SWITCHABLE,
+        Boolean.toString(switchableEnabled));
+    if (!activeFaults) {
+      acc.pass(CODE_NO_ACTIVE_FAULTS, "No active power-distribution faults.", PD_NO_ACTIVE_FAULTS, "false");
+    } else {
+      acc.fail(CODE_NO_ACTIVE_FAULTS, "Active power-distribution faults were reported.", PD_NO_ACTIVE_FAULTS, "true");
+      acc.warn(CODE_NO_ACTIVE_FAULTS, "Active power-distribution faults were reported.", 0,
+          "true", StatusCatalogGenerated.SS__DEVICE__FAULTS_ACTIVE);
+    }
+    if (stickyFaults) {
+      acc.warn(CODE_NO_STICKY_FAULTS, "Sticky power-distribution faults were reported.", 0,
+          "true", StatusCatalogGenerated.SS__DEVICE__FAULTS_ACTIVE);
+    }
+  }
+
+  private boolean hasStrongPowerPresenceEvidence(
+      double voltage,
+      double temperature,
+      double totalCurrent,
+      double[] channelCurrents) {
+    if (!isReasonableBusVoltage(voltage)) {
+      return false;
+    }
+    if (!isFiniteInRange(temperature, MIN_MEANINGFUL_POWER_TEMP_C, MAX_VALID_TEMP_C)) {
+      return false;
+    }
+    if (isFiniteInRange(totalCurrent, MIN_MEANINGFUL_CURRENT_A, MAX_VALID_CURRENT_A)) {
+      return true;
+    }
+    if (channelCurrents == null) {
+      return false;
+    }
+    for (double current : channelCurrents) {
+      if (isFiniteInRange(current, MIN_MEANINGFUL_CURRENT_A, MAX_VALID_CURRENT_A)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private String formatPowerEvidenceObserved(
+      double voltage,
+      double temperature,
+      double totalCurrent,
+      double[] channelCurrents) {
+    return "busV="
+        + formatDouble(voltage)
+        + ", tempC="
+        + formatDouble(temperature)
+        + ", totalCurrentA="
+        + formatDouble(totalCurrent)
+        + ", anyChannelCurrent="
+        + Boolean.toString(hasAnyMeaningfulChannelCurrent(channelCurrents));
+  }
+
+  private boolean hasAnyMeaningfulChannelCurrent(double[] channelCurrents) {
+    if (channelCurrents == null) {
+      return false;
+    }
+    for (double current : channelCurrents) {
+      if (isFiniteInRange(current, MIN_MEANINGFUL_CURRENT_A, MAX_VALID_CURRENT_A)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private void addTelemetryCheck(
+      ProbeAccumulator acc,
+      boolean passed,
+      String code,
+      String passDescription,
+      String failDescription,
+      int weight,
+      String observedValue) {
+    if (passed) {
+      acc.pass(code, passDescription, weight, observedValue);
+    } else {
+      acc.fail(code, failDescription, weight, observedValue);
+    }
+  }
+
+  private boolean isOkStatus(StatusCode code) {
+    return code == StatusCode.OK;
+  }
+
+  private boolean isReasonableBusVoltage(double value) {
+    return isFiniteInRange(value, MIN_VALID_BUS_VOLTAGE, MAX_VALID_BUS_VOLTAGE);
+  }
+
+  private boolean isFiniteInRange(double value, double min, double max) {
+    return Double.isFinite(value) && value >= min && value <= max;
+  }
+
+  private String formatDouble(double value) {
+    if (!Double.isFinite(value)) {
+      return "NaN";
+    }
+    return String.format(Locale.US, "%.3f", value);
+  }
+
+  private String safeExceptionMessage(Exception ex) {
+    if (ex == null || ex.getMessage() == null || ex.getMessage().isBlank()) {
+      return ex != null ? ex.getClass().getSimpleName() : TEXT_EMPTY;
+    }
+    return ex.getClass().getSimpleName() + ": " + ex.getMessage();
+  }
+
+  private ProbeDeviceResult invalidTarget(ProbeTarget target, String detail) {
+    ProbeDeviceResult result = baseResult(target);
+    result.code = StatusCatalogGenerated.SS__DEVICE__PROBE_INVALID_TARGET;
+    result.status = statusForCode(result.code);
+    result.bucket = BUCKET_UNKNOWN;
+    result.message = detail;
+    result.errors.add(detail);
+    return result;
+  }
+
+  private ProbeDeviceResult unsupportedTarget(ProbeTarget target, String detail) {
+    ProbeDeviceResult result = baseResult(target);
+    result.code = StatusCatalogGenerated.SS__DEVICE__PROBE_UNSUPPORTED_MODEL;
+    result.status = statusForCode(result.code);
+    result.bucket = BUCKET_UNKNOWN;
+    result.message = detail;
+    result.errors.add(detail);
+    return result;
+  }
+
+  private ProbeDeviceResult missingRuntimeDevice(ProbeTarget target) {
+    ProbeDeviceResult result = baseResult(target);
+    result.code = StatusCatalogGenerated.SS__DEVICE__ABSENT;
+    result.status = statusForCode(result.code);
+    result.bucket = BUCKET_ABSENT;
+    result.message = TEXT_RUNTIME_DEVICE_MISSING;
+    result.errors.add(TEXT_RUNTIME_DEVICE_MISSING);
+    return result;
+  }
+
+  private ProbeDeviceResult baseResult(ProbeTarget target) {
+    ProbeDeviceResult result = new ProbeDeviceResult();
+    if (target != null) {
+      result.label = target.label;
+      result.vendor = target.vendor;
+      result.model = target.model;
+      result.canId = target.canId;
+    }
+    result.maxScore = MAX_SCORE;
+    return result;
+  }
+
+  private String statusForCode(int code) {
+    int severity = code & 0x7;
+    if (severity == 0) {
+      return STATUS_OK;
+    }
+    if (severity <= 2) {
+      return STATUS_WARNING;
+    }
+    return STATUS_ERROR;
+  }
+
+  private static final class ProbeTarget {
+    private final String label;
+    private final int canId;
+    private final String vendor;
+    private final String model;
+
+    private ProbeTarget(String label, int canId, String vendor, String model) {
+      this.label = label != null ? label : TEXT_EMPTY;
+      this.canId = canId;
+      this.vendor = vendor != null ? vendor : TEXT_EMPTY;
+      this.model = model != null ? model : MODEL_UNSUPPORTED;
+    }
+  }
+
+  private final class ProbeAccumulator {
+    private final ProbeDeviceResult result;
+    private String forcedBucket;
+    private int forcedCode;
+    private String forcedMessage;
+
+    private ProbeAccumulator(ProbeTarget target) {
+      this.result = baseResult(target);
+    }
+
+    private void pass(String code, String description, int weight, String observedValue) {
+      result.score += weight;
+      result.evidence.add(new ProbeEvidence(code, description, weight, true, observedValue));
+    }
+
+    private void fail(String code, String description, int weight, String observedValue) {
+      result.evidence.add(new ProbeEvidence(code, description, weight, false, observedValue));
+    }
+
+    private void warn(String code, String description, int weight, String observedValue, int statusCode) {
+      result.evidence.add(new ProbeEvidence(code, description, weight, false, observedValue));
+      result.warnings.add(description);
+      if (result.code == 0) {
+        result.code = statusCode;
+      }
+    }
+
+    private void error(String code, String description, int weight, String observedValue, int statusCode) {
+      result.evidence.add(new ProbeEvidence(code, description, weight, false, observedValue));
+      result.errors.add(description);
+      result.code = statusCode;
+      result.status = statusForCode(statusCode);
+    }
+
+    private void warnEntries(String prefix, List<String> names, int statusCode) {
+      if (names == null) {
+        return;
+      }
+      for (String name : names) {
+        if (name == null || name.isBlank()) {
+          continue;
+        }
+        warn(prefix, prefix + ": " + name, 0, name, statusCode);
+      }
+    }
+
+    private void forceBucket(String bucket, int code, String message) {
+      this.forcedBucket = bucket;
+      this.forcedCode = code;
+      this.forcedMessage = message;
+    }
+
+    private int score() {
+      return result.score;
+    }
+
+    private ProbeDeviceResult finish() {
+      if (forcedBucket != null && !forcedBucket.isBlank()) {
+        result.bucket = forcedBucket;
+        result.code = forcedCode;
+        result.message = forcedMessage;
+        result.status = statusForCode(result.code);
+        return result;
+      }
+      if (result.score >= PRESENT_THRESHOLD) {
+        result.bucket = BUCKET_PRESENT;
+        result.code = StatusCatalogGenerated.SS__DEVICE__PRESENT;
+        result.message = "Device present: " + result.label + ".";
+      } else if (result.score >= DEGRADED_THRESHOLD) {
+        result.bucket = BUCKET_DEGRADED;
+        result.code = StatusCatalogGenerated.SS__DEVICE__DEGRADED;
+        result.message = "Device degraded: " + result.label + ".";
+      } else {
+        result.bucket = BUCKET_ABSENT;
+        result.code = StatusCatalogGenerated.SS__DEVICE__ABSENT;
+        result.message = "Device absent: " + result.label + ".";
+      }
+      result.status = statusForCode(result.code);
+      return result;
+    }
+  }
+
+  /**
+   * NAME
+   *   ProbeSessionResult - Structured one-shot probe output.
+   */
+  public static final class ProbeSessionResult {
+    public int code;
+    public String status = STATUS_OK;
+    public String message = TEXT_EMPTY;
+    public String mode = MODE_ONE_SHOT;
+    public int targetCount;
+    public int presentCount;
+    public int degradedCount;
+    public int absentCount;
+    public int unknownCount;
+    public int unsupportedCount;
+    public final List<ProbeDeviceResult> devices = new ArrayList<>();
+
+    private static ProbeSessionResult failed(String message) {
+      ProbeSessionResult result = new ProbeSessionResult();
+      result.code = StatusCatalogGenerated.SS__EXECUTOR__FAILED;
+      result.status = STATUS_ERROR;
+      result.message = message;
+      return result;
+    }
+
+    private static ProbeSessionResult fromDevices(List<ProbeDeviceResult> results, int unsupportedCount) {
+      ProbeSessionResult session = new ProbeSessionResult();
+      session.devices.addAll(results);
+      session.targetCount = results.size();
+      session.unsupportedCount = unsupportedCount;
+      boolean anyError = false;
+      boolean anyWarning = false;
+      for (ProbeDeviceResult result : results) {
+        if (result == null) {
+          continue;
+        }
+        switch (result.bucket) {
+          case BUCKET_PRESENT -> session.presentCount++;
+          case BUCKET_DEGRADED -> session.degradedCount++;
+          case BUCKET_ABSENT -> session.absentCount++;
+          default -> session.unknownCount++;
+        }
+        if (STATUS_ERROR.equals(result.status)) {
+          anyError = true;
+        } else if (STATUS_WARNING.equals(result.status)) {
+          anyWarning = true;
+        }
+      }
+      if (!anyError && !anyWarning && session.unknownCount == 0 && session.absentCount == 0 && session.degradedCount == 0) {
+        session.code = StatusCatalogGenerated.SS__EXECUTOR__SUCCESS;
+        session.status = STATUS_OK;
+        session.message = TEXT_SESSION_SUCCESS;
+      } else {
+        session.code = StatusCatalogGenerated.SS__EXECUTOR__COMPLETED_WITH_WARNINGS;
+        session.status = STATUS_WARNING;
+        session.message = TEXT_SESSION_WARN;
+      }
+      return session;
+    }
+
+    public String toJsonString() {
+      return toJsonObject().toString();
+    }
+
+    public JsonObject toJsonObject() {
+      JsonObject root = new JsonObject();
+      root.addProperty("code", code);
+      root.addProperty("status", status);
+      root.addProperty("message", message);
+      root.addProperty("mode", mode);
+      root.addProperty("targetCount", targetCount);
+      JsonObject summary = new JsonObject();
+      summary.addProperty(BUCKET_PRESENT, presentCount);
+      summary.addProperty(BUCKET_DEGRADED, degradedCount);
+      summary.addProperty(BUCKET_ABSENT, absentCount);
+      summary.addProperty(BUCKET_UNKNOWN, unknownCount);
+      summary.addProperty("unsupported", unsupportedCount);
+      root.add("summary", summary);
+      JsonArray deviceArray = new JsonArray();
+      for (ProbeDeviceResult device : devices) {
+        deviceArray.add(device.toJsonObject());
+      }
+      root.add("devices", deviceArray);
+      return root;
+    }
+
+    public String toText() {
+      StringBuilder sb = new StringBuilder();
+      sb.append("=== Active Device Presence Probe ===").append(TEXT_NEWLINE);
+      sb.append("Session").append(TEXT_FIELD_SEPARATOR)
+          .append(message).append(TEXT_FIELD_SEPARATOR)
+          .append("targets ").append(targetCount).append(TEXT_FIELD_SEPARATOR)
+          .append("present ").append(presentCount).append(TEXT_FIELD_SEPARATOR)
+          .append("degraded ").append(degradedCount).append(TEXT_FIELD_SEPARATOR)
+          .append("absent ").append(absentCount).append(TEXT_FIELD_SEPARATOR)
+          .append("unknown ").append(unknownCount);
+      if (unsupportedCount > 0) {
+        sb.append(TEXT_FIELD_SEPARATOR).append("unsupported ").append(unsupportedCount);
+      }
+      sb.append(TEXT_NEWLINE);
+      for (ProbeDeviceResult device : devices) {
+        sb.append(device.toText());
+      }
+      return sb.toString().trim();
+    }
+  }
+
+  /**
+   * NAME
+   *   ProbeDeviceResult - Per-device probe result row.
+   */
+  public static final class ProbeDeviceResult {
+    public int code;
+    public String status = STATUS_OK;
+    public String message = TEXT_EMPTY;
+    public String vendor = TEXT_EMPTY;
+    public int canId;
+    public String model = TEXT_EMPTY;
+    public String label = TEXT_EMPTY;
+    public String bucket = BUCKET_UNKNOWN;
+    public int score;
+    public int maxScore;
+    public final List<ProbeEvidence> evidence = new ArrayList<>();
+    public final LinkedHashSet<String> warnings = new LinkedHashSet<>();
+    public final LinkedHashSet<String> errors = new LinkedHashSet<>();
+
+    public JsonObject toJsonObject() {
+      JsonObject root = new JsonObject();
+      root.addProperty("code", code);
+      root.addProperty("status", status);
+      root.addProperty("message", message);
+      root.addProperty("label", label);
+      root.addProperty("vendor", vendor);
+      root.addProperty("model", model);
+      root.addProperty("canId", canId);
+      root.addProperty("bucket", bucket);
+      root.addProperty("score", score);
+      root.addProperty("maxScore", maxScore);
+      JsonArray evidenceArray = new JsonArray();
+      for (ProbeEvidence row : evidence) {
+        evidenceArray.add(row.toJsonObject());
+      }
+      root.add("evidence", evidenceArray);
+      root.add("warnings", toStringArray(warnings));
+      root.add("errors", toStringArray(errors));
+      return root;
+    }
+
+    private JsonArray toStringArray(Iterable<String> values) {
+      JsonArray out = new JsonArray();
+      if (values == null) {
+        return out;
+      }
+      for (String value : values) {
+        out.add(value);
+      }
+      return out;
+    }
+
+    public String toText() {
+      StringBuilder sb = new StringBuilder();
+      sb.append(label).append(TEXT_FIELD_SEPARATOR)
+          .append(vendor).append(TEXT_FIELD_SEPARATOR)
+          .append(model).append(TEXT_FIELD_SEPARATOR)
+          .append("CAN ").append(canId).append(TEXT_FIELD_SEPARATOR)
+          .append(bucket).append(TEXT_FIELD_SEPARATOR)
+          .append("score ").append(score).append('/').append(maxScore)
+          .append(TEXT_NEWLINE);
+      for (ProbeEvidence row : evidence) {
+        sb.append(TEXT_EVIDENCE_PREFIX)
+            .append(row.passed ? TEXT_PASS_PREFIX : TEXT_FAIL_PREFIX)
+            .append(row.code);
+        if (row.observedValue != null && !row.observedValue.isBlank()) {
+          sb.append(TEXT_EQUALS).append(row.observedValue);
+        }
+        sb.append(TEXT_NEWLINE);
+      }
+      for (String warning : warnings) {
+        sb.append(TEXT_EVIDENCE_PREFIX).append(TEXT_FAIL_PREFIX).append(warning).append(TEXT_NEWLINE);
+      }
+      for (String error : errors) {
+        sb.append(TEXT_EVIDENCE_PREFIX).append(TEXT_FAIL_PREFIX).append(error).append(TEXT_NEWLINE);
+      }
+      return sb.toString();
+    }
+  }
+
+  /**
+   * NAME
+   *   ProbeEvidence - One evidence row for the active presence probe.
+   */
+  public static final class ProbeEvidence {
+    public final String code;
+    public final String description;
+    public final int weight;
+    public final boolean passed;
+    public final String observedValue;
+
+    private ProbeEvidence(
+        String code,
+        String description,
+        int weight,
+        boolean passed,
+        String observedValue) {
+      this.code = code != null ? code : TEXT_EMPTY;
+      this.description = description != null ? description : TEXT_EMPTY;
+      this.weight = weight;
+      this.passed = passed;
+      this.observedValue = observedValue != null ? observedValue : TEXT_EMPTY;
+    }
+
+    public JsonObject toJsonObject() {
+      JsonObject root = new JsonObject();
+      root.addProperty("code", code);
+      root.addProperty("description", description);
+      root.addProperty("weight", weight);
+      root.addProperty("passed", passed);
+      root.addProperty("observedValue", observedValue);
+      return root;
+    }
+  }
+}

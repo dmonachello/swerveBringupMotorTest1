@@ -69,6 +69,17 @@ public final class RevPdhDevice implements DeviceUnit {
     return HEADER;
   }
 
+  /**
+   * NAME
+   *   getActiveReaderForProbe - Return the current runtime-owned PDH reader.
+   *
+   * RETURNS
+   *   Active PdhStatusReader instance, or null when the runtime has not attached it.
+   */
+  public PdhStatusReader getActiveReaderForProbe() {
+    return reader;
+  }
+
   @Override
   public boolean isCreated() {
     return reader != null;

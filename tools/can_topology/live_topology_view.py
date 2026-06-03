@@ -215,6 +215,7 @@ NODE_CAN_ID_DEFAULT = -1
 ATTACHMENT_KEY_TYPE = "type"
 ATTACHMENT_TYPE_REV_MOTOR = "revMotor"
 ATTACHMENT_TYPE_CTRE_MOTOR = "ctreMotor"
+ATTACHMENT_TYPE_ACTIVE_PRESENCE_PROBE = "activePresenceProbe"
 RUNTIME_KEY_MOTOR_CURRENT_A = "motorCurrentA"
 RUNTIME_KEY_CURRENT_INSTANT_A = "currentInstantA"
 RUNTIME_KEY_CURRENT_AVG_A = "currentAvgA"
@@ -222,6 +223,13 @@ RUNTIME_KEY_CURRENT_PEAK_A = "currentPeakA"
 RUNTIME_KEY_CURRENT_NONZERO_RATIO = "currentNonzeroRatio"
 RUNTIME_KEY_CURRENT_SAMPLE_COUNT = "currentSampleCount"
 RUNTIME_CURRENT_DISPLAY_MIN_A = 0.05
+RUNTIME_KEY_ACTIVE_PROBE_CODE = "code"
+RUNTIME_KEY_ACTIVE_PROBE_STATUS = "status"
+RUNTIME_KEY_ACTIVE_PROBE_MESSAGE = "message"
+RUNTIME_KEY_ACTIVE_PROBE_BUCKET = "bucket"
+RUNTIME_KEY_ACTIVE_PROBE_SCORE = "score"
+RUNTIME_KEY_ACTIVE_PROBE_MAX_SCORE = "maxScore"
+RUNTIME_KEY_ACTIVE_PROBE_UPDATED_AT_MS = "updatedAtMs"
 
 
 def _runtime_device_field(device: Dict[str, object], key: str) -> object:
@@ -246,6 +254,25 @@ def _runtime_device_field(device: Dict[str, object], key: str) -> object:
         value = attachment.get(key)
         if value is not None:
             return value
+    return None
+
+
+def _runtime_active_probe_attachment(device: Dict[str, object]) -> Optional[Dict[str, object]]:
+    """
+    NAME
+        _runtime_active_probe_attachment - Return the active-presence attachment when present.
+    """
+    if not isinstance(device, dict):
+        return None
+    attachments = device.get("attachments")
+    if not isinstance(attachments, list):
+        return None
+    for attachment in attachments:
+        if not isinstance(attachment, dict):
+            continue
+        attachment_type = str(attachment.get(ATTACHMENT_KEY_TYPE, "")).strip()
+        if attachment_type == ATTACHMENT_TYPE_ACTIVE_PRESENCE_PROBE:
+            return attachment
     return None
 
 
@@ -672,6 +699,10 @@ class LiveTopologyView(ttk.Frame):
             "label": tk.StringVar(value="--"),
             "can_id": tk.StringVar(value="--"),
             "presence": tk.StringVar(value="--"),
+            "probe_bucket": tk.StringVar(value="--"),
+            "probe_score": tk.StringVar(value="--"),
+            "probe_status": tk.StringVar(value="--"),
+            "probe_message": tk.StringVar(value="--"),
             "last_seen": tk.StringVar(value="--"),
             "current_a": tk.StringVar(value="--"),
             "current_avg_a": tk.StringVar(value="--"),
@@ -687,6 +718,10 @@ class LiveTopologyView(ttk.Frame):
             ("Label", "label"),
             ("CAN ID", "can_id"),
             ("Presence", "presence"),
+            ("Probe Bucket", "probe_bucket"),
+            ("Probe Score", "probe_score"),
+            ("Probe Status", "probe_status"),
+            ("Probe Message", "probe_message"),
             ("Last Seen", "last_seen"),
             ("Current (A)", "current_a"),
             ("Current Avg (A)", "current_avg_a"),
@@ -975,6 +1010,7 @@ class LiveTopologyView(ttk.Frame):
         fingerprint_items: List[Tuple[object, ...]] = []
         for label, device in mapped.items():
             presence = device.get("presenceConfidence")
+            probe = _runtime_active_probe_attachment(device)
             presence_bucket = None
             if isinstance(presence, (int, float)):
                 if presence <= 0.05:
@@ -999,6 +1035,15 @@ class LiveTopologyView(ttk.Frame):
             temp_c = _runtime_device_field(device, "tempC")
             if isinstance(temp_c, (int, float)):
                 temp_c = round(float(temp_c), 1)
+            probe_bucket = None
+            probe_score = None
+            probe_status = None
+            if isinstance(probe, dict):
+              probe_bucket = str(probe.get(RUNTIME_KEY_ACTIVE_PROBE_BUCKET, EMPTY_STRING)).strip()
+              probe_status = str(probe.get(RUNTIME_KEY_ACTIVE_PROBE_STATUS, EMPTY_STRING)).strip()
+              score_value = probe.get(RUNTIME_KEY_ACTIVE_PROBE_SCORE)
+              if isinstance(score_value, (int, float)):
+                  probe_score = round(float(score_value), 1)
             fingerprint_items.append(
                 (
                     label,
@@ -1008,6 +1053,9 @@ class LiveTopologyView(ttk.Frame):
                     cmd_duty,
                     applied_duty,
                     temp_c,
+                    probe_bucket,
+                    probe_score,
+                    probe_status,
                 )
             )
         fingerprint_items.sort(key=lambda item: str(item[0]))
@@ -1314,6 +1362,7 @@ class LiveTopologyView(ttk.Frame):
             now_ms = int(time.time() * 1000)
             presence = live.get("presenceConfidence")
             last_seen = live.get("lastSeenMs")
+            probe = _runtime_active_probe_attachment(live)
             current_a = _runtime_display_current_a(live)
             current_avg_a = _runtime_device_field(live, RUNTIME_KEY_CURRENT_AVG_A)
             current_peak_a = _runtime_device_field(live, RUNTIME_KEY_CURRENT_PEAK_A)
@@ -1325,6 +1374,33 @@ class LiveTopologyView(ttk.Frame):
             self._detail_vars["presence"].set(
                 f"{float(presence):.2f}" if isinstance(presence, (int, float)) else "--"
             )
+            probe_bucket = (
+                str(probe.get(RUNTIME_KEY_ACTIVE_PROBE_BUCKET, "--")).strip()
+                if isinstance(probe, dict)
+                else "--"
+            )
+            probe_status = (
+                str(probe.get(RUNTIME_KEY_ACTIVE_PROBE_STATUS, "--")).strip()
+                if isinstance(probe, dict)
+                else "--"
+            )
+            probe_message = (
+                str(probe.get(RUNTIME_KEY_ACTIVE_PROBE_MESSAGE, "--")).strip()
+                if isinstance(probe, dict)
+                else "--"
+            )
+            probe_score = "--"
+            if isinstance(probe, dict):
+                score_value = probe.get(RUNTIME_KEY_ACTIVE_PROBE_SCORE)
+                max_score_value = probe.get(RUNTIME_KEY_ACTIVE_PROBE_MAX_SCORE)
+                if isinstance(score_value, (int, float)) and isinstance(max_score_value, (int, float)):
+                    probe_score = f"{int(score_value)}/{int(max_score_value)}"
+                elif isinstance(score_value, (int, float)):
+                    probe_score = str(int(score_value))
+            self._detail_vars["probe_bucket"].set(probe_bucket or "--")
+            self._detail_vars["probe_score"].set(probe_score)
+            self._detail_vars["probe_status"].set(probe_status or "--")
+            self._detail_vars["probe_message"].set(probe_message or "--")
             self._detail_vars["last_seen"].set(_format_last_seen(last_seen, now_ms))
             self._detail_vars["current_a"].set(
                 f"{float(current_a):.2f}" if isinstance(current_a, (int, float)) else "--"
@@ -1360,6 +1436,10 @@ class LiveTopologyView(ttk.Frame):
             )
         else:
             self._detail_vars["presence"].set("--")
+            self._detail_vars["probe_bucket"].set("--")
+            self._detail_vars["probe_score"].set("--")
+            self._detail_vars["probe_status"].set("--")
+            self._detail_vars["probe_message"].set("--")
             self._detail_vars["last_seen"].set("--")
             self._detail_vars["current_a"].set("--")
             self._detail_vars["current_avg_a"].set("--")

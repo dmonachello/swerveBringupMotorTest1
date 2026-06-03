@@ -22,6 +22,7 @@ import frc.robot.commands.local.RobotLocalExecutionResult;
 import frc.robot.commands.local.RobotLocalHostUiValueProvider;
 import frc.robot.commands.local.RobotLocalNoopValueProvider;
 import frc.robot.commands.local.RobotLocalValueProvider;
+import frc.robot.diag.probe.ActiveDevicePresenceProbe;
 import frc.robot.diag.snapshots.SampledSignalsAttachment;
 import frc.robot.input.BindingsManager;
 import frc.robot.input.InputAliasResolver;
@@ -96,6 +97,10 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_PRESENCE_CONF = "presenceConfidence";
   private static final String JSON_KEY_LAST_SEEN_MS = "lastSeenMs";
   private static final String JSON_KEY_ATTACHMENTS = "attachments";
+  private static final String MESSAGE_RUNTIME_INACTIVE_ACTIVATE =
+      "Runtime inactive. Click Runtime Activate.";
+  private static final String MESSAGE_ACTIVE_PRESENCE_PROBE_UNAVAILABLE =
+      "Active presence probe unavailable.";
   private static final String JSON_KEY_MOTOR_CURRENT_A = "motorCurrentA";
   private static final String JSON_KEY_CMD_DUTY = "cmdDuty";
   private static final String JSON_KEY_APPLIED_DUTY = "appliedDuty";
@@ -168,6 +173,12 @@ public class BridgeUiCommandHandler {
   private static final String CMD_RUNTIME_ACTIVATE = "runtimeActivate";
   private static final String CMD_RUNTIME_DEACTIVATE = "runtimeDeactivate";
   private static final String CMD_PROFILES_RELOAD = "profilesReload";
+  private static final String UI_STATE_ENABLED_KEY = "state/enabled";
+  private static final String UI_STATE_ESTOPPED_KEY = "state/estopped";
+  private static final String UI_STATE_MODE_KEY = "state/mode";
+  private static final String UI_STATE_LAST_ACK_MS_KEY = "state/lastAckMs";
+  private static final String UI_STATE_SELECTED_PROFILE_KEY = "state/selectedProfile";
+  private static final String UI_STATE_ACTIVE_RUNTIME_PROFILE_KEY = "state/activeRuntimeProfile";
   private static final String TEXT_SAFETY_LATCH = "  safetyLatch=";
   private static final String TEXT_REASON_PREFIX = " reason=";
   private static final int INDEX_START = 0;
@@ -1174,6 +1185,21 @@ public class BridgeUiCommandHandler {
           }
 
           @Override
+          public RobotLocalExecutionResult runActivePresenceProbe() {
+            if (!runtime.isRuntimeReady()) {
+              return RobotLocalExecutionResult.failed(MESSAGE_RUNTIME_INACTIVE_ACTIVATE);
+            }
+            ActiveDevicePresenceProbe.ProbeSessionResult session = runtime.runActivePresenceProbe();
+            if (session == null) {
+              return RobotLocalExecutionResult.failed(MESSAGE_ACTIVE_PRESENCE_PROBE_UNAVAILABLE);
+            }
+            return RobotLocalExecutionResult.complete(
+                session.message,
+                session.toText(),
+                session.toJsonString());
+          }
+
+          @Override
           public void selectPreviousTest() {
             runtime.selectPreviousTest();
           }
@@ -2062,10 +2088,12 @@ public class BridgeUiCommandHandler {
     } else if (DriverStation.isTest()) {
       mode = "test";
     }
-    uiTable.getEntry("state/enabled").setBoolean(enabled);
-    uiTable.getEntry("state/estopped").setBoolean(estopped);
-    uiTable.getEntry("state/mode").setString(mode);
-    uiTable.getEntry("state/lastAckMs").setDouble(System.currentTimeMillis());
+    uiTable.getEntry(UI_STATE_ENABLED_KEY).setBoolean(enabled);
+    uiTable.getEntry(UI_STATE_ESTOPPED_KEY).setBoolean(estopped);
+    uiTable.getEntry(UI_STATE_MODE_KEY).setString(mode);
+    uiTable.getEntry(UI_STATE_LAST_ACK_MS_KEY).setDouble(System.currentTimeMillis());
+    uiTable.getEntry(UI_STATE_SELECTED_PROFILE_KEY).setString(BringupUtil.getSelectedCanProfileLabel());
+    uiTable.getEntry(UI_STATE_ACTIVE_RUNTIME_PROFILE_KEY).setString(BringupUtil.getActiveRuntimeProfileLabel());
   }
 
   /**

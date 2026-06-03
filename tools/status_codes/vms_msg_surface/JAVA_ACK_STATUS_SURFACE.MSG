@@ -1,6 +1,6 @@
 ! Generated from full-surface status inventory.
 ! AUTO-GENERATED FILE. Do not modify; changes will be lost on regeneration.
-! Source inventory generated_at_utc: 2026-04-22T18:00:15.302637+00:00
+! Source inventory generated_at_utc: 2026-06-02T18:38:37.527116+00:00
 .TITLE JAVA_ACK_STATUS_SURFACE
 .IDENT /JAVA-ACK-V1/
 .FACILITY JAVACK,404 /PREFIX=JAVACK_

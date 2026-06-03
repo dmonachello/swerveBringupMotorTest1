@@ -851,6 +851,13 @@ final class DiagnosticsReporter {
         continue;
       }
       NetworkTable deviceTable = devTable.getSubTable(labelKey);
+      String presenceSource = deviceTable.getEntry("presenceSource").getString("NONE");
+      double lastSeen = deviceTable.getEntry("lastSeen").getDouble(Double.NaN);
+      double msgCount = deviceTable.getEntry("msgCount").getDouble(Double.NaN);
+      if ("NONE".equals(presenceSource) && (Double.isNaN(lastSeen) || lastSeen < 0.0)
+          && (Double.isNaN(msgCount) || msgCount <= 0.0)) {
+        continue;
+      }
       String label = deviceTable.getEntry("label").getString("");
       if (label == null || label.isBlank()) {
         label = BringupUtil.decodeLabelFromNt(labelKey);

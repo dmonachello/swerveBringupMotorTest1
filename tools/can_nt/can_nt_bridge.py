@@ -261,6 +261,8 @@ NT_UI_STATE_ESTOPPED = "state/estopped"
 NT_UI_STATE_MODE = "state/mode"
 NT_UI_STATE_LAST_ACK = "state/lastAckMs"
 NT_UI_STATE_SESSION = "state/sessionId"
+NT_UI_STATE_SELECTED_PROFILE = "state/selectedProfile"
+NT_UI_STATE_ACTIVE_RUNTIME_PROFILE = "state/activeRuntimeProfile"
 NT_UI_MODE_DISABLED = "disabled"
 CAN_MSG_DATA_ATTR = "data"
 
@@ -305,6 +307,41 @@ def _build_device_maps(
         can_to_label[key] = label
         id_to_labels.setdefault(did, []).append(label)
     return can_to_label, id_to_labels
+
+
+def _normalize_profile_name(value: object) -> str:
+    """
+    NAME
+        _normalize_profile_name - Return a trimmed profile name or empty string.
+    """
+    if not isinstance(value, str):
+        return EMPTY_STRING
+    return value.strip()
+
+
+def _resolve_profile_context_name(ui_table, fallback: str) -> str:
+    """
+    NAME
+        _resolve_profile_context_name - Resolve host profile context from robot NT state.
+
+    DESCRIPTION
+        Prefers the robot's active runtime profile, then its selected profile,
+        then falls back to the local startup/default profile.
+    """
+    fallback_name = _normalize_profile_name(fallback)
+    if ui_table is None:
+        return fallback_name
+    active_name = _normalize_profile_name(
+        ui_table.getEntry(NT_UI_STATE_ACTIVE_RUNTIME_PROFILE).getString(EMPTY_STRING)
+    )
+    if active_name:
+        return active_name
+    selected_name = _normalize_profile_name(
+        ui_table.getEntry(NT_UI_STATE_SELECTED_PROFILE).getString(EMPTY_STRING)
+    )
+    if selected_name:
+        return selected_name
+    return fallback_name
 
 
 @dataclass
@@ -524,6 +561,8 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 "mode": ui_table.getEntry(NT_UI_STATE_MODE).getString(NT_UI_MODE_DISABLED),
                 "lastAckMs": ui_table.getEntry(NT_UI_STATE_LAST_ACK).getDouble(FLOAT_ZERO),
                 "sessionId": ui_table.getEntry(NT_UI_STATE_SESSION).getString(EMPTY_STRING),
+                "selectedProfile": ui_table.getEntry(NT_UI_STATE_SELECTED_PROFILE).getString(EMPTY_STRING),
+                "activeRuntimeProfile": ui_table.getEntry(NT_UI_STATE_ACTIVE_RUNTIME_PROFILE).getString(EMPTY_STRING),
             }
 
         session = BridgeSession(args.rio, args.ui_rest_port, nt_state_reader=_read_nt_state)
@@ -693,6 +732,54 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         ui_table = root_table.getSubTable(NT_TABLE_UI)
         tests_table = root_table.getSubTable(NT_TABLE_TESTS)
         diag_table = root_table.getSubTable(NT_TABLE_DIAG)
+
+    profile_context_name = _normalize_profile_name(args.profile)
+
+    profile_context_error_name = EMPTY_STRING
+
+    def _apply_profile_context(profile_name: str) -> bool:
+        """
+        NAME
+            _apply_profile_context - Re-anchor host device expectations to one profile.
+        """
+        nonlocal console_unknown_counter, profile_context_name, profile_context_error_name
+        resolved_name = _normalize_profile_name(profile_name)
+        if not resolved_name or resolved_name == profile_context_name and devices:
+            return False
+        try:
+            new_devices, new_expected = get_profile(resolved_name)
+        except Exception as exc:
+            if resolved_name != profile_context_error_name:
+                print(f"WARNING: profile context switch failed for '{resolved_name}': {exc}")
+                profile_context_error_name = resolved_name
+            return False
+        profile_context_error_name = EMPTY_STRING
+        profile_context_name = resolved_name
+        devices.clear()
+        devices.extend(new_devices)
+        can_to_label.clear()
+        id_to_labels.clear()
+        new_can_to_label, new_id_to_labels = _build_device_maps(devices)
+        can_to_label.update(new_can_to_label)
+        id_to_labels.update(new_id_to_labels)
+        expected_ids.clear()
+        expected_ids.update(new_expected)
+        seen_can_keys.clear()
+        seen_labels.clear()
+        console_unknown_labels.clear()
+        console_unknown_counter = 0
+        analyzer.expected_ids = set(new_expected or [])
+        visibility_provider.set_expected_devices(_build_visibility_expected(devices))
+        state.last_seen.clear()
+        state.status_last_seen.clear()
+        state.control_last_seen.clear()
+        state.msg_count.clear()
+        state.last_status.clear()
+        return True
+
+    initial_context = _resolve_profile_context_name(ui_table, profile_context_name)
+    if initial_context and initial_context != profile_context_name:
+        _apply_profile_context(initial_context)
 
     console_monitor = None
     def _resolve_console_label(device_id: int) -> str:
@@ -1064,30 +1151,20 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                     if not ok:
                         print(f"ERROR: reload failed: {err}")
                         continue
-                    try:
-                        new_devices, new_expected = get_profile(args.profile)
-                    except Exception as exc:
-                        print(f"ERROR: reload failed: {exc}")
-                        continue
-                    devices.clear()
-                    devices.extend(new_devices)
-                    can_to_label.clear()
-                    id_to_labels.clear()
-                    new_can_to_label, new_id_to_labels = _build_device_maps(devices)
-                    can_to_label.update(new_can_to_label)
-                    id_to_labels.update(new_id_to_labels)
-                    seen_can_keys.clear()
-                    seen_labels.clear()
-                    console_unknown_labels.clear()
-                    console_unknown_counter = 0
-                    analyzer.expected_ids = set(new_expected or [])
-                    visibility_provider.set_expected_devices(_build_visibility_expected(devices))
+                    resolved_context = _resolve_profile_context_name(ui_table, profile_context_name)
+                    if not _apply_profile_context(resolved_context):
+                        print(f"Profiles reloaded; context remains {resolved_context or profile_context_name}.")
                     dv = get_profiles_data_version()
                     dh = get_profiles_data_hash()
                     if dv:
                         print(f"Profiles data_version: {dv}")
                     if dh:
                         print(f"Profiles data_hash: {dh}")
+
+                resolved_context = _resolve_profile_context_name(ui_table, profile_context_name)
+                if resolved_context and resolved_context != profile_context_name:
+                    if _apply_profile_context(resolved_context):
+                        print(f"Profile context -> {resolved_context}")
 
                 if _maybe_handle_dumps(args, now, start, state, devices, seen_labels, seen_can_keys):
                     return 0
@@ -1321,6 +1398,8 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 "mode": ui_table.getEntry(NT_UI_STATE_MODE).getString(NT_UI_MODE_DISABLED),
                 "lastAckMs": ui_table.getEntry(NT_UI_STATE_LAST_ACK).getDouble(FLOAT_ZERO),
                 "sessionId": ui_table.getEntry(NT_UI_STATE_SESSION).getString(EMPTY_STRING),
+                "selectedProfile": ui_table.getEntry(NT_UI_STATE_SELECTED_PROFILE).getString(EMPTY_STRING),
+                "activeRuntimeProfile": ui_table.getEntry(NT_UI_STATE_ACTIVE_RUNTIME_PROFILE).getString(EMPTY_STRING),
             }
 
         session = BridgeSession(args.rio, args.ui_rest_port, nt_state_reader=_read_nt_state)

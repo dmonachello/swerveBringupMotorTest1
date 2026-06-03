@@ -35,12 +35,25 @@
         "VALID": 6
       },
       "DEVICE": {
+        "ABSENT": 6,
+        "CAN_DISCONNECTED": 10,
+        "COMMUNICATION_WEAK": 15,
+        "DEGRADED": 5,
+        "FAULTS_ACTIVE": 12,
         "INVALID_FIELD": 3,
         "NOT_DEFINED": 2,
-        "NOT_FOUND": 1
+        "NOT_FOUND": 1,
+        "PRESENT": 4,
+        "PROBE_EXCEPTION": 14,
+        "PROBE_INVALID_TARGET": 8,
+        "PROBE_TIMEOUT": 9,
+        "PROBE_UNSUPPORTED_MODEL": 7,
+        "TELEMETRY_INVALID": 11,
+        "WARNINGS_ACTIVE": 13
       },
       "EXECUTOR": {
         "CANCELLED": 2,
+        "COMPLETED_WITH_WARNINGS": 6,
         "FAILED": 5,
         "INTERNAL_ERROR": 3,
         "NOT_SUPPORTED": 4,

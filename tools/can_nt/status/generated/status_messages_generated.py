@@ -1,6 +1,6 @@
 """AUTO-GENERATED FILE. Do not modify; changes will be lost on regeneration."""
 
-GENERATED_FROM_HASH = "b6ad8dd4a8eadd0e1c360a5c352c5dc481ff11ff358c40fc49d9c6e9e49660e0"
+GENERATED_FROM_HASH = "de338bf268bea7597b64e340be5068b543130eabc4b0cbee1a318f4948108368"
 
 MESSAGE_TABLE = {
     65547: "Invalid flag: {flag}.",
@@ -12,12 +12,25 @@ MESSAGE_TABLE = {
     131099: "Required value missing: {field}.",
     196616: "Success.",
     196626: "Operation cancelled.",
-    196635: "Command failed.",
-    196643: "Internal error.",
-    196651: "Operation not supported.",
-    262155: "Invalid device field: {field}.",
-    262163: "Device not defined: {device}.",
-    262171: "Device not found: {device}.",
+    196634: "Probe completed with warnings.",
+    196643: "Command failed.",
+    196651: "Internal error.",
+    196659: "Operation not supported.",
+    262152: "Device present: {device}.",
+    262162: "Device degraded: {device}.",
+    262170: "Invalid telemetry from device: {device}.",
+    262178: "Active faults reported by device: {device}.",
+    262186: "Active warnings reported by device: {device}.",
+    262194: "Weak communication evidence for device: {device}.",
+    262203: "Device absent: {device}.",
+    262211: "Invalid device field: {field}.",
+    262219: "Device not defined: {device}.",
+    262227: "Device not found: {device}.",
+    262235: "Unsupported device model: {model}.",
+    262243: "Invalid probe target: {device}.",
+    262251: "Timed out probing device: {device}.",
+    262259: "CAN disconnected for device: {device}.",
+    262267: "Probe exception for device: {device}.",
     327690: "Group has no members: {group}.",
     327699: "Invalid binding.",
     327707: "Group member not found: {device}.",

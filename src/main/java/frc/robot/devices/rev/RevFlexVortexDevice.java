@@ -99,6 +99,17 @@ public final class RevFlexVortexDevice implements DeviceUnit {
     return motorModelOverride;
   }
 
+  /**
+   * NAME
+   *   getActiveHandleForProbe - Return the current runtime-owned SparkFlex handle.
+   *
+   * RETURNS
+   *   Active SparkFlex instance, or null when the runtime has not created it.
+   */
+  public SparkFlex getActiveHandleForProbe() {
+    return device != null && !closed ? device : null;
+  }
+
   @Override
   public boolean isCreated() {
     return device != null && !closed;
