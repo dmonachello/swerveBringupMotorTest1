@@ -7,11 +7,11 @@ package frc.robot;
 public final class BuildInfo {
   private BuildInfo() {}
 
-  public static final String BUILD_GIT_DESCRIBE = "ui-dsl-test-workflow-hardening-2026-05-31-1-gb94136e-dirty";
-  public static final String BUILD_GIT_SHA = "b94136e";
+  public static final String BUILD_GIT_DESCRIBE = "can-evidence-prep-and-active-probe-2026-06-03-dirty";
+  public static final String BUILD_GIT_SHA = "c7323a2";
   public static final String BUILD_GIT_BRANCH = "main";
   public static final String BUILD_GIT_DIRTY = "dirty";
-  public static final String BUILD_TIMESTAMP = "2026-06-01T18:03:17-04:00";
+  public static final String BUILD_TIMESTAMP = "2026-06-03T13:02:41-04:00";
 
   public static final String BUILD_LABEL_GIT = "git";
   public static final String BUILD_LABEL_SHA = "git-sha";

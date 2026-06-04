@@ -1,5 +1,8 @@
 package frc.robot.diag.snapshots;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * NAME
  *   ActivePresenceProbeAttachment - Cached one-shot active probe result for one device.
@@ -18,6 +21,9 @@ public final class ActivePresenceProbeAttachment extends DeviceAttachment {
   public int score;
   public int maxScore;
   public long updatedAtMs;
+  public final List<String> failedChecks = new ArrayList<>();
+  public final List<String> warnings = new ArrayList<>();
+  public final List<String> errors = new ArrayList<>();
 
   /**
    * NAME
@@ -40,6 +46,9 @@ public final class ActivePresenceProbeAttachment extends DeviceAttachment {
     out.score = score;
     out.maxScore = maxScore;
     out.updatedAtMs = updatedAtMs;
+    out.failedChecks.addAll(failedChecks);
+    out.warnings.addAll(warnings);
+    out.errors.addAll(errors);
     return out;
   }
 }

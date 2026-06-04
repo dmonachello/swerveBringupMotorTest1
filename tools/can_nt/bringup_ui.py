@@ -50,7 +50,7 @@ from .host_ui_actions import (
     HOST_UI_ACTIONS,
 )
 from tools.common.json_io import read_json, write_json
-from tools.common.nt_labels import encode_label_for_nt
+from tools.common.nt_labels import decode_label_from_nt, encode_label_for_nt
 from tools.common.paths import repo_root, tests_deploy_path
 from tools.common.tests_domain import collect_available_tests
 from tools.common.config_lifecycle import ConfigLifecycleService
@@ -171,6 +171,7 @@ MANUAL_DUTY_STATUS_FMT = "Manual motor duty active: {label} = {duty:.2f}"
 MANUAL_DUTY_STOPPED_FMT = "Manual motor duty cleared: {label}"
 MANUAL_DUTY_BLOCKED_TEXT = "Manual motor control blocked: not connected."
 MANUAL_DUTY_BUSY_TEXT = "Manual motor control blocked: command in flight."
+MANUAL_DUTY_SCALE_ELEMENT_SLIDER = "slider"
 MANUAL_DUTY_NO_LABEL = ""
 MANUAL_DUTY_VALUE_FMT = "{value:.2f}"
 TEST_NAME_EMPTY = ""
@@ -304,11 +305,170 @@ VIS_COL_RATE_WIDTH = 80
 VIS_COL_PROBE_BUCKET_WIDTH = 90
 VIS_COL_PROBE_SCORE_WIDTH = 92
 VIS_COL_SOURCE_WIDTH = 72
+EVIDENCE_TAB_LABEL = "Evidence"
+EVIDENCE_SUMMARY_DEFAULT = "Select a device to inspect interpreted evidence."
+EVIDENCE_TITLE_TEXT = "Device Evidence"
+EVIDENCE_FILTER_ALL = "all"
+EVIDENCE_FILTER_CONFLICTED = "conflicted"
+EVIDENCE_FILTER_MISSING = "missing"
+EVIDENCE_FILTER_DEGRADED = "degraded"
+EVIDENCE_FILTER_OPTIONS = (
+    EVIDENCE_FILTER_ALL,
+    EVIDENCE_FILTER_CONFLICTED,
+    EVIDENCE_FILTER_MISSING,
+    EVIDENCE_FILTER_DEGRADED,
+)
+EVIDENCE_FILTER_LABELS = {
+    EVIDENCE_FILTER_ALL: "All",
+    EVIDENCE_FILTER_CONFLICTED: "Conflicted",
+    EVIDENCE_FILTER_MISSING: "Missing",
+    EVIDENCE_FILTER_DEGRADED: "Degraded",
+}
+EVIDENCE_COL_DEVICE = "Device"
+EVIDENCE_COL_PASSIVE = "Passive"
+EVIDENCE_COL_CONSOLE = "Console"
+EVIDENCE_COL_PROBE = "Probe"
+EVIDENCE_COL_MANUAL = "Manual"
+EVIDENCE_COL_EXISTENCE = "Existence"
+EVIDENCE_COL_OPERABILITY = "Operability"
+EVIDENCE_COL_IDENTITY = "Identity"
+EVIDENCE_COL_CONFIDENCE = "Confidence"
+EVIDENCE_COL_DEVICE_WIDTH = 180
+EVIDENCE_COL_SOURCE_WIDTH = 96
+EVIDENCE_COL_RESULT_WIDTH = 94
+EVIDENCE_STATUS_OK = "OK"
+EVIDENCE_STATUS_PRESENT = "PRESENT"
+EVIDENCE_STATUS_ABSENT = "ABSENT"
+EVIDENCE_STATUS_DEGRADED = "DEGRADED"
+EVIDENCE_STATUS_FAILED = "FAILED"
+EVIDENCE_STATUS_UNKNOWN = "UNKNOWN"
+EVIDENCE_STATUS_MATCHING = "MATCHING"
+EVIDENCE_STATUS_WRONG = "WRONG"
+EVIDENCE_STATUS_NOT_RUN = "NOT RUN"
+EVIDENCE_STATUS_CONFLICT = "CONFLICT"
+EVIDENCE_CONFIDENCE_HIGH = "HIGH"
+EVIDENCE_CONFIDENCE_MEDIUM = "MEDIUM"
+EVIDENCE_CONFIDENCE_LOW = "LOW"
+EVIDENCE_SOURCE_NONE = "--"
+EVIDENCE_NOTE_SEPARATOR = " | "
+EVIDENCE_MANUAL_PLACEHOLDER = "Not run"
+EVIDENCE_MANUAL_OUTCOME_CORRECT = "correct_response"
+EVIDENCE_MANUAL_OUTCOME_NO_RESPONSE = "no_response"
+EVIDENCE_MANUAL_OUTCOME_WRONG_DEVICE = "wrong_device_response"
+EVIDENCE_MANUAL_OUTCOME_WRONG_BRANCH = "wrong_branch_response"
+EVIDENCE_MANUAL_OUTCOME_INTERMITTENT = "intermittent_response"
+EVIDENCE_MANUAL_OUTCOME_DEGRADED = "degraded_response"
+EVIDENCE_MANUAL_OUTCOME_UNCERTAIN = "operator_uncertain"
+EVIDENCE_MANUAL_OUTCOME_LABELS = {
+    EVIDENCE_MANUAL_OUTCOME_CORRECT: "Correct response",
+    EVIDENCE_MANUAL_OUTCOME_NO_RESPONSE: "No response",
+    EVIDENCE_MANUAL_OUTCOME_WRONG_DEVICE: "Wrong device",
+    EVIDENCE_MANUAL_OUTCOME_WRONG_BRANCH: "Wrong branch",
+    EVIDENCE_MANUAL_OUTCOME_INTERMITTENT: "Intermittent",
+    EVIDENCE_MANUAL_OUTCOME_DEGRADED: "Degraded",
+    EVIDENCE_MANUAL_OUTCOME_UNCERTAIN: "Uncertain",
+}
+EVIDENCE_MANUAL_DIALOG_TITLE = "Manual Test Result"
+EVIDENCE_MANUAL_DIALOG_PROMPT = "Select observed device/branch:"
+EVIDENCE_MANUAL_DIALOG_OK = "Record"
+EVIDENCE_MANUAL_DIALOG_CANCEL = "Cancel"
+EVIDENCE_MANUAL_DIALOG_WIDTH = 320
+EVIDENCE_MANUAL_DIALOG_HEIGHT = 140
+EVIDENCE_PROBE_STATS_WAITING = "Session stats: no active probe launched yet"
+EVIDENCE_MANUAL_OPERABILITY_WINDOW_SEC = 120.0
+EVIDENCE_MANUAL_IDENTITY_WINDOW_SEC = 900.0
+EVIDENCE_MOTION_CMD_THRESHOLD_DUTY = 0.15
+EVIDENCE_MOTION_MIN_RPM = 5.0
+EVIDENCE_MANUAL_MOTION_WINDOW_SEC = 3.0
+EVIDENCE_MANUAL_MOTION_SETTLE_SEC = 0.4
+EVIDENCE_MANUAL_NOTE_AGE_IDENTITY_ONLY = "Manual result is older than the operability window; using it only as identity evidence."
+EVIDENCE_MANUAL_NOTE_STALE = "Manual result is stale and not being used for automatic conclusions."
+EVIDENCE_MANUAL_NOTE_CONFLICT = "Manual evidence conflicts with stronger automatic evidence."
+EVIDENCE_MOTION_NOTE_NO_ROTATION = "Motor commanded but no rotation detected."
+EVIDENCE_MOTION_NOTE_ROTATING = "Motor rotation detected."
+EVIDENCE_LAYOUT_TOP_WEIGHT = 5
+EVIDENCE_LAYOUT_BOTTOM_WEIGHT = 1
+EVIDENCE_SUMMARY_TABLE_HEIGHT = 5
+EVIDENCE_TEXT_HEIGHT_DEFAULT = 3
+EVIDENCE_TEXT_HEIGHT_PROBE = 6
+EVIDENCE_TEXT_HEIGHT_MANUAL = 6
+EVIDENCE_TEXT_HEIGHT_NOTES = 4
+EVIDENCE_PROBE_DETAIL_LIMIT = 4
+EVIDENCE_INSPECTOR_PANED_WEIGHT_DEFAULT = 1
+EVIDENCE_INSPECTOR_PANED_WEIGHT_PROBE = 2
+EVIDENCE_INSPECTOR_PANED_WEIGHT_MANUAL = 2
+EVIDENCE_INSPECTOR_PANED_WEIGHT_NOTES = 1
+EVIDENCE_FIELD_CMD_DUTY = "cmdDuty"
+EVIDENCE_FIELD_APPLIED_DUTY = "appliedDuty"
+EVIDENCE_FIELD_VEL_RPM = "velRpm"
+EVIDENCE_FIELD_MOTOR_CURRENT_A = "motorCurrentA"
+EVIDENCE_MANUAL_LINE_RESULT = "result={value}"
+EVIDENCE_MANUAL_LINE_AGE = "age={value}"
+EVIDENCE_MANUAL_LINE_OBSERVED = "observed={value}"
+EVIDENCE_MANUAL_LINE_NOTES = "note={value}"
+EVIDENCE_MANUAL_LINE_RECORDED = "at={value}"
+EVIDENCE_MANUAL_LINE_AUTO_RESULT = "autoResult={value}"
+EVIDENCE_MANUAL_LINE_MOTION = "motionCheck={value}"
+EVIDENCE_MANUAL_LINE_MOTION_VALUES = "cmdDuty={cmd} | appliedDuty={applied} | velRpm={vel} | motorCurrentA={current}"
+EVIDENCE_MANUAL_MOTION_ACTIVE = "active"
+EVIDENCE_MANUAL_MOTION_PASS = "rotation_detected"
+EVIDENCE_MANUAL_MOTION_FAIL = "no_rotation_detected"
+EVIDENCE_MANUAL_MOTION_IDLE = "idle"
+EVIDENCE_MANUAL_AUTO_RESULT_RUNNING = "test_running"
+EVIDENCE_MANUAL_AUTO_RESULT_ROTATION = "rotation_detected"
+EVIDENCE_MANUAL_AUTO_RESULT_NO_ROTATION = "no_rotation_detected"
+EVIDENCE_MANUAL_AUTO_RESULT_LABELS = {
+    EVIDENCE_MANUAL_AUTO_RESULT_RUNNING: "Test running",
+    EVIDENCE_MANUAL_AUTO_RESULT_ROTATION: "Rotation detected",
+    EVIDENCE_MANUAL_AUTO_RESULT_NO_ROTATION: "No rotation detected",
+}
+EVIDENCE_VALUE_NOT_APPLICABLE = "n/a"
+EVIDENCE_INTERPRETATION_TEXT = "Final Interpretation"
+EVIDENCE_PASSIVE_TEXT = "Passive Evidence"
+EVIDENCE_CONSOLE_TEXT = "Console Evidence"
+EVIDENCE_PROBE_TEXT = "Active Probe"
+EVIDENCE_MANUAL_TEXT = "Manual Test"
+EVIDENCE_NOTES_TEXT = "Conflicts / Notes"
+EVIDENCE_LABEL_EXISTENCE = "Existence"
+EVIDENCE_LABEL_OPERABILITY = "Operability"
+EVIDENCE_LABEL_IDENTITY = "Identity"
+EVIDENCE_LABEL_CONFIDENCE = "Confidence"
+EVIDENCE_LABEL_PASSIVE = "Passive"
+EVIDENCE_LABEL_CONSOLE = "Console"
+EVIDENCE_LABEL_PROBE = "Probe"
+EVIDENCE_LABEL_MANUAL = "Manual"
+EVIDENCE_NOTE_NONE = "No major source conflict."
+EVIDENCE_CONSOLE_SCOPE_DEVICES = "devices"
+EVIDENCE_CONSOLE_SCOPE_SYSTEM = "system"
+EVIDENCE_CONSOLE_KEY_ACTIVE = "Active"
+EVIDENCE_CONSOLE_KEY_COUNT = "Count"
+EVIDENCE_CONSOLE_KEY_LAST_SEEN = "LastSeen"
+EVIDENCE_CONSOLE_KEY_MESSAGE = "Message"
+EVIDENCE_CONSOLE_KEY_SEVERITY = "Severity"
+EVIDENCE_CONSOLE_KEY_WARN = "warnCount"
+EVIDENCE_CONSOLE_KEY_ERROR = "errorCount"
+EVIDENCE_CONSOLE_KEY_FATAL = "fatalCount"
+EVIDENCE_EVENT_TYPE_BUS_FAULT = "BUS_FAULT_SUSPECTED"
+EVIDENCE_TEXT_DEVICE_TIMEOUT = "timeout"
+EVIDENCE_TEXT_STALE = "stale"
+EVIDENCE_STATE_OK = "ok"
+EVIDENCE_STATE_DEGRADED = "degraded"
+EVIDENCE_STATE_MISSING = "missing"
+EVIDENCE_STATE_UNKNOWN = "unknown"
+EVIDENCE_STATE_IDENTITY = "identity"
+EVIDENCE_ACTIVE_PROBE_INTERVAL_SEC = 8.0
+EVIDENCE_ACTIVE_PROBE_STALE_SEC = 12.0
 ATTACHMENT_KEY_TYPE = "type"
 ATTACHMENT_TYPE_ACTIVE_PRESENCE_PROBE = "activePresenceProbe"
+ATTACHMENT_TYPE_REV_MOTOR = "revMotor"
+ATTACHMENT_TYPE_CTRE_MOTOR = "ctreMotor"
 RUNTIME_PROBE_KEY_BUCKET = "bucket"
 RUNTIME_PROBE_KEY_SCORE = "score"
 RUNTIME_PROBE_KEY_MAX_SCORE = "maxScore"
+RUNTIME_PROBE_KEY_UPDATED_AT_MS = "updatedAtMs"
+RUNTIME_PROBE_KEY_FAILED_CHECKS = "failedChecks"
+RUNTIME_PROBE_KEY_WARNINGS = "warnings"
+RUNTIME_PROBE_KEY_ERRORS = "errors"
 VIS_RAW_COL_ARB_WIDTH = 96
 VIS_RAW_COL_PACKETS_WIDTH = 72
 VIS_RAW_COL_RATE_WIDTH = 72
@@ -676,6 +836,31 @@ def _runtime_active_probe_attachment(device: Dict[str, Any]) -> Optional[Dict[st
     return None
 
 
+def _runtime_device_field(device: Dict[str, Any], key: str) -> object:
+    """
+    NAME
+        _runtime_device_field - Read one runtime-state field from top-level or motor attachments.
+    """
+    if not isinstance(device, dict) or not key:
+        return None
+    value = device.get(key)
+    if value is not None:
+        return value
+    attachments = device.get("attachments")
+    if not isinstance(attachments, list):
+        return None
+    for attachment in attachments:
+        if not isinstance(attachment, dict):
+            continue
+        attachment_type = str(attachment.get(ATTACHMENT_KEY_TYPE, "")).strip()
+        if attachment_type not in (ATTACHMENT_TYPE_REV_MOTOR, ATTACHMENT_TYPE_CTRE_MOTOR):
+            continue
+        value = attachment.get(key)
+        if value is not None:
+            return value
+    return None
+
+
 def _format_runtime_probe_bucket(device: Optional[Dict[str, Any]]) -> str:
     """
     NAME
@@ -703,6 +888,47 @@ def _format_runtime_probe_score(device: Optional[Dict[str, Any]]) -> str:
     if isinstance(score, (int, float)):
         return str(int(score))
     return VIS_LAST_SEEN_UNKNOWN
+
+
+def _format_age_seconds(elapsed_sec: float) -> str:
+    """
+    NAME
+        _format_age_seconds - Format one elapsed duration in seconds for UI display.
+    """
+    if elapsed_sec < 0.0:
+        elapsed_sec = 0.0
+    return f"{elapsed_sec:.1f}s ago"
+
+
+def _manual_age_seconds(entry: Optional[Dict[str, Any]]) -> Optional[float]:
+    """
+    NAME
+        _manual_age_seconds - Return elapsed age in seconds for one recorded manual-test entry.
+    """
+    if not isinstance(entry, dict):
+        return None
+    recorded_epoch = entry.get("recordedAtEpochSec")
+    if not isinstance(recorded_epoch, (int, float)):
+        return None
+    return max(0.0, time.time() - float(recorded_epoch))
+
+
+def _attachment_string_list(attachment: Optional[Dict[str, Any]], key: str) -> List[str]:
+    """
+    NAME
+        _attachment_string_list - Return one attachment string-array field as a cleaned list.
+    """
+    if not isinstance(attachment, dict):
+        return []
+    values = attachment.get(key)
+    if not isinstance(values, list):
+        return []
+    out: List[str] = []
+    for value in values:
+        text = str(value or "").strip()
+        if text:
+            out.append(text)
+    return out
 
 
 class BringupControlUI(tk.Tk):
@@ -757,6 +983,28 @@ class BringupControlUI(tk.Tk):
         self._visibility_selected_unexpected = False
         self._visibility_summary_var = tk.StringVar(value=VIS_SOURCE_COUNT_UNKNOWN)
         self._visibility_enabled_var = tk.BooleanVar(value=False)
+        self._latest_visibility_snapshot: Dict[str, Any] = {}
+        self._latest_visibility_summary: Dict[str, Any] = {}
+        self._evidence_panel: Optional[ttk.Frame] = None
+        self._evidence_live_view: Optional[LiveTopologyView] = None
+        self._evidence_table: Optional[ttk.Treeview] = None
+        self._evidence_summary_var = tk.StringVar(value=EVIDENCE_SUMMARY_DEFAULT)
+        self._evidence_filter_var = tk.StringVar(value=EVIDENCE_FILTER_ALL)
+        self._evidence_selected_label = NT_VALUE_EMPTY
+        self._evidence_rows_by_label: Dict[str, Dict[str, Any]] = {}
+        self._evidence_detail_vars: Dict[str, tk.StringVar] = {}
+        self._evidence_text_widgets: Dict[str, tk.Text] = {}
+        self._evidence_selected_title_var = tk.StringVar(value=NT_VALUE_EMPTY)
+        self._evidence_syncing_selection = False
+        self._evidence_pending_row_label = NT_VALUE_EMPTY
+        self._evidence_pending_node_label = NT_VALUE_EMPTY
+        self._evidence_manual_results: Dict[str, Dict[str, Any]] = {}
+        self._evidence_last_probe_at = 0.0
+        self._evidence_probe_pending = False
+        self._evidence_probe_run_count = 0
+        self._evidence_probe_complete_count = 0
+        self._evidence_last_probe_completed_at = 0.0
+        self._evidence_last_probe_complete_seq: Optional[int] = None
         self._last_selected_test = None
         self._last_sent_seq: Optional[int] = None
         self._nt_connected = False
@@ -821,6 +1069,7 @@ class BringupControlUI(tk.Tk):
         self._poll_interval_idle = 1.0
         self._live_view: Optional[LiveTopologyView] = None
         self._visibility_live_view: Optional[LiveTopologyView] = None
+        self._evidence_live_view = None
         self._manual_duty_popup: Optional[tk.Toplevel] = None
         self._manual_duty_var = tk.DoubleVar(value=MANUAL_DUTY_DEFAULT)
         self._manual_duty_value_var = tk.StringVar(
@@ -830,6 +1079,8 @@ class BringupControlUI(tk.Tk):
         self._manual_duty_last_sent_value: Optional[float] = None
         self._manual_duty_last_sent_at = 0.0
         self._manual_duty_pending_after: Optional[str] = None
+        self._manual_motion_checks: Dict[str, Dict[str, Any]] = {}
+        self._manual_test_observations: Dict[str, Dict[str, Any]] = {}
         self._profile_devices: Dict[str, Dict[str, Any]] = {}
         self._robot_selected_profile = PROFILE_NONE
         self._robot_active_runtime_profile = PROFILE_NONE
@@ -841,7 +1092,7 @@ class BringupControlUI(tk.Tk):
         self._build_menu()
         self._build_ui()
         self._apply_profile_selection(self._profile_box.get(), reload_views=True)
-        self._poll_nt()
+        self.after_idle(self._poll_nt)
         self.protocol("WM_DELETE_WINDOW", self._handle_close)
 
     def _print_version_banner(self) -> None:
@@ -1031,6 +1282,11 @@ class BringupControlUI(tk.Tk):
         visibility_panel = ttk.Frame(notebook)
         self._visibility_panel = visibility_panel
         self._build_visibility_panel(visibility_panel)
+        evidence_panel = ttk.Frame(notebook)
+        self._evidence_panel = evidence_panel
+        notebook.add(evidence_panel, text=EVIDENCE_TAB_LABEL)
+        self._build_evidence_panel(evidence_panel)
+        notebook.bind("<<NotebookTabChanged>>", self._on_right_notebook_changed)
         self._apply_visibility_tab_pref()
 
     def _build_live_panel(self, parent: tk.Widget) -> None:
@@ -1181,6 +1437,247 @@ class BringupControlUI(tk.Tk):
         table.configure(yscrollcommand=scrollbar.set)
         return table
 
+    def _build_evidence_panel(self, parent: tk.Widget) -> None:
+        """
+        NAME
+            _build_evidence_panel - Build the topology-first device evidence tab.
+        """
+        body = ttk.Panedwindow(parent, orient="vertical")
+        body.pack(fill=VIS_FILL_BOTH, expand=True, padx=8, pady=8)
+
+        top = ttk.Panedwindow(body, orient="horizontal")
+        body.add(top, weight=EVIDENCE_LAYOUT_TOP_WEIGHT)
+
+        topology_frame = ttk.Frame(top)
+        top.add(topology_frame, weight=3)
+        profile_name = self._profile_box.get() if hasattr(self, "_profile_box") else ""
+        self._evidence_live_view = LiveTopologyView(
+            topology_frame,
+            profile_name,
+            on_node_right_click=self._on_live_node_right_click,
+            on_left_click=self._on_live_view_left_click,
+            on_selection_changed=self._on_evidence_topology_selected,
+            show_selection_panel=False,
+            title_text=EVIDENCE_TITLE_TEXT,
+        )
+        self._evidence_live_view.set_show_groups(self._live_groups_var.get())
+        self._evidence_live_view.set_visibility_enabled(False)
+        self._evidence_live_view.pack(fill=VIS_FILL_BOTH, expand=True)
+
+        inspector = ttk.Frame(top, padding=(8, 0, 0, 0))
+        top.add(inspector, weight=2)
+        self._build_evidence_inspector(inspector)
+
+        table_frame = ttk.LabelFrame(body, text="Device Summary", padding=VIS_PAD_TABLE)
+        body.add(table_frame, weight=EVIDENCE_LAYOUT_BOTTOM_WEIGHT)
+        table_header = ttk.Frame(table_frame)
+        table_header.pack(fill=VIS_FILL_X, pady=(0, 6))
+        ttk.Label(table_header, textvariable=self._evidence_summary_var).pack(side=VIS_PACK_SIDE_LEFT)
+        ttk.Label(table_header, text="Filter:").pack(side=VIS_PACK_SIDE_RIGHT, padx=(8, 4))
+        filter_menu = ttk.OptionMenu(
+            table_header,
+            self._evidence_filter_var,
+            EVIDENCE_FILTER_LABELS[EVIDENCE_FILTER_ALL],
+            *[EVIDENCE_FILTER_LABELS[key] for key in EVIDENCE_FILTER_OPTIONS],
+            command=lambda _value: self._refresh_evidence_view(),
+        )
+        filter_menu.pack(side=VIS_PACK_SIDE_RIGHT)
+        self._evidence_table = ttk.Treeview(
+            table_frame,
+            columns=(
+                EVIDENCE_COL_DEVICE,
+                EVIDENCE_COL_PASSIVE,
+                EVIDENCE_COL_CONSOLE,
+                EVIDENCE_COL_PROBE,
+                EVIDENCE_COL_MANUAL,
+                EVIDENCE_COL_EXISTENCE,
+                EVIDENCE_COL_OPERABILITY,
+                EVIDENCE_COL_IDENTITY,
+                EVIDENCE_COL_CONFIDENCE,
+            ),
+            show=VIS_TREE_SHOW,
+            height=EVIDENCE_SUMMARY_TABLE_HEIGHT,
+        )
+        self._evidence_table.pack(side=VIS_PACK_SIDE_LEFT, fill=VIS_FILL_BOTH, expand=True)
+        evidence_scroll = ttk.Scrollbar(
+            table_frame,
+            orient=VIS_SCROLLBAR_ORIENT,
+            command=self._evidence_table.yview,
+        )
+        evidence_scroll.pack(side=VIS_PACK_SIDE_RIGHT, fill=VIS_FILL_Y)
+        self._evidence_table.configure(yscrollcommand=evidence_scroll.set)
+        self._configure_evidence_table_columns(self._evidence_table)
+        self._evidence_table.bind("<<TreeviewSelect>>", self._on_evidence_row_selected)
+
+    def _build_evidence_inspector(self, parent: tk.Widget) -> None:
+        """
+        NAME
+            _build_evidence_inspector - Build the selected-device evidence inspector.
+        """
+        ttk.Label(parent, text="Selected Device", font=("Trebuchet MS", 12)).pack(anchor=VIS_TREE_ANCHOR_W)
+        ttk.Label(parent, textvariable=self._evidence_selected_title_var, font=("Segoe UI", 10, "bold")).pack(
+            anchor=VIS_TREE_ANCHOR_W,
+            pady=(2, 0),
+        )
+        self._evidence_detail_vars = {
+            EVIDENCE_LABEL_EXISTENCE: tk.StringVar(value=EVIDENCE_STATUS_UNKNOWN),
+            EVIDENCE_LABEL_OPERABILITY: tk.StringVar(value=EVIDENCE_STATUS_UNKNOWN),
+            EVIDENCE_LABEL_IDENTITY: tk.StringVar(value=EVIDENCE_STATUS_UNKNOWN),
+            EVIDENCE_LABEL_CONFIDENCE: tk.StringVar(value=EVIDENCE_CONFIDENCE_LOW),
+        }
+        interpretation = ttk.LabelFrame(parent, text=EVIDENCE_INTERPRETATION_TEXT, padding=8)
+        interpretation.pack(fill=VIS_FILL_X, pady=(8, 8))
+        for row_index, key in enumerate(
+            (
+                EVIDENCE_LABEL_EXISTENCE,
+                EVIDENCE_LABEL_OPERABILITY,
+                EVIDENCE_LABEL_IDENTITY,
+                EVIDENCE_LABEL_CONFIDENCE,
+            )
+        ):
+            ttk.Label(interpretation, text=f"{key}:").grid(row=row_index, column=0, sticky=VIS_TREE_ANCHOR_W, padx=(0, 6))
+            ttk.Label(interpretation, textvariable=self._evidence_detail_vars[key]).grid(
+                row=row_index,
+                column=1,
+                sticky=VIS_TREE_ANCHOR_W,
+            )
+        self._evidence_text_widgets = {}
+        sections = ttk.Panedwindow(parent, orient="vertical")
+        sections.pack(fill=VIS_FILL_BOTH, expand=True)
+        for title in (
+            EVIDENCE_PASSIVE_TEXT,
+            EVIDENCE_CONSOLE_TEXT,
+            EVIDENCE_PROBE_TEXT,
+            EVIDENCE_MANUAL_TEXT,
+            EVIDENCE_NOTES_TEXT,
+        ):
+            frame = ttk.LabelFrame(sections, text=title, padding=6)
+            section_weight = EVIDENCE_INSPECTOR_PANED_WEIGHT_DEFAULT
+            if title == EVIDENCE_PROBE_TEXT:
+                section_weight = EVIDENCE_INSPECTOR_PANED_WEIGHT_PROBE
+            elif title == EVIDENCE_MANUAL_TEXT:
+                section_weight = EVIDENCE_INSPECTOR_PANED_WEIGHT_MANUAL
+            elif title == EVIDENCE_NOTES_TEXT:
+                section_weight = EVIDENCE_INSPECTOR_PANED_WEIGHT_NOTES
+            sections.add(frame, weight=section_weight)
+            if title == EVIDENCE_MANUAL_TEXT:
+                buttons = ttk.Frame(frame)
+                buttons.pack(fill=VIS_FILL_X, pady=(0, 6))
+                for outcome in (
+                    EVIDENCE_MANUAL_OUTCOME_CORRECT,
+                    EVIDENCE_MANUAL_OUTCOME_NO_RESPONSE,
+                    EVIDENCE_MANUAL_OUTCOME_WRONG_DEVICE,
+                    EVIDENCE_MANUAL_OUTCOME_WRONG_BRANCH,
+                    EVIDENCE_MANUAL_OUTCOME_INTERMITTENT,
+                    EVIDENCE_MANUAL_OUTCOME_DEGRADED,
+                    EVIDENCE_MANUAL_OUTCOME_UNCERTAIN,
+                ):
+                    ttk.Button(
+                        buttons,
+                        text=EVIDENCE_MANUAL_OUTCOME_LABELS[outcome],
+                        command=lambda selected=outcome: self._record_manual_evidence(selected),
+                    ).pack(side=VIS_PACK_SIDE_LEFT, padx=(0, 4))
+                ttk.Button(
+                    buttons,
+                    text="Clear",
+                    command=self._clear_manual_evidence_for_selected,
+                ).pack(side=VIS_PACK_SIDE_LEFT, padx=(8, 0))
+            text_height = EVIDENCE_TEXT_HEIGHT_DEFAULT
+            if title == EVIDENCE_PROBE_TEXT:
+                text_height = EVIDENCE_TEXT_HEIGHT_PROBE
+            elif title == EVIDENCE_MANUAL_TEXT:
+                text_height = EVIDENCE_TEXT_HEIGHT_MANUAL
+            elif title == EVIDENCE_NOTES_TEXT:
+                text_height = EVIDENCE_TEXT_HEIGHT_NOTES
+            text = tk.Text(frame, height=text_height, wrap="word")
+            text.pack(fill=VIS_FILL_BOTH, expand=True)
+            text.configure(state="disabled")
+            self._evidence_text_widgets[title] = text
+
+    def _configure_evidence_table_columns(self, table: ttk.Treeview) -> None:
+        """
+        NAME
+            _configure_evidence_table_columns - Apply the Evidence summary table layout.
+        """
+        columns = [
+            EVIDENCE_COL_DEVICE,
+            EVIDENCE_COL_PASSIVE,
+            EVIDENCE_COL_CONSOLE,
+            EVIDENCE_COL_PROBE,
+            EVIDENCE_COL_MANUAL,
+            EVIDENCE_COL_EXISTENCE,
+            EVIDENCE_COL_OPERABILITY,
+            EVIDENCE_COL_IDENTITY,
+            EVIDENCE_COL_CONFIDENCE,
+        ]
+        table[VIS_TREE_COLUMNS] = columns
+        for column in columns:
+            anchor = VIS_TREE_ANCHOR_W if column == EVIDENCE_COL_DEVICE else VIS_TREE_ANCHOR_CENTER
+            width = EVIDENCE_COL_DEVICE_WIDTH if column == EVIDENCE_COL_DEVICE else EVIDENCE_COL_SOURCE_WIDTH
+            if column in (EVIDENCE_COL_EXISTENCE, EVIDENCE_COL_OPERABILITY, EVIDENCE_COL_IDENTITY, EVIDENCE_COL_CONFIDENCE):
+                width = EVIDENCE_COL_RESULT_WIDTH
+            table.heading(column, text=column, anchor=anchor)
+            table.column(column, width=width, anchor=anchor, stretch=(column == EVIDENCE_COL_DEVICE))
+
+    def _current_right_tab_text(self) -> str:
+        """
+        NAME
+            _current_right_tab_text - Return the visible label of the active right-side notebook tab.
+        """
+        notebook = getattr(self, "_right_notebook", None)
+        if notebook is None:
+            return NT_VALUE_EMPTY
+        try:
+            current = notebook.select()
+            if not current:
+                return NT_VALUE_EMPTY
+            return str(notebook.tab(current, "text")).strip()
+        except Exception:
+            return NT_VALUE_EMPTY
+
+    def _evidence_tab_active(self) -> bool:
+        """
+        NAME
+            _evidence_tab_active - Return whether the Evidence tab is currently selected.
+        """
+        return self._current_right_tab_text() == EVIDENCE_TAB_LABEL
+
+    def _on_right_notebook_changed(self, _event: tk.Event) -> None:
+        """
+        NAME
+            _on_right_notebook_changed - React to right-side tab changes.
+        """
+        if self._evidence_tab_active():
+            self._refresh_evidence_view()
+            self._maybe_send_evidence_active_probe(force=True)
+
+    def _maybe_send_evidence_active_probe(self, force: bool = False) -> None:
+        """
+        NAME
+            _maybe_send_evidence_active_probe - Throttled auto-probe for the Evidence tab.
+        """
+        if not self._evidence_tab_active():
+            return
+        if not self._tcp_connected or not self._handshake_done:
+            return
+        if self._evidence_probe_pending:
+            return
+        if self._tracker.is_pending() or self._log_poll_inflight or self._runtime_state_pending_seq is not None:
+            return
+        if self._runtime_active_known is False:
+            return
+        now = time.time()
+        if not force and (now - self._evidence_last_probe_at) < EVIDENCE_ACTIVE_PROBE_INTERVAL_SEC:
+            return
+        seq = self._send_tcp_command("activePresenceProbe", {})
+        if seq is None:
+            return
+        self._last_sent_seq = seq
+        self._tracker.start("activePresenceProbe", {}, seq, now=now)
+        self._evidence_last_probe_at = now
+        self._evidence_probe_pending = True
+        self._evidence_probe_run_count += 1
+
     def _build_visibility_ctre_raw_table_widget(self, parent: tk.Widget) -> ttk.Treeview:
         """
         NAME
@@ -1286,6 +1783,7 @@ class BringupControlUI(tk.Tk):
             for live_view in self._iter_live_views():
                 live_view.reload_profile(name)
         self._last_profile_context = name
+        self.after_idle(self._refresh_evidence_view)
 
     def _apply_profile_selection(self, profile_name: object, reload_views: bool) -> None:
         """
@@ -1345,6 +1843,8 @@ class BringupControlUI(tk.Tk):
             views.append(self._live_view)
         if self._visibility_live_view is not None:
             views.append(self._visibility_live_view)
+        if self._evidence_live_view is not None:
+            views.append(self._evidence_live_view)
         return views
 
     def _is_manual_motor_node(self, node: object) -> bool:
@@ -1413,6 +1913,7 @@ class BringupControlUI(tk.Tk):
             length=MANUAL_DUTY_SCALE_LENGTH,
             command=self._on_manual_duty_slider_changed,
         )
+        scale.bind("<Button-1>", self._on_manual_duty_scale_button_down, add="+")
         scale.pack(fill="x", pady=(8, 4))
         ttk.Label(body, textvariable=self._manual_duty_value_var).pack(anchor="center")
         self._manual_duty_popup = popup
@@ -1425,6 +1926,23 @@ class BringupControlUI(tk.Tk):
         self._manual_duty_last_sent_at = 0.0
         self._manual_duty_pending_after = None
         scale.focus_set()
+
+    def _on_manual_duty_scale_button_down(self, event: tk.Event) -> Optional[str]:
+        """
+        NAME
+            _on_manual_duty_scale_button_down - Ignore trough clicks so manual duty changes only start from the slider thumb.
+        """
+        widget = event.widget
+        identify = getattr(widget, "identify", None)
+        if not callable(identify):
+            return None
+        try:
+            element = str(identify(int(event.x), int(event.y)) or "").strip().lower()
+        except Exception:
+            return None
+        if MANUAL_DUTY_SCALE_ELEMENT_SLIDER in element:
+            return None
+        return "break"
 
     def _close_manual_duty_popup(self, stop_motor: bool) -> None:
         """
@@ -1494,6 +2012,70 @@ class BringupControlUI(tk.Tk):
             return MANUAL_DUTY_SEND_MIN_INTERVAL_LIVE_SEC
         return MANUAL_DUTY_SEND_MIN_INTERVAL_SEC
 
+    def _record_manual_motion_command(self, label: str, duty: float) -> None:
+        """
+        NAME
+            _record_manual_motion_command - Start or refresh a short motion-verification window for one motor.
+        """
+        clean_label = str(label or NT_VALUE_EMPTY).strip().lower()
+        if not clean_label:
+            return
+        self._manual_motion_checks[clean_label] = {
+            "label": str(label).strip(),
+            "duty": float(duty),
+            "startedAt": time.time(),
+            "clearedAt": None,
+            "sawMotion": False,
+            "maxAbsVelRpm": 0.0,
+        }
+        self._update_manual_test_observation(
+            clean_label,
+            {
+                "label": str(label).strip(),
+                "autoResult": EVIDENCE_MANUAL_AUTO_RESULT_RUNNING,
+                "recordedAtEpochSec": time.time(),
+                "recordedAt": timestamp_hms(),
+                "cmdDuty": float(duty),
+                "appliedDuty": None,
+                "velRpm": None,
+                "motorCurrentA": None,
+            },
+        )
+        self._refresh_evidence_view()
+        self._apply_evidence_selection(label)
+
+    def _mark_manual_motion_clear(self, label: str) -> None:
+        """
+        NAME
+            _mark_manual_motion_clear - Mark the manual-duty command cleared while preserving the verification window.
+        """
+        clean_label = str(label or NT_VALUE_EMPTY).strip().lower()
+        if not clean_label:
+            return
+        entry = self._manual_motion_checks.get(clean_label)
+        if not isinstance(entry, dict):
+            return
+        entry["clearedAt"] = time.time()
+        observation = self._manual_test_observations.get(clean_label)
+        if isinstance(observation, dict):
+            observation["recordedAtEpochSec"] = time.time()
+            observation["recordedAt"] = timestamp_hms()
+        self._refresh_evidence_view()
+        self._apply_evidence_selection(label)
+
+    def _update_manual_test_observation(self, clean_label: str, fields: Dict[str, Any]) -> None:
+        """
+        NAME
+            _update_manual_test_observation - Persist the latest automatic manual-test observation for one device.
+        """
+        if not clean_label:
+            return
+        current = self._manual_test_observations.get(clean_label)
+        if not isinstance(current, dict):
+            current = {}
+            self._manual_test_observations[clean_label] = current
+        current.update(fields)
+
     def _flush_manual_duty_send(self) -> None:
         """
         NAME
@@ -1523,6 +2105,9 @@ class BringupControlUI(tk.Tk):
             return
         self._manual_duty_last_sent_value = duty
         self._manual_duty_last_sent_at = time.time()
+        if abs(duty) >= EVIDENCE_MOTION_CMD_THRESHOLD_DUTY:
+            self._record_manual_motion_command(self._manual_duty_label, duty)
+        self.after_idle(self._request_runtime_state_refresh)
         self._append_output(
             MANUAL_DUTY_STATUS_FMT.format(
                 label=self._manual_duty_label,
@@ -1543,6 +2128,8 @@ class BringupControlUI(tk.Tk):
         )
         if seq is None:
             return
+        self._mark_manual_motion_clear(label)
+        self.after_idle(self._request_runtime_state_refresh)
         self._append_output(MANUAL_DUTY_STOPPED_FMT.format(label=label))
 
     def _poll_presence_overrides(self) -> None:
@@ -1616,6 +2203,8 @@ class BringupControlUI(tk.Tk):
         NAME
             _apply_visibility_snapshot - Apply visibility snapshot to UI.
         """
+        self._latest_visibility_snapshot = dict(snapshot) if isinstance(snapshot, dict) else {}
+        self._latest_visibility_summary = dict(summary) if isinstance(summary, dict) else {}
         if (
             self._visibility_table is None
             or self._visibility_unrecognized_table is None
@@ -1744,6 +2333,7 @@ class BringupControlUI(tk.Tk):
         self._update_visibility_summary(scoped_summary)
         for live_view in self._iter_live_views():
             live_view.set_visibility_snapshot(snapshot)
+        self._refresh_evidence_view()
 
     def _configure_visibility_table_columns(
         self,
@@ -1846,6 +2436,785 @@ class BringupControlUI(tk.Tk):
         if age_sec < 3600.0:
             return f"{age_sec / 60.0:.1f}m"
         return f"{age_sec / 3600.0:.1f}h"
+
+    def _selected_evidence_filter_key(self) -> str:
+        """
+        NAME
+            _selected_evidence_filter_key - Return the normalized Evidence filter key.
+        """
+        current = str(self._evidence_filter_var.get()).strip().lower()
+        for key, label in EVIDENCE_FILTER_LABELS.items():
+            if current == key or current == label.lower():
+                return key
+        return EVIDENCE_FILTER_ALL
+
+    def _collect_console_snapshot(self) -> Dict[str, Any]:
+        """
+        NAME
+            _collect_console_snapshot - Read the current console-diagnostics summary from NT.
+        """
+        result: Dict[str, Any] = {
+            EVIDENCE_CONSOLE_SCOPE_DEVICES: {},
+            EVIDENCE_CONSOLE_SCOPE_SYSTEM: [],
+            "systemText": EVIDENCE_SOURCE_NONE,
+            "systemConflict": False,
+        }
+        if self._diag_table is None or not self._nt_connected:
+            return result
+        console_table = self._diag_table.getSubTable("console")
+        devices_table = console_table.getSubTable(EVIDENCE_CONSOLE_SCOPE_DEVICES)
+        for label_key in devices_table.getSubTables():
+            label = decode_label_from_nt(label_key).strip()
+            if not label:
+                continue
+            device_table = devices_table.getSubTable(label_key)
+            events: List[str] = []
+            has_error = False
+            has_warn = False
+            for event_type in device_table.getSubTables():
+                event_table = device_table.getSubTable(event_type)
+                if not event_table.getEntry(EVIDENCE_CONSOLE_KEY_ACTIVE).getBoolean(False):
+                    continue
+                severity = str(
+                    event_table.getEntry(EVIDENCE_CONSOLE_KEY_SEVERITY).getString(NT_VALUE_EMPTY)
+                ).strip().upper()
+                message = str(
+                    event_table.getEntry(EVIDENCE_CONSOLE_KEY_MESSAGE).getString(NT_VALUE_EMPTY)
+                ).strip()
+                event_summary = f"[{severity or 'INFO'}] {event_type}"
+                if message:
+                    event_summary = f"{event_summary}: {message}"
+                events.append(event_summary)
+                if severity in ("ERROR", "FATAL"):
+                    has_error = True
+                elif severity == "WARN":
+                    has_warn = True
+            warn_count = int(device_table.getEntry(EVIDENCE_CONSOLE_KEY_WARN).getDouble(0.0))
+            error_count = int(device_table.getEntry(EVIDENCE_CONSOLE_KEY_ERROR).getDouble(0.0))
+            fatal_count = int(device_table.getEntry(EVIDENCE_CONSOLE_KEY_FATAL).getDouble(0.0))
+            summary = EVIDENCE_SOURCE_NONE
+            if events:
+                summary = events[0]
+            elif fatal_count > 0 or error_count > 0:
+                summary = f"errors={error_count} fatal={fatal_count}"
+            elif warn_count > 0:
+                summary = f"warn={warn_count}"
+            result[EVIDENCE_CONSOLE_SCOPE_DEVICES][label.lower()] = {
+                "events": events,
+                "summary": summary,
+                "hasError": has_error or error_count > 0 or fatal_count > 0,
+                "hasWarn": has_warn or warn_count > 0,
+            }
+        system_events: List[str] = []
+        system_table = console_table.getSubTable(EVIDENCE_CONSOLE_SCOPE_SYSTEM)
+        for event_type in system_table.getSubTables():
+            event_table = system_table.getSubTable(event_type)
+            if not event_table.getEntry(EVIDENCE_CONSOLE_KEY_ACTIVE).getBoolean(False):
+                continue
+            severity = str(
+                event_table.getEntry(EVIDENCE_CONSOLE_KEY_SEVERITY).getString(NT_VALUE_EMPTY)
+            ).strip().upper()
+            message = str(
+                event_table.getEntry(EVIDENCE_CONSOLE_KEY_MESSAGE).getString(NT_VALUE_EMPTY)
+            ).strip()
+            event_summary = f"[{severity or 'INFO'}] {event_type}"
+            if message:
+                event_summary = f"{event_summary}: {message}"
+            system_events.append(event_summary)
+        result[EVIDENCE_CONSOLE_SCOPE_SYSTEM] = system_events
+        result["systemText"] = system_events[0] if system_events else EVIDENCE_SOURCE_NONE
+        result["systemConflict"] = any(
+            EVIDENCE_EVENT_TYPE_BUS_FAULT in entry or EVIDENCE_TEXT_STALE in entry.lower()
+            for entry in system_events
+        )
+        return result
+
+    def _manual_evidence_for_label(self, label: str) -> Optional[Dict[str, Any]]:
+        """
+        NAME
+            _manual_evidence_for_label - Return the recorded manual-test evidence for one device label.
+        """
+        clean_label = str(label or NT_VALUE_EMPTY).strip().lower()
+        if not clean_label:
+            return None
+        entry = self._evidence_manual_results.get(clean_label)
+        return entry if isinstance(entry, dict) else None
+
+    def _choose_manual_observed_label(self, selected_label: str) -> str:
+        """
+        NAME
+            _choose_manual_observed_label - Show a mouse-first chooser for wrong-device manual-test outcomes.
+        """
+        choices = []
+        for row in self._build_evidence_rows():
+            label = str(row.get("label", NT_VALUE_EMPTY)).strip()
+            if label:
+                choices.append(label)
+        if selected_label and selected_label not in choices:
+            choices.insert(0, selected_label)
+        if not choices:
+            return NT_VALUE_EMPTY
+        chosen = tk.StringVar(value=choices[0])
+        dialog = tk.Toplevel(self)
+        dialog.title(EVIDENCE_MANUAL_DIALOG_TITLE)
+        dialog.transient(self)
+        dialog.resizable(False, False)
+        dialog.geometry(f"{EVIDENCE_MANUAL_DIALOG_WIDTH}x{EVIDENCE_MANUAL_DIALOG_HEIGHT}")
+        result: Dict[str, str] = {"value": NT_VALUE_EMPTY}
+        body = ttk.Frame(dialog, padding=8)
+        body.pack(fill=tk.BOTH, expand=True)
+        ttk.Label(body, text=EVIDENCE_MANUAL_DIALOG_PROMPT).pack(anchor=tk.W)
+        combo = ttk.Combobox(body, state="readonly", values=choices, textvariable=chosen)
+        combo.pack(fill=tk.X, pady=(8, 8))
+        combo.focus_set()
+        if selected_label:
+            combo.set(selected_label)
+
+        def _record_choice() -> None:
+            result["value"] = str(chosen.get()).strip()
+            dialog.destroy()
+
+        def _cancel_choice() -> None:
+            dialog.destroy()
+
+        button_row = ttk.Frame(body)
+        button_row.pack(fill=tk.X)
+        ttk.Button(button_row, text=EVIDENCE_MANUAL_DIALOG_OK, command=_record_choice).pack(side=tk.LEFT)
+        ttk.Button(button_row, text=EVIDENCE_MANUAL_DIALOG_CANCEL, command=_cancel_choice).pack(side=tk.LEFT, padx=(8, 0))
+        dialog.protocol("WM_DELETE_WINDOW", _cancel_choice)
+        dialog.grab_set()
+        self.wait_window(dialog)
+        return str(result.get("value", NT_VALUE_EMPTY)).strip()
+
+    def _record_manual_evidence(self, outcome: str) -> None:
+        """
+        NAME
+            _record_manual_evidence - Record one manual-test outcome for the selected Evidence device.
+        """
+        label = str(self._evidence_selected_title_var.get()).strip()
+        if not label:
+            return
+        observed = NT_VALUE_EMPTY
+        notes = NT_VALUE_EMPTY
+        if outcome in (EVIDENCE_MANUAL_OUTCOME_WRONG_DEVICE, EVIDENCE_MANUAL_OUTCOME_WRONG_BRANCH):
+            observed = self._choose_manual_observed_label(label) or NT_VALUE_EMPTY
+            if not observed:
+                return
+        self._evidence_manual_results[label.lower()] = {
+            "outcome": outcome,
+            "observed": observed.strip(),
+            "notes": notes.strip(),
+            "recordedAt": timestamp_hms(),
+            "recordedAtEpochSec": time.time(),
+        }
+        self._refresh_evidence_view()
+        self._apply_evidence_selection(label)
+
+    def _clear_manual_evidence_for_selected(self) -> None:
+        """
+        NAME
+            _clear_manual_evidence_for_selected - Remove manual-test evidence for the selected device.
+        """
+        label = str(self._evidence_selected_title_var.get()).strip().lower()
+        if not label:
+            return
+        self._evidence_manual_results.pop(label, None)
+        self._manual_test_observations.pop(label, None)
+        self._refresh_evidence_view()
+        self._apply_evidence_selection(label)
+
+    def _build_evidence_probe_stats_text(self) -> str:
+        """
+        NAME
+            _build_evidence_probe_stats_text - Summarize active-probe session cadence for the Evidence inspector.
+        """
+        if self._evidence_probe_run_count <= 0:
+            return EVIDENCE_PROBE_STATS_WAITING
+        now = time.time()
+        pending_text = "yes" if self._evidence_probe_pending else "no"
+        parts = [
+            f"autoEvery={EVIDENCE_ACTIVE_PROBE_INTERVAL_SEC:.1f}s",
+            f"runs={self._evidence_probe_run_count}",
+            f"completed={self._evidence_probe_complete_count}",
+            f"pending={pending_text}",
+            f"lastSent={_format_age_seconds(now - self._evidence_last_probe_at)}",
+        ]
+        if self._evidence_last_probe_completed_at > 0.0:
+            parts.append(f"lastCompleted={_format_age_seconds(now - self._evidence_last_probe_completed_at)}")
+        return EVIDENCE_NOTE_SEPARATOR.join(parts)
+
+    def _infer_device_evidence(
+        self,
+        label: str,
+        visibility_device: Optional[Dict[str, Any]],
+        runtime_device: Optional[Dict[str, Any]],
+        console_entry: Optional[Dict[str, Any]],
+        system_console: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        NAME
+            _infer_device_evidence - Build one first-pass interpreted evidence row.
+        """
+        probe_attachment = _runtime_active_probe_attachment(runtime_device or {})
+        probe_bucket = _format_runtime_probe_bucket(runtime_device)
+        passive_summary = EVIDENCE_SOURCE_NONE
+        passive_visible = False
+        passive_identity = EVIDENCE_STATUS_UNKNOWN
+        if isinstance(visibility_device, dict):
+            metrics = visibility_device.get(VIS_KEY_METRICS) if isinstance(visibility_device.get(VIS_KEY_METRICS), dict) else {}
+            passive_summary = " / ".join(
+                (
+                    self._format_visibility_last_seen(metrics),
+                    self._format_visibility_packet_rate(metrics),
+                )
+            )
+            visibility = visibility_device.get(VIS_KEY_VISIBILITY) if isinstance(visibility_device.get(VIS_KEY_VISIBILITY), dict) else {}
+            passive_visible = any(value is True for value in visibility.values())
+            identity_text = self._format_visibility_identity(visibility_device)
+            if identity_text != VIS_LAST_SEEN_UNKNOWN:
+                passive_identity = EVIDENCE_STATUS_MATCHING
+        elif runtime_device:
+            last_seen = runtime_device.get("lastSeenMs")
+            passive_summary = _format_visibility_last_seen({VIS_KEY_SOURCES: {}, "runtime": {VIS_KEY_LAST_SEEN_MS: last_seen}}) if isinstance(last_seen, (int, float)) else EVIDENCE_SOURCE_NONE
+        console_summary = console_entry.get("summary") if isinstance(console_entry, dict) else EVIDENCE_SOURCE_NONE
+        console_events = console_entry.get("events", []) if isinstance(console_entry, dict) else []
+        console_has_error = bool(console_entry.get("hasError")) if isinstance(console_entry, dict) else False
+        console_has_warn = bool(console_entry.get("hasWarn")) if isinstance(console_entry, dict) else False
+        manual_entry = self._manual_evidence_for_label(label)
+        manual_observation = self._manual_test_observations.get(str(label or NT_VALUE_EMPTY).strip().lower())
+        manual_age_sec = _manual_age_seconds(manual_entry)
+        manual_recent_operability = isinstance(manual_age_sec, float) and manual_age_sec <= EVIDENCE_MANUAL_OPERABILITY_WINDOW_SEC
+        manual_recent_identity = isinstance(manual_age_sec, float) and manual_age_sec <= EVIDENCE_MANUAL_IDENTITY_WINDOW_SEC
+        manual_summary = EVIDENCE_MANUAL_PLACEHOLDER
+        existence = EVIDENCE_STATUS_UNKNOWN
+        operability = EVIDENCE_STATUS_UNKNOWN
+        identity = passive_identity
+        confidence = EVIDENCE_CONFIDENCE_LOW
+        notes: List[str] = []
+        evidence_state = EVIDENCE_STATE_UNKNOWN
+        evidence_conflicted = False
+        cmd_duty = _runtime_device_field(runtime_device or {}, EVIDENCE_FIELD_CMD_DUTY)
+        applied_duty = _runtime_device_field(runtime_device or {}, EVIDENCE_FIELD_APPLIED_DUTY)
+        velocity_rpm = _runtime_device_field(runtime_device or {}, EVIDENCE_FIELD_VEL_RPM)
+        motor_current = _runtime_device_field(runtime_device or {}, EVIDENCE_FIELD_MOTOR_CURRENT_A)
+        manual_motion = self._manual_motion_checks.get(str(label or NT_VALUE_EMPTY).strip().lower())
+        motion_commanded = (
+            isinstance(cmd_duty, (int, float)) and abs(float(cmd_duty)) >= EVIDENCE_MOTION_CMD_THRESHOLD_DUTY
+        ) or (
+            isinstance(applied_duty, (int, float)) and abs(float(applied_duty)) >= EVIDENCE_MOTION_CMD_THRESHOLD_DUTY
+        )
+        motion_detected = isinstance(velocity_rpm, (int, float)) and abs(float(velocity_rpm)) >= EVIDENCE_MOTION_MIN_RPM
+        manual_motion_window_active = False
+        manual_motion_failed = False
+        if isinstance(manual_motion, dict):
+            started_at = manual_motion.get("startedAt")
+            duty_value = manual_motion.get("duty")
+            if isinstance(started_at, (int, float)) and isinstance(duty_value, (int, float)):
+                age_sec = max(0.0, time.time() - float(started_at))
+                if age_sec <= EVIDENCE_MANUAL_MOTION_WINDOW_SEC and abs(float(duty_value)) >= EVIDENCE_MOTION_CMD_THRESHOLD_DUTY:
+                    manual_motion_window_active = True
+                    motion_commanded = True
+                    motion_detected = motion_detected or bool(manual_motion.get("sawMotion"))
+                    if age_sec >= EVIDENCE_MANUAL_MOTION_SETTLE_SEC and not motion_detected:
+                        manual_motion_failed = True
+
+        if probe_attachment is None:
+            probe_bucket = "not_run"
+        if probe_bucket == "present":
+            existence = EVIDENCE_STATUS_PRESENT
+            operability = EVIDENCE_STATUS_OK
+            confidence = EVIDENCE_CONFIDENCE_HIGH
+            evidence_state = EVIDENCE_STATE_OK
+        elif probe_bucket == "degraded":
+            existence = EVIDENCE_STATUS_PRESENT
+            operability = EVIDENCE_STATUS_DEGRADED
+            confidence = EVIDENCE_CONFIDENCE_MEDIUM
+            evidence_state = EVIDENCE_STATE_DEGRADED
+        elif probe_bucket == "absent":
+            existence = EVIDENCE_STATUS_ABSENT
+            operability = EVIDENCE_STATUS_FAILED
+            confidence = EVIDENCE_CONFIDENCE_HIGH
+            evidence_state = EVIDENCE_STATE_MISSING
+
+        if existence == EVIDENCE_STATUS_UNKNOWN and passive_visible:
+            existence = EVIDENCE_STATUS_PRESENT
+            confidence = EVIDENCE_CONFIDENCE_MEDIUM
+            evidence_state = EVIDENCE_STATE_OK
+
+        if console_has_error:
+            if existence == EVIDENCE_STATUS_PRESENT:
+                operability = EVIDENCE_STATUS_DEGRADED
+                confidence = EVIDENCE_CONFIDENCE_MEDIUM
+                evidence_state = EVIDENCE_STATE_DEGRADED
+            elif existence == EVIDENCE_STATUS_UNKNOWN:
+                operability = EVIDENCE_STATUS_FAILED
+                evidence_state = EVIDENCE_STATE_DEGRADED
+            if any(EVIDENCE_TEXT_DEVICE_TIMEOUT in entry.lower() for entry in console_events):
+                notes.append("Device-specific timeout evidence present.")
+        elif console_has_warn and operability == EVIDENCE_STATUS_UNKNOWN:
+            operability = EVIDENCE_STATUS_DEGRADED
+            confidence = EVIDENCE_CONFIDENCE_LOW
+            evidence_state = EVIDENCE_STATE_DEGRADED
+
+        if system_console.get("systemConflict"):
+            notes.append("System-level console fault may reflect broader CAN isolation.")
+            evidence_conflicted = True
+            if confidence == EVIDENCE_CONFIDENCE_HIGH and probe_bucket != "absent":
+                confidence = EVIDENCE_CONFIDENCE_MEDIUM
+            elif confidence == EVIDENCE_CONFIDENCE_MEDIUM:
+                confidence = EVIDENCE_CONFIDENCE_LOW
+
+        if isinstance(manual_entry, dict):
+            outcome = str(manual_entry.get("outcome", NT_VALUE_EMPTY)).strip().lower()
+            manual_summary = EVIDENCE_MANUAL_OUTCOME_LABELS.get(outcome, outcome or EVIDENCE_MANUAL_PLACEHOLDER)
+            if outcome == EVIDENCE_MANUAL_OUTCOME_CORRECT:
+                if not manual_recent_identity:
+                    notes.append(EVIDENCE_MANUAL_NOTE_STALE)
+                elif probe_bucket == "absent" or console_has_error:
+                    existence = EVIDENCE_STATUS_CONFLICT if probe_bucket == "absent" else existence
+                    operability = EVIDENCE_STATUS_CONFLICT
+                    identity = EVIDENCE_STATUS_MATCHING
+                    confidence = EVIDENCE_CONFIDENCE_LOW
+                    evidence_state = EVIDENCE_STATE_DEGRADED
+                    evidence_conflicted = True
+                    notes.append(EVIDENCE_MANUAL_NOTE_CONFLICT)
+                elif manual_recent_operability:
+                    existence = EVIDENCE_STATUS_PRESENT
+                    operability = EVIDENCE_STATUS_OK
+                    identity = EVIDENCE_STATUS_MATCHING
+                    confidence = EVIDENCE_CONFIDENCE_HIGH
+                    evidence_state = EVIDENCE_STATE_OK
+                else:
+                    existence = EVIDENCE_STATUS_PRESENT
+                    identity = EVIDENCE_STATUS_MATCHING
+                    confidence = EVIDENCE_CONFIDENCE_MEDIUM
+                    notes.append(EVIDENCE_MANUAL_NOTE_AGE_IDENTITY_ONLY)
+            elif outcome == EVIDENCE_MANUAL_OUTCOME_NO_RESPONSE:
+                if manual_recent_operability:
+                    operability = EVIDENCE_STATUS_FAILED
+                    confidence = EVIDENCE_CONFIDENCE_HIGH
+                    evidence_state = EVIDENCE_STATE_DEGRADED
+                else:
+                    notes.append(EVIDENCE_MANUAL_NOTE_STALE)
+            elif outcome in (EVIDENCE_MANUAL_OUTCOME_INTERMITTENT, EVIDENCE_MANUAL_OUTCOME_DEGRADED):
+                if manual_recent_operability:
+                    existence = EVIDENCE_STATUS_PRESENT
+                    operability = EVIDENCE_STATUS_DEGRADED
+                    confidence = EVIDENCE_CONFIDENCE_HIGH
+                    evidence_state = EVIDENCE_STATE_DEGRADED
+                else:
+                    notes.append(EVIDENCE_MANUAL_NOTE_STALE)
+            elif outcome in (EVIDENCE_MANUAL_OUTCOME_WRONG_DEVICE, EVIDENCE_MANUAL_OUTCOME_WRONG_BRANCH):
+                if manual_recent_identity:
+                    existence = EVIDENCE_STATUS_PRESENT
+                    identity = EVIDENCE_STATUS_WRONG
+                    confidence = EVIDENCE_CONFIDENCE_HIGH if manual_recent_operability else EVIDENCE_CONFIDENCE_MEDIUM
+                    if manual_recent_operability:
+                        operability = EVIDENCE_STATUS_FAILED
+                    evidence_state = EVIDENCE_STATE_IDENTITY
+                    if not manual_recent_operability:
+                        notes.append(EVIDENCE_MANUAL_NOTE_AGE_IDENTITY_ONLY)
+                else:
+                    notes.append(EVIDENCE_MANUAL_NOTE_STALE)
+            elif outcome == EVIDENCE_MANUAL_OUTCOME_UNCERTAIN:
+                confidence = EVIDENCE_CONFIDENCE_LOW
+                notes.append("Operator marked manual result uncertain.")
+
+        if motion_commanded:
+            if motion_detected:
+                if existence == EVIDENCE_STATUS_UNKNOWN:
+                    existence = EVIDENCE_STATUS_PRESENT
+                if operability == EVIDENCE_STATUS_UNKNOWN:
+                    operability = EVIDENCE_STATUS_OK
+                confidence = EVIDENCE_CONFIDENCE_HIGH if confidence == EVIDENCE_CONFIDENCE_LOW else confidence
+                if evidence_state == EVIDENCE_STATE_UNKNOWN:
+                    evidence_state = EVIDENCE_STATE_OK
+                notes.append(EVIDENCE_MOTION_NOTE_ROTATING)
+            elif manual_motion_failed or (not manual_motion_window_active):
+                operability = EVIDENCE_STATUS_FAILED
+                confidence = EVIDENCE_CONFIDENCE_HIGH if probe_bucket == "present" else EVIDENCE_CONFIDENCE_MEDIUM
+                evidence_state = EVIDENCE_STATE_DEGRADED
+                notes.append(EVIDENCE_MOTION_NOTE_NO_ROTATION)
+
+        if identity == EVIDENCE_STATUS_MATCHING and existence == EVIDENCE_STATUS_PRESENT:
+            if evidence_state == EVIDENCE_STATE_UNKNOWN:
+                evidence_state = EVIDENCE_STATE_IDENTITY
+        elif identity != EVIDENCE_STATUS_WRONG:
+            identity = EVIDENCE_STATUS_UNKNOWN
+
+        if probe_bucket in (VIS_VALUE_UNKNOWN, "not_run") and passive_visible and not console_has_error:
+            notes.append("Passive traffic present but no active-probe conclusion yet.")
+        if not notes:
+            notes.append(EVIDENCE_NOTE_NONE)
+
+        passive_text = passive_summary
+        if isinstance(visibility_device, dict):
+            passive_text = EVIDENCE_NOTE_SEPARATOR.join(
+                (
+                    f"identity={self._format_visibility_identity(visibility_device)}",
+                    f"lastSeen={self._format_visibility_last_seen(visibility_device.get(VIS_KEY_METRICS, {})) if isinstance(visibility_device.get(VIS_KEY_METRICS), dict) else VIS_LAST_SEEN_UNKNOWN}",
+                    f"packets={self._format_visibility_packet_count(visibility_device.get(VIS_KEY_METRICS, {})) if isinstance(visibility_device.get(VIS_KEY_METRICS), dict) else VIS_PACKETS_UNKNOWN}",
+                    f"rate={self._format_visibility_packet_rate(visibility_device.get(VIS_KEY_METRICS, {})) if isinstance(visibility_device.get(VIS_KEY_METRICS), dict) else VIS_RATE_UNKNOWN}",
+                )
+            )
+        console_text = EVIDENCE_NOTE_SEPARATOR.join(console_events) if console_events else system_console.get("systemText", EVIDENCE_SOURCE_NONE)
+        probe_stats_text = self._build_evidence_probe_stats_text()
+        probe_lines = ["Not run yet", probe_stats_text]
+        if isinstance(probe_attachment, dict):
+            updated_age = VIS_LAST_SEEN_UNKNOWN
+            updated_at_ms = probe_attachment.get(RUNTIME_PROBE_KEY_UPDATED_AT_MS)
+            if isinstance(updated_at_ms, (int, float)) and float(updated_at_ms) > 0.0:
+                updated_age = _format_age_seconds(max(0.0, time.time() - (float(updated_at_ms) / 1000.0)))
+            failed_checks = _attachment_string_list(probe_attachment, RUNTIME_PROBE_KEY_FAILED_CHECKS)
+            warnings = _attachment_string_list(probe_attachment, RUNTIME_PROBE_KEY_WARNINGS)
+            errors = _attachment_string_list(probe_attachment, RUNTIME_PROBE_KEY_ERRORS)
+            probe_lines = [
+                EVIDENCE_NOTE_SEPARATOR.join(
+                    (
+                        f"bucket={probe_bucket}",
+                        f"score={_format_runtime_probe_score(runtime_device)}",
+                        f"updated={updated_age}",
+                    )
+                )
+            ]
+            if failed_checks:
+                probe_lines.append("failed: " + ", ".join(failed_checks))
+            if warnings:
+                probe_lines.append("warnings: " + ", ".join(warnings[:EVIDENCE_PROBE_DETAIL_LIMIT]))
+            if errors:
+                probe_lines.append("errors: " + ", ".join(errors[:EVIDENCE_PROBE_DETAIL_LIMIT]))
+            probe_lines.append(probe_stats_text)
+            message_text = str(probe_attachment.get("message", EVIDENCE_SOURCE_NONE)).strip() or EVIDENCE_SOURCE_NONE
+            if message_text:
+                probe_lines.append(message_text)
+        probe_text = "\n".join(probe_lines)
+        if isinstance(manual_observation, dict):
+            auto_result = str(manual_observation.get("autoResult", NT_VALUE_EMPTY)).strip()
+            if auto_result:
+                manual_summary = EVIDENCE_MANUAL_AUTO_RESULT_LABELS.get(auto_result, auto_result)
+        manual_lines = [EVIDENCE_MANUAL_PLACEHOLDER]
+        if isinstance(manual_entry, dict):
+            manual_lines = [EVIDENCE_MANUAL_LINE_RESULT.format(value=manual_summary)]
+            observed = str(manual_entry.get("observed", NT_VALUE_EMPTY)).strip()
+            notes_value = str(manual_entry.get("notes", NT_VALUE_EMPTY)).strip()
+            recorded = str(manual_entry.get("recordedAt", NT_VALUE_EMPTY)).strip()
+            if isinstance(manual_age_sec, float):
+                manual_lines.append(EVIDENCE_MANUAL_LINE_AGE.format(value=_format_age_seconds(manual_age_sec)))
+            if observed:
+                manual_lines.append(EVIDENCE_MANUAL_LINE_OBSERVED.format(value=observed))
+            if notes_value:
+                manual_lines.append(EVIDENCE_MANUAL_LINE_NOTES.format(value=notes_value))
+            if recorded:
+                manual_lines.append(EVIDENCE_MANUAL_LINE_RECORDED.format(value=recorded))
+        elif isinstance(manual_observation, dict):
+            auto_result = str(manual_observation.get("autoResult", NT_VALUE_EMPTY)).strip() or EVIDENCE_MANUAL_PLACEHOLDER
+            auto_result_label = EVIDENCE_MANUAL_AUTO_RESULT_LABELS.get(auto_result, auto_result)
+            manual_lines = [EVIDENCE_MANUAL_LINE_AUTO_RESULT.format(value=auto_result_label)]
+            observation_age_sec = _manual_age_seconds(manual_observation)
+            observation_recorded = str(manual_observation.get("recordedAt", NT_VALUE_EMPTY)).strip()
+            if isinstance(observation_age_sec, float):
+                manual_lines.append(EVIDENCE_MANUAL_LINE_AGE.format(value=_format_age_seconds(observation_age_sec)))
+            if observation_recorded:
+                manual_lines.append(EVIDENCE_MANUAL_LINE_RECORDED.format(value=observation_recorded))
+
+        def _format_motion_value(value: Any) -> str:
+            if isinstance(value, (int, float)):
+                return f"{float(value):.2f}"
+            return EVIDENCE_VALUE_NOT_APPLICABLE
+
+        motion_detail_source = manual_observation if isinstance(manual_observation, dict) else None
+        motion_cmd_value = cmd_duty
+        motion_applied_value = applied_duty
+        motion_vel_value = velocity_rpm
+        motion_current_value = motor_current
+        if isinstance(motion_detail_source, dict):
+            motion_cmd_value = motion_detail_source.get("cmdDuty", motion_cmd_value)
+            motion_applied_value = motion_detail_source.get("appliedDuty", motion_applied_value)
+            motion_vel_value = motion_detail_source.get("velRpm", motion_vel_value)
+            motion_current_value = motion_detail_source.get("motorCurrentA", motion_current_value)
+
+        if (
+            motion_commanded
+            or manual_motion_window_active
+            or isinstance(manual_motion, dict)
+            or isinstance(manual_observation, dict)
+        ):
+            motion_state = EVIDENCE_MANUAL_MOTION_IDLE
+            if motion_detected:
+                motion_state = EVIDENCE_MANUAL_MOTION_PASS
+            elif motion_commanded and (manual_motion_failed or not manual_motion_window_active):
+                motion_state = EVIDENCE_MANUAL_MOTION_FAIL
+            elif motion_commanded or manual_motion_window_active:
+                motion_state = EVIDENCE_MANUAL_MOTION_ACTIVE
+            elif isinstance(manual_observation, dict):
+                auto_result = str(manual_observation.get("autoResult", NT_VALUE_EMPTY)).strip()
+                if auto_result == EVIDENCE_MANUAL_AUTO_RESULT_ROTATION:
+                    motion_state = EVIDENCE_MANUAL_MOTION_PASS
+                elif auto_result == EVIDENCE_MANUAL_AUTO_RESULT_NO_ROTATION:
+                    motion_state = EVIDENCE_MANUAL_MOTION_FAIL
+                elif auto_result == EVIDENCE_MANUAL_AUTO_RESULT_RUNNING:
+                    motion_state = EVIDENCE_MANUAL_MOTION_ACTIVE
+            manual_lines.append(EVIDENCE_MANUAL_LINE_MOTION.format(value=motion_state))
+            manual_lines.append(
+                EVIDENCE_MANUAL_LINE_MOTION_VALUES.format(
+                    cmd=_format_motion_value(motion_cmd_value),
+                    applied=_format_motion_value(motion_applied_value),
+                    vel=_format_motion_value(motion_vel_value),
+                    current=_format_motion_value(motion_current_value),
+                )
+            )
+        manual_text = "\n".join(manual_lines)
+        return {
+            "label": label,
+            "passive": passive_summary,
+            "console": console_summary or EVIDENCE_SOURCE_NONE,
+            "probe": probe_bucket if probe_bucket not in (VIS_VALUE_UNKNOWN, "not_run") else "Waiting",
+            "manual": manual_summary,
+            "existence": existence,
+            "operability": operability,
+            "identity": identity,
+            "confidence": confidence,
+            "passiveText": passive_text,
+            "consoleText": console_text,
+            "probeText": probe_text,
+            "manualText": manual_text,
+            "notesText": EVIDENCE_NOTE_SEPARATOR.join(notes),
+            "state": evidence_state,
+            "conflicted": evidence_conflicted,
+        }
+
+    def _build_evidence_rows(self) -> List[Dict[str, Any]]:
+        """
+        NAME
+            _build_evidence_rows - Build interpreted evidence rows for the current profile.
+        """
+        visibility_devices = {}
+        devices = self._latest_visibility_snapshot.get(VIS_KEY_DEVICES)
+        if isinstance(devices, list):
+            for device in devices:
+                if not isinstance(device, dict):
+                    continue
+                label = str(device.get(VIS_KEY_LABEL, NT_VALUE_EMPTY)).strip()
+                if label:
+                    visibility_devices[label.lower()] = device
+        console_snapshot = self._collect_console_snapshot()
+        rows: List[Dict[str, Any]] = []
+        for label, profile_device in self._profile_devices.items():
+            display_label = str(profile_device.get(DEVICE_KEY_LABEL, label)).strip() or label
+            rows.append(
+                self._infer_device_evidence(
+                    display_label,
+                    visibility_devices.get(label),
+                    self._latest_runtime_devices.get(label),
+                    console_snapshot[EVIDENCE_CONSOLE_SCOPE_DEVICES].get(label),
+                    console_snapshot,
+                )
+            )
+        rows.sort(key=lambda row: str(row.get("label", NT_VALUE_EMPTY)).lower())
+        return rows
+
+    def _evidence_matches_filter(self, row: Dict[str, Any], filter_key: str) -> bool:
+        """
+        NAME
+            _evidence_matches_filter - Return whether one row should be shown for the selected filter.
+        """
+        if filter_key == EVIDENCE_FILTER_ALL:
+            return True
+        if filter_key == EVIDENCE_FILTER_CONFLICTED:
+            return bool(row.get("conflicted"))
+        if filter_key == EVIDENCE_FILTER_MISSING:
+            return str(row.get("existence", NT_VALUE_EMPTY)).upper() == EVIDENCE_STATUS_ABSENT
+        if filter_key == EVIDENCE_FILTER_DEGRADED:
+            return str(row.get("operability", NT_VALUE_EMPTY)).upper() in (
+                EVIDENCE_STATUS_DEGRADED,
+                EVIDENCE_STATUS_FAILED,
+            )
+        return True
+
+    def _set_evidence_text(self, section: str, text_value: str) -> None:
+        """
+        NAME
+            _set_evidence_text - Replace one read-only Evidence inspector text block.
+        """
+        widget = self._evidence_text_widgets.get(section)
+        if widget is None:
+            return
+        widget.configure(state="normal")
+        widget.delete("1.0", "end")
+        widget.insert("1.0", text_value or EVIDENCE_SOURCE_NONE)
+        widget.configure(state="disabled")
+
+    def _apply_evidence_selection(self, label: str) -> None:
+        """
+        NAME
+            _apply_evidence_selection - Update the Evidence inspector for one device label.
+        """
+        clean_label = str(label or NT_VALUE_EMPTY).strip().lower()
+        row = self._evidence_rows_by_label.get(clean_label)
+        self._evidence_selected_label = clean_label
+        if row is None:
+            self._evidence_selected_title_var.set(NT_VALUE_EMPTY)
+            for key, var in self._evidence_detail_vars.items():
+                if key == EVIDENCE_LABEL_CONFIDENCE:
+                    var.set(EVIDENCE_CONFIDENCE_LOW)
+                else:
+                    var.set(EVIDENCE_STATUS_UNKNOWN)
+            for section in self._evidence_text_widgets:
+                self._set_evidence_text(section, EVIDENCE_SOURCE_NONE)
+            return
+        self._evidence_selected_title_var.set(str(row.get("label", NT_VALUE_EMPTY)))
+        self._evidence_detail_vars[EVIDENCE_LABEL_EXISTENCE].set(str(row.get("existence", EVIDENCE_STATUS_UNKNOWN)))
+        self._evidence_detail_vars[EVIDENCE_LABEL_OPERABILITY].set(str(row.get("operability", EVIDENCE_STATUS_UNKNOWN)))
+        self._evidence_detail_vars[EVIDENCE_LABEL_IDENTITY].set(str(row.get("identity", EVIDENCE_STATUS_UNKNOWN)))
+        self._evidence_detail_vars[EVIDENCE_LABEL_CONFIDENCE].set(str(row.get("confidence", EVIDENCE_CONFIDENCE_LOW)))
+        self._set_evidence_text(EVIDENCE_PASSIVE_TEXT, str(row.get("passiveText", EVIDENCE_SOURCE_NONE)))
+        self._set_evidence_text(EVIDENCE_CONSOLE_TEXT, str(row.get("consoleText", EVIDENCE_SOURCE_NONE)))
+        self._set_evidence_text(EVIDENCE_PROBE_TEXT, str(row.get("probeText", EVIDENCE_SOURCE_NONE)))
+        self._set_evidence_text(EVIDENCE_MANUAL_TEXT, str(row.get("manualText", EVIDENCE_MANUAL_PLACEHOLDER)))
+        self._set_evidence_text(EVIDENCE_NOTES_TEXT, str(row.get("notesText", EVIDENCE_NOTE_NONE)))
+
+    def _refresh_evidence_view(self) -> None:
+        """
+        NAME
+            _refresh_evidence_view - Rebuild the Evidence table, topology overlay, and inspector.
+        """
+        table = self._evidence_table
+        live_view = self._evidence_live_view
+        if table is None or live_view is None:
+            return
+        for row_id in table.get_children():
+            table.delete(row_id)
+        rows = self._build_evidence_rows()
+        self._evidence_rows_by_label = {
+            str(row.get("label", NT_VALUE_EMPTY)).strip().lower(): row for row in rows
+        }
+        filter_key = self._selected_evidence_filter_key()
+        shown_rows = [row for row in rows if self._evidence_matches_filter(row, filter_key)]
+        evidence_snapshot = {
+            str(row.get("label", NT_VALUE_EMPTY)).strip().lower(): str(row.get("state", EVIDENCE_STATE_UNKNOWN)).strip().lower()
+            for row in rows
+        }
+        live_view.set_evidence_snapshot(evidence_snapshot)
+        for row in shown_rows:
+            table.insert(
+                VIS_TREE_ROOT,
+                VIS_TREE_END,
+                values=(
+                    row.get("label", NT_VALUE_EMPTY),
+                    row.get("passive", EVIDENCE_SOURCE_NONE),
+                    row.get("console", EVIDENCE_SOURCE_NONE),
+                    row.get("probe", EVIDENCE_SOURCE_NONE),
+                    row.get("manual", EVIDENCE_MANUAL_PLACEHOLDER),
+                    row.get("existence", EVIDENCE_STATUS_UNKNOWN),
+                    row.get("operability", EVIDENCE_STATUS_UNKNOWN),
+                    row.get("identity", EVIDENCE_STATUS_UNKNOWN),
+                    row.get("confidence", EVIDENCE_CONFIDENCE_LOW),
+                ),
+            )
+        self._evidence_summary_var.set(
+            f"Devices: {len(rows)} | Showing: {len(shown_rows)} | Filter: {EVIDENCE_FILTER_LABELS.get(filter_key, EVIDENCE_FILTER_LABELS[EVIDENCE_FILTER_ALL])}"
+        )
+        selected_label = self._evidence_selected_label
+        if not selected_label and shown_rows:
+            selected_label = str(shown_rows[0].get("label", NT_VALUE_EMPTY)).strip().lower()
+            self._evidence_selected_label = selected_label
+        if selected_label:
+            self._evidence_syncing_selection = True
+            try:
+                selected_item = NT_VALUE_EMPTY
+                for item_id in table.get_children():
+                    values = table.item(item_id, "values")
+                    if values and str(values[0]).strip().lower() == selected_label:
+                        selected_item = item_id
+                        break
+                if selected_item:
+                    table.selection_set(selected_item)
+                    table.focus(selected_item)
+                    table.see(selected_item)
+                self._apply_evidence_selection(selected_label)
+            finally:
+                self._evidence_syncing_selection = False
+        else:
+            self._apply_evidence_selection(NT_VALUE_EMPTY)
+
+    def _apply_evidence_table_selection_by_label(self, label: str) -> None:
+        """
+        NAME
+            _apply_evidence_table_selection_by_label - Select one Evidence table row outside the canvas click stack.
+        """
+        self._evidence_pending_row_label = NT_VALUE_EMPTY
+        table = self._evidence_table
+        if table is None:
+            return
+        clean_label = str(label or NT_VALUE_EMPTY).strip().lower()
+        if not clean_label:
+            return
+        self._evidence_syncing_selection = True
+        try:
+            for item_id in table.get_children():
+                values = table.item(item_id, "values")
+                if values and str(values[0]).strip().lower() == clean_label:
+                    table.selection_set(item_id)
+                    table.focus(item_id)
+                    table.see(item_id)
+                    break
+        finally:
+            self._evidence_syncing_selection = False
+
+    def _apply_evidence_topology_selection_by_label(self, label: str) -> None:
+        """
+        NAME
+            _apply_evidence_topology_selection_by_label - Select one Evidence topology node outside the row-selection stack.
+        """
+        self._evidence_pending_node_label = NT_VALUE_EMPTY
+        live_view = self._evidence_live_view
+        if live_view is None:
+            return
+        clean_label = str(label or NT_VALUE_EMPTY).strip()
+        if not clean_label:
+            return
+        self._evidence_syncing_selection = True
+        try:
+            live_view.select_node_by_label(clean_label)
+        finally:
+            self._evidence_syncing_selection = False
+
+    def _on_evidence_row_selected(self, event: tk.Event) -> None:
+        """
+        NAME
+            _on_evidence_row_selected - Sync table selection into topology and inspector.
+        """
+        if self._evidence_syncing_selection:
+            return
+        widget = event.widget
+        if not isinstance(widget, ttk.Treeview):
+            return
+        selection = widget.selection()
+        if not selection:
+            return
+        values = widget.item(selection[0], "values")
+        if not values:
+            return
+        label = str(values[0]).strip()
+        self._apply_evidence_selection(label)
+        if self._evidence_pending_node_label != label:
+            self._evidence_pending_node_label = label
+            self.after_idle(lambda target=label: self._apply_evidence_topology_selection_by_label(target))
+
+    def _on_evidence_topology_selected(self, node: Optional[object]) -> None:
+        """
+        NAME
+            _on_evidence_topology_selected - Sync topology selection into the Evidence table and inspector.
+        """
+        if self._evidence_syncing_selection:
+            return
+        label = str(getattr(node, "label", NT_VALUE_EMPTY)).strip() if node is not None else NT_VALUE_EMPTY
+        if not label:
+            return
+        self._apply_evidence_selection(label)
+        if self._evidence_pending_row_label != label:
+            self._evidence_pending_row_label = label
+            self.after_idle(lambda target=label: self._apply_evidence_table_selection_by_label(target))
 
     def _format_visibility_identity(self, device: Dict[str, object]) -> str:
         """
@@ -3433,6 +4802,7 @@ class BringupControlUI(tk.Tk):
         self._poll_live_overlay(now)
         self._poll_presence_overrides()
         self._poll_visibility_snapshot(now)
+        self._maybe_send_evidence_active_probe(force=False)
         self._update_action_enabled()
         idle = (
             not self._tcp_connected
@@ -3569,12 +4939,57 @@ class BringupControlUI(tk.Tk):
                 if label:
                     latest_runtime_devices[label.lower()] = device
         self._latest_runtime_devices = latest_runtime_devices
+        now_sec = time.time()
+        for label_key, device in latest_runtime_devices.items():
+            motion_entry = self._manual_motion_checks.get(label_key)
+            if not isinstance(motion_entry, dict):
+                continue
+            velocity_rpm = _runtime_device_field(device, "velRpm")
+            applied_duty = _runtime_device_field(device, EVIDENCE_FIELD_APPLIED_DUTY)
+            motor_current = _runtime_device_field(device, EVIDENCE_FIELD_MOTOR_CURRENT_A)
+            observation_update: Dict[str, Any] = {
+                "recordedAtEpochSec": now_sec,
+                "recordedAt": timestamp_hms(),
+                "appliedDuty": applied_duty if isinstance(applied_duty, (int, float)) else None,
+                "velRpm": velocity_rpm if isinstance(velocity_rpm, (int, float)) else None,
+                "motorCurrentA": motor_current if isinstance(motor_current, (int, float)) else None,
+            }
+            if isinstance(velocity_rpm, (int, float)):
+                abs_vel = abs(float(velocity_rpm))
+                motion_entry["maxAbsVelRpm"] = max(abs_vel, float(motion_entry.get("maxAbsVelRpm", 0.0)))
+                if abs_vel >= EVIDENCE_MOTION_MIN_RPM:
+                    motion_entry["sawMotion"] = True
+                    observation_update["autoResult"] = EVIDENCE_MANUAL_AUTO_RESULT_ROTATION
+            elif motion_entry.get("sawMotion"):
+                observation_update["autoResult"] = EVIDENCE_MANUAL_AUTO_RESULT_ROTATION
+            self._update_manual_test_observation(label_key, observation_update)
+        stale_motion_labels = []
+        for label_key, motion_entry in self._manual_motion_checks.items():
+            started_at = motion_entry.get("startedAt")
+            if not isinstance(started_at, (int, float)):
+                stale_motion_labels.append(label_key)
+                continue
+            age_sec = now_sec - float(started_at)
+            if age_sec >= EVIDENCE_MANUAL_MOTION_SETTLE_SEC:
+                observation = self._manual_test_observations.get(label_key)
+                if isinstance(observation, dict) and observation.get("autoResult") == EVIDENCE_MANUAL_AUTO_RESULT_RUNNING:
+                    if motion_entry.get("sawMotion"):
+                        observation["autoResult"] = EVIDENCE_MANUAL_AUTO_RESULT_ROTATION
+                    else:
+                        observation["autoResult"] = EVIDENCE_MANUAL_AUTO_RESULT_NO_ROTATION
+                        observation["recordedAtEpochSec"] = now_sec
+                        observation["recordedAt"] = timestamp_hms()
+            if (now_sec - float(started_at)) > EVIDENCE_MANUAL_MOTION_WINDOW_SEC:
+                stale_motion_labels.append(label_key)
+        for label_key in stale_motion_labels:
+            self._manual_motion_checks.pop(label_key, None)
         live_views = self._iter_live_views()
         if not live_views:
             return
         changed = False
         for live_view in live_views:
             changed = live_view.update_runtime_state(payload) or changed
+        self._refresh_evidence_view()
         if changed:
             self._runtime_state_backoff = 1.0
             self._runtime_state_idle_count = 0
@@ -3726,6 +5141,13 @@ class BringupControlUI(tk.Tk):
         if msg_type in ("ack", "out"):
             self._tracker.handle_event(event)
             command_lower = str(event.name or "").strip().lower()
+            if command_lower == "activepresenceprobe":
+                self._evidence_probe_pending = False
+                seq_value = int(event.seq)
+                if self._evidence_last_probe_complete_seq != seq_value:
+                    self._evidence_last_probe_complete_seq = seq_value
+                    self._evidence_probe_complete_count += 1
+                    self._evidence_last_probe_completed_at = time.time()
             if command_lower in {
                 "runtimeactivate",
                 "runtimedeactivate",

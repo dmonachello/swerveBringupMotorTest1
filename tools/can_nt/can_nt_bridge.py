@@ -782,6 +782,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         _apply_profile_context(initial_context)
 
     console_monitor = None
+    console_monitor_enabled = bool(args.console_monitor or args.ui)
     def _resolve_console_label(device_id: int) -> str:
         nonlocal console_unknown_counter
         labels = id_to_labels.get(device_id, [])
@@ -794,7 +795,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             console_unknown_labels[device_id] = label
         return label
 
-    if args.console_monitor:
+    if console_monitor_enabled:
         transport = args.console_transport.lower()
         host = args.console_host or args.rio
         port = args.console_port

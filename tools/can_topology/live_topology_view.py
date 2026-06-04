@@ -151,6 +151,16 @@ VIS_COLOR_ALL = "#16a34a"
 VIS_COLOR_SOME = "#f59e0b"
 VIS_COLOR_NONE = "#dc2626"
 VIS_COLOR_UNKNOWN = "#9ca3af"
+EVIDENCE_STATE_OK = "ok"
+EVIDENCE_STATE_DEGRADED = "degraded"
+EVIDENCE_STATE_MISSING = "missing"
+EVIDENCE_STATE_UNKNOWN = "unknown"
+EVIDENCE_STATE_IDENTITY = "identity"
+EVIDENCE_COLOR_OK = "#2f7a2f"
+EVIDENCE_COLOR_DEGRADED = "#d97706"
+EVIDENCE_COLOR_MISSING = "#dc2626"
+EVIDENCE_COLOR_UNKNOWN = "#9ca3af"
+EVIDENCE_COLOR_IDENTITY = "#c2410c"
 FILTER_CAN = "can"
 FILTER_POWER = "power"
 FILTER_DIO = "dio"
@@ -230,6 +240,8 @@ RUNTIME_KEY_ACTIVE_PROBE_BUCKET = "bucket"
 RUNTIME_KEY_ACTIVE_PROBE_SCORE = "score"
 RUNTIME_KEY_ACTIVE_PROBE_MAX_SCORE = "maxScore"
 RUNTIME_KEY_ACTIVE_PROBE_UPDATED_AT_MS = "updatedAtMs"
+TITLE_TEXT_DEFAULT = "Live Topology"
+SELECTION_FRAME_TEXT = "Selection"
 
 
 def _runtime_device_field(device: Dict[str, object], key: str) -> object:
@@ -598,9 +610,14 @@ class LiveTopologyView(ttk.Frame):
         profile_name: str,
         on_node_right_click: Optional[Callable[[LiveNode, tk.Event], None]] = None,
         on_left_click: Optional[Callable[[Optional[LiveNode], tk.Event], None]] = None,
+        on_selection_changed: Optional[Callable[[Optional[LiveNode]], None]] = None,
+        show_selection_panel: bool = True,
+        title_text: str = TITLE_TEXT_DEFAULT,
     ) -> None:
         super().__init__(parent)
         self._profile_name = profile_name
+        self._title_text = str(title_text or TITLE_TEXT_DEFAULT)
+        self._show_selection_panel = bool(show_selection_panel)
         self._nodes: List[LiveNode] = []
         self._diagram_meta: Dict[str, object] = {}
         self._runtime_state: Dict[str, Dict[str, object]] = {}
@@ -608,6 +625,7 @@ class LiveTopologyView(ttk.Frame):
         self._visibility_enabled = False
         self._visibility_state: Dict[str, str] = {}
         self._visibility_sources: Dict[str, bool] = {}
+        self._evidence_state: Dict[str, str] = {}
         self._visibility_fingerprint: Optional[Tuple[object, ...]] = None
         self._selected_label: Optional[str] = None
         self._selected_enabled: Optional[bool] = None
@@ -635,13 +653,14 @@ class LiveTopologyView(ttk.Frame):
         self._runtime_event_notice_level = "warn"
         self._on_node_right_click_cb = on_node_right_click
         self._on_left_click_cb = on_left_click
+        self._on_selection_changed_cb = on_selection_changed
         self._connection_filter_vars = {
             key: tk.BooleanVar(value=True) for key in CONNECTION_FILTERS_ORDER
         }
 
         header = ttk.Frame(self)
         header.pack(fill="x", padx=8, pady=(8, 0))
-        ttk.Label(header, text="Live Topology", font=("Trebuchet MS", 13)).pack(
+        ttk.Label(header, text=self._title_text, font=("Trebuchet MS", 13)).pack(
             side="left"
         )
         self._status_label = ttk.Label(header, text="Profile: --")
@@ -693,51 +712,53 @@ class LiveTopologyView(ttk.Frame):
         self._canvas.bind("<Control-Button-4>", lambda _e: self._nudge_zoom(ZOOM_STEP))
         self._canvas.bind("<Control-Button-5>", lambda _e: self._nudge_zoom(-ZOOM_STEP))
 
-        details = ttk.LabelFrame(body, text="Selection", padding=8)
-        details.pack(side="right", fill="y")
-        self._detail_vars = {
-            "label": tk.StringVar(value="--"),
-            "can_id": tk.StringVar(value="--"),
-            "presence": tk.StringVar(value="--"),
-            "probe_bucket": tk.StringVar(value="--"),
-            "probe_score": tk.StringVar(value="--"),
-            "probe_status": tk.StringVar(value="--"),
-            "probe_message": tk.StringVar(value="--"),
-            "last_seen": tk.StringVar(value="--"),
-            "current_a": tk.StringVar(value="--"),
-            "current_avg_a": tk.StringVar(value="--"),
-            "current_peak_a": tk.StringVar(value="--"),
-            "current_nonzero": tk.StringVar(value="--"),
-            "current_samples": tk.StringVar(value="--"),
-            "cmd_duty": tk.StringVar(value="--"),
-            "applied_duty": tk.StringVar(value="--"),
-            "temp_c": tk.StringVar(value="--"),
-            "selected": tk.StringVar(value="--"),
-        }
-        rows = [
-            ("Label", "label"),
-            ("CAN ID", "can_id"),
-            ("Presence", "presence"),
-            ("Probe Bucket", "probe_bucket"),
-            ("Probe Score", "probe_score"),
-            ("Probe Status", "probe_status"),
-            ("Probe Message", "probe_message"),
-            ("Last Seen", "last_seen"),
-            ("Current (A)", "current_a"),
-            ("Current Avg (A)", "current_avg_a"),
-            ("Current Peak (A)", "current_peak_a"),
-            ("Current Nonzero", "current_nonzero"),
-            ("Current Window Samples", "current_samples"),
-            ("Cmd Duty", "cmd_duty"),
-            ("Applied Duty", "applied_duty"),
-            ("Temp (C)", "temp_c"),
-            ("Selected", "selected"),
-        ]
-        for idx, (title, key) in enumerate(rows):
-            ttk.Label(details, text=f"{title}:").grid(row=idx, column=0, sticky="w", padx=4)
-            ttk.Label(details, textvariable=self._detail_vars[key]).grid(
-                row=idx, column=1, sticky="w"
-            )
+        self._detail_vars: Dict[str, tk.StringVar] = {}
+        if self._show_selection_panel:
+            details = ttk.LabelFrame(body, text=SELECTION_FRAME_TEXT, padding=8)
+            details.pack(side="right", fill="y")
+            self._detail_vars = {
+                "label": tk.StringVar(value="--"),
+                "can_id": tk.StringVar(value="--"),
+                "presence": tk.StringVar(value="--"),
+                "probe_bucket": tk.StringVar(value="--"),
+                "probe_score": tk.StringVar(value="--"),
+                "probe_status": tk.StringVar(value="--"),
+                "probe_message": tk.StringVar(value="--"),
+                "last_seen": tk.StringVar(value="--"),
+                "current_a": tk.StringVar(value="--"),
+                "current_avg_a": tk.StringVar(value="--"),
+                "current_peak_a": tk.StringVar(value="--"),
+                "current_nonzero": tk.StringVar(value="--"),
+                "current_samples": tk.StringVar(value="--"),
+                "cmd_duty": tk.StringVar(value="--"),
+                "applied_duty": tk.StringVar(value="--"),
+                "temp_c": tk.StringVar(value="--"),
+                "selected": tk.StringVar(value="--"),
+            }
+            rows = [
+                ("Label", "label"),
+                ("CAN ID", "can_id"),
+                ("Presence", "presence"),
+                ("Probe Bucket", "probe_bucket"),
+                ("Probe Score", "probe_score"),
+                ("Probe Status", "probe_status"),
+                ("Probe Message", "probe_message"),
+                ("Last Seen", "last_seen"),
+                ("Current (A)", "current_a"),
+                ("Current Avg (A)", "current_avg_a"),
+                ("Current Peak (A)", "current_peak_a"),
+                ("Current Nonzero", "current_nonzero"),
+                ("Current Window Samples", "current_samples"),
+                ("Cmd Duty", "cmd_duty"),
+                ("Applied Duty", "applied_duty"),
+                ("Temp (C)", "temp_c"),
+                ("Selected", "selected"),
+            ]
+            for idx, (title, key) in enumerate(rows):
+                ttk.Label(details, text=f"{title}:").grid(row=idx, column=0, sticky="w", padx=4)
+                ttk.Label(details, textvariable=self._detail_vars[key]).grid(
+                    row=idx, column=1, sticky="w"
+                )
 
         self.reload_profile(profile_name)
 
@@ -859,6 +880,49 @@ class LiveTopologyView(ttk.Frame):
         if enabled == self._visibility_enabled:
             return
         self._visibility_enabled = enabled
+        self._redraw()
+
+    def set_evidence_snapshot(self, evidence_state: Optional[Dict[str, str]]) -> None:
+        """
+        NAME
+            set_evidence_snapshot - Apply interpreted evidence states for node coloring.
+        """
+        normalized: Dict[str, str] = {}
+        if isinstance(evidence_state, dict):
+            for label, state in evidence_state.items():
+                clean_label = str(label).strip().lower()
+                clean_state = str(state).strip().lower()
+                if clean_label and clean_state:
+                    normalized[clean_label] = clean_state
+        if normalized == self._evidence_state:
+            return
+        self._evidence_state = normalized
+        self._redraw()
+
+    def get_selected_label(self) -> str:
+        """
+        NAME
+            get_selected_label - Return the currently selected node label or empty string.
+        """
+        if self._selected_node is None:
+            return EMPTY_STRING
+        return str(self._selected_node.label).strip()
+
+    def select_node_by_label(self, label: Optional[str]) -> None:
+        """
+        NAME
+            select_node_by_label - Select one node by label and refresh details.
+        """
+        clean_label = str(label or EMPTY_STRING).strip().lower()
+        selected_node = None
+        if clean_label:
+            selected_node = next(
+                (node for node in self._nodes if str(node.label).strip().lower() == clean_label),
+                None,
+            )
+        self._selected_node = selected_node
+        self._update_details()
+        self._notify_selection_changed()
         self._redraw()
 
     def _active_connection_filters(self) -> set[str]:
@@ -1183,6 +1247,7 @@ class LiveTopologyView(ttk.Frame):
         if selected_node is None:
             self._selected_node = None
             self._update_details()
+        self._notify_selection_changed()
         if callable(self._on_left_click_cb):
             self._on_left_click_cb(self._selected_node, event)
 
@@ -1201,9 +1266,18 @@ class LiveTopologyView(ttk.Frame):
                     return
                 self._selected_node = node
                 self._update_details()
+                self._notify_selection_changed()
                 if callable(self._on_node_right_click_cb):
                     self._on_node_right_click_cb(node, event)
                 return
+
+    def _notify_selection_changed(self) -> None:
+        """
+        NAME
+            _notify_selection_changed - Forward node-selection changes to the owner callback.
+        """
+        if callable(self._on_selection_changed_cb):
+            self._on_selection_changed_cb(self._selected_node)
 
     def _on_mousewheel_zoom(self, event: tk.Event) -> None:
         """
@@ -1350,6 +1424,8 @@ class LiveTopologyView(ttk.Frame):
         NAME
             _update_details - Refresh selection details panel.
         """
+        if not self._detail_vars:
+            return
         node = self._selected_node
         if node is None:
             for key in self._detail_vars:
@@ -1463,10 +1539,15 @@ class LiveTopologyView(ttk.Frame):
         self._detail_vars["selected"].set(selected_text)
 
     def _live_fill(self, node: LiveNode, now_ms: int) -> Optional[str]:
+        evidence_fill = self._evidence_fill(node)
+        if evidence_fill:
+            return evidence_fill
         if self._visibility_enabled:
             vis_fill = self._visibility_fill(node)
             if vis_fill:
                 return vis_fill
+        if getattr(node, "interface", INTERFACE_CAN) != INTERFACE_CAN:
+            return None
         override = self._presence_overrides.get(node.label.lower())
         if override:
             fill = self._presence_fill_from_confidence(override)
@@ -1485,6 +1566,24 @@ class LiveTopologyView(ttk.Frame):
             return PRESENCE_COLOR_HIGH if presence >= PRESENCE_HIGH_CONF else PRESENCE_COLOR_LOW
         if isinstance(last_seen, (int, float)):
             return PRESENCE_COLOR_HIGH
+        return None
+
+    def _evidence_fill(self, node: LiveNode) -> Optional[str]:
+        """
+        NAME
+            _evidence_fill - Resolve fill color from interpreted evidence state.
+        """
+        state = self._evidence_state.get(node.label.lower())
+        if state == EVIDENCE_STATE_OK:
+            return EVIDENCE_COLOR_OK
+        if state == EVIDENCE_STATE_DEGRADED:
+            return EVIDENCE_COLOR_DEGRADED
+        if state == EVIDENCE_STATE_MISSING:
+            return EVIDENCE_COLOR_MISSING
+        if state == EVIDENCE_STATE_IDENTITY:
+            return EVIDENCE_COLOR_IDENTITY
+        if state == EVIDENCE_STATE_UNKNOWN:
+            return EVIDENCE_COLOR_UNKNOWN
         return None
 
     def _visibility_fill(self, node: LiveNode) -> Optional[str]:

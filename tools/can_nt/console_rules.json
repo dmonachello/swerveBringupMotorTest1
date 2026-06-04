@@ -45,6 +45,14 @@
       "device_id_group": 1
     },
     {
+      "name": "TALON_STATUS_SIGNAL_STALE",
+      "regex": "CAN message is stale, data is valid but old\\..*talon fx\\s+(\\d+)\\s+\\(.*\\)\\s+Status Signal\\s+([A-Za-z0-9_]+)",
+      "severity": "WARN",
+      "scope": "device",
+      "event_type": "TALON_STATUS_SIGNAL_STALE",
+      "device_id_group": 1
+    },
+    {
       "name": "SPARK_FW_QUERY_FAIL",
       "regex": "\\[Spark Max\\] IDs: (\\d+), Unable to retrieve SPARK firmware version",
       "severity": "WARN",

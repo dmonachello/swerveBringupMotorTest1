@@ -3143,6 +3143,24 @@ public final class BringupCore {
       attachment.score = result.score;
       attachment.maxScore = result.maxScore;
       attachment.updatedAtMs = nowMs;
+      if (result.evidence != null) {
+        for (ActiveDevicePresenceProbe.ProbeEvidence evidence : result.evidence) {
+          if (evidence == null || evidence.passed || evidence.code == null || evidence.code.isBlank()) {
+            continue;
+          }
+          String summary = evidence.code;
+          if (evidence.observedValue != null && !evidence.observedValue.isBlank()) {
+            summary += "=" + evidence.observedValue;
+          }
+          attachment.failedChecks.add(summary);
+        }
+      }
+      if (result.warnings != null) {
+        attachment.warnings.addAll(result.warnings);
+      }
+      if (result.errors != null) {
+        attachment.errors.addAll(result.errors);
+      }
       latestActivePresenceByLabel.put(result.label.trim().toLowerCase(), attachment);
     }
   }

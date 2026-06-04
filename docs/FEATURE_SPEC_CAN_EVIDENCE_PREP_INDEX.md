@@ -18,6 +18,10 @@ Use this document as the master index for the pre-implementation work.
   - Concrete preparation checklist
   - Defines the user-owned pre-implementation tasks that need to be completed or advanced before full implementation
 
+- `docs/FEATURE_SPEC_CAN_EVIDENCE_UI.md`
+  - UI target spec for the new topology-first `Evidence` tab
+  - Explicitly preserves `Visibility` as the raw/reverse-engineering surface
+
 ## Capture Workspace
 
 - `notes/research/can_evidence/README.md`
@@ -93,9 +97,10 @@ When starting the detailed feature spec and implementation spec, use this order:
 
 1. Read `FEATURE_SPEC_CAN_DEVICE_EVIDENCE_SOURCE_CONTRACTS.md`.
 2. Check `TASK_LIST_CAN_EVIDENCE_SOURCE_PREP.md` for unresolved prep items.
-3. Review the Task 1 run notes and `allDevicesTests.txt` for real observed behavior.
-4. Review the Task 2 console inventory for trusted console evidence semantics.
-5. Review the Task 3 manual outcome vocabulary for the manual-test source contract.
+3. Read `FEATURE_SPEC_CAN_EVIDENCE_UI.md` for the intended user-facing surface.
+4. Review the Task 1 run notes and `allDevicesTests.txt` for real observed behavior.
+5. Review the Task 2 console inventory for trusted console evidence semantics.
+6. Review the Task 3 manual outcome vocabulary for the manual-test source contract.
 
 ## Intended Future Documents
 
