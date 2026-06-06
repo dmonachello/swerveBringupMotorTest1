@@ -16,10 +16,16 @@ class BridgeUiGroupCommandsTest {
   private static final String CMD_SHOW_GROUP = "showGroup";
   private static final String CMD_GROUP_CREATE = "groupCreate";
   private static final String CMD_GROUP_DELETE = "groupDelete";
+  private static final String CMD_GROUP_ADD_DEVICE = "groupAddDevice";
+  private static final String CMD_GROUP_REMOVE_DEVICE = "groupRemoveDevice";
   private static final String CMD_SHOW_DEVICE = "showDevice";
   private static final String CMD_SHOW_GROUPS = "showGroups";
   private static final String CMD_MANUAL_DEVICE_DUTY_SET = "manualDeviceDutySet";
   private static final String CMD_MANUAL_DEVICE_DUTY_CLEAR = "manualDeviceDutyClear";
+  private static final String CMD_MANUAL_GROUP_DUTY_SET = "manualGroupDutySet";
+  private static final String CMD_MANUAL_GROUP_DUTY_CLEAR = "manualGroupDutyClear";
+  private static final String KEY_GROUP = "group";
+  private static final String KEY_DEVICE = "device";
 
   private static final String KEY_NAME = "name";
   private static final String KEY_CONFIRM = "confirm";
@@ -35,6 +41,8 @@ class BridgeUiGroupCommandsTest {
   private static final String MSG_DEVICE_NOT_FOUND_PREFIX = "Device not found: ";
 
   private static final String GROUP_ALPHA = "alpha";
+  private static final String GROUP_ACTIVE = "active-group";
+  private static final String GROUP_MOTORS = "motors";
   private static final String DEVICE_MOTOR_1 = "motor1";
   private static final int DUTY_TEST_ID = 3;
   private static final int DUTY_TEST_MFG = 5;
@@ -197,6 +205,105 @@ class BridgeUiGroupCommandsTest {
     assertFalse(deps.selected.enabled);
   }
 
+  @Test
+  void manualGroupDutySetUsesGroupDependencyPath() {
+    TestDeps deps = new TestDeps();
+    deps.bridgeGroups.createGroup(GROUP_MOTORS);
+    BridgeUiGroupCommands commands = new BridgeUiGroupCommands(deps);
+    JsonObject args = new JsonObject();
+    args.addProperty("group", GROUP_MOTORS);
+    args.addProperty(KEY_DUTY, DUTY_HALF);
+
+    BridgeUiCommandResult result =
+        commands.execute(ingress(CMD_MANUAL_GROUP_DUTY_SET, args), 0.0, true);
+
+    assertTrue(result.ok);
+    assertEquals(GROUP_MOTORS, deps.lastManualGroupName);
+    assertEquals(DUTY_HALF, deps.lastManualGroupDuty);
+  }
+
+  @Test
+  void manualGroupDutyClearUsesGroupDependencyPath() {
+    TestDeps deps = new TestDeps();
+    deps.bridgeGroups.createGroup(GROUP_MOTORS);
+    BridgeUiGroupCommands commands = new BridgeUiGroupCommands(deps);
+    JsonObject args = new JsonObject();
+    args.addProperty("group", GROUP_MOTORS);
+
+    BridgeUiCommandResult result =
+        commands.execute(ingress(CMD_MANUAL_GROUP_DUTY_CLEAR, args), 0.0, true);
+
+    assertTrue(result.ok);
+    assertEquals(GROUP_MOTORS, deps.lastManualGroupCleared);
+  }
+
+  @Test
+  void groupAddDeviceAllowsMembershipAlongsideExistingGroup() {
+    TestDeps deps = new TestDeps();
+    deps.bridgeGroups.createGroup(GROUP_MOTORS);
+    deps.bridgeGroups.createGroup(GROUP_ACTIVE);
+    deps.bridgeGroups.addDevice(GROUP_MOTORS, DEVICE_MOTOR_1, false);
+    deps.deviceByLabel.put(
+        DEVICE_MOTOR_1,
+        new BringupUtil.DeviceEntry(
+            DUTY_TEST_ID,
+            DUTY_TEST_MFG,
+            DUTY_TEST_DEVICE_TYPE,
+            "CAN",
+            DUTY_TEST_VENDOR,
+            DUTY_TEST_TYPE,
+            DEVICE_MOTOR_1,
+            DUTY_TEST_MOTOR,
+            null,
+            null,
+            null));
+    BridgeUiGroupCommands commands = new BridgeUiGroupCommands(deps);
+    JsonObject args = new JsonObject();
+    args.addProperty(KEY_GROUP, GROUP_ACTIVE);
+    args.addProperty(KEY_DEVICE, DEVICE_MOTOR_1);
+
+    BridgeUiCommandResult result =
+        commands.execute(ingress(CMD_GROUP_ADD_DEVICE, args), 0.0, false);
+
+    assertTrue(result.ok);
+    assertTrue(deps.bridgeGroups.hasDevice(GROUP_MOTORS, DEVICE_MOTOR_1));
+    assertTrue(deps.bridgeGroups.hasDevice(GROUP_ACTIVE, DEVICE_MOTOR_1));
+  }
+
+  @Test
+  void groupRemoveDeviceRemovesOnlyTargetGroupMembership() {
+    TestDeps deps = new TestDeps();
+    deps.bridgeGroups.createGroup(GROUP_MOTORS);
+    deps.bridgeGroups.createGroup(GROUP_ACTIVE);
+    deps.bridgeGroups.addDevice(GROUP_MOTORS, DEVICE_MOTOR_1, false);
+    deps.bridgeGroups.addDevice(GROUP_ACTIVE, DEVICE_MOTOR_1, false);
+    deps.deviceByLabel.put(
+        DEVICE_MOTOR_1,
+        new BringupUtil.DeviceEntry(
+            DUTY_TEST_ID,
+            DUTY_TEST_MFG,
+            DUTY_TEST_DEVICE_TYPE,
+            "CAN",
+            DUTY_TEST_VENDOR,
+            DUTY_TEST_TYPE,
+            DEVICE_MOTOR_1,
+            DUTY_TEST_MOTOR,
+            null,
+            null,
+            null));
+    BridgeUiGroupCommands commands = new BridgeUiGroupCommands(deps);
+    JsonObject args = new JsonObject();
+    args.addProperty(KEY_GROUP, GROUP_ACTIVE);
+    args.addProperty(KEY_DEVICE, DEVICE_MOTOR_1);
+
+    BridgeUiCommandResult result =
+        commands.execute(ingress(CMD_GROUP_REMOVE_DEVICE, args), 0.0, false);
+
+    assertTrue(result.ok);
+    assertTrue(deps.bridgeGroups.hasDevice(GROUP_MOTORS, DEVICE_MOTOR_1));
+    assertFalse(deps.bridgeGroups.hasDevice(GROUP_ACTIVE, DEVICE_MOTOR_1));
+  }
+
   private static BridgeUiIngressPolicy.Ingress ingress(String name, JsonObject args) {
     return new BridgeUiIngressPolicy.Ingress(
         name,
@@ -221,6 +328,9 @@ class BridgeUiGroupCommandsTest {
     private boolean lastWantsJson;
     private String lastShowText = EMPTY;
     private final String expectedGroupsText = "groupsText";
+    private String lastManualGroupName = EMPTY;
+    private double lastManualGroupDuty = 0.0;
+    private String lastManualGroupCleared = EMPTY;
 
     @Override
     public Boolean parseUiArgBoolean(JsonObject args, String key) {
@@ -389,6 +499,25 @@ class BridgeUiGroupCommandsTest {
     public boolean clearManualDeviceDuty(String deviceName) {
       selected.device = "";
       selected.enabled = false;
+      return true;
+    }
+
+    @Override
+    public boolean applyManualGroupDuty(String groupName, double duty) {
+      if (groupName == null || groupName.isBlank() || duty < -1.0 || duty > 1.0) {
+        return false;
+      }
+      lastManualGroupName = groupName;
+      lastManualGroupDuty = duty;
+      return true;
+    }
+
+    @Override
+    public boolean clearManualGroupDuty(String groupName) {
+      if (groupName == null || groupName.isBlank()) {
+        return false;
+      }
+      lastManualGroupCleared = groupName;
       return true;
     }
   }

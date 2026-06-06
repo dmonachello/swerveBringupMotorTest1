@@ -107,6 +107,7 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_APPLIED_V = "appliedV";
   private static final String JSON_KEY_TEMP_C = "tempC";
   private static final String JSON_KEY_VEL_RPM = "velRpm";
+  private static final String JSON_KEY_POSITION_ROT = "positionRot";
   private static final String JSON_KEY_BUS_V = "busV";
   private static final String JSON_KEY_LAST_ERROR = "lastError";
   private static final String JSON_KEY_FAULTS_RAW = "faultsRaw";
@@ -151,7 +152,10 @@ public class BridgeUiCommandHandler {
   private static final String CMD_ACTIVE_NEXT = "activeNext";
   private static final String CMD_MANUAL_DEVICE_DUTY_SET = "manualDeviceDutySet";
   private static final String CMD_MANUAL_DEVICE_DUTY_CLEAR = "manualDeviceDutyClear";
+  private static final String CMD_MANUAL_GROUP_DUTY_SET = "manualGroupDutySet";
+  private static final String CMD_MANUAL_GROUP_DUTY_CLEAR = "manualGroupDutyClear";
   private static final String GROUP_ACTIVE = "active-group";
+  private static final String PROFILE_DEVICE_TYPE_MOTOR = "motor";
   private static final String TEXT_GROUP_SKIPPED_MEMBERS_HEADER = "Skipped unsupported members:\n";
   private static final String JSON_KEY_WARNINGS = "warnings";
   private static final String JSON_KEY_GROUP = "group";
@@ -839,6 +843,16 @@ public class BridgeUiCommandHandler {
       @Override
       public boolean clearManualDeviceDuty(String deviceName) {
         return BridgeUiCommandHandler.this.clearManualDeviceDuty(deviceName);
+      }
+
+      @Override
+      public boolean applyManualGroupDuty(String groupName, double duty) {
+        return BridgeUiCommandHandler.this.applyManualGroupDuty(groupName, duty);
+      }
+
+      @Override
+      public boolean clearManualGroupDuty(String groupName) {
+        return BridgeUiCommandHandler.this.clearManualGroupDuty(groupName);
       }
     });
 
@@ -1679,6 +1693,8 @@ public class BridgeUiCommandHandler {
       case "printTestsOverview":
       case "selectTestByName":
       case "showTests":
+      case CMD_MANUAL_GROUP_DUTY_SET:
+      case CMD_MANUAL_GROUP_DUTY_CLEAR:
         return true;
       default:
         return false;
@@ -1907,6 +1923,10 @@ public class BridgeUiCommandHandler {
       if (label.isBlank()) {
         continue;
       }
+      String profileType = BringupUtil.getConfiguredDeviceTypeByLabel(label);
+      if (!PROFILE_DEVICE_TYPE_MOTOR.equalsIgnoreCase(profileType)) {
+        continue;
+      }
       if (!isDeviceTotallyReady(label)) {
         warnings.add(WARNING_SKIPPED_PREFIX + label);
         continue;
@@ -2010,6 +2030,7 @@ public class BridgeUiCommandHandler {
       case "groupEnable":
       case "groupMemberEnable":
       case CMD_MANUAL_DEVICE_DUTY_SET:
+      case CMD_MANUAL_GROUP_DUTY_SET:
         return true;
       case "selectedModeSet": {
         Boolean enabled = parseUiArgBoolean(args, "enabled");
@@ -2032,6 +2053,7 @@ public class BridgeUiCommandHandler {
       case "groupDisable":
       case "groupMemberDisable":
       case CMD_MANUAL_DEVICE_DUTY_CLEAR:
+      case CMD_MANUAL_GROUP_DUTY_CLEAR:
         return true;
       case "selectedModeSet": {
         Boolean enabled = parseUiArgBoolean(args, "enabled");
@@ -2447,6 +2469,8 @@ public class BridgeUiCommandHandler {
       case "selectedModeSet":
       case CMD_MANUAL_DEVICE_DUTY_SET:
       case CMD_MANUAL_DEVICE_DUTY_CLEAR:
+      case CMD_MANUAL_GROUP_DUTY_SET:
+      case CMD_MANUAL_GROUP_DUTY_CLEAR:
       case CMD_PROFILE_ACTIVATE:
       case CMD_RUNTIME_ACTIVATE:
       case CMD_RUNTIME_DEACTIVATE:
@@ -2555,6 +2579,77 @@ public class BridgeUiCommandHandler {
         : bridgeSelected().device != null ? bridgeSelected().device.trim() : TEXT_EMPTY;
     if (!target.isBlank()) {
       core().setDutyByDeviceLabel(target, SPEED_ZERO);
+    }
+    bridgeSelected().enabled = false;
+    bridgeSelected().device = TEXT_EMPTY;
+    return true;
+  }
+
+  /**
+   * NAME
+   *   applyManualGroupDuty - Apply direct manual duty to every enabled motor member in one group.
+   *
+   * PARAMETERS
+   *   groupName - Target runtime group name.
+   *   duty - Requested duty in [-1, 1].
+   *
+   * RETURNS
+   *   True when at least one enabled motor member accepted the duty request.
+   */
+  private boolean applyManualGroupDuty(String groupName, double duty) {
+    if (core() == null || groupName == null || groupName.isBlank()) {
+      return false;
+    }
+    BridgeGroupManager.Group group = bridgeGroups().getGroup(groupName);
+    if (group == null || !group.enabled) {
+      return false;
+    }
+    double clamped = Math.max(DUTY_MIN, Math.min(DUTY_MAX, duty));
+    boolean appliedAny = false;
+    bridgeSelected().enabled = false;
+    bridgeSelected().device = TEXT_EMPTY;
+    for (BridgeGroupManager.MemberState member : group.members.values()) {
+      if (member == null || !member.enabled || member.label == null || member.label.isBlank()) {
+        continue;
+      }
+      BringupUtil.DeviceEntry entry = findDeviceEntryByLabel(member.label);
+      if (entry == null) {
+        continue;
+      }
+      if (core().setDutyByDeviceLabel(member.label, clamped)) {
+        appliedAny = true;
+      }
+    }
+    return appliedAny;
+  }
+
+  /**
+   * NAME
+   *   clearManualGroupDuty - Stop every enabled motor member in one group.
+   *
+   * PARAMETERS
+   *   groupName - Target runtime group name.
+   *
+   * RETURNS
+   *   True when the group existed and the clear path ran.
+   */
+  private boolean clearManualGroupDuty(String groupName) {
+    if (core() == null || groupName == null || groupName.isBlank()) {
+      return false;
+    }
+    BridgeGroupManager.Group group = bridgeGroups().getGroup(groupName);
+    if (group == null || !group.enabled) {
+      return false;
+    }
+    for (BridgeGroupManager.MemberState member : group.members.values()) {
+      if (member == null || !member.enabled || member.label == null || member.label.isBlank()) {
+        continue;
+      }
+      BringupUtil.DeviceEntry entry = findDeviceEntryByLabel(member.label);
+      if (entry == null) {
+        continue;
+      }
+      core().setDutyByDeviceLabel(member.label, SPEED_ZERO);
     }
     bridgeSelected().enabled = false;
     bridgeSelected().device = TEXT_EMPTY;
@@ -3280,6 +3375,9 @@ public class BridgeUiCommandHandler {
           if (rev.velRpm != null) {
             obj.addProperty(JSON_KEY_VEL_RPM, rev.velRpm);
           }
+          if (rev.positionRot != null) {
+            obj.addProperty(JSON_KEY_POSITION_ROT, rev.positionRot);
+          }
           if (rev.tempC != null) {
             obj.addProperty(JSON_KEY_TEMP_C, rev.tempC);
           }
@@ -3308,6 +3406,9 @@ public class BridgeUiCommandHandler {
           }
           if (ctre.velRpm != null) {
             obj.addProperty(JSON_KEY_VEL_RPM, ctre.velRpm);
+          }
+          if (ctre.positionRot != null) {
+            obj.addProperty(JSON_KEY_POSITION_ROT, ctre.positionRot);
           }
           if (ctre.tempC != null) {
             obj.addProperty(JSON_KEY_TEMP_C, ctre.tempC);

@@ -391,10 +391,21 @@ class VisibilityProvider:
                 for _source_id, metric in state.metrics.items():
                     if metric.first_seen_ms <= VIS_INT_ZERO:
                         continue
-                    elapsed_ms = now_ms - metric.first_seen_ms
+                    tick_start_ms = (
+                        metric.last_tick_ms
+                        if metric.last_tick_ms > VIS_INT_ZERO
+                        else metric.first_seen_ms
+                    )
+                    tick_start_count = (
+                        metric.last_tick_count
+                        if metric.last_tick_ms > VIS_INT_ZERO
+                        else VIS_INT_ZERO
+                    )
+                    elapsed_ms = now_ms - tick_start_ms
                     if elapsed_ms <= VIS_INT_ZERO:
                         continue
-                    metric.frames_per_sec = float(metric.msg_count) / (
+                    delta_count = max(VIS_INT_ZERO, metric.msg_count - tick_start_count)
+                    metric.frames_per_sec = float(delta_count) / (
                         float(elapsed_ms) / VIS_MS_PER_SEC
                     )
                     metric.last_tick_ms = now_ms
@@ -402,10 +413,21 @@ class VisibilityProvider:
                 for raw_state in state.raw_ids.values():
                     if raw_state.first_seen_ms <= VIS_INT_ZERO:
                         continue
-                    elapsed_ms = now_ms - raw_state.first_seen_ms
+                    tick_start_ms = (
+                        raw_state.last_tick_ms
+                        if raw_state.last_tick_ms > VIS_INT_ZERO
+                        else raw_state.first_seen_ms
+                    )
+                    tick_start_count = (
+                        raw_state.last_tick_count
+                        if raw_state.last_tick_ms > VIS_INT_ZERO
+                        else VIS_INT_ZERO
+                    )
+                    elapsed_ms = now_ms - tick_start_ms
                     if elapsed_ms <= VIS_INT_ZERO:
                         continue
-                    raw_state.frames_per_sec = float(raw_state.msg_count) / (
+                    delta_count = max(VIS_INT_ZERO, raw_state.msg_count - tick_start_count)
+                    raw_state.frames_per_sec = float(delta_count) / (
                         float(elapsed_ms) / VIS_MS_PER_SEC
                     )
                     raw_state.last_tick_ms = now_ms

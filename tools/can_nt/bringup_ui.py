@@ -56,7 +56,14 @@ from tools.common.tests_domain import collect_available_tests
 from tools.common.config_lifecycle import ConfigLifecycleService
 from tools.common.profiles import list_profile_names
 from tools.common.profile_constants import KEY_DEVICE_TYPE, KEY_ID, KEY_LABEL as PROFILE_KEY_LABEL, KEY_MANUFACTURER
+from tools.common.profile_constants import KEY_ENABLED
 from tools.common.time_utils import timestamp_hms
+from tools.common.motor_runtime_verdict import (
+    infer_motor_runtime_verdict,
+    runtime_motor_attachment,
+    RESULT_ELECTRICAL,
+    RESULT_STALLED,
+)
 from tools.common.app_versions import (
     APP_BRINGUP_UI_NAME,
     VERSIONS,
@@ -135,6 +142,7 @@ PROFILE_NONE = "(none)"
 NT_UI_STATE_SELECTED_PROFILE = "state/selectedProfile"
 NT_UI_STATE_ACTIVE_RUNTIME_PROFILE = "state/activeRuntimeProfile"
 DEFAULT_RUNTIME_STATE_RATE_HZ = 2.0
+ACTIVE_MANUAL_RUNTIME_STATE_RATE_HZ = 10.0
 DEFAULT_RUNTIME_STATE_RATE_TEXT = "2"
 BUTTON_RUNTIME_ACTIVATE = "Runtime Activate"
 BUTTON_RUNTIME_DEACTIVATE = "Runtime Deactivate"
@@ -150,11 +158,25 @@ OUTPUT_PUSH_START_FMT = "PUSH {path} profile={profile}"
 OUTPUT_DOWNLOAD_START_FMT = "DOWNLOAD {path}"
 OUTPUT_RUNTIME_ACTIVATE_FMT = "CMD runtimeActivate \"{profile}\""
 OUTPUT_RUNTIME_DEACTIVATE = "CMD runtimeDeactivate"
+OUTPUT_GROUP_RUN_FMT = "CMD groupRunTest \"{group}\""
+OUTPUT_OWNER_REQUIRED = "Owning control client required. Use Reconnect UI Session to reclaim control."
 DOWNLOAD_FILENAME = "bringup_system.downloaded.json"
 CONFIG_FILE_TYPES = (("JSON files", "*.json"), ("All files", "*.*"))
 DEVICE_TYPE_MOTOR = "2"
+CMD_GROUP_RUN_TEST = "groupRunTest"
+CMD_GROUP_ADD_DEVICE = "groupAddDevice"
+CMD_GROUP_REMOVE_DEVICE = "groupRemoveDevice"
+GROUP_RUN_ARG_GROUP = "group"
+GROUP_ACTIVE_NAME = "active-group"
+GROUP_RUN_ARG_DEVICE = "device"
+GROUP_KEY_GROUP = "group"
+GROUP_KEY_MEMBERS = "members"
+GROUP_MEMBER_KEY_LABEL = "label"
+ACTIVE_GROUP_RESULT_COMMANDS = {"activeadd", "activenext"}
 MANUAL_DUTY_CMD_SET = "manualDeviceDutySet"
 MANUAL_DUTY_CMD_CLEAR = "manualDeviceDutyClear"
+MANUAL_GROUP_DUTY_CMD_SET = "manualGroupDutySet"
+MANUAL_GROUP_DUTY_CMD_CLEAR = "manualGroupDutyClear"
 MANUAL_DUTY_ARG_NAME = "name"
 MANUAL_DUTY_ARG_DUTY = "duty"
 MANUAL_DUTY_MIN = -1.0
@@ -169,10 +191,13 @@ MANUAL_DUTY_SEND_MIN_INTERVAL_SEC = 0.05
 MANUAL_DUTY_SEND_MIN_INTERVAL_LIVE_SEC = 0.20
 MANUAL_DUTY_STATUS_FMT = "Manual motor duty active: {label} = {duty:.2f}"
 MANUAL_DUTY_STOPPED_FMT = "Manual motor duty cleared: {label}"
+MANUAL_DUTY_GROUP_STATUS_FMT = "Manual group duty active: {label} = {duty:.2f}"
+MANUAL_DUTY_GROUP_STOPPED_FMT = "Manual group duty cleared: {label}"
 MANUAL_DUTY_BLOCKED_TEXT = "Manual motor control blocked: not connected."
 MANUAL_DUTY_BUSY_TEXT = "Manual motor control blocked: command in flight."
 MANUAL_DUTY_SCALE_ELEMENT_SLIDER = "slider"
 MANUAL_DUTY_NO_LABEL = ""
+MANUAL_DUTY_NO_TARGETS: List[str] = []
 MANUAL_DUTY_VALUE_FMT = "{value:.2f}"
 TEST_NAME_EMPTY = ""
 VERSION_APP_NAME = APP_BRINGUP_UI_NAME
@@ -190,6 +215,7 @@ UI_PREFS_KEY_COMMANDS = "commands"
 UI_PREFS_KEY_VISIBLE = "visible"
 UI_PREFS_KEY_AUTO_SELECT_DEFAULT_PROFILE = "autoSelectDefaultProfileOnStartup"
 UI_PREFS_KEY_SHOW_VISIBILITY_TAB = "showVisibilityTab"
+UI_PREFS_KEY_SHOW_WALL_CLOCK = "showWallClock"
 
 # Constants (visibility UI).
 VIS_TAB_LABEL = "Visibility"
@@ -224,6 +250,7 @@ VIS_RENAME_SUCCESS_FMT = "Renamed discovered device: {old_label} -> {new_label}"
 VIS_DEFINED_SECTION_LABEL = "Defined Nodes"
 VIS_UNRECOGNIZED_SECTION_LABEL = "Unrecognized Nodes"
 VIS_CTRE_RAW_SECTION_LABEL = "CTRE Raw Decode"
+VIS_CLEAR_PANELS_BUTTON = "Clear Panels"
 VIS_PACKETS_UNKNOWN = "--"
 VIS_RATE_UNKNOWN = "--"
 VIS_RATE_FMT = "{value:.1f}/s"
@@ -328,6 +355,7 @@ EVIDENCE_COL_DEVICE = "Device"
 EVIDENCE_COL_PASSIVE = "Passive"
 EVIDENCE_COL_CONSOLE = "Console"
 EVIDENCE_COL_PROBE = "Probe"
+EVIDENCE_COL_PROBE_SCORE = "Probe Score"
 EVIDENCE_COL_MANUAL = "Manual"
 EVIDENCE_COL_EXISTENCE = "Existence"
 EVIDENCE_COL_OPERABILITY = "Operability"
@@ -335,6 +363,7 @@ EVIDENCE_COL_IDENTITY = "Identity"
 EVIDENCE_COL_CONFIDENCE = "Confidence"
 EVIDENCE_COL_DEVICE_WIDTH = 180
 EVIDENCE_COL_SOURCE_WIDTH = 96
+EVIDENCE_COL_PROBE_SCORE_WIDTH = 92
 EVIDENCE_COL_RESULT_WIDTH = 94
 EVIDENCE_STATUS_OK = "OK"
 EVIDENCE_STATUS_PRESENT = "PRESENT"
@@ -379,6 +408,7 @@ EVIDENCE_MANUAL_OPERABILITY_WINDOW_SEC = 120.0
 EVIDENCE_MANUAL_IDENTITY_WINDOW_SEC = 900.0
 EVIDENCE_MOTION_CMD_THRESHOLD_DUTY = 0.15
 EVIDENCE_MOTION_MIN_RPM = 5.0
+EVIDENCE_MOTION_MIN_POSITION_DELTA_ROT = 0.05
 EVIDENCE_MANUAL_MOTION_WINDOW_SEC = 3.0
 EVIDENCE_MANUAL_MOTION_SETTLE_SEC = 0.4
 EVIDENCE_MANUAL_NOTE_AGE_IDENTITY_ONLY = "Manual result is older than the operability window; using it only as identity evidence."
@@ -402,6 +432,7 @@ EVIDENCE_FIELD_CMD_DUTY = "cmdDuty"
 EVIDENCE_FIELD_APPLIED_DUTY = "appliedDuty"
 EVIDENCE_FIELD_VEL_RPM = "velRpm"
 EVIDENCE_FIELD_MOTOR_CURRENT_A = "motorCurrentA"
+EVIDENCE_FIELD_POSITION_ROT = "positionRot"
 EVIDENCE_MANUAL_LINE_RESULT = "result={value}"
 EVIDENCE_MANUAL_LINE_AGE = "age={value}"
 EVIDENCE_MANUAL_LINE_OBSERVED = "observed={value}"
@@ -409,7 +440,7 @@ EVIDENCE_MANUAL_LINE_NOTES = "note={value}"
 EVIDENCE_MANUAL_LINE_RECORDED = "at={value}"
 EVIDENCE_MANUAL_LINE_AUTO_RESULT = "autoResult={value}"
 EVIDENCE_MANUAL_LINE_MOTION = "motionCheck={value}"
-EVIDENCE_MANUAL_LINE_MOTION_VALUES = "cmdDuty={cmd} | appliedDuty={applied} | velRpm={vel} | motorCurrentA={current}"
+EVIDENCE_MANUAL_LINE_MOTION_VALUES = "cmdDuty={cmd} | appliedDuty={applied} | velRpm={vel} | positionRot={position} | positionDeltaRot={delta} | motorCurrentA={current}"
 EVIDENCE_MANUAL_MOTION_ACTIVE = "active"
 EVIDENCE_MANUAL_MOTION_PASS = "rotation_detected"
 EVIDENCE_MANUAL_MOTION_FAIL = "no_rotation_detected"
@@ -757,6 +788,15 @@ def _load_ui_show_visibility_tab_pref() -> bool:
     return bool(payload.get(UI_PREFS_KEY_SHOW_VISIBILITY_TAB, True))
 
 
+def _load_ui_show_wall_clock_pref() -> bool:
+    """
+    NAME
+        _load_ui_show_wall_clock_pref - Return whether the header wall clock should be shown.
+    """
+    payload = _load_ui_prefs_payload()
+    return bool(payload.get(UI_PREFS_KEY_SHOW_WALL_CLOCK, True))
+
+
 def _action_sections() -> List[Tuple[str, List[Tuple[str, Optional[str]]]]]:
     """
     NAME
@@ -1010,12 +1050,13 @@ class BringupControlUI(tk.Tk):
         self._nt_connected = False
         self._timeout_sec = 1.5
         self._client_id = str(uuid.uuid4())
-        self._session_id: Optional[str] = None
+        self._robot_ui_session_id: Optional[str] = None
         self._handshake_done = False
         self._handshake_inflight = False
         self._last_handshake_attempt = 0.0
         self._handshake_min_interval = 2.0
         self._handshake_warn_last = 0.0
+        self._owner_required = False
         self._keepalive_interval = 1.0
         self._last_keepalive = 0.0
         self._last_selected_profile = ""
@@ -1076,6 +1117,8 @@ class BringupControlUI(tk.Tk):
             value=MANUAL_DUTY_VALUE_FMT.format(value=MANUAL_DUTY_DEFAULT)
         )
         self._manual_duty_label = MANUAL_DUTY_NO_LABEL
+        self._manual_duty_targets: List[str] = []
+        self._manual_duty_group_name = MANUAL_DUTY_NO_LABEL
         self._manual_duty_last_sent_value: Optional[float] = None
         self._manual_duty_last_sent_at = 0.0
         self._manual_duty_pending_after: Optional[str] = None
@@ -1088,6 +1131,7 @@ class BringupControlUI(tk.Tk):
         self._ui_command_prefs = _load_ui_command_prefs()
         self._ui_auto_select_default_profile = _load_ui_auto_select_default_pref()
         self._ui_show_visibility_tab = _load_ui_show_visibility_tab_pref()
+        self._ui_show_wall_clock = _load_ui_show_wall_clock_pref()
         self._ui_pref_vars: Dict[str, tk.BooleanVar] = {}
         self._build_menu()
         self._build_ui()
@@ -1128,6 +1172,12 @@ class BringupControlUI(tk.Tk):
             label="Show Visibility Tab",
             variable=self._show_visibility_tab_var,
             command=self._set_show_visibility_tab_pref,
+        )
+        self._show_wall_clock_var = tk.BooleanVar(value=self._ui_show_wall_clock)
+        prefs_menu.add_checkbutton(
+            label="Show Wall Clock",
+            variable=self._show_wall_clock_var,
+            command=self._set_show_wall_clock_pref,
         )
         prefs_menu.add_separator()
         for _section, items in _action_sections():
@@ -1208,12 +1258,22 @@ class BringupControlUI(tk.Tk):
         running = ttk.Label(header, text="Running: (none)", foreground="#374151")
         running.pack(side="left", padx=(16, 4))
         self._running_label = running
+        wall_clock_frame = ttk.Frame(header)
+        wall_clock_frame.pack(side="left", padx=(12, 0))
+        ttk.Label(wall_clock_frame, text=LIVE_CLOCK_LABEL).pack(side="left", padx=(0, 4))
+        ttk.Label(
+            wall_clock_frame,
+            textvariable=self._live_clock_var,
+            foreground="#374151",
+        ).pack(side="left")
+        self._wall_clock_frame = wall_clock_frame
         self._pending_label = ttk.Label(header, text="", foreground="#b45309")
         self._pending_label.pack(side="left", padx=(16, 4))
 
         status = ttk.Label(header, text="NT Disconnected", foreground="#b32323")
         status.pack(side="right", padx=6)
         self._status_label = status
+        self._apply_wall_clock_visibility()
 
         body = ttk.Frame(self, padding=10)
         body.pack(fill="both", expand=True)
@@ -1354,6 +1414,8 @@ class BringupControlUI(tk.Tk):
             parent,
             profile_name,
             on_node_right_click=self._on_live_node_right_click,
+            on_group_right_click=self._on_live_group_right_click,
+            on_active_group_member_toggled=self._on_active_group_member_toggled,
             on_left_click=self._on_live_view_left_click,
         )
         self._live_view.set_show_groups(self._live_groups_var.get())
@@ -1367,7 +1429,15 @@ class BringupControlUI(tk.Tk):
         """
         header = ttk.Frame(parent, padding=VIS_PAD_HEADER)
         header.pack(fill=VIS_FILL_X)
-        ttk.Label(header, textvariable=self._visibility_summary_var).pack(anchor=VIS_TREE_ANCHOR_W)
+        ttk.Label(header, textvariable=self._visibility_summary_var).pack(
+            side=VIS_PACK_SIDE_LEFT,
+            anchor=VIS_TREE_ANCHOR_W,
+        )
+        ttk.Button(
+            header,
+            text=VIS_CLEAR_PANELS_BUTTON,
+            command=self._clear_visibility_panels,
+        ).pack(side=VIS_PACK_SIDE_RIGHT)
 
         body = ttk.Panedwindow(parent, orient="horizontal")
         body.pack(fill=VIS_FILL_BOTH, expand=True, padx=8, pady=8)
@@ -1380,6 +1450,8 @@ class BringupControlUI(tk.Tk):
             topology_frame,
             profile_name,
             on_node_right_click=self._on_live_node_right_click,
+            on_group_right_click=self._on_live_group_right_click,
+            on_active_group_member_toggled=self._on_active_group_member_toggled,
             on_left_click=self._on_live_view_left_click,
         )
         self._visibility_live_view.set_show_groups(self._live_groups_var.get())
@@ -1437,6 +1509,28 @@ class BringupControlUI(tk.Tk):
         table.configure(yscrollcommand=scrollbar.set)
         return table
 
+    def _clear_visibility_panels(self) -> None:
+        """
+        NAME
+            _clear_visibility_panels - Clear the three Visibility right-hand subpanels.
+        """
+        self._visibility_selected_label = NT_VALUE_EMPTY
+        self._visibility_selected_unexpected = False
+        self._visibility_row_meta = {}
+        if self._visibility_table is not None:
+            for row in self._visibility_table.get_children():
+                self._visibility_table.delete(row)
+            self._visibility_table.insert(VIS_TREE_ROOT, VIS_TREE_END, values=[VIS_EMPTY_MESSAGE])
+        if self._visibility_unrecognized_table is not None:
+            for row in self._visibility_unrecognized_table.get_children():
+                self._visibility_unrecognized_table.delete(row)
+            self._visibility_unrecognized_table.insert(
+                VIS_TREE_ROOT,
+                VIS_TREE_END,
+                values=[VIS_EMPTY_MESSAGE],
+            )
+        self._populate_ctre_raw_table([])
+
     def _build_evidence_panel(self, parent: tk.Widget) -> None:
         """
         NAME
@@ -1455,6 +1549,8 @@ class BringupControlUI(tk.Tk):
             topology_frame,
             profile_name,
             on_node_right_click=self._on_live_node_right_click,
+            on_group_right_click=self._on_live_group_right_click,
+            on_active_group_member_toggled=self._on_active_group_member_toggled,
             on_left_click=self._on_live_view_left_click,
             on_selection_changed=self._on_evidence_topology_selected,
             show_selection_panel=False,
@@ -1489,6 +1585,7 @@ class BringupControlUI(tk.Tk):
                 EVIDENCE_COL_PASSIVE,
                 EVIDENCE_COL_CONSOLE,
                 EVIDENCE_COL_PROBE,
+                EVIDENCE_COL_PROBE_SCORE,
                 EVIDENCE_COL_MANUAL,
                 EVIDENCE_COL_EXISTENCE,
                 EVIDENCE_COL_OPERABILITY,
@@ -1604,6 +1701,7 @@ class BringupControlUI(tk.Tk):
             EVIDENCE_COL_PASSIVE,
             EVIDENCE_COL_CONSOLE,
             EVIDENCE_COL_PROBE,
+            EVIDENCE_COL_PROBE_SCORE,
             EVIDENCE_COL_MANUAL,
             EVIDENCE_COL_EXISTENCE,
             EVIDENCE_COL_OPERABILITY,
@@ -1614,6 +1712,8 @@ class BringupControlUI(tk.Tk):
         for column in columns:
             anchor = VIS_TREE_ANCHOR_W if column == EVIDENCE_COL_DEVICE else VIS_TREE_ANCHOR_CENTER
             width = EVIDENCE_COL_DEVICE_WIDTH if column == EVIDENCE_COL_DEVICE else EVIDENCE_COL_SOURCE_WIDTH
+            if column == EVIDENCE_COL_PROBE_SCORE:
+                width = EVIDENCE_COL_PROBE_SCORE_WIDTH
             if column in (EVIDENCE_COL_EXISTENCE, EVIDENCE_COL_OPERABILITY, EVIDENCE_COL_IDENTITY, EVIDENCE_COL_CONFIDENCE):
                 width = EVIDENCE_COL_RESULT_WIDTH
             table.heading(column, text=column, anchor=anchor)
@@ -1875,8 +1975,112 @@ class BringupControlUI(tk.Tk):
             label = str(getattr(node, "label", NT_VALUE_EMPTY)).strip()
         if not label:
             return
+        self._open_manual_duty_targets(label, [label], int(event.x_root), int(event.y_root))
+
+    def _on_live_group_right_click(self, group: Dict[str, Any], _event: tk.Event) -> None:
+        """
+        NAME
+            _on_live_group_right_click - Open one manual-duty popup targeting the clicked group's motor members.
+        """
+        group_name = str(group.get("name", NT_VALUE_EMPTY)).strip()
+        if not group_name:
+            return
+        group_payload = group.get(GROUP_KEY_GROUP)
+        if not isinstance(group_payload, dict):
+            self._append_output(f"Group payload not available for {group_name}.")
+            return
+        targets = self._group_motor_targets(group_payload)
+        if not targets:
+            self._append_output(f"Group has no motor targets: {group_name}")
+            return
+        self._open_manual_group_duty_targets(group_name, targets, int(_event.x_root), int(_event.y_root))
+
+    def _on_active_group_member_toggled(self, label: str, enabled: bool) -> None:
+        """
+        NAME
+            _on_active_group_member_toggled - Add or remove one device from active-group from the Live Topology side panel.
+        """
+        clean_label = str(label or NT_VALUE_EMPTY).strip()
+        if not clean_label:
+            return
+        if not self._tcp_connected:
+            self._append_output(OUTPUT_NOT_CONNECTED)
+            return
+        if self._tracker.is_pending():
+            self._append_output(OUTPUT_BUSY)
+            return
+        command = CMD_GROUP_ADD_DEVICE if enabled else CMD_GROUP_REMOVE_DEVICE
+        args = {
+            GROUP_RUN_ARG_GROUP: GROUP_ACTIVE_NAME,
+            GROUP_RUN_ARG_DEVICE: clean_label,
+        }
+        self._append_output(
+            f"{timestamp_hms()} CMD {command} \"{GROUP_ACTIVE_NAME}\" \"{clean_label}\""
+        )
+        self._last_cmd = (command, args)
+        seq = self._send_tcp_command(command, args)
+        if seq is not None:
+            self.after_idle(self._request_runtime_state_refresh)
+
+    def _open_manual_duty_targets(self, label: str, targets: List[str], x_root: int, y_root: int) -> None:
+        """
+        NAME
+            _open_manual_duty_targets - Validate manual-duty preconditions then open the shared popup for one or more targets.
+        """
+        if not self._tcp_connected:
+            self._append_output(MANUAL_DUTY_BLOCKED_TEXT)
+            return
+        if self._tracker.is_pending():
+            self._append_output(MANUAL_DUTY_BUSY_TEXT)
+            return
         self._request_runtime_state_refresh()
-        self._open_manual_duty_popup(label, int(event.x_root), int(event.y_root))
+        self._open_manual_duty_popup(label, targets, MANUAL_DUTY_NO_LABEL, x_root, y_root)
+
+    def _open_manual_group_duty_targets(
+        self,
+        group_name: str,
+        targets: List[str],
+        x_root: int,
+        y_root: int,
+    ) -> None:
+        """
+        NAME
+            _open_manual_group_duty_targets - Validate group manual-duty preconditions then open the shared popup.
+        """
+        if not self._tcp_connected:
+            self._append_output(MANUAL_DUTY_BLOCKED_TEXT)
+            return
+        if self._tracker.is_pending():
+            self._append_output(MANUAL_DUTY_BUSY_TEXT)
+            return
+        self._request_runtime_state_refresh()
+        self._open_manual_duty_popup(group_name, targets, group_name, x_root, y_root)
+        for live_view in self._iter_live_views():
+            live_view.set_group_run_inspector(group_name, targets)
+
+    def _group_motor_targets(self, group_payload: Dict[str, Any]) -> List[str]:
+        """
+        NAME
+            _group_motor_targets - Return enabled motor member labels for one clicked group payload.
+        """
+        members = group_payload.get(GROUP_KEY_MEMBERS)
+        if not isinstance(members, list):
+            return []
+        targets: List[str] = []
+        for member in members:
+            if not isinstance(member, dict):
+                continue
+            label = str(member.get(GROUP_MEMBER_KEY_LABEL, NT_VALUE_EMPTY)).strip()
+            if not label:
+                continue
+            enabled = member.get(KEY_ENABLED)
+            if isinstance(enabled, bool) and not enabled:
+                continue
+            device = self._profile_devices.get(label.lower(), {})
+            device_type = str(device.get(DEVICE_KEY_TYPE, NT_VALUE_EMPTY)).strip()
+            if device_type == DEVICE_TYPE_MOTOR:
+                targets.append(label)
+        return targets
 
     def _on_live_view_left_click(self, _node: object, _event: tk.Event) -> None:
         """
@@ -1887,7 +2091,14 @@ class BringupControlUI(tk.Tk):
         if self._manual_duty_popup is not None:
             self._close_manual_duty_popup(stop_motor=True)
 
-    def _open_manual_duty_popup(self, label: str, x_root: int, y_root: int) -> None:
+    def _open_manual_duty_popup(
+        self,
+        label: str,
+        targets: List[str],
+        group_name: str,
+        x_root: int,
+        y_root: int,
+    ) -> None:
         """
         NAME
             _open_manual_duty_popup - Show a popup slider for manual motor duty.
@@ -1918,6 +2129,8 @@ class BringupControlUI(tk.Tk):
         ttk.Label(body, textvariable=self._manual_duty_value_var).pack(anchor="center")
         self._manual_duty_popup = popup
         self._manual_duty_label = label
+        self._manual_duty_targets = [str(target).strip() for target in targets if str(target).strip()]
+        self._manual_duty_group_name = str(group_name or MANUAL_DUTY_NO_LABEL).strip()
         self._manual_duty_var.set(MANUAL_DUTY_DEFAULT)
         self._manual_duty_value_var.set(
             MANUAL_DUTY_VALUE_FMT.format(value=MANUAL_DUTY_DEFAULT)
@@ -1956,22 +2169,28 @@ class BringupControlUI(tk.Tk):
                 pass
             self._manual_duty_pending_after = None
         label = self._manual_duty_label
+        targets = list(self._manual_duty_targets)
+        group_name = self._manual_duty_group_name
         popup = self._manual_duty_popup
         self._manual_duty_popup = None
         self._manual_duty_label = MANUAL_DUTY_NO_LABEL
+        self._manual_duty_targets = MANUAL_DUTY_NO_TARGETS.copy()
+        self._manual_duty_group_name = MANUAL_DUTY_NO_LABEL
         self._manual_duty_last_sent_value = None
         self._manual_duty_last_sent_at = 0.0
         self._manual_duty_var.set(MANUAL_DUTY_DEFAULT)
         self._manual_duty_value_var.set(
             MANUAL_DUTY_VALUE_FMT.format(value=MANUAL_DUTY_DEFAULT)
         )
+        for live_view in self._iter_live_views():
+            live_view.clear_group_run_inspector()
         if popup is not None:
             try:
                 popup.destroy()
             except Exception:
                 pass
-        if stop_motor and label:
-            self._send_manual_duty_clear(label)
+        if stop_motor and targets:
+            self._send_manual_duty_clear(label, targets, group_name)
 
     def _schedule_manual_duty_send(self) -> None:
         """
@@ -2020,25 +2239,56 @@ class BringupControlUI(tk.Tk):
         clean_label = str(label or NT_VALUE_EMPTY).strip().lower()
         if not clean_label:
             return
-        self._manual_motion_checks[clean_label] = {
-            "label": str(label).strip(),
-            "duty": float(duty),
-            "startedAt": time.time(),
-            "clearedAt": None,
-            "sawMotion": False,
-            "maxAbsVelRpm": 0.0,
-        }
+        now_sec = time.time()
+        runtime_device = self._latest_runtime_devices.get(clean_label, {})
+        start_position_rot = _runtime_device_field(runtime_device, EVIDENCE_FIELD_POSITION_ROT)
+        existing_entry = self._manual_motion_checks.get(clean_label)
+        if isinstance(existing_entry, dict):
+            existing_entry["label"] = str(label).strip()
+            existing_entry["duty"] = float(duty)
+            existing_entry["startedAt"] = now_sec
+            existing_entry["clearedAt"] = None
+            existing_entry["sawMotion"] = bool(existing_entry.get("sawMotion"))
+            existing_entry["maxAbsVelRpm"] = float(existing_entry.get("maxAbsVelRpm", 0.0))
+            existing_entry["startPositionRot"] = (
+                existing_entry.get("startPositionRot")
+                if isinstance(existing_entry.get("startPositionRot"), (int, float))
+                else (float(start_position_rot) if isinstance(start_position_rot, (int, float)) else None)
+            )
+            existing_entry["maxAbsPositionDeltaRot"] = float(existing_entry.get("maxAbsPositionDeltaRot", 0.0))
+        else:
+            self._manual_motion_checks[clean_label] = {
+                "label": str(label).strip(),
+                "duty": float(duty),
+                "startedAt": now_sec,
+                "clearedAt": None,
+                "sawMotion": False,
+                "maxAbsVelRpm": 0.0,
+                "startPositionRot": float(start_position_rot) if isinstance(start_position_rot, (int, float)) else None,
+                "maxAbsPositionDeltaRot": 0.0,
+            }
+        current_observation = self._manual_test_observations.get(clean_label)
+        current_auto_result = (
+            str(current_observation.get("autoResult", NT_VALUE_EMPTY)).strip()
+            if isinstance(current_observation, dict)
+            else NT_VALUE_EMPTY
+        )
+        next_auto_result = (
+            current_auto_result
+            if current_auto_result == EVIDENCE_MANUAL_AUTO_RESULT_ROTATION
+            else EVIDENCE_MANUAL_AUTO_RESULT_RUNNING
+        )
         self._update_manual_test_observation(
             clean_label,
             {
                 "label": str(label).strip(),
-                "autoResult": EVIDENCE_MANUAL_AUTO_RESULT_RUNNING,
-                "recordedAtEpochSec": time.time(),
+                "autoResult": next_auto_result,
+                "recordedAtEpochSec": now_sec,
                 "recordedAt": timestamp_hms(),
                 "cmdDuty": float(duty),
-                "appliedDuty": None,
-                "velRpm": None,
-                "motorCurrentA": None,
+                "maxAbsVelRpm": float(self._manual_motion_checks.get(clean_label, {}).get("maxAbsVelRpm", 0.0)),
+                "positionRot": start_position_rot if isinstance(start_position_rot, (int, float)) else None,
+                "maxAbsPositionDeltaRot": float(self._manual_motion_checks.get(clean_label, {}).get("maxAbsPositionDeltaRot", 0.0)),
             },
         )
         self._refresh_evidence_view()
@@ -2075,6 +2325,15 @@ class BringupControlUI(tk.Tk):
             current = {}
             self._manual_test_observations[clean_label] = current
         current.update(fields)
+        self._push_manual_test_observations_to_live_views()
+
+    def _push_manual_test_observations_to_live_views(self) -> None:
+        """
+        NAME
+            _push_manual_test_observations_to_live_views - Publish cached manual-test observations to live topology surfaces.
+        """
+        for live_view in self._iter_live_views():
+            live_view.set_manual_test_observations(self._manual_test_observations)
 
     def _flush_manual_duty_send(self) -> None:
         """
@@ -2082,7 +2341,7 @@ class BringupControlUI(tk.Tk):
             _flush_manual_duty_send - Send the current popup duty to the robot.
         """
         self._manual_duty_pending_after = None
-        if not self._manual_duty_label:
+        if not self._manual_duty_label or not self._manual_duty_targets:
             return
         if not self._tcp_connected:
             self._append_output(MANUAL_DUTY_BLOCKED_TEXT)
@@ -2094,43 +2353,80 @@ class BringupControlUI(tk.Tk):
         if self._manual_duty_last_sent_value is not None:
             if abs(duty - self._manual_duty_last_sent_value) < 1e-6:
                 return
-        seq = self._send_tcp_command(
-            MANUAL_DUTY_CMD_SET,
-            {
-                MANUAL_DUTY_ARG_NAME: self._manual_duty_label,
-                MANUAL_DUTY_ARG_DUTY: duty,
-            },
-        )
-        if seq is None:
+        sent_any = False
+        if self._manual_duty_group_name:
+            seq = self._send_tcp_command(
+                MANUAL_GROUP_DUTY_CMD_SET,
+                {
+                    GROUP_RUN_ARG_GROUP: self._manual_duty_group_name,
+                    MANUAL_DUTY_ARG_DUTY: duty,
+                },
+            )
+            sent_any = seq is not None
+        else:
+            for target in self._manual_duty_targets:
+                seq = self._send_tcp_command(
+                    MANUAL_DUTY_CMD_SET,
+                    {
+                        MANUAL_DUTY_ARG_NAME: target,
+                        MANUAL_DUTY_ARG_DUTY: duty,
+                    },
+                )
+                if seq is not None:
+                    sent_any = True
+        if not sent_any:
             return
         self._manual_duty_last_sent_value = duty
         self._manual_duty_last_sent_at = time.time()
         if abs(duty) >= EVIDENCE_MOTION_CMD_THRESHOLD_DUTY:
-            self._record_manual_motion_command(self._manual_duty_label, duty)
+            for target in self._manual_duty_targets:
+                self._record_manual_motion_command(target, duty)
         self.after_idle(self._request_runtime_state_refresh)
         self._append_output(
-            MANUAL_DUTY_STATUS_FMT.format(
+            (
+                MANUAL_DUTY_STATUS_FMT
+                if len(self._manual_duty_targets) == 1
+                else MANUAL_DUTY_GROUP_STATUS_FMT
+            ).format(
                 label=self._manual_duty_label,
                 duty=duty,
             )
         )
 
-    def _send_manual_duty_clear(self, label: str) -> None:
+    def _send_manual_duty_clear(self, label: str, targets: List[str], group_name: str) -> None:
         """
         NAME
-            _send_manual_duty_clear - Stop the active manual-duty motor.
+            _send_manual_duty_clear - Stop the active manual-duty target set.
         """
-        if not label or not self._tcp_connected:
+        if not label or not self._tcp_connected or not targets:
             return
-        seq = self._send_tcp_command(
-            MANUAL_DUTY_CMD_CLEAR,
-            {MANUAL_DUTY_ARG_NAME: label},
-        )
-        if seq is None:
+        sent_any = False
+        if group_name:
+            seq = self._send_tcp_command(
+                MANUAL_GROUP_DUTY_CMD_CLEAR,
+                {GROUP_RUN_ARG_GROUP: group_name},
+            )
+            sent_any = seq is not None
+        else:
+            for target in targets:
+                seq = self._send_tcp_command(
+                    MANUAL_DUTY_CMD_CLEAR,
+                    {MANUAL_DUTY_ARG_NAME: target},
+                )
+                if seq is not None:
+                    sent_any = True
+        if not sent_any:
             return
-        self._mark_manual_motion_clear(label)
+        for target in targets:
+            self._mark_manual_motion_clear(target)
         self.after_idle(self._request_runtime_state_refresh)
-        self._append_output(MANUAL_DUTY_STOPPED_FMT.format(label=label))
+        self._append_output(
+            (
+                MANUAL_DUTY_STOPPED_FMT
+                if len(targets) == 1
+                else MANUAL_DUTY_GROUP_STOPPED_FMT
+            ).format(label=label)
+        )
 
     def _poll_presence_overrides(self) -> None:
         """
@@ -2682,6 +2978,11 @@ class BringupControlUI(tk.Tk):
         console_has_warn = bool(console_entry.get("hasWarn")) if isinstance(console_entry, dict) else False
         manual_entry = self._manual_evidence_for_label(label)
         manual_observation = self._manual_test_observations.get(str(label or NT_VALUE_EMPTY).strip().lower())
+        manual_auto_result = (
+            str(manual_observation.get("autoResult", NT_VALUE_EMPTY)).strip()
+            if isinstance(manual_observation, dict)
+            else NT_VALUE_EMPTY
+        )
         manual_age_sec = _manual_age_seconds(manual_entry)
         manual_recent_operability = isinstance(manual_age_sec, float) and manual_age_sec <= EVIDENCE_MANUAL_OPERABILITY_WINDOW_SEC
         manual_recent_identity = isinstance(manual_age_sec, float) and manual_age_sec <= EVIDENCE_MANUAL_IDENTITY_WINDOW_SEC
@@ -2697,6 +2998,10 @@ class BringupControlUI(tk.Tk):
         applied_duty = _runtime_device_field(runtime_device or {}, EVIDENCE_FIELD_APPLIED_DUTY)
         velocity_rpm = _runtime_device_field(runtime_device or {}, EVIDENCE_FIELD_VEL_RPM)
         motor_current = _runtime_device_field(runtime_device or {}, EVIDENCE_FIELD_MOTOR_CURRENT_A)
+        applied_v = _runtime_device_field(runtime_device or {}, "appliedV")
+        bus_v = _runtime_device_field(runtime_device or {}, "busV")
+        position_rot = _runtime_device_field(runtime_device or {}, EVIDENCE_FIELD_POSITION_ROT)
+        motor_attachment = runtime_motor_attachment(runtime_device or {})
         manual_motion = self._manual_motion_checks.get(str(label or NT_VALUE_EMPTY).strip().lower())
         motion_commanded = (
             isinstance(cmd_duty, (int, float)) and abs(float(cmd_duty)) >= EVIDENCE_MOTION_CMD_THRESHOLD_DUTY
@@ -2704,19 +3009,28 @@ class BringupControlUI(tk.Tk):
             isinstance(applied_duty, (int, float)) and abs(float(applied_duty)) >= EVIDENCE_MOTION_CMD_THRESHOLD_DUTY
         )
         motion_detected = isinstance(velocity_rpm, (int, float)) and abs(float(velocity_rpm)) >= EVIDENCE_MOTION_MIN_RPM
+        position_delta_rot = None
         manual_motion_window_active = False
         manual_motion_failed = False
         if isinstance(manual_motion, dict):
             started_at = manual_motion.get("startedAt")
             duty_value = manual_motion.get("duty")
+            start_position_rot = manual_motion.get("startPositionRot")
+            if isinstance(position_rot, (int, float)) and isinstance(start_position_rot, (int, float)):
+                position_delta_rot = float(position_rot) - float(start_position_rot)
             if isinstance(started_at, (int, float)) and isinstance(duty_value, (int, float)):
                 age_sec = max(0.0, time.time() - float(started_at))
                 if age_sec <= EVIDENCE_MANUAL_MOTION_WINDOW_SEC and abs(float(duty_value)) >= EVIDENCE_MOTION_CMD_THRESHOLD_DUTY:
                     manual_motion_window_active = True
                     motion_commanded = True
                     motion_detected = motion_detected or bool(manual_motion.get("sawMotion"))
+                    if not motion_detected and isinstance(position_delta_rot, (int, float)):
+                        motion_detected = abs(float(position_delta_rot)) >= EVIDENCE_MOTION_MIN_POSITION_DELTA_ROT
                     if age_sec >= EVIDENCE_MANUAL_MOTION_SETTLE_SEC and not motion_detected:
                         manual_motion_failed = True
+        if manual_auto_result == EVIDENCE_MANUAL_AUTO_RESULT_ROTATION:
+            motion_detected = True
+            manual_motion_failed = False
 
         if probe_attachment is None:
             probe_bucket = "not_run"
@@ -2820,8 +3134,32 @@ class BringupControlUI(tk.Tk):
                 confidence = EVIDENCE_CONFIDENCE_LOW
                 notes.append("Operator marked manual result uncertain.")
 
+        motion_verdict_position_delta = position_delta_rot
+        if not isinstance(motion_verdict_position_delta, (int, float)) and isinstance(manual_observation, dict):
+            motion_verdict_position_delta = manual_observation.get("maxAbsPositionDeltaRot")
+        motion_verdict = infer_motor_runtime_verdict(
+            present=existence != EVIDENCE_STATUS_ABSENT and existence != EVIDENCE_STATUS_UNKNOWN,
+            cmd_duty=cmd_duty,
+            applied_duty=applied_duty,
+            applied_v=applied_v,
+            bus_v=bus_v,
+            vel_rpm=velocity_rpm,
+            position_delta_rot=motion_verdict_position_delta,
+            motor_current_a=motor_current,
+            attachment=motor_attachment,
+            duty_threshold=EVIDENCE_MOTION_CMD_THRESHOLD_DUTY,
+            rpm_threshold=EVIDENCE_MOTION_MIN_RPM,
+            position_delta_threshold=EVIDENCE_MOTION_MIN_POSITION_DELTA_ROT,
+            current_active_threshold=0.2,
+            low_bus_v_threshold=7.0,
+            applied_v_active_threshold=1.0,
+        )
+        if manual_auto_result == EVIDENCE_MANUAL_AUTO_RESULT_ROTATION:
+            motion_detected = True
+        elif manual_auto_result == EVIDENCE_MANUAL_AUTO_RESULT_NO_ROTATION and motion_commanded:
+            motion_detected = False
         if motion_commanded:
-            if motion_detected:
+            if motion_detected or str(motion_verdict.get("result", "")).strip() == "rotating":
                 if existence == EVIDENCE_STATUS_UNKNOWN:
                     existence = EVIDENCE_STATUS_PRESENT
                 if operability == EVIDENCE_STATUS_UNKNOWN:
@@ -2834,7 +3172,13 @@ class BringupControlUI(tk.Tk):
                 operability = EVIDENCE_STATUS_FAILED
                 confidence = EVIDENCE_CONFIDENCE_HIGH if probe_bucket == "present" else EVIDENCE_CONFIDENCE_MEDIUM
                 evidence_state = EVIDENCE_STATE_DEGRADED
-                notes.append(EVIDENCE_MOTION_NOTE_NO_ROTATION)
+                verdict_result = str(motion_verdict.get("result", "")).strip()
+                if verdict_result == RESULT_STALLED:
+                    notes.append("Motor commanded with current draw but no motion; possible stall/bind.")
+                elif verdict_result == RESULT_ELECTRICAL:
+                    notes.append("Motor commanded with little current and no motion; possible electrical/output-path issue.")
+                else:
+                    notes.append(EVIDENCE_MOTION_NOTE_NO_ROTATION)
 
         if identity == EVIDENCE_STATUS_MATCHING and existence == EVIDENCE_STATUS_PRESENT:
             if evidence_state == EVIDENCE_STATE_UNKNOWN:
@@ -2927,11 +3271,21 @@ class BringupControlUI(tk.Tk):
         motion_applied_value = applied_duty
         motion_vel_value = velocity_rpm
         motion_current_value = motor_current
+        motion_position_value = position_rot
+        motion_position_delta_value = position_delta_rot
         if isinstance(motion_detail_source, dict):
             motion_cmd_value = motion_detail_source.get("cmdDuty", motion_cmd_value)
             motion_applied_value = motion_detail_source.get("appliedDuty", motion_applied_value)
             motion_vel_value = motion_detail_source.get("velRpm", motion_vel_value)
             motion_current_value = motion_detail_source.get("motorCurrentA", motion_current_value)
+            motion_position_value = motion_detail_source.get("positionRot", motion_position_value)
+            motion_position_delta_value = motion_detail_source.get("positionDeltaRot", motion_position_delta_value)
+            max_position_delta_value = motion_detail_source.get("maxAbsPositionDeltaRot")
+            if (
+                not isinstance(motion_position_delta_value, (int, float))
+                and isinstance(max_position_delta_value, (int, float))
+            ):
+                motion_position_delta_value = max_position_delta_value
 
         if (
             motion_commanded
@@ -2960,6 +3314,8 @@ class BringupControlUI(tk.Tk):
                     cmd=_format_motion_value(motion_cmd_value),
                     applied=_format_motion_value(motion_applied_value),
                     vel=_format_motion_value(motion_vel_value),
+                    position=_format_motion_value(motion_position_value),
+                    delta=_format_motion_value(motion_position_delta_value),
                     current=_format_motion_value(motion_current_value),
                 )
             )
@@ -2969,6 +3325,7 @@ class BringupControlUI(tk.Tk):
             "passive": passive_summary,
             "console": console_summary or EVIDENCE_SOURCE_NONE,
             "probe": probe_bucket if probe_bucket not in (VIS_VALUE_UNKNOWN, "not_run") else "Waiting",
+            "probeScore": _format_runtime_probe_score(runtime_device),
             "manual": manual_summary,
             "existence": existence,
             "operability": operability,
@@ -3104,6 +3461,7 @@ class BringupControlUI(tk.Tk):
                     row.get("passive", EVIDENCE_SOURCE_NONE),
                     row.get("console", EVIDENCE_SOURCE_NONE),
                     row.get("probe", EVIDENCE_SOURCE_NONE),
+                    row.get("probeScore", EVIDENCE_SOURCE_NONE),
                     row.get("manual", EVIDENCE_MANUAL_PLACEHOLDER),
                     row.get("existence", EVIDENCE_STATUS_UNKNOWN),
                     row.get("operability", EVIDENCE_STATUS_UNKNOWN),
@@ -3643,6 +4001,15 @@ class BringupControlUI(tk.Tk):
         self._save_ui_command_prefs()
         self._apply_visibility_tab_pref()
 
+    def _set_show_wall_clock_pref(self) -> None:
+        """
+        NAME
+            _set_show_wall_clock_pref - Persist the wall-clock preference and apply it.
+        """
+        self._ui_show_wall_clock = bool(self._show_wall_clock_var.get())
+        self._save_ui_command_prefs()
+        self._apply_wall_clock_visibility()
+
     def _apply_visibility_tab_pref(self) -> None:
         """
         NAME
@@ -3661,6 +4028,20 @@ class BringupControlUI(tk.Tk):
         elif not tab_visible and is_present:
             notebook.forget(panel)
 
+    def _apply_wall_clock_visibility(self) -> None:
+        """
+        NAME
+            _apply_wall_clock_visibility - Show or hide the header wall clock.
+        """
+        frame = getattr(self, "_wall_clock_frame", None)
+        if frame is None:
+            return
+        if self._ui_show_wall_clock:
+            if not frame.winfo_manager():
+                frame.pack(side="left", padx=(12, 0), before=self._pending_label)
+        elif frame.winfo_manager():
+            frame.pack_forget()
+
     def _save_ui_command_prefs(self) -> None:
         """
         NAME
@@ -3674,6 +4055,7 @@ class BringupControlUI(tk.Tk):
                 UI_PREFS_KEY_COMMANDS: self._ui_command_prefs,
                 UI_PREFS_KEY_AUTO_SELECT_DEFAULT_PROFILE: self._ui_auto_select_default_profile,
                 UI_PREFS_KEY_SHOW_VISIBILITY_TAB: self._ui_show_visibility_tab,
+                UI_PREFS_KEY_SHOW_WALL_CLOCK: self._ui_show_wall_clock,
             },
         )
 
@@ -4380,11 +4762,12 @@ class BringupControlUI(tk.Tk):
         NAME
             _reconnect_ui_session - Reconnect the REST session and issue a normal UI handshake.
         """
+        self._owner_required = False
         self._handshake_done = False
         self._handshake_inflight = False
         self._last_handshake_attempt = 0.0
         self._session.reset_handshake()
-        self._send_handshake(reset=False, force=True, log=True)
+        self._send_handshake(reset=True, force=True, log=True)
 
     def _dispatch_host_local_action(self, command: str) -> bool:
         """
@@ -4402,7 +4785,7 @@ class BringupControlUI(tk.Tk):
             _host_local_action_enabled - Return whether a host-local UI action should be enabled.
         """
         if command == HOST_ACTION_RECONNECT_UI_SESSION:
-            return not self._tracker.is_pending() and not self._tcp_connected
+            return not self._tracker.is_pending()
         return not self._tracker.is_pending()
 
     def _retry_last_command(self) -> None:
@@ -4689,12 +5072,8 @@ class BringupControlUI(tk.Tk):
 
         if self._ui_table is not None:
             session_id = self._ui_table.getEntry("state/sessionId").getString("")
-            if session_id and session_id != self._session_id:
-                self._session_id = session_id
-                self._handshake_done = False
-                self._handshake_inflight = False
-                self._last_handshake_attempt = 0.0
-                self._session.reset_handshake()
+            if session_id:
+                self._robot_ui_session_id = session_id
             enabled = self._ui_table.getEntry("state/enabled").getBoolean(True)
             estopped = self._ui_table.getEntry("state/estopped").getBoolean(False)
             mode = self._ui_table.getEntry("state/mode").getString("disabled")
@@ -4817,15 +5196,21 @@ class BringupControlUI(tk.Tk):
     def _poll_live_overlay(self, now: float) -> None:
         """
         NAME
-            _poll_live_overlay - Poll runtime state for the live topology view.
+            _poll_live_overlay - Poll runtime state for runtime-backed topology/evidence panels.
         """
-        if not self._live_enabled_var.get():
-            return
-        if self._runtime_state_pause_until is not None and now < self._runtime_state_pause_until:
-            return
-        if (now - self._runtime_state_last_poll) < (
-            self._runtime_state_interval * self._runtime_state_backoff
+        fast_manual_refresh = self._manual_runtime_refresh_active()
+        if (
+            not fast_manual_refresh
+            and self._runtime_state_pause_until is not None
+            and now < self._runtime_state_pause_until
         ):
+            return
+        effective_interval = (
+            1.0 / ACTIVE_MANUAL_RUNTIME_STATE_RATE_HZ
+            if fast_manual_refresh
+            else (self._runtime_state_interval * self._runtime_state_backoff)
+        )
+        if (now - self._runtime_state_last_poll) < effective_interval:
             return
         self._runtime_state_last_poll = now
         source = self._live_source_var.get()
@@ -4843,6 +5228,15 @@ class BringupControlUI(tk.Tk):
         else:
             if (now - self._runtime_state_pending_at) > self._runtime_state_timeout_sec:
                 self._runtime_state_pending_seq = None
+
+    def _manual_runtime_refresh_active(self) -> bool:
+        """
+        NAME
+            _manual_runtime_refresh_active - Return whether runtime-state polling should run at fast manual-test cadence.
+        """
+        if self._manual_duty_popup is not None:
+            return True
+        return bool(self._manual_motion_checks)
 
     def _set_runtime_state_notice(self, text: str, level: str = "warn") -> None:
         """
@@ -4947,17 +5341,42 @@ class BringupControlUI(tk.Tk):
             velocity_rpm = _runtime_device_field(device, "velRpm")
             applied_duty = _runtime_device_field(device, EVIDENCE_FIELD_APPLIED_DUTY)
             motor_current = _runtime_device_field(device, EVIDENCE_FIELD_MOTOR_CURRENT_A)
+            position_rot = _runtime_device_field(device, EVIDENCE_FIELD_POSITION_ROT)
+            position_delta_rot = None
+            start_position_rot = motion_entry.get("startPositionRot")
+            if (
+                not isinstance(start_position_rot, (int, float))
+                and isinstance(position_rot, (int, float))
+            ):
+                motion_entry["startPositionRot"] = float(position_rot)
+                start_position_rot = motion_entry.get("startPositionRot")
+            if isinstance(position_rot, (int, float)) and isinstance(start_position_rot, (int, float)):
+                position_delta_rot = float(position_rot) - float(start_position_rot)
             observation_update: Dict[str, Any] = {
                 "recordedAtEpochSec": now_sec,
                 "recordedAt": timestamp_hms(),
                 "appliedDuty": applied_duty if isinstance(applied_duty, (int, float)) else None,
                 "velRpm": velocity_rpm if isinstance(velocity_rpm, (int, float)) else None,
                 "motorCurrentA": motor_current if isinstance(motor_current, (int, float)) else None,
+                "positionRot": position_rot if isinstance(position_rot, (int, float)) else None,
+                "positionDeltaRot": position_delta_rot if isinstance(position_delta_rot, (int, float)) else None,
+                "maxAbsVelRpm": float(motion_entry.get("maxAbsVelRpm", 0.0)),
+                "maxAbsPositionDeltaRot": float(motion_entry.get("maxAbsPositionDeltaRot", 0.0)),
             }
             if isinstance(velocity_rpm, (int, float)):
                 abs_vel = abs(float(velocity_rpm))
                 motion_entry["maxAbsVelRpm"] = max(abs_vel, float(motion_entry.get("maxAbsVelRpm", 0.0)))
                 if abs_vel >= EVIDENCE_MOTION_MIN_RPM:
+                    motion_entry["sawMotion"] = True
+                    observation_update["autoResult"] = EVIDENCE_MANUAL_AUTO_RESULT_ROTATION
+            if isinstance(position_delta_rot, (int, float)):
+                abs_position_delta_rot = abs(float(position_delta_rot))
+                motion_entry["maxAbsPositionDeltaRot"] = max(
+                    abs_position_delta_rot,
+                    float(motion_entry.get("maxAbsPositionDeltaRot", 0.0)),
+                )
+                observation_update["maxAbsPositionDeltaRot"] = float(motion_entry.get("maxAbsPositionDeltaRot", 0.0))
+                if abs_position_delta_rot >= EVIDENCE_MOTION_MIN_POSITION_DELTA_ROT:
                     motion_entry["sawMotion"] = True
                     observation_update["autoResult"] = EVIDENCE_MANUAL_AUTO_RESULT_ROTATION
             elif motion_entry.get("sawMotion"):
@@ -5000,6 +5419,19 @@ class BringupControlUI(tk.Tk):
             self._runtime_state_backoff = min(8.0, self._runtime_state_backoff * 2.0)
             self._runtime_state_idle_count = 0
             self._runtime_state_pause_until = time.time() + self._runtime_state_idle_pause_sec
+
+    def _apply_runtime_group_command_payload(self, payload: Optional[Dict[str, Any]]) -> None:
+        """
+        NAME
+            _apply_runtime_group_command_payload - Apply one command-returned runtime group update to all live views.
+        """
+        if not isinstance(payload, dict):
+            return
+        group_payload = payload.get(GROUP_KEY_GROUP)
+        if not isinstance(group_payload, dict):
+            return
+        for live_view in self._iter_live_views():
+            live_view.apply_runtime_group(group_payload)
 
     def _apply_live_runtime_notice_from_nt_state(
         self,
@@ -5051,6 +5483,9 @@ class BringupControlUI(tk.Tk):
             return
         if msg_type in ("ack", "out") and self._is_handshake_required(event):
             self._handle_handshake_required()
+            return
+        if msg_type in ("ack", "out") and self._is_owner_required(event):
+            self._handle_owner_required()
             return
         if (
             self._runtime_state_pending_seq is not None
@@ -5119,6 +5554,9 @@ class BringupControlUI(tk.Tk):
                     data = json.loads(json_payload)
                 except Exception:
                     data = None
+            command_lower = str(name or NT_VALUE_EMPTY).strip().lower()
+            if command_lower in ACTIVE_GROUP_RESULT_COMMANDS:
+                self._apply_runtime_group_command_payload(data)
             if name == "uiHandshake" and isinstance(data, dict):
                 min_next = data.get("minNextSeq")
                 if isinstance(min_next, (int, float)):
@@ -5151,8 +5589,14 @@ class BringupControlUI(tk.Tk):
             if command_lower in {
                 "runtimeactivate",
                 "runtimedeactivate",
+                "activeadd",
+                "activenext",
+                "groupadddevice",
+                "groupremovedevice",
                 "manualdevicedutyset",
                 "manualdevicedutyclear",
+                "manualgroupdutyset",
+                "manualgroupdutyclear",
                 "activepresenceprobe",
             }:
                 self.after_idle(self._request_runtime_state_refresh)
@@ -5235,6 +5679,21 @@ class BringupControlUI(tk.Tk):
             return "UI handshake required before commands." in text
         return False
 
+    def _is_owner_required(self, event: BridgeEvent) -> bool:
+        """
+        NAME
+            _is_owner_required - Check if a response indicates lost session ownership.
+        """
+        if event is None:
+            return False
+        message = (event.message or "").strip()
+        if message:
+            return "Owning control client required." in message
+        text = (event.text or "").strip()
+        if text:
+            return "Owning control client required." in text
+        return False
+
     def _handle_handshake_required(self) -> None:
         """
         NAME
@@ -5256,6 +5715,27 @@ class BringupControlUI(tk.Tk):
                 "UI handshake required, resyncing.",
                 "UI handshake OK.",
             )
+
+    def _handle_owner_required(self) -> None:
+        """
+        NAME
+            _handle_owner_required - Enter owner-recovery state after losing REST control ownership.
+        """
+        self._owner_required = True
+        self._handshake_done = False
+        self._handshake_inflight = False
+        self._last_handshake_attempt = 0.0
+        self._session.reset_handshake()
+        self._log_poll_inflight = False
+        self._log_poll_seq = None
+        self._tracker.clear()
+        self._append_output(OUTPUT_OWNER_REQUIRED)
+        self._notify_ui_failure(
+            "owner_required",
+            True,
+            OUTPUT_OWNER_REQUIRED,
+            "UI control ownership restored.",
+        )
 
     def _resolve_selected_from_rows(self) -> str:
         """

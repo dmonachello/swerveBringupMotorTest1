@@ -34,6 +34,8 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
   private static final String CMD_SELECTED_MODE_SET = "selectedModeSet";
   private static final String CMD_MANUAL_DEVICE_DUTY_SET = "manualDeviceDutySet";
   private static final String CMD_MANUAL_DEVICE_DUTY_CLEAR = "manualDeviceDutyClear";
+  private static final String CMD_MANUAL_GROUP_DUTY_SET = "manualGroupDutySet";
+  private static final String CMD_MANUAL_GROUP_DUTY_CLEAR = "manualGroupDutyClear";
 
   private static final String JSON_KEY_JSON = "json";
   private static final String MESSAGE_RUNTIME_ACTIVATE_REQUIRED =
@@ -42,6 +44,10 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
       "Manual duty blocked: robot disabled.";
   private static final String MESSAGE_MANUAL_DUTY_DISABLED_ESTOP =
       "Manual duty blocked: robot disabled (E-Stop).";
+  private static final String JSON_KEY_DEVICE = "device";
+  private static final String JSON_KEY_GROUP = "group";
+  private static final String JSON_KEY_MOVED = "moved";
+  private static final String JSON_KEY_PREVIOUS_GROUP = "previousGroup";
 
   private static final Set<String> COMMANDS = Set.of(
       CMD_SHOW_GROUPS,
@@ -68,7 +74,9 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
       CMD_SELECTED_DEVICE_SET,
       CMD_SELECTED_MODE_SET,
       CMD_MANUAL_DEVICE_DUTY_SET,
-      CMD_MANUAL_DEVICE_DUTY_CLEAR);
+      CMD_MANUAL_DEVICE_DUTY_CLEAR,
+      CMD_MANUAL_GROUP_DUTY_SET,
+      CMD_MANUAL_GROUP_DUTY_CLEAR);
 
   /**
    * NAME
@@ -136,6 +144,10 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
     boolean applyManualDeviceDuty(String deviceName, double duty);
 
     boolean clearManualDeviceDuty(String deviceName);
+
+    boolean applyManualGroupDuty(String groupName, double duty);
+
+    boolean clearManualGroupDuty(String groupName);
   }
 
   private final Dependencies dependencies;
@@ -375,6 +387,51 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
         result.outText = result.message;
         break;
       }
+      case CMD_MANUAL_GROUP_DUTY_SET: {
+        String groupName = dependencies.parseUiArgString(args, "group");
+        Double duty = dependencies.parseUiArgDouble(args, "duty");
+        if (groupName == null || duty == null) {
+          result.ok = false;
+          result.message = "manualGroupDutySet requires args.group and args.duty.";
+          break;
+        }
+        if (bridgeGroups.getGroup(groupName) == null) {
+          result.ok = false;
+          result.message = "Group not found: " + groupName;
+          break;
+        }
+        if (!dependencies.isRuntimeActive()) {
+          result.ok = false;
+          result.message = MESSAGE_RUNTIME_ACTIVATE_REQUIRED;
+          break;
+        }
+        if (!dependencies.isRobotEnabled()) {
+          result.ok = false;
+          result.message = dependencies.isRobotEStopped()
+              ? MESSAGE_MANUAL_DUTY_DISABLED_ESTOP
+              : MESSAGE_MANUAL_DUTY_DISABLED;
+          break;
+        }
+        if (!dependencies.applyManualGroupDuty(groupName, duty)) {
+          result.ok = false;
+          result.message = "Manual group duty apply failed: " + groupName;
+          break;
+        }
+        result.message = "Manual group duty applied: " + groupName;
+        result.outText = result.message;
+        break;
+      }
+      case CMD_MANUAL_GROUP_DUTY_CLEAR: {
+        String groupName = dependencies.parseUiArgString(args, "group");
+        if (!dependencies.clearManualGroupDuty(groupName)) {
+          result.ok = false;
+          result.message = "Manual group duty clear failed.";
+          break;
+        }
+        result.message = "Manual group duty cleared.";
+        result.outText = result.message;
+        break;
+      }
       default:
         result.ok = false;
         result.message = "Unknown command: " + name;
@@ -409,21 +466,9 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
       return;
     }
     String existing = bridgeGroups.getDeviceGroup(deviceName);
-    boolean sameGroup = existing != null && existing.equalsIgnoreCase(groupName);
+    boolean sameGroup = bridgeGroups.hasDevice(groupName, deviceName);
     boolean wantsMove = Boolean.TRUE.equals(forceMove)
         || (policy != null && policy.equalsIgnoreCase("move"));
-    if (!sameGroup && existing != null && !existing.isBlank() && !wantsMove) {
-      result.ok = false;
-      result.message = "Device already in group " + existing + ".";
-      JsonObject conflict = new JsonObject();
-      conflict.addProperty("conflict", true);
-      conflict.addProperty("device", deviceName);
-      conflict.addProperty("currentGroup", existing);
-      conflict.addProperty("requestedGroup", groupName);
-      conflict.addProperty("policy", policy != null ? policy : "error");
-      result.outJson = conflict.toString();
-      return;
-    }
     boolean added = bridgeGroups.addDevice(groupName, deviceName, wantsMove);
     if (!added) {
       result.ok = false;
@@ -431,13 +476,13 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
       return;
     }
     JsonObject info = new JsonObject();
-    info.addProperty("device", deviceName);
-    info.addProperty("group", groupName);
-    if (!sameGroup && existing != null && !existing.isBlank()) {
-      info.addProperty("moved", true);
-      info.addProperty("previousGroup", existing);
+    info.addProperty(JSON_KEY_DEVICE, deviceName);
+    info.addProperty(JSON_KEY_GROUP, groupName);
+    if (!sameGroup && existing != null && !existing.isBlank() && wantsMove) {
+      info.addProperty(JSON_KEY_MOVED, true);
+      info.addProperty(JSON_KEY_PREVIOUS_GROUP, existing);
     } else {
-      info.addProperty("moved", false);
+      info.addProperty(JSON_KEY_MOVED, false);
     }
     result.outJson = info.toString();
     result.message = "Device added: " + deviceName + " -> " + groupName;
@@ -461,8 +506,7 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
       result.message = "Group not found: " + groupName;
       return;
     }
-    String current = bridgeGroups.getDeviceGroup(deviceName);
-    if (current == null || !current.equalsIgnoreCase(groupName)) {
+    if (!bridgeGroups.hasDevice(groupName, deviceName)) {
       result.ok = false;
       result.message = "Device not in group: " + deviceName;
       return;
@@ -490,8 +534,7 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
       result.message = "Group not found: " + groupName;
       return;
     }
-    String current = bridgeGroups.getDeviceGroup(deviceName);
-    if (current == null || !current.equalsIgnoreCase(groupName)) {
+    if (!bridgeGroups.hasDevice(groupName, deviceName)) {
       result.ok = false;
       result.message = "Device not in group: " + deviceName;
       return;

@@ -14,7 +14,7 @@ DESCRIPTION
 
 from dataclasses import dataclass
 import time
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import tkinter as tk
 from tkinter import ttk
@@ -84,6 +84,16 @@ from tools.common.topology_draw import (
     draw_group_overlays,
     draw_links,
     render_topology_canvas_common,
+)
+from tools.common.motor_runtime_verdict import (
+    infer_motor_runtime_verdict,
+    runtime_motor_attachment,
+    RESULT_CONFLICT,
+    RESULT_ELECTRICAL,
+    RESULT_MISSING,
+    RESULT_NOT_COMMANDED,
+    RESULT_ROTATING,
+    RESULT_STALLED,
 )
 from tools.can_nt.visibility_constants import (
     VIS_KEY_AVAILABLE,
@@ -232,6 +242,7 @@ RUNTIME_KEY_CURRENT_AVG_A = "currentAvgA"
 RUNTIME_KEY_CURRENT_PEAK_A = "currentPeakA"
 RUNTIME_KEY_CURRENT_NONZERO_RATIO = "currentNonzeroRatio"
 RUNTIME_KEY_CURRENT_SAMPLE_COUNT = "currentSampleCount"
+RUNTIME_KEY_POSITION_ROT = "positionRot"
 RUNTIME_CURRENT_DISPLAY_MIN_A = 0.05
 RUNTIME_KEY_ACTIVE_PROBE_CODE = "code"
 RUNTIME_KEY_ACTIVE_PROBE_STATUS = "status"
@@ -242,6 +253,112 @@ RUNTIME_KEY_ACTIVE_PROBE_MAX_SCORE = "maxScore"
 RUNTIME_KEY_ACTIVE_PROBE_UPDATED_AT_MS = "updatedAtMs"
 TITLE_TEXT_DEFAULT = "Live Topology"
 SELECTION_FRAME_TEXT = "Selection"
+ACTIVE_GROUP_NAME = "active-group"
+ACTIVE_GROUP_FRAME_TEXT = "Active Group"
+ACTIVE_GROUP_EMPTY_TEXT = "(empty)"
+ACTIVE_GROUP_NONE_TEXT = "(not present)"
+ACTIVE_GROUP_ELIGIBLE_EMPTY_TEXT = "(no eligible motors)"
+ACTIVE_GROUP_RULES_TEXT = "Rules: Active Add appends next created motor in profile order. Active Next rotates the primary member."
+ACTIVE_GROUP_MEMBER_ENABLED = "enabled"
+ACTIVE_GROUP_MEMBER_DISABLED = "disabled"
+ACTIVE_GROUP_MEMBER_ABSENT = "not in group"
+ACTIVE_GROUP_PRIMARY_YES = "PRIMARY"
+ACTIVE_GROUP_SELECTED_YES = "selected"
+ACTIVE_GROUP_SELECTED_NO = "not selected"
+ACTIVE_GROUP_ELIGIBLE_DEVICE_TYPE = "2"
+ACTIVE_GROUP_PRESENT_PREFIX = "presence="
+ACTIVE_GROUP_PROBE_PREFIX = "probe="
+ACTIVE_GROUP_VEL_RPM_PREFIX = "vel="
+ACTIVE_GROUP_POSITION_ROT_PREFIX = "position="
+ACTIVE_GROUP_POSITION_DELTA_ROT_PREFIX = "delta="
+GROUP_INSPECTOR_SUMMARY_NONE = "--"
+GROUP_INSPECTOR_MODE_DEVICE = "device"
+GROUP_INSPECTOR_MODE_GROUP = "group"
+GROUP_INSPECTOR_FRAME_TEXT = "Group Run"
+GROUP_INSPECTOR_MODE_PREFIX = "Mode: "
+GROUP_INSPECTOR_MODE_MANUAL_DUTY = "manual group duty"
+GROUP_INSPECTOR_GROUP_PREFIX = "Group: "
+GROUP_INSPECTOR_MEMBERS_PREFIX = "Members: "
+GROUP_INSPECTOR_ENABLED_PREFIX = "Enabled: "
+GROUP_INSPECTOR_PRIMARY_PREFIX = "Primary: "
+GROUP_INSPECTOR_PRESENT_SUMMARY_PREFIX = "Present: "
+GROUP_INSPECTOR_ROTATING_SUMMARY_PREFIX = "Rotating: "
+GROUP_INSPECTOR_NO_MOTION_SUMMARY_PREFIX = "Commanded no motion: "
+GROUP_INSPECTOR_MISSING_SUMMARY_PREFIX = "Missing: "
+GROUP_INSPECTOR_CONFLICT_SUMMARY_PREFIX = "Conflict: "
+GROUP_INSPECTOR_ROW_PRESENT = "present"
+GROUP_INSPECTOR_ROW_MISSING = RESULT_MISSING
+GROUP_INSPECTOR_ROW_ROTATING = RESULT_ROTATING
+GROUP_INSPECTOR_ROW_NO_MOTION = RESULT_ELECTRICAL
+GROUP_INSPECTOR_ROW_ELECTRICAL = RESULT_ELECTRICAL
+GROUP_INSPECTOR_ROW_NOT_COMMANDED = RESULT_NOT_COMMANDED
+GROUP_INSPECTOR_ROW_CONFLICT = RESULT_CONFLICT
+GROUP_INSPECTOR_ROW_STALLED = RESULT_STALLED
+GROUP_INSPECTOR_ROW_UNKNOWN = "unknown"
+GROUP_INSPECTOR_CMD_DUTY_PREFIX = "cmd="
+GROUP_INSPECTOR_APPLIED_DUTY_PREFIX = "applied="
+GROUP_INSPECTOR_VEL_RPM_PREFIX = "vel="
+GROUP_INSPECTOR_POSITION_ROT_PREFIX = "position="
+GROUP_INSPECTOR_POSITION_DELTA_ROT_PREFIX = "delta="
+GROUP_INSPECTOR_CURRENT_A_PREFIX = "current="
+GROUP_INSPECTOR_PROBE_BUCKET_PREFIX = "probe="
+GROUP_INSPECTOR_RPM_SUFFIX = " rpm"
+GROUP_INSPECTOR_CURRENT_SUFFIX = " A"
+GROUP_INSPECTOR_ROT_SUFFIX = " rot"
+GROUP_INSPECTOR_PRIMARY_MARKER = "PRIMARY"
+GROUP_INSPECTOR_TARGET_COUNT_FMT = "{count}/{total}"
+GROUP_INSPECTOR_DUTY_THRESHOLD = 0.15
+GROUP_INSPECTOR_MOTION_MIN_RPM = 5.0
+GROUP_INSPECTOR_MOTION_MIN_POSITION_DELTA_ROT = 0.05
+DETAILS_PANEL_INITIAL_WIDTH = 360
+DETAILS_PANEL_MIN_WIDTH = 260
+ROWS_SCROLL_HEIGHT = 220
+ROW_WRAP_MIN = 120
+ROW_WRAP_PAD = 36
+MANUAL_AUTO_RESULT_RUNNING = "test_running"
+MANUAL_AUTO_RESULT_ROTATION = "rotation_detected"
+MANUAL_AUTO_RESULT_NO_ROTATION = "no_rotation_detected"
+MANUAL_OBSERVATION_LIVE_WINDOW_SEC = 3.0
+DETAIL_KEY_LABEL = "label"
+DETAIL_KEY_CAN_ID = "can_id"
+DETAIL_KEY_PRESENCE = "presence"
+DETAIL_KEY_PROBE_BUCKET = "probe_bucket"
+DETAIL_KEY_PROBE_SCORE = "probe_score"
+DETAIL_KEY_PROBE_STATUS = "probe_status"
+DETAIL_KEY_PROBE_MESSAGE = "probe_message"
+DETAIL_KEY_LAST_SEEN = "last_seen"
+DETAIL_KEY_CURRENT_A = "current_a"
+DETAIL_KEY_CURRENT_AVG_A = "current_avg_a"
+DETAIL_KEY_CURRENT_PEAK_A = "current_peak_a"
+DETAIL_KEY_CURRENT_NONZERO = "current_nonzero"
+DETAIL_KEY_CURRENT_SAMPLES = "current_samples"
+DETAIL_KEY_CMD_DUTY = "cmd_duty"
+DETAIL_KEY_APPLIED_DUTY = "applied_duty"
+DETAIL_KEY_VEL_RPM = "vel_rpm"
+DETAIL_KEY_POSITION_ROT = "position_rot"
+DETAIL_KEY_POSITION_DELTA_ROT = "position_delta_rot"
+DETAIL_KEY_TEMP_C = "temp_c"
+DETAIL_KEY_SELECTED = "selected"
+DETAIL_TITLE_LABEL = "Label"
+DETAIL_TITLE_CAN_ID = "CAN ID"
+DETAIL_TITLE_PRESENCE = "Presence"
+DETAIL_TITLE_PROBE_BUCKET = "Probe Bucket"
+DETAIL_TITLE_PROBE_SCORE = "Probe Score"
+DETAIL_TITLE_PROBE_STATUS = "Probe Status"
+DETAIL_TITLE_PROBE_MESSAGE = "Probe Message"
+DETAIL_TITLE_LAST_SEEN = "Last Seen"
+DETAIL_TITLE_CURRENT_A = "Current (A)"
+DETAIL_TITLE_CURRENT_AVG_A = "Current Avg (A)"
+DETAIL_TITLE_CURRENT_PEAK_A = "Current Peak (A)"
+DETAIL_TITLE_CURRENT_NONZERO = "Current Nonzero"
+DETAIL_TITLE_CURRENT_SAMPLES = "Current Window Samples"
+DETAIL_TITLE_CMD_DUTY = "Cmd Duty"
+DETAIL_TITLE_APPLIED_DUTY = "Applied Duty"
+DETAIL_TITLE_VEL_RPM = "Vel (RPM)"
+DETAIL_TITLE_POSITION_ROT = "Position (rot)"
+DETAIL_TITLE_POSITION_DELTA_ROT = "Position Delta (rot)"
+DETAIL_TITLE_TEMP_C = "Temp (C)"
+DETAIL_TITLE_SELECTED = "Selected"
 
 
 def _runtime_device_field(device: Dict[str, object], key: str) -> object:
@@ -286,6 +403,31 @@ def _runtime_active_probe_attachment(device: Dict[str, object]) -> Optional[Dict
         if attachment_type == ATTACHMENT_TYPE_ACTIVE_PRESENCE_PROBE:
             return attachment
     return None
+
+
+def _manual_observation_is_live(observation: object, now_sec: Optional[float] = None) -> bool:
+    """
+    NAME
+        _manual_observation_is_live - Return whether one cached manual observation should override live runtime telemetry.
+    """
+    if not isinstance(observation, dict):
+        return False
+    recorded_at = observation.get("recordedAtEpochSec")
+    if not isinstance(recorded_at, (int, float)):
+        return False
+    current_sec = float(now_sec) if isinstance(now_sec, (int, float)) else time.time()
+    return (current_sec - float(recorded_at)) <= MANUAL_OBSERVATION_LIVE_WINDOW_SEC
+
+
+def _manual_override_value(observation: object, key: str, fallback: object) -> object:
+    """
+    NAME
+        _manual_override_value - Return one cached manual-observation field only when it has a real value.
+    """
+    if not isinstance(observation, dict) or not key:
+        return fallback
+    value = observation.get(key)
+    return fallback if value is None else value
 
 
 def _runtime_display_current_a(device: Dict[str, object]) -> object:
@@ -609,6 +751,8 @@ class LiveTopologyView(ttk.Frame):
         parent: tk.Widget,
         profile_name: str,
         on_node_right_click: Optional[Callable[[LiveNode, tk.Event], None]] = None,
+        on_group_right_click: Optional[Callable[[Dict[str, Any], tk.Event], None]] = None,
+        on_active_group_member_toggled: Optional[Callable[[str, bool], None]] = None,
         on_left_click: Optional[Callable[[Optional[LiveNode], tk.Event], None]] = None,
         on_selection_changed: Optional[Callable[[Optional[LiveNode]], None]] = None,
         show_selection_panel: bool = True,
@@ -636,6 +780,7 @@ class LiveTopologyView(ttk.Frame):
         self._pan_y = 0.0
         self._zoom = 1.0
         self._node_bounds: Dict[int, Tuple[float, float, float, float]] = {}
+        self._group_overlay_regions: List[Dict[str, object]] = []
         self._selected_node: Optional[LiveNode] = None
         self._use_diagram_layout = False
         self._ethernet_links: List[Tuple[int, int]] = []
@@ -645,15 +790,21 @@ class LiveTopologyView(ttk.Frame):
         self._attachment_links: List[Tuple[int, int]] = []
         self._dio_links: List[Tuple[int, int]] = []
         self._bridge_groups: List[Dict[str, object]] = []
+        self._runtime_groups: List[Dict[str, object]] = []
         self._show_groups = True
         self._runtime_fingerprint: Optional[Tuple[object, ...]] = None
         self._runtime_state_notice_text = EMPTY_STRING
         self._runtime_state_notice_level = "info"
         self._runtime_event_notice_text = EMPTY_STRING
         self._runtime_event_notice_level = "warn"
+        self._manual_test_observations: Dict[str, Dict[str, object]] = {}
         self._on_node_right_click_cb = on_node_right_click
+        self._on_group_right_click_cb = on_group_right_click
+        self._on_active_group_member_toggled_cb = on_active_group_member_toggled
         self._on_left_click_cb = on_left_click
         self._on_selection_changed_cb = on_selection_changed
+        self._group_inspector_name = EMPTY_STRING
+        self._group_inspector_targets: List[str] = []
         self._connection_filter_vars = {
             key: tk.BooleanVar(value=True) for key in CONNECTION_FILTERS_ORDER
         }
@@ -693,8 +844,11 @@ class LiveTopologyView(ttk.Frame):
         body = ttk.Frame(self)
         body.pack(fill="both", expand=True, padx=8, pady=8)
 
-        canvas_frame = ttk.Frame(body)
-        canvas_frame.pack(side="left", fill="both", expand=True)
+        content_pane = ttk.Panedwindow(body, orient="horizontal")
+        content_pane.pack(fill="both", expand=True)
+
+        canvas_frame = ttk.Frame(content_pane)
+        content_pane.add(canvas_frame, weight=5)
         self._canvas = tk.Canvas(canvas_frame, background="#ffffff", highlightthickness=1)
         self._canvas.pack(side="left", fill="both", expand=True)
         y_scroll = ttk.Scrollbar(canvas_frame, orient="vertical", command=self._canvas.yview)
@@ -713,52 +867,117 @@ class LiveTopologyView(ttk.Frame):
         self._canvas.bind("<Control-Button-5>", lambda _e: self._nudge_zoom(-ZOOM_STEP))
 
         self._detail_vars: Dict[str, tk.StringVar] = {}
+        self._active_group_summary_var: Optional[tk.StringVar] = None
+        self._active_group_rows_frame: Optional[ttk.Frame] = None
+        self._active_group_rows_canvas: Optional[tk.Canvas] = None
+        self._active_group_member_vars: Dict[str, tk.BooleanVar] = {}
+        self._active_group_member_update_in_progress = False
         if self._show_selection_panel:
-            details = ttk.LabelFrame(body, text=SELECTION_FRAME_TEXT, padding=8)
-            details.pack(side="right", fill="y")
+            details_container = ttk.Frame(content_pane, width=DETAILS_PANEL_INITIAL_WIDTH)
+            content_pane.add(details_container, weight=2)
+            details = ttk.LabelFrame(details_container, text=SELECTION_FRAME_TEXT, padding=8)
+            details.pack(side="top", fill="both", expand=True)
+            self._detail_device_frame = ttk.Frame(details)
+            self._detail_device_frame.pack(fill="x")
+            self._group_inspector_frame = ttk.Frame(details)
+            self._group_inspector_summary_var = tk.StringVar(value=GROUP_INSPECTOR_SUMMARY_NONE)
+            ttk.Label(
+                self._group_inspector_frame,
+                textvariable=self._group_inspector_summary_var,
+                justify="left",
+                anchor="nw",
+            ).pack(fill="x")
+            self._group_inspector_rows_frame = ttk.Frame(self._group_inspector_frame)
+            self._group_inspector_rows_frame.pack(fill="x", pady=(8, 0))
             self._detail_vars = {
-                "label": tk.StringVar(value="--"),
-                "can_id": tk.StringVar(value="--"),
-                "presence": tk.StringVar(value="--"),
-                "probe_bucket": tk.StringVar(value="--"),
-                "probe_score": tk.StringVar(value="--"),
-                "probe_status": tk.StringVar(value="--"),
-                "probe_message": tk.StringVar(value="--"),
-                "last_seen": tk.StringVar(value="--"),
-                "current_a": tk.StringVar(value="--"),
-                "current_avg_a": tk.StringVar(value="--"),
-                "current_peak_a": tk.StringVar(value="--"),
-                "current_nonzero": tk.StringVar(value="--"),
-                "current_samples": tk.StringVar(value="--"),
-                "cmd_duty": tk.StringVar(value="--"),
-                "applied_duty": tk.StringVar(value="--"),
-                "temp_c": tk.StringVar(value="--"),
-                "selected": tk.StringVar(value="--"),
+                DETAIL_KEY_LABEL: tk.StringVar(value="--"),
+                DETAIL_KEY_CAN_ID: tk.StringVar(value="--"),
+                DETAIL_KEY_PRESENCE: tk.StringVar(value="--"),
+                DETAIL_KEY_PROBE_BUCKET: tk.StringVar(value="--"),
+                DETAIL_KEY_PROBE_SCORE: tk.StringVar(value="--"),
+                DETAIL_KEY_PROBE_STATUS: tk.StringVar(value="--"),
+                DETAIL_KEY_PROBE_MESSAGE: tk.StringVar(value="--"),
+                DETAIL_KEY_LAST_SEEN: tk.StringVar(value="--"),
+                DETAIL_KEY_CURRENT_A: tk.StringVar(value="--"),
+                DETAIL_KEY_CURRENT_AVG_A: tk.StringVar(value="--"),
+                DETAIL_KEY_CURRENT_PEAK_A: tk.StringVar(value="--"),
+                DETAIL_KEY_CURRENT_NONZERO: tk.StringVar(value="--"),
+                DETAIL_KEY_CURRENT_SAMPLES: tk.StringVar(value="--"),
+                DETAIL_KEY_CMD_DUTY: tk.StringVar(value="--"),
+                DETAIL_KEY_APPLIED_DUTY: tk.StringVar(value="--"),
+                DETAIL_KEY_VEL_RPM: tk.StringVar(value="--"),
+                DETAIL_KEY_POSITION_ROT: tk.StringVar(value="--"),
+                DETAIL_KEY_POSITION_DELTA_ROT: tk.StringVar(value="--"),
+                DETAIL_KEY_TEMP_C: tk.StringVar(value="--"),
+                DETAIL_KEY_SELECTED: tk.StringVar(value="--"),
             }
             rows = [
-                ("Label", "label"),
-                ("CAN ID", "can_id"),
-                ("Presence", "presence"),
-                ("Probe Bucket", "probe_bucket"),
-                ("Probe Score", "probe_score"),
-                ("Probe Status", "probe_status"),
-                ("Probe Message", "probe_message"),
-                ("Last Seen", "last_seen"),
-                ("Current (A)", "current_a"),
-                ("Current Avg (A)", "current_avg_a"),
-                ("Current Peak (A)", "current_peak_a"),
-                ("Current Nonzero", "current_nonzero"),
-                ("Current Window Samples", "current_samples"),
-                ("Cmd Duty", "cmd_duty"),
-                ("Applied Duty", "applied_duty"),
-                ("Temp (C)", "temp_c"),
-                ("Selected", "selected"),
+                (DETAIL_TITLE_LABEL, DETAIL_KEY_LABEL),
+                (DETAIL_TITLE_CAN_ID, DETAIL_KEY_CAN_ID),
+                (DETAIL_TITLE_PRESENCE, DETAIL_KEY_PRESENCE),
+                (DETAIL_TITLE_PROBE_BUCKET, DETAIL_KEY_PROBE_BUCKET),
+                (DETAIL_TITLE_PROBE_SCORE, DETAIL_KEY_PROBE_SCORE),
+                (DETAIL_TITLE_PROBE_STATUS, DETAIL_KEY_PROBE_STATUS),
+                (DETAIL_TITLE_PROBE_MESSAGE, DETAIL_KEY_PROBE_MESSAGE),
+                (DETAIL_TITLE_LAST_SEEN, DETAIL_KEY_LAST_SEEN),
+                (DETAIL_TITLE_CURRENT_A, DETAIL_KEY_CURRENT_A),
+                (DETAIL_TITLE_CURRENT_AVG_A, DETAIL_KEY_CURRENT_AVG_A),
+                (DETAIL_TITLE_CURRENT_PEAK_A, DETAIL_KEY_CURRENT_PEAK_A),
+                (DETAIL_TITLE_CURRENT_NONZERO, DETAIL_KEY_CURRENT_NONZERO),
+                (DETAIL_TITLE_CURRENT_SAMPLES, DETAIL_KEY_CURRENT_SAMPLES),
+                (DETAIL_TITLE_CMD_DUTY, DETAIL_KEY_CMD_DUTY),
+                (DETAIL_TITLE_APPLIED_DUTY, DETAIL_KEY_APPLIED_DUTY),
+                (DETAIL_TITLE_VEL_RPM, DETAIL_KEY_VEL_RPM),
+                (DETAIL_TITLE_POSITION_ROT, DETAIL_KEY_POSITION_ROT),
+                (DETAIL_TITLE_POSITION_DELTA_ROT, DETAIL_KEY_POSITION_DELTA_ROT),
+                (DETAIL_TITLE_TEMP_C, DETAIL_KEY_TEMP_C),
+                (DETAIL_TITLE_SELECTED, DETAIL_KEY_SELECTED),
             ]
             for idx, (title, key) in enumerate(rows):
-                ttk.Label(details, text=f"{title}:").grid(row=idx, column=0, sticky="w", padx=4)
-                ttk.Label(details, textvariable=self._detail_vars[key]).grid(
+                ttk.Label(self._detail_device_frame, text=f"{title}:").grid(row=idx, column=0, sticky="w", padx=4)
+                ttk.Label(self._detail_device_frame, textvariable=self._detail_vars[key]).grid(
                     row=idx, column=1, sticky="w"
                 )
+            active_group_frame = ttk.LabelFrame(
+                details_container,
+                text=ACTIVE_GROUP_FRAME_TEXT,
+                padding=8,
+            )
+            active_group_frame.pack(side="top", fill="both", expand=True, pady=(8, 0))
+            self._active_group_summary_var = tk.StringVar(value=ACTIVE_GROUP_NONE_TEXT)
+            ttk.Label(
+                active_group_frame,
+                textvariable=self._active_group_summary_var,
+                justify="left",
+                anchor="nw",
+            ).pack(fill="x")
+            rows_container = ttk.Frame(active_group_frame)
+            rows_container.pack(fill="both", expand=True, pady=(8, 0))
+            rows_canvas = tk.Canvas(rows_container, height=ROWS_SCROLL_HEIGHT, highlightthickness=0)
+            rows_canvas.pack(side="left", fill="both", expand=True)
+            rows_scroll = ttk.Scrollbar(rows_container, orient="vertical", command=rows_canvas.yview)
+            rows_scroll.pack(side="right", fill="y")
+            rows_canvas.configure(yscrollcommand=rows_scroll.set)
+            rows_frame = ttk.Frame(rows_canvas)
+            rows_window = rows_canvas.create_window((0, 0), window=rows_frame, anchor="nw")
+
+            def _sync_active_group_scrollregion(_event=None) -> None:
+                rows_canvas.configure(scrollregion=rows_canvas.bbox("all"))
+
+            def _sync_active_group_rows_width(_event=None) -> None:
+                width = max(int(rows_canvas.winfo_width()), 1)
+                rows_canvas.itemconfigure(rows_window, width=width)
+
+            rows_frame.bind("<Configure>", _sync_active_group_scrollregion)
+            rows_canvas.bind("<Configure>", _sync_active_group_rows_width)
+            self._active_group_rows_canvas = rows_canvas
+            self._active_group_rows_frame = rows_frame
+            ttk.Label(
+                active_group_frame,
+                text=ACTIVE_GROUP_RULES_TEXT,
+                justify="left",
+                anchor="nw",
+            ).pack(fill="x", pady=(8, 0))
 
         self.reload_profile(profile_name)
 
@@ -1046,6 +1265,7 @@ class LiveTopologyView(ttk.Frame):
         runtime_active: Optional[bool] = None
         robot_enabled: Optional[bool] = None
         robot_estopped: Optional[bool] = None
+        runtime_groups: List[Dict[str, object]] = []
         if isinstance(payload, dict):
             active_raw = payload.get("runtimeActive")
             if isinstance(active_raw, bool):
@@ -1071,6 +1291,8 @@ class LiveTopologyView(ttk.Frame):
                 enabled = selected.get("enabled")
                 if isinstance(enabled, bool):
                     selected_enabled = enabled
+            groups = payload.get("groups") if isinstance(payload.get("groups"), list) else []
+            runtime_groups = [dict(group) for group in groups if isinstance(group, dict)]
         fingerprint_items: List[Tuple[object, ...]] = []
         for label, device in mapped.items():
             presence = device.get("presenceConfidence")
@@ -1096,6 +1318,12 @@ class LiveTopologyView(ttk.Frame):
             applied_duty = _runtime_device_field(device, "appliedDuty")
             if isinstance(applied_duty, (int, float)):
                 applied_duty = round(float(applied_duty), 2)
+            vel_rpm = _runtime_device_field(device, "velRpm")
+            if isinstance(vel_rpm, (int, float)):
+                vel_rpm = round(float(vel_rpm), 1)
+            position_rot = _runtime_device_field(device, RUNTIME_KEY_POSITION_ROT)
+            if isinstance(position_rot, (int, float)):
+                position_rot = round(float(position_rot), 3)
             temp_c = _runtime_device_field(device, "tempC")
             if isinstance(temp_c, (int, float)):
                 temp_c = round(float(temp_c), 1)
@@ -1116,6 +1344,8 @@ class LiveTopologyView(ttk.Frame):
                     current_a,
                     cmd_duty,
                     applied_duty,
+                    vel_rpm,
+                    position_rot,
                     temp_c,
                     probe_bucket,
                     probe_score,
@@ -1130,17 +1360,105 @@ class LiveTopologyView(ttk.Frame):
             runtime_active,
             robot_enabled,
             robot_estopped,
+            tuple(
+                (
+                    str(group.get("name", EMPTY_STRING)).strip().lower(),
+                    bool(group.get("enabled", True)),
+                    tuple(
+                        str(member.get("label", EMPTY_STRING)).strip().lower()
+                        for member in group.get("members", [])
+                        if isinstance(member, dict)
+                    ),
+                )
+                for group in runtime_groups
+            ),
         )
-        if fingerprint == self._runtime_fingerprint:
-            return False
-        self._runtime_fingerprint = fingerprint
         self._runtime_state = mapped
+        self._runtime_groups = runtime_groups
         self._selected_label = selected_label
         self._selected_enabled = selected_enabled
         self._apply_runtime_notice_from_state(runtime_active, robot_enabled, robot_estopped)
         self._update_details()
+        if fingerprint == self._runtime_fingerprint:
+            return False
+        self._runtime_fingerprint = fingerprint
         self._redraw()
         return True
+
+    def apply_runtime_group(self, group_payload: Optional[Dict[str, object]]) -> bool:
+        """
+        NAME
+            apply_runtime_group - Merge one runtime group payload into the current runtime group set.
+        """
+        if not isinstance(group_payload, dict):
+            return False
+        name = str(group_payload.get("name", EMPTY_STRING)).strip()
+        if not name:
+            return False
+        merged: List[Dict[str, object]] = []
+        applied = False
+        for existing in self._runtime_groups:
+            if not isinstance(existing, dict):
+                continue
+            existing_name = str(existing.get("name", EMPTY_STRING)).strip().lower()
+            if existing_name == name.lower():
+                merged.append(dict(group_payload))
+                applied = True
+            else:
+                merged.append(dict(existing))
+        if not applied:
+            merged.append(dict(group_payload))
+        current_fingerprint = tuple(
+            (
+                str(group.get("name", EMPTY_STRING)).strip().lower(),
+                bool(group.get("enabled", True)),
+                tuple(
+                    str(member.get("label", EMPTY_STRING)).strip().lower()
+                    for member in group.get("members", [])
+                    if isinstance(member, dict)
+                ),
+            )
+            for group in self._runtime_groups
+            if isinstance(group, dict)
+        )
+        next_fingerprint = tuple(
+            (
+                str(group.get("name", EMPTY_STRING)).strip().lower(),
+                bool(group.get("enabled", True)),
+                tuple(
+                    str(member.get("label", EMPTY_STRING)).strip().lower()
+                    for member in group.get("members", [])
+                    if isinstance(member, dict)
+                ),
+            )
+            for group in merged
+        )
+        if next_fingerprint == current_fingerprint:
+            return False
+        self._runtime_groups = merged
+        self._update_details()
+        self._redraw()
+        return True
+
+    def _effective_groups(self) -> List[Dict[str, object]]:
+        """
+        NAME
+            _effective_groups - Merge static profile groups with runtime groups by name.
+        """
+        merged: Dict[str, Dict[str, object]] = {}
+        for group in self._bridge_groups:
+            if not isinstance(group, dict):
+                continue
+            name = str(group.get("name", EMPTY_STRING)).strip()
+            if name:
+                merged[name.lower()] = dict(group)
+        for group in self._runtime_groups:
+            if not isinstance(group, dict):
+                continue
+            name = str(group.get("name", EMPTY_STRING)).strip()
+            if name:
+                merged[name.lower()] = dict(group)
+        return list(merged.values())
 
     def set_runtime_notice(self, text: str, level: str = "warn") -> None:
         """
@@ -1154,6 +1472,23 @@ class LiveTopologyView(ttk.Frame):
         self._runtime_event_notice_text = message
         self._runtime_event_notice_level = level if level in {"info", "warn", "error"} else "warn"
         self._refresh_runtime_notice()
+
+    def set_manual_test_observations(self, observations: Optional[Dict[str, Dict[str, object]]]) -> None:
+        """
+        NAME
+            set_manual_test_observations - Apply cached manual-test motion observations for group inspector status.
+        """
+        normalized: Dict[str, Dict[str, object]] = {}
+        if isinstance(observations, dict):
+            for label, entry in observations.items():
+                clean_label = str(label or EMPTY_STRING).strip().lower()
+                if not clean_label or not isinstance(entry, dict):
+                    continue
+                normalized[clean_label] = dict(entry)
+        if normalized == self._manual_test_observations:
+            return
+        self._manual_test_observations = normalized
+        self._update_details()
 
     def set_runtime_state_notice(self, text: str, level: str = "warn") -> None:
         """
@@ -1270,6 +1605,57 @@ class LiveTopologyView(ttk.Frame):
                 if callable(self._on_node_right_click_cb):
                     self._on_node_right_click_cb(node, event)
                 return
+        label_hits: List[Tuple[float, Dict[str, object]]] = []
+        bounds_hits: List[Tuple[float, Dict[str, object]]] = []
+        for region in self._group_overlay_regions:
+            if not isinstance(region, dict):
+                continue
+            hit_type = self._group_region_hit_type(x, y, region)
+            if hit_type is None:
+                continue
+            area = self._group_region_area(region, hit_type)
+            hit_entry = (area, dict(region))
+            if hit_type == "label_bounds":
+                label_hits.append(hit_entry)
+            else:
+                bounds_hits.append(hit_entry)
+        chosen_hits = label_hits or bounds_hits
+        if chosen_hits and callable(self._on_group_right_click_cb):
+            _area, region = min(chosen_hits, key=lambda item: item[0])
+            self._on_group_right_click_cb(region, event)
+            return
+
+    def _point_in_group_region(self, x: float, y: float, region: Dict[str, object]) -> bool:
+        """
+        NAME
+            _point_in_group_region - Return whether a canvas point hits one group overlay.
+        """
+        return self._group_region_hit_type(x, y, region) is not None
+
+    def _group_region_hit_type(self, x: float, y: float, region: Dict[str, object]) -> Optional[str]:
+        """
+        NAME
+            _group_region_hit_type - Return which group overlay region contains one canvas point.
+        """
+        for key in ("label_bounds", "bounds"):
+            bounds = region.get(key)
+            if not isinstance(bounds, tuple) or len(bounds) != 4:
+                continue
+            x0, y0, x1, y1 = bounds
+            if x0 <= x <= x1 and y0 <= y <= y1:
+                return key
+        return None
+
+    def _group_region_area(self, region: Dict[str, object], key: str) -> float:
+        """
+        NAME
+            _group_region_area - Return one group overlay region area for overlap priority.
+        """
+        bounds = region.get(key)
+        if not isinstance(bounds, tuple) or len(bounds) != 4:
+            return float("inf")
+        x0, y0, x1, y1 = bounds
+        return max(0.0, float(x1) - float(x0)) * max(0.0, float(y1) - float(y0))
 
     def _notify_selection_changed(self) -> None:
         """
@@ -1424,16 +1810,23 @@ class LiveTopologyView(ttk.Frame):
         NAME
             _update_details - Refresh selection details panel.
         """
+        self._update_active_group_summary()
         if not self._detail_vars:
             return
+        if self._group_inspector_name and self._group_inspector_targets:
+            self._show_group_inspector()
+            self._update_group_inspector()
+            return
+        self._show_device_inspector()
         node = self._selected_node
         if node is None:
             for key in self._detail_vars:
                 self._detail_vars[key].set("--")
             return
-        self._detail_vars["label"].set(node.label)
-        self._detail_vars["can_id"].set(str(node.can_id) if node.can_id >= 0 else "--")
+        self._detail_vars[DETAIL_KEY_LABEL].set(node.label)
+        self._detail_vars[DETAIL_KEY_CAN_ID].set(str(node.can_id) if node.can_id >= 0 else "--")
         live = self._runtime_state.get(node.label.lower())
+        manual_observation = self._manual_test_observations.get(node.label.strip().lower(), {})
         if live:
             now_ms = int(time.time() * 1000)
             presence = live.get("presenceConfidence")
@@ -1446,8 +1839,19 @@ class LiveTopologyView(ttk.Frame):
             current_samples = _runtime_device_field(live, RUNTIME_KEY_CURRENT_SAMPLE_COUNT)
             cmd_duty = _runtime_device_field(live, "cmdDuty")
             applied_duty = _runtime_device_field(live, "appliedDuty")
+            vel_rpm = _runtime_device_field(live, "velRpm")
+            position_rot = _runtime_device_field(live, RUNTIME_KEY_POSITION_ROT)
             temp_c = _runtime_device_field(live, "tempC")
-            self._detail_vars["presence"].set(
+            position_delta_rot = None
+            if _manual_observation_is_live(manual_observation):
+                position_delta_rot = manual_observation.get("positionDeltaRot")
+                max_abs_position_delta_rot = manual_observation.get("maxAbsPositionDeltaRot")
+                if (
+                    not isinstance(position_delta_rot, (int, float))
+                    and isinstance(max_abs_position_delta_rot, (int, float))
+                ):
+                    position_delta_rot = max_abs_position_delta_rot
+            self._detail_vars[DETAIL_KEY_PRESENCE].set(
                 f"{float(presence):.2f}" if isinstance(presence, (int, float)) else "--"
             )
             probe_bucket = (
@@ -1473,58 +1877,64 @@ class LiveTopologyView(ttk.Frame):
                     probe_score = f"{int(score_value)}/{int(max_score_value)}"
                 elif isinstance(score_value, (int, float)):
                     probe_score = str(int(score_value))
-            self._detail_vars["probe_bucket"].set(probe_bucket or "--")
-            self._detail_vars["probe_score"].set(probe_score)
-            self._detail_vars["probe_status"].set(probe_status or "--")
-            self._detail_vars["probe_message"].set(probe_message or "--")
-            self._detail_vars["last_seen"].set(_format_last_seen(last_seen, now_ms))
-            self._detail_vars["current_a"].set(
+            self._detail_vars[DETAIL_KEY_PROBE_BUCKET].set(probe_bucket or "--")
+            self._detail_vars[DETAIL_KEY_PROBE_SCORE].set(probe_score)
+            self._detail_vars[DETAIL_KEY_PROBE_STATUS].set(probe_status or "--")
+            self._detail_vars[DETAIL_KEY_PROBE_MESSAGE].set(probe_message or "--")
+            self._detail_vars[DETAIL_KEY_LAST_SEEN].set(_format_last_seen(last_seen, now_ms))
+            self._detail_vars[DETAIL_KEY_CURRENT_A].set(
                 f"{float(current_a):.2f}" if isinstance(current_a, (int, float)) else "--"
             )
-            self._detail_vars["current_avg_a"].set(
+            self._detail_vars[DETAIL_KEY_CURRENT_AVG_A].set(
                 f"{float(current_avg_a):.2f}"
                 if isinstance(current_avg_a, (int, float))
                 else "--"
             )
-            self._detail_vars["current_peak_a"].set(
+            self._detail_vars[DETAIL_KEY_CURRENT_PEAK_A].set(
                 f"{float(current_peak_a):.2f}"
                 if isinstance(current_peak_a, (int, float))
                 else "--"
             )
-            self._detail_vars["current_nonzero"].set(
+            self._detail_vars[DETAIL_KEY_CURRENT_NONZERO].set(
                 f"{float(current_nonzero):.2f}"
                 if isinstance(current_nonzero, (int, float))
                 else "--"
             )
-            self._detail_vars["current_samples"].set(
+            self._detail_vars[DETAIL_KEY_CURRENT_SAMPLES].set(
                 str(int(current_samples))
                 if isinstance(current_samples, (int, float))
                 else "--"
             )
-            self._detail_vars["cmd_duty"].set(
+            self._detail_vars[DETAIL_KEY_CMD_DUTY].set(
                 f"{float(cmd_duty):.2f}" if isinstance(cmd_duty, (int, float)) else "--"
             )
-            self._detail_vars["applied_duty"].set(
+            self._detail_vars[DETAIL_KEY_APPLIED_DUTY].set(
                 f"{float(applied_duty):.2f}" if isinstance(applied_duty, (int, float)) else "--"
             )
-            self._detail_vars["temp_c"].set(
+            self._detail_vars[DETAIL_KEY_VEL_RPM].set(self._format_group_rpm(vel_rpm))
+            self._detail_vars[DETAIL_KEY_POSITION_ROT].set(self._format_group_rot(position_rot))
+            self._detail_vars[DETAIL_KEY_POSITION_DELTA_ROT].set(self._format_group_rot(position_delta_rot))
+            self._detail_vars[DETAIL_KEY_TEMP_C].set(
                 f"{float(temp_c):.1f}" if isinstance(temp_c, (int, float)) else "--"
             )
         else:
-            self._detail_vars["presence"].set("--")
-            self._detail_vars["probe_bucket"].set("--")
-            self._detail_vars["probe_score"].set("--")
-            self._detail_vars["probe_status"].set("--")
-            self._detail_vars["probe_message"].set("--")
-            self._detail_vars["last_seen"].set("--")
-            self._detail_vars["current_a"].set("--")
-            self._detail_vars["current_avg_a"].set("--")
-            self._detail_vars["current_peak_a"].set("--")
-            self._detail_vars["current_nonzero"].set("--")
-            self._detail_vars["current_samples"].set("--")
-            self._detail_vars["cmd_duty"].set("--")
-            self._detail_vars["applied_duty"].set("--")
-            self._detail_vars["temp_c"].set("--")
+            self._detail_vars[DETAIL_KEY_PRESENCE].set("--")
+            self._detail_vars[DETAIL_KEY_PROBE_BUCKET].set("--")
+            self._detail_vars[DETAIL_KEY_PROBE_SCORE].set("--")
+            self._detail_vars[DETAIL_KEY_PROBE_STATUS].set("--")
+            self._detail_vars[DETAIL_KEY_PROBE_MESSAGE].set("--")
+            self._detail_vars[DETAIL_KEY_LAST_SEEN].set("--")
+            self._detail_vars[DETAIL_KEY_CURRENT_A].set("--")
+            self._detail_vars[DETAIL_KEY_CURRENT_AVG_A].set("--")
+            self._detail_vars[DETAIL_KEY_CURRENT_PEAK_A].set("--")
+            self._detail_vars[DETAIL_KEY_CURRENT_NONZERO].set("--")
+            self._detail_vars[DETAIL_KEY_CURRENT_SAMPLES].set("--")
+            self._detail_vars[DETAIL_KEY_CMD_DUTY].set("--")
+            self._detail_vars[DETAIL_KEY_APPLIED_DUTY].set("--")
+            self._detail_vars[DETAIL_KEY_VEL_RPM].set("--")
+            self._detail_vars[DETAIL_KEY_POSITION_ROT].set("--")
+            self._detail_vars[DETAIL_KEY_POSITION_DELTA_ROT].set("--")
+            self._detail_vars[DETAIL_KEY_TEMP_C].set("--")
         selected_text = "no"
         if self._selected_label:
             if node.label.strip().lower() == self._selected_label:
@@ -1536,7 +1946,445 @@ class LiveTopologyView(ttk.Frame):
                     selected_text = "yes"
         else:
             selected_text = "--"
-        self._detail_vars["selected"].set(selected_text)
+        self._detail_vars[DETAIL_KEY_SELECTED].set(selected_text)
+
+    def set_group_run_inspector(self, group_name: str, targets: List[str]) -> None:
+        """
+        NAME
+            set_group_run_inspector - Switch the selection panel into group-run inspector mode.
+        """
+        clean_name = str(group_name or EMPTY_STRING).strip()
+        clean_targets = [str(target).strip() for target in (targets or []) if str(target).strip()]
+        if clean_name == self._group_inspector_name and clean_targets == self._group_inspector_targets:
+            return
+        self._group_inspector_name = clean_name
+        self._group_inspector_targets = clean_targets
+        self._update_details()
+
+    def clear_group_run_inspector(self) -> None:
+        """
+        NAME
+            clear_group_run_inspector - Return the selection panel to single-device inspector mode.
+        """
+        if not self._group_inspector_name and not self._group_inspector_targets:
+            return
+        self._group_inspector_name = EMPTY_STRING
+        self._group_inspector_targets = []
+        self._update_details()
+
+    def _show_device_inspector(self) -> None:
+        """
+        NAME
+            _show_device_inspector - Show the normal single-device detail view.
+        """
+        if getattr(self, "_group_inspector_frame", None) is not None:
+            self._group_inspector_frame.pack_forget()
+        if getattr(self, "_detail_device_frame", None) is not None:
+            self._detail_device_frame.pack(fill="x")
+
+    def _show_group_inspector(self) -> None:
+        """
+        NAME
+            _show_group_inspector - Show the group-run detail view.
+        """
+        if getattr(self, "_detail_device_frame", None) is not None:
+            self._detail_device_frame.pack_forget()
+        if getattr(self, "_group_inspector_frame", None) is not None:
+            self._group_inspector_frame.pack(fill="x")
+
+    def _update_group_inspector(self) -> None:
+        """
+        NAME
+            _update_group_inspector - Render summary and per-member runtime rows for one active manual group run.
+        """
+        summary_var = getattr(self, "_group_inspector_summary_var", None)
+        frame = getattr(self, "_group_inspector_rows_frame", None)
+        if summary_var is None or frame is None:
+            return
+        for child in frame.winfo_children():
+            child.destroy()
+        group = self._runtime_group_by_name(self._group_inspector_name)
+        group_member_map: Dict[str, Dict[str, object]] = {}
+        primary_label = EMPTY_STRING
+        if isinstance(group, dict):
+            members = group.get("members")
+            if isinstance(members, list):
+                for member in members:
+                    if not isinstance(member, dict):
+                        continue
+                    label = str(member.get("label", EMPTY_STRING)).strip()
+                    if not label:
+                        continue
+                    if not primary_label:
+                        primary_label = label
+                    group_member_map[label.lower()] = dict(member)
+        target_labels = list(self._group_inspector_targets)
+        total_count = len(target_labels)
+        enabled_count = 0
+        present_count = 0
+        rotating_count = 0
+        no_motion_count = 0
+        missing_count = 0
+        conflict_count = 0
+        summary_lines = [
+            f"{GROUP_INSPECTOR_GROUP_PREFIX}{self._group_inspector_name}",
+            f"{GROUP_INSPECTOR_MODE_PREFIX}{GROUP_INSPECTOR_MODE_MANUAL_DUTY}",
+        ]
+        member_rows: List[Tuple[str, str]] = []
+        for label in target_labels:
+            label_key = label.strip().lower()
+            member = group_member_map.get(label_key, {})
+            enabled = bool(member.get("enabled", True))
+            if enabled:
+                enabled_count += 1
+            live = self._runtime_state.get(label_key, {})
+            manual_observation = self._manual_test_observations.get(label_key, {})
+            manual_auto_result = (
+                str(manual_observation.get("autoResult", EMPTY_STRING)).strip()
+                if isinstance(manual_observation, dict)
+                else EMPTY_STRING
+            )
+            presence_value = live.get("presenceConfidence") if isinstance(live, dict) else None
+            present = isinstance(presence_value, (int, float)) and float(presence_value) > PRESENCE_MIN_CONF
+            if present:
+                present_count += 1
+            probe = _runtime_active_probe_attachment(live) if isinstance(live, dict) else None
+            probe_bucket = (
+                str(probe.get(RUNTIME_KEY_ACTIVE_PROBE_BUCKET, "--")).strip()
+                if isinstance(probe, dict)
+                else "--"
+            )
+            motor_attachment = runtime_motor_attachment(live) if isinstance(live, dict) else None
+            cmd_duty = _runtime_device_field(live, "cmdDuty") if isinstance(live, dict) else None
+            applied_duty = _runtime_device_field(live, "appliedDuty") if isinstance(live, dict) else None
+            applied_v = _runtime_device_field(live, "appliedV") if isinstance(live, dict) else None
+            bus_v = _runtime_device_field(live, "busV") if isinstance(live, dict) else None
+            vel_rpm = _runtime_device_field(live, "velRpm") if isinstance(live, dict) else None
+            position_rot = _runtime_device_field(live, RUNTIME_KEY_POSITION_ROT) if isinstance(live, dict) else None
+            current_a = _runtime_display_current_a(live) if isinstance(live, dict) else None
+            position_delta_rot = None
+            if _manual_observation_is_live(manual_observation):
+                max_abs_vel = manual_observation.get("maxAbsVelRpm")
+                if not isinstance(vel_rpm, (int, float)) and isinstance(max_abs_vel, (int, float)):
+                    vel_rpm = max_abs_vel
+                position_delta_rot = manual_observation.get("positionDeltaRot", position_delta_rot)
+                max_abs_position_delta_rot = manual_observation.get("maxAbsPositionDeltaRot")
+                if (
+                    not isinstance(position_delta_rot, (int, float))
+                    and isinstance(max_abs_position_delta_rot, (int, float))
+                ):
+                    position_delta_rot = max_abs_position_delta_rot
+            verdict = infer_motor_runtime_verdict(
+                present=present,
+                cmd_duty=cmd_duty,
+                applied_duty=applied_duty,
+                applied_v=applied_v,
+                bus_v=bus_v,
+                vel_rpm=vel_rpm,
+                position_delta_rot=position_delta_rot,
+                motor_current_a=current_a,
+                attachment=motor_attachment,
+                duty_threshold=GROUP_INSPECTOR_DUTY_THRESHOLD,
+                rpm_threshold=GROUP_INSPECTOR_MOTION_MIN_RPM,
+                position_delta_threshold=GROUP_INSPECTOR_MOTION_MIN_POSITION_DELTA_ROT,
+                current_active_threshold=0.2,
+                low_bus_v_threshold=7.0,
+                applied_v_active_threshold=1.0,
+            )
+            if manual_auto_result == MANUAL_AUTO_RESULT_ROTATION:
+                verdict["result"] = GROUP_INSPECTOR_ROW_ROTATING
+            elif manual_auto_result == MANUAL_AUTO_RESULT_NO_ROTATION and verdict.get("commanded"):
+                verdict["result"] = GROUP_INSPECTOR_ROW_NO_MOTION
+            result = str(verdict.get("result", GROUP_INSPECTOR_ROW_UNKNOWN)).strip() or GROUP_INSPECTOR_ROW_UNKNOWN
+            if result == GROUP_INSPECTOR_ROW_MISSING:
+                missing_count += 1
+            elif result == GROUP_INSPECTOR_ROW_ROTATING:
+                rotating_count += 1
+            elif result in (GROUP_INSPECTOR_ROW_NO_MOTION, GROUP_INSPECTOR_ROW_STALLED, GROUP_INSPECTOR_ROW_ELECTRICAL if 'GROUP_INSPECTOR_ROW_ELECTRICAL' in globals() else GROUP_INSPECTOR_ROW_NO_MOTION):
+                no_motion_count += 1
+            elif result == GROUP_INSPECTOR_ROW_CONFLICT:
+                conflict_count += 1
+            detail_parts = []
+            if primary_label and label_key == primary_label.strip().lower():
+                detail_parts.append(GROUP_INSPECTOR_PRIMARY_MARKER)
+            detail_parts.append(ACTIVE_GROUP_MEMBER_ENABLED if enabled else ACTIVE_GROUP_MEMBER_DISABLED)
+            detail_parts.append(GROUP_INSPECTOR_ROW_PRESENT if present else GROUP_INSPECTOR_ROW_MISSING)
+            detail_parts.append(f"{GROUP_INSPECTOR_PROBE_BUCKET_PREFIX}{probe_bucket or '--'}")
+            detail_parts.append(f"{GROUP_INSPECTOR_CMD_DUTY_PREFIX}{self._format_group_number(cmd_duty)}")
+            detail_parts.append(f"{GROUP_INSPECTOR_APPLIED_DUTY_PREFIX}{self._format_group_number(applied_duty)}")
+            detail_parts.append(f"{GROUP_INSPECTOR_VEL_RPM_PREFIX}{self._format_group_rpm(vel_rpm)}")
+            detail_parts.append(f"{GROUP_INSPECTOR_POSITION_ROT_PREFIX}{self._format_group_rot(position_rot)}")
+            detail_parts.append(f"{GROUP_INSPECTOR_POSITION_DELTA_ROT_PREFIX}{self._format_group_rot(position_delta_rot)}")
+            detail_parts.append(f"{GROUP_INSPECTOR_CURRENT_A_PREFIX}{self._format_group_current(current_a)}")
+            detail_parts.append(result)
+            member_rows.append((label, " | ".join(detail_parts)))
+        summary_lines.extend(
+            [
+                f"{GROUP_INSPECTOR_MEMBERS_PREFIX}{total_count}",
+                f"{GROUP_INSPECTOR_ENABLED_PREFIX}{enabled_count}/{total_count}",
+                f"{GROUP_INSPECTOR_PRIMARY_PREFIX}{primary_label or '--'}",
+                f"{GROUP_INSPECTOR_PRESENT_SUMMARY_PREFIX}{present_count}/{total_count}",
+                f"{GROUP_INSPECTOR_ROTATING_SUMMARY_PREFIX}{rotating_count}/{total_count}",
+                f"{GROUP_INSPECTOR_NO_MOTION_SUMMARY_PREFIX}{no_motion_count}/{total_count}",
+                f"{GROUP_INSPECTOR_MISSING_SUMMARY_PREFIX}{missing_count}/{total_count}",
+                f"{GROUP_INSPECTOR_CONFLICT_SUMMARY_PREFIX}{conflict_count}/{total_count}",
+            ]
+        )
+        summary_var.set("\n".join(summary_lines))
+        for label, detail_text in member_rows:
+            row = ttk.Frame(frame)
+            row.pack(fill="x", pady=(0, 4))
+            ttk.Label(row, text=label, anchor="w").pack(fill="x")
+            detail_label = ttk.Label(row, text=detail_text, anchor="w", justify="left")
+            detail_label.pack(fill="x", padx=(12, 0))
+            self._bind_wrapped_label(row, detail_label)
+
+    def _runtime_group_by_name(self, name: str) -> Optional[Dict[str, object]]:
+        """
+        NAME
+            _runtime_group_by_name - Return one runtime group payload by normalized name.
+        """
+        clean_name = str(name or EMPTY_STRING).strip().lower()
+        if not clean_name:
+            return None
+        for group in self._runtime_groups:
+            if not isinstance(group, dict):
+                continue
+            group_name = str(group.get("name", EMPTY_STRING)).strip().lower()
+            if group_name == clean_name:
+                return group
+        return None
+
+    def _bind_wrapped_label(self, container: tk.Widget, label: ttk.Label) -> None:
+        """
+        NAME
+            _bind_wrapped_label - Keep one detail label wrapped to its container width.
+        """
+        def _update_wrap(_event=None) -> None:
+            width = max(int(container.winfo_width()) - ROW_WRAP_PAD, ROW_WRAP_MIN)
+            label.configure(wraplength=width)
+
+        container.bind("<Configure>", _update_wrap, add="+")
+        _update_wrap()
+
+    def _format_group_number(self, value: object) -> str:
+        """
+        NAME
+            _format_group_number - Format one generic numeric group-inspector field.
+        """
+        if not isinstance(value, (int, float)):
+            return "--"
+        return f"{float(value):.2f}"
+
+    def _format_group_rpm(self, value: object) -> str:
+        """
+        NAME
+            _format_group_rpm - Format one velocity field for the group inspector.
+        """
+        if not isinstance(value, (int, float)):
+            return "--"
+        return f"{float(value):.1f}{GROUP_INSPECTOR_RPM_SUFFIX}"
+
+    def _format_group_current(self, value: object) -> str:
+        """
+        NAME
+            _format_group_current - Format one current field for the group inspector.
+        """
+        if not isinstance(value, (int, float)):
+            return "--"
+        return f"{float(value):.2f}{GROUP_INSPECTOR_CURRENT_SUFFIX}"
+
+    def _format_group_rot(self, value: object) -> str:
+        """
+        NAME
+            _format_group_rot - Format one rotations field for the group inspector.
+        """
+        if not isinstance(value, (int, float)):
+            return "--"
+        return f"{float(value):.3f}{GROUP_INSPECTOR_ROT_SUFFIX}"
+
+    def _update_active_group_summary(self) -> None:
+        """
+        NAME
+            _update_active_group_summary - Render a concise member/status summary for the runtime active-group.
+        """
+        if self._active_group_summary_var is None:
+            return
+        active_group = None
+        for group in self._runtime_groups:
+            if not isinstance(group, dict):
+                continue
+            name = str(group.get("name", EMPTY_STRING)).strip().lower()
+            if name == ACTIVE_GROUP_NAME:
+                active_group = group
+                break
+        if not isinstance(active_group, dict):
+            self._active_group_summary_var.set(ACTIVE_GROUP_NONE_TEXT)
+            self._render_active_group_rows({})
+            return
+        members = active_group.get("members")
+        member_map: Dict[str, Dict[str, object]] = {}
+        if isinstance(members, list):
+            for member in members:
+                if not isinstance(member, dict):
+                    continue
+                label = str(member.get("label", EMPTY_STRING)).strip()
+                if label:
+                    member_map[label.lower()] = dict(member)
+        primary_label = EMPTY_STRING
+        if isinstance(members, list):
+            for member in members:
+                if not isinstance(member, dict):
+                    continue
+                label = str(member.get("label", EMPTY_STRING)).strip()
+                if label:
+                    primary_label = label
+                    break
+        if primary_label:
+            self._active_group_summary_var.set(f"Primary: {primary_label}")
+        else:
+            self._active_group_summary_var.set(ACTIVE_GROUP_EMPTY_TEXT)
+        self._render_active_group_rows(member_map, primary_label)
+
+    def _eligible_active_group_labels(self) -> List[str]:
+        """
+        NAME
+            _eligible_active_group_labels - Return eligible motor labels for the active-group management panel.
+        """
+        labels: List[str] = []
+        seen = set()
+        for node in self._nodes:
+            label = str(getattr(node, "label", EMPTY_STRING)).strip()
+            device_type = str(getattr(node, "device_type", EMPTY_STRING)).strip()
+            if not label or device_type != ACTIVE_GROUP_ELIGIBLE_DEVICE_TYPE:
+                continue
+            key = label.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            labels.append(label)
+        labels.sort(key=lambda item: item.lower())
+        return labels
+
+    def _render_active_group_rows(
+        self,
+        member_map: Dict[str, Dict[str, object]],
+        primary_label: str = EMPTY_STRING,
+    ) -> None:
+        """
+        NAME
+            _render_active_group_rows - Render eligible-device membership rows for active-group management.
+        """
+        frame = self._active_group_rows_frame
+        if frame is None:
+            return
+        for child in frame.winfo_children():
+            child.destroy()
+        eligible_labels = self._eligible_active_group_labels()
+        self._active_group_member_vars = {}
+        if not eligible_labels:
+            ttk.Label(frame, text=ACTIVE_GROUP_ELIGIBLE_EMPTY_TEXT, anchor="w", justify="left").pack(fill="x")
+            return
+        self._active_group_member_update_in_progress = True
+        try:
+            for label in eligible_labels:
+                label_key = label.lower()
+                member = member_map.get(label_key, {})
+                checked = label_key in member_map
+                enabled = member.get("enabled")
+                if not checked:
+                    enabled_text = ACTIVE_GROUP_MEMBER_ABSENT
+                else:
+                    enabled_text = (
+                        ACTIVE_GROUP_MEMBER_ENABLED
+                        if enabled is not False
+                        else ACTIVE_GROUP_MEMBER_DISABLED
+                    )
+                live = self._runtime_state.get(label_key, {})
+                presence = live.get("presenceConfidence")
+                presence_text = (
+                    f"{float(presence):.2f}"
+                    if isinstance(presence, (int, float))
+                    else "--"
+                )
+                probe = _runtime_active_probe_attachment(live)
+                probe_bucket = (
+                    str(probe.get(RUNTIME_KEY_ACTIVE_PROBE_BUCKET, "--")).strip()
+                    if isinstance(probe, dict)
+                    else "--"
+                )
+                manual_observation = self._manual_test_observations.get(label_key, {})
+                vel_rpm = _runtime_device_field(live, "velRpm") if isinstance(live, dict) else None
+                position_rot = _runtime_device_field(live, RUNTIME_KEY_POSITION_ROT) if isinstance(live, dict) else None
+                position_delta_rot = None
+                if _manual_observation_is_live(manual_observation):
+                    position_delta_rot = manual_observation.get("positionDeltaRot")
+                    max_abs_position_delta_rot = manual_observation.get("maxAbsPositionDeltaRot")
+                    if (
+                        not isinstance(position_delta_rot, (int, float))
+                        and isinstance(max_abs_position_delta_rot, (int, float))
+                    ):
+                        position_delta_rot = max_abs_position_delta_rot
+                selected_text = (
+                    ACTIVE_GROUP_SELECTED_YES
+                    if self._selected_label and label_key == self._selected_label
+                    else ACTIVE_GROUP_SELECTED_NO
+                )
+                primary_text = (
+                    ACTIVE_GROUP_PRIMARY_YES
+                    if checked and label_key == primary_label.strip().lower()
+                    else EMPTY_STRING
+                )
+                row = ttk.Frame(frame)
+                row.pack(fill="x", pady=(0, 2))
+                variable = tk.BooleanVar(value=checked)
+                self._active_group_member_vars[label_key] = variable
+                top_line = ttk.Frame(row)
+                top_line.pack(fill="x")
+                ttk.Checkbutton(
+                    top_line,
+                    variable=variable,
+                    command=lambda row_label=label: self._on_active_group_member_checkbox_toggled(row_label),
+                ).pack(side="left")
+                ttk.Label(top_line, text=label, anchor="w").pack(side="left")
+                detail_parts = []
+                if primary_text:
+                    detail_parts.append(primary_text)
+                detail_parts.append(enabled_text)
+                detail_parts.append(f"{ACTIVE_GROUP_PRESENT_PREFIX}{presence_text}")
+                detail_parts.append(f"{ACTIVE_GROUP_PROBE_PREFIX}{probe_bucket or '--'}")
+                detail_parts.append(f"{ACTIVE_GROUP_VEL_RPM_PREFIX}{self._format_group_rpm(vel_rpm)}")
+                detail_parts.append(f"{ACTIVE_GROUP_POSITION_ROT_PREFIX}{self._format_group_rot(position_rot)}")
+                detail_parts.append(
+                    f"{ACTIVE_GROUP_POSITION_DELTA_ROT_PREFIX}{self._format_group_rot(position_delta_rot)}"
+                )
+                detail_parts.append(selected_text)
+                detail_label = ttk.Label(
+                    row,
+                    text=" | ".join(detail_parts),
+                    anchor="w",
+                    justify="left",
+                )
+                detail_label.pack(fill="x", padx=(24, 0))
+                self._bind_wrapped_label(row, detail_label)
+        finally:
+            self._active_group_member_update_in_progress = False
+
+    def _on_active_group_member_checkbox_toggled(self, label: str) -> None:
+        """
+        NAME
+            _on_active_group_member_checkbox_toggled - Forward one active-group membership toggle to the owning UI.
+        """
+        if self._active_group_member_update_in_progress:
+            return
+        callback = self._on_active_group_member_toggled_cb
+        if not callable(callback):
+            return
+        key = str(label or EMPTY_STRING).strip().lower()
+        variable = self._active_group_member_vars.get(key)
+        if variable is None:
+            return
+        callback(str(label).strip(), bool(variable.get()))
 
     def _live_fill(self, node: LiveNode, now_ms: int) -> Optional[str]:
         evidence_fill = self._evidence_fill(node)
@@ -1610,6 +2458,7 @@ class LiveTopologyView(ttk.Frame):
     def _redraw(self, _event: Optional[tk.Event] = None) -> None:
         self._canvas.delete("all")
         self._node_bounds = {}
+        self._group_overlay_regions = []
         if not self._nodes:
             self._canvas.create_text(
                 20,
@@ -1659,7 +2508,7 @@ class LiveTopologyView(ttk.Frame):
             show_dio=FILTER_DIO in active_filters,
             show_virtual=FILTER_VIRTUAL in active_filters,
             show_power=FILTER_POWER in active_filters,
-            groups=self._bridge_groups,
+            groups=self._effective_groups(),
             selected_node_keys=selected_keys,
             selected_bus_indices=set(),
             drag_free_y={},
@@ -1698,3 +2547,4 @@ class LiveTopologyView(ttk.Frame):
             show_selection_box=True,
         )
         self._node_bounds = rendered["node_bounds"]
+        self._group_overlay_regions = list(rendered.get("group_overlay_regions", []))

@@ -59,6 +59,7 @@ public final class CtreTalonFxReader {
     var deviceTemp = device.getDeviceTemp();
     var motorVoltage = device.getMotorVoltage();
     var rotorVelocity = device.getRotorVelocity();
+    var rotorPosition = device.getPosition();
     BaseStatusSignal.refreshAll(
         faultSignal,
         stickySignal,
@@ -67,7 +68,8 @@ public final class CtreTalonFxReader {
         supplyCurrent,
         deviceTemp,
         motorVoltage,
-        rotorVelocity);
+        rotorVelocity,
+        rotorPosition);
 
     ctre.faultsRaw = faultSignal.getValue();
     ctre.stickyFaultsRaw = stickySignal.getValue();
@@ -82,6 +84,7 @@ public final class CtreTalonFxReader {
     ctre.motorV = motorVoltage.getValue().in(Units.Volts);
     ctre.appliedV = ctre.motorV;
     ctre.velRpm = rotorVelocity.getValue().in(Units.RotationsPerSecond) * RPM_PER_RPS;
+    ctre.positionRot = rotorPosition.getValue().in(Units.Rotations);
 
     CtreReaderUtil.collectFaultFlags(device, ctre.faultFlags);
     CtreReaderUtil.collectStickyFaultFlags(device, ctre.stickyFaultFlags);

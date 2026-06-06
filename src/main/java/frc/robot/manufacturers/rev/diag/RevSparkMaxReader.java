@@ -79,6 +79,7 @@ public final class RevSparkMaxReader {
       RevReaderUtil.collectWarningFlags(warnings, rev.warningFlags);
       RevReaderUtil.collectWarningFlags(stickyWarnings, rev.stickyWarningFlags);
       rev.velRpm = device.getEncoder().getVelocity();
+      rev.positionRot = device.getEncoder().getPosition();
       rev.follower = device.isFollower();
     }
 

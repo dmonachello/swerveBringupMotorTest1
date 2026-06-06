@@ -27,6 +27,7 @@ public final class CtreMotorAttachment extends DeviceAttachment {
   public Double tempC;
   public Double motorV;
   public Double velRpm;
+  public Double positionRot;
   public final List<String> faultFlags = new ArrayList<>();
   public final List<String> stickyFaultFlags = new ArrayList<>();
 

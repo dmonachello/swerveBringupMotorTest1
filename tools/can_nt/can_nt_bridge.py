@@ -219,6 +219,7 @@ DEVICE_KEY_PREFER_STATUS = "prefer_status"
 # Constants (unknown label handling).
 CONSOLE_UNKNOWN_LABEL_PREFIX = "UNPROFILED_CONSOLE_"
 EMPTY_STRING = ""
+PROFILE_NONE = "(none)"
 
 # Constants (multi-source CAN).
 SOURCE_DEFAULT_ID = "default"
@@ -316,7 +317,10 @@ def _normalize_profile_name(value: object) -> str:
     """
     if not isinstance(value, str):
         return EMPTY_STRING
-    return value.strip()
+    normalized = value.strip()
+    if not normalized or normalized == PROFILE_NONE:
+        return EMPTY_STRING
+    return normalized
 
 
 def _resolve_profile_context_name(ui_table, fallback: str) -> str:

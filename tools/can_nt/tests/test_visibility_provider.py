@@ -119,7 +119,7 @@ class VisibilityProviderTests(unittest.TestCase):
         self.assertEqual(devices[0][VIS_KEY_LABEL], TEST_EXPECTED_LABEL)
         self.assertFalse(devices[0][VIS_KEY_UNEXPECTED])
 
-    def test_rate_uses_long_window_average_after_burst(self) -> None:
+    def test_rate_uses_recent_tick_window_and_decays_to_zero_without_new_frames(self) -> None:
         provider = self._build_provider()
         provider.set_expected_devices([(TEST_EXPECTED_LABEL, TEST_EXPECTED_IDENTITY)])
 
@@ -149,6 +149,16 @@ class VisibilityProviderTests(unittest.TestCase):
         self.assertGreater(source_metric[VIS_KEY_FRAMES_PER_SEC], 0.0)
         self.assertEqual(raw_id[VIS_KEY_MSG_COUNT], 2)
         self.assertGreater(raw_id[VIS_KEY_FRAMES_PER_SEC], 0.0)
+
+        provider.tick(TEST_NOW_MS + 1000)
+        snapshot = provider.snapshot(VIS_SCOPE_BOTH, TEST_NOW_MS + 1000)
+        device = snapshot[VIS_KEY_DEVICES][0]
+        metrics = device[VIS_KEY_METRICS]
+        source_metric = metrics[TEST_SOURCE_ID]
+        raw_id = device[VIS_KEY_RAW_IDS][0]
+
+        self.assertEqual(source_metric[VIS_KEY_FRAMES_PER_SEC], 0.0)
+        self.assertEqual(raw_id[VIS_KEY_FRAMES_PER_SEC], 0.0)
 
 
 if __name__ == "__main__":

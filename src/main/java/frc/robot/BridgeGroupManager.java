@@ -394,6 +394,29 @@ public final class BridgeGroupManager {
 
   /**
    * NAME
+   *   hasDevice - Return whether one specific group contains a device label.
+   *
+   * PARAMETERS
+   *   groupName - Group name.
+   *   device - Device label.
+   *
+   * RETURNS
+   *   True when the target group's member map contains the normalized label.
+   */
+  public boolean hasDevice(String groupName, String device) {
+    Group group = groups.get(normalize(groupName));
+    if (group == null) {
+      return false;
+    }
+    String deviceKey = normalize(device);
+    if (deviceKey.isEmpty()) {
+      return false;
+    }
+    return group.members.containsKey(deviceKey);
+  }
+
+  /**
+   * NAME
    *   removeDevice - Remove a member label from a group.
    *
    * PARAMETERS
