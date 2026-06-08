@@ -494,6 +494,7 @@ public class RobotV2 extends TimedRobot {
     if (!loadedGroups) {
       syncDefaultGroup();
     }
+    ensureActiveGroupDefined();
   }
 
   /**
@@ -543,6 +544,7 @@ public class RobotV2 extends TimedRobot {
       uiHandler.printProfileInfo();
     }
     refreshInputAliases();
+    ensureActiveGroupDefined();
   }
 
   /**

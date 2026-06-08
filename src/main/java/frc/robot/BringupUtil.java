@@ -61,6 +61,9 @@ public final class BringupUtil {
   private static final String KEY_BRIDGE_TESTS = "tests";
   private static final String KEY_DSL_TESTS = "dslTests";
   private static final String KEY_DSL_TEST_SET = "dslTestSet";
+  private static final String KEY_LIFECYCLE = "lifecycle";
+  private static final String KEY_DISCOVER_THRESHOLD = "discoverThreshold";
+  private static final String KEY_LOST_PRESENCE_THRESHOLD = "lostPresenceThreshold";
   private static final String KEY_INPUT_ALIASES = "inputAliases";
   private static final String KEY_LABEL = "label";
   private static final String KEY_DEVICE = "device";
@@ -231,6 +234,8 @@ public final class BringupUtil {
       "bringup.autoSelectDefaultProfile";
   private static final String ENV_AUTO_SELECT_DEFAULT_PROFILE =
       "BRINGUP_AUTO_SELECT_DEFAULT_PROFILE";
+  public static final double DEFAULT_DISCOVER_THRESHOLD = 0.80;
+  public static final double DEFAULT_LOST_PRESENCE_THRESHOLD = 0.60;
 
   /**
    * NAME
@@ -737,6 +742,57 @@ public final class BringupUtil {
       return Collections.emptyMap();
     }
     return Collections.unmodifiableMap(config.inputAliases);
+  }
+
+  /**
+   * NAME
+   *   getProfileDiscoverThreshold - Return lifecycle discover threshold for one profile.
+   *
+   * PARAMETERS
+   *   profileName - Profile name or empty for active/selected fallback.
+   *
+   * RETURNS
+   *   Threshold in [0, 1] used to promote presence to present.
+   */
+  public static double getProfileDiscoverThreshold(String profileName) {
+    String name = resolveProfileNameOrActive(profileName);
+    ProfileConfig config = profiles.get(name);
+    double configured = config != null && config.lifecycle != null
+        ? config.lifecycle.discoverThreshold
+        : DEFAULT_DISCOVER_THRESHOLD;
+    return clampLifecycleThreshold(configured, DEFAULT_DISCOVER_THRESHOLD);
+  }
+
+  /**
+   * NAME
+   *   getProfileLostPresenceThreshold - Return lifecycle stale threshold for one profile.
+   *
+   * PARAMETERS
+   *   profileName - Profile name or empty for active/selected fallback.
+   *
+   * RETURNS
+   *   Threshold in [0, 1] used to demote presence to stale.
+   */
+  public static double getProfileLostPresenceThreshold(String profileName) {
+    String name = resolveProfileNameOrActive(profileName);
+    ProfileConfig config = profiles.get(name);
+    double configured = config != null && config.lifecycle != null
+        ? config.lifecycle.lostPresenceThreshold
+        : DEFAULT_LOST_PRESENCE_THRESHOLD;
+    return clampLifecycleThreshold(configured, DEFAULT_LOST_PRESENCE_THRESHOLD);
+  }
+
+  private static double clampLifecycleThreshold(double value, double fallback) {
+    if (Double.isNaN(value) || Double.isInfinite(value)) {
+      return fallback;
+    }
+    if (value < 0.0) {
+      return 0.0;
+    }
+    if (value > 1.0) {
+      return 1.0;
+    }
+    return value;
   }
 
   /**
@@ -3117,6 +3173,19 @@ public final class BringupUtil {
     Map<String, String> inputAliases = Collections.emptyMap();
     @SerializedName(KEY_DSL_TEST_SET)
     String dslTestSet = "";
+    @SerializedName(KEY_LIFECYCLE)
+    LifecycleConfig lifecycle = new LifecycleConfig();
+  }
+
+  /**
+   * NAME
+   *   LifecycleConfig - Optional per-profile lifecycle threshold settings.
+   */
+  private static final class LifecycleConfig {
+    @SerializedName(KEY_DISCOVER_THRESHOLD)
+    double discoverThreshold = DEFAULT_DISCOVER_THRESHOLD;
+    @SerializedName(KEY_LOST_PRESENCE_THRESHOLD)
+    double lostPresenceThreshold = DEFAULT_LOST_PRESENCE_THRESHOLD;
   }
 
   /**

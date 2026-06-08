@@ -95,6 +95,15 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_ENABLED = "enabled";
   private static final String JSON_KEY_INSTANTIATED = "instantiated";
   private static final String JSON_KEY_PRESENCE_CONF = "presenceConfidence";
+  private static final String JSON_KEY_LIFECYCLE_STATE = "lifecycleState";
+  private static final String JSON_KEY_TESTABLE = "testable";
+  private static final String JSON_KEY_OVERRIDE_ACTIVE = "overrideActive";
+  private static final String JSON_KEY_OVERRIDE_ORIGINATED = "overrideOriginated";
+  private static final String JSON_KEY_OVERRIDE_FAILURE = "overrideFailure";
+  private static final String JSON_KEY_LAST_EVENT = "lastEvent";
+  private static final String JSON_KEY_LAST_TRANSITION_TIME_MS =
+      "lastTransitionTimeMs";
+  private static final String JSON_KEY_NOT_TESTABLE_REASON = "notTestableReason";
   private static final String JSON_KEY_LAST_SEEN_MS = "lastSeenMs";
   private static final String JSON_KEY_ATTACHMENTS = "attachments";
   private static final String MESSAGE_RUNTIME_INACTIVE_ACTIVATE =
@@ -197,6 +206,9 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_SELECTED_PROFILE = "selectedProfile";
   private static final String JSON_KEY_ACTIVE_RUNTIME_PROFILE = "activeRuntimeProfile";
   private static final String JSON_KEY_RUNTIME_ACTIVE = "runtimeActive";
+  private static final String JSON_KEY_DISCOVER_THRESHOLD = "discoverThreshold";
+  private static final String JSON_KEY_LOST_PRESENCE_THRESHOLD =
+      "lostPresenceThreshold";
   private static final String JSON_KEY_ACTIVATED = "activated";
   private static final String JSON_KEY_EXPECTED_HASH = "expectedHash";
   private static final String JSON_KEY_COMPUTED_HASH = "computedHash";
@@ -514,6 +526,16 @@ public class BridgeUiCommandHandler {
           @Override
           public boolean isProfileActive() {
             return runtime.isRuntimeReady();
+          }
+
+          @Override
+          public boolean isRuntimeDeclaredActive() {
+            return runtime.isRuntimeDeclaredActive();
+          }
+
+          @Override
+          public boolean isRuntimeActivationAllowed() {
+            return DriverStation.isEnabled() && DriverStation.isTeleop() && !DriverStation.isEStopped();
           }
 
           @Override
@@ -853,6 +875,16 @@ public class BridgeUiCommandHandler {
       @Override
       public boolean clearManualGroupDuty(String groupName) {
         return BridgeUiCommandHandler.this.clearManualGroupDuty(groupName);
+      }
+
+      @Override
+      public String overrideInstantiateDevice(String deviceName) {
+        return BridgeUiCommandHandler.this.overrideInstantiateDevice(deviceName);
+      }
+
+      @Override
+      public String clearDeviceOverride(String deviceName) {
+        return BridgeUiCommandHandler.this.clearDeviceOverride(deviceName);
       }
     });
 
@@ -1695,6 +1727,8 @@ public class BridgeUiCommandHandler {
       case "showTests":
       case CMD_MANUAL_GROUP_DUTY_SET:
       case CMD_MANUAL_GROUP_DUTY_CLEAR:
+      case "deviceOverrideInstantiate":
+      case "deviceOverrideClear":
         return true;
       default:
         return false;
@@ -1942,11 +1976,13 @@ public class BridgeUiCommandHandler {
    *   isDeviceTotallyReady - Check readiness for active-group operations.
    */
   private boolean isDeviceTotallyReady(String label) {
-    if (core() == null || label == null || label.isBlank()) {
+    if (label == null || label.isBlank()) {
       return false;
     }
-    var device = core().findDeviceByLabel(label);
-    return device != null && device.isCreated();
+    runtime.refreshDeviceLifecycle(System.currentTimeMillis());
+    DeviceLifecycleRegistry.DeviceLifecycleView lifecycle =
+        runtime.getDeviceLifecycle().viewForLabel(label);
+    return lifecycle != null && lifecycle.testable;
   }
 
   /**
@@ -2471,6 +2507,8 @@ public class BridgeUiCommandHandler {
       case CMD_MANUAL_DEVICE_DUTY_CLEAR:
       case CMD_MANUAL_GROUP_DUTY_SET:
       case CMD_MANUAL_GROUP_DUTY_CLEAR:
+      case "deviceOverrideInstantiate":
+      case "deviceOverrideClear":
       case CMD_PROFILE_ACTIVATE:
       case CMD_RUNTIME_ACTIVATE:
       case CMD_RUNTIME_DEACTIVATE:
@@ -2545,7 +2583,13 @@ public class BridgeUiCommandHandler {
     if (core() == null || deviceName == null || deviceName.isBlank()) {
       return false;
     }
+    runtime.refreshDeviceLifecycle(System.currentTimeMillis());
     String target = deviceName.trim();
+    DeviceLifecycleRegistry.DeviceLifecycleView lifecycle =
+        runtime.getDeviceLifecycle().viewForLabel(target);
+    if (lifecycle == null || !lifecycle.testable) {
+      return false;
+    }
     String previous = bridgeSelected().device != null ? bridgeSelected().device.trim() : TEXT_EMPTY;
     double clamped = Math.max(DUTY_MIN, Math.min(DUTY_MAX, duty));
     if (!previous.isBlank() && !previous.equals(target)) {
@@ -2606,6 +2650,7 @@ public class BridgeUiCommandHandler {
     }
     double clamped = Math.max(DUTY_MIN, Math.min(DUTY_MAX, duty));
     boolean appliedAny = false;
+    runtime.refreshDeviceLifecycle(System.currentTimeMillis());
     bridgeSelected().enabled = false;
     bridgeSelected().device = TEXT_EMPTY;
     for (BridgeGroupManager.MemberState member : group.members.values()) {
@@ -2614,6 +2659,11 @@ public class BridgeUiCommandHandler {
       }
       BringupUtil.DeviceEntry entry = findDeviceEntryByLabel(member.label);
       if (entry == null) {
+        continue;
+      }
+      DeviceLifecycleRegistry.DeviceLifecycleView lifecycle =
+          runtime.getDeviceLifecycle().viewForLabel(member.label);
+      if (lifecycle == null || !lifecycle.testable) {
         continue;
       }
       if (core().setDutyByDeviceLabel(member.label, clamped)) {
@@ -2654,6 +2704,68 @@ public class BridgeUiCommandHandler {
     bridgeSelected().enabled = false;
     bridgeSelected().device = TEXT_EMPTY;
     return true;
+  }
+
+  /**
+   * NAME
+   *   overrideInstantiateDevice - Execute explicit lifecycle override instantiation.
+   *
+   * PARAMETERS
+   *   deviceName - Target device label.
+   *
+   * RETURNS
+   *   Empty string on success, or an operator-facing error message.
+   */
+  private String overrideInstantiateDevice(String deviceName) {
+    if (core() == null || deviceName == null || deviceName.isBlank()) {
+      return "Override instantiation requires a valid device.";
+    }
+    String target = deviceName.trim();
+    DeviceLifecycleRegistry.DeviceLifecycleView lifecycle =
+        runtime.getDeviceLifecycle().viewForLabel(target);
+    if (lifecycle == null) {
+      return "Override instantiation target not in current profile: " + target;
+    }
+    if (!runtime.getDeviceLifecycle().isInstantiationAllowed(target)) {
+      return "Override instantiation not allowed: " + lifecycle.notTestableReason;
+    }
+    long nowMs = System.currentTimeMillis();
+    runtime.getDeviceLifecycle().markOverrideInstantiationPending(target, nowMs);
+    boolean ok = core().instantiateDeviceByLabel(target);
+    if (!ok) {
+      runtime.getDeviceLifecycle().markOverrideInstantiationFailed(target, nowMs);
+      return "Override instantiation failed: " + target;
+    }
+    runtime.refreshDeviceLifecycle(nowMs);
+    return TEXT_EMPTY;
+  }
+
+  /**
+   * NAME
+   *   clearDeviceOverride - Clear explicit lifecycle override failure state.
+   *
+   * PARAMETERS
+   *   deviceName - Target device label.
+   *
+   * RETURNS
+   *   Empty string on success, or an operator-facing error message.
+   */
+  private String clearDeviceOverride(String deviceName) {
+    if (deviceName == null || deviceName.isBlank()) {
+      return "Override clear requires a valid device.";
+    }
+    String target = deviceName.trim();
+    DeviceLifecycleRegistry.DeviceLifecycleView lifecycle =
+        runtime.getDeviceLifecycle().viewForLabel(target);
+    if (lifecycle == null) {
+      return "Override clear target not in current profile: " + target;
+    }
+    if (!lifecycle.overrideFailure) {
+      return "Override clear not applicable: " + target;
+    }
+    runtime.getDeviceLifecycle().clearOverrideFailure(target, System.currentTimeMillis());
+    runtime.refreshDeviceLifecycle(System.currentTimeMillis());
+    return TEXT_EMPTY;
   }
 
   /**
@@ -3083,12 +3195,26 @@ public class BridgeUiCommandHandler {
     JsonObject root = new JsonObject();
     root.addProperty("schemaVersion", 1);
     long nowMs = System.currentTimeMillis();
+    runtime.refreshDeviceLifecycle(nowMs);
+    ensureActiveGroupDefined();
     root.addProperty("generatedAtMs", nowMs);
     root.addProperty("build", BringupCore.getBuildMarker());
     root.addProperty("profile", BringupUtil.getActiveCanProfileLabel());
     root.addProperty(JSON_KEY_SELECTED_PROFILE, BringupUtil.getSelectedCanProfileLabel());
     root.addProperty(JSON_KEY_ACTIVE_RUNTIME_PROFILE, BringupUtil.getActiveRuntimeProfileLabel());
     root.addProperty(JSON_KEY_RUNTIME_ACTIVE, runtime.isRuntimeReady());
+    root.addProperty(
+        JSON_KEY_DISCOVER_THRESHOLD,
+        BringupUtil.getProfileDiscoverThreshold(
+            BringupUtil.isProfileActive()
+                ? BringupUtil.getActiveRuntimeProfileLabel()
+                : BringupUtil.getSelectedCanProfileLabel()));
+    root.addProperty(
+        JSON_KEY_LOST_PRESENCE_THRESHOLD,
+        BringupUtil.getProfileLostPresenceThreshold(
+            BringupUtil.isProfileActive()
+                ? BringupUtil.getActiveRuntimeProfileLabel()
+                : BringupUtil.getSelectedCanProfileLabel()));
     root.addProperty("enabled", DriverStation.isEnabled());
     root.addProperty("estopped", DriverStation.isEStopped());
     root.addProperty("mode", DriverStation.isAutonomous() ? "auto"
@@ -3324,7 +3450,10 @@ public class BridgeUiCommandHandler {
 
     JsonArray array = new JsonArray();
     java.util.HashSet<String> emitted = new java.util.HashSet<>();
-    for (BringupUtil.DeviceEntry entry : BringupUtil.getActiveDevicesSorted()) {
+    List<BringupUtil.DeviceEntry> runtimeDevices = BringupUtil.isProfileActive()
+        ? BringupUtil.getActiveDevicesSorted()
+        : BringupUtil.getSelectedDevicesSorted();
+    for (BringupUtil.DeviceEntry entry : runtimeDevices) {
       if (entry == null) {
         continue;
       }
@@ -3337,6 +3466,8 @@ public class BridgeUiCommandHandler {
       obj.addProperty(JSON_KEY_VENDOR, entry.vendor);
       obj.addProperty(JSON_KEY_TYPE, entry.type);
       obj.addProperty(JSON_KEY_ID, entry.id);
+      DeviceLifecycleRegistry.DeviceLifecycleView lifecycle =
+          runtime.getDeviceLifecycle().viewForLabel(entry.label);
 
       DeviceSnapshot snap = null;
       if (entry.label != null) {
@@ -3345,10 +3476,25 @@ public class BridgeUiCommandHandler {
       if (snap == null && entry.id >= 0) {
         snap = byId.get(entry.id);
       }
-      obj.addProperty(JSON_KEY_INSTANTIATED, snap != null);
+      obj.addProperty(
+          JSON_KEY_INSTANTIATED,
+          lifecycle != null ? lifecycle.lifecycleState.startsWith("instantiated") : snap != null);
+      if (lifecycle != null) {
+        obj.addProperty(JSON_KEY_PRESENCE_CONF, lifecycle.presenceScore);
+        obj.addProperty(JSON_KEY_LIFECYCLE_STATE, lifecycle.lifecycleState);
+        obj.addProperty(JSON_KEY_TESTABLE, lifecycle.testable);
+        obj.addProperty(JSON_KEY_OVERRIDE_ACTIVE, lifecycle.overrideActive);
+        obj.addProperty(JSON_KEY_OVERRIDE_ORIGINATED, lifecycle.overrideOriginated);
+        obj.addProperty(JSON_KEY_OVERRIDE_FAILURE, lifecycle.overrideFailure);
+        obj.addProperty(JSON_KEY_LAST_EVENT, lifecycle.lastEvent);
+        obj.addProperty(JSON_KEY_LAST_TRANSITION_TIME_MS, lifecycle.lastTransitionTimeMs);
+        obj.addProperty(JSON_KEY_NOT_TESTABLE_REASON, lifecycle.notTestableReason);
+      }
       if (snap != null) {
-        obj.addProperty(JSON_KEY_PRESENCE_CONF, snap.present ? 1.0 : 0.0);
-        if (snap.present) {
+        if (lifecycle == null) {
+          obj.addProperty(JSON_KEY_PRESENCE_CONF, snap.present ? 1.0 : 0.0);
+        }
+        if (snap.present || (lifecycle != null && lifecycle.presenceScore > 0.0)) {
           obj.addProperty(JSON_KEY_LAST_SEEN_MS, nowMs);
         }
         if (snap.attachments != null && !snap.attachments.isEmpty()) {

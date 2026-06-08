@@ -36,6 +36,9 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
   private static final String CMD_MANUAL_DEVICE_DUTY_CLEAR = "manualDeviceDutyClear";
   private static final String CMD_MANUAL_GROUP_DUTY_SET = "manualGroupDutySet";
   private static final String CMD_MANUAL_GROUP_DUTY_CLEAR = "manualGroupDutyClear";
+  private static final String CMD_DEVICE_OVERRIDE_INSTANTIATE =
+      "deviceOverrideInstantiate";
+  private static final String CMD_DEVICE_OVERRIDE_CLEAR = "deviceOverrideClear";
 
   private static final String JSON_KEY_JSON = "json";
   private static final String MESSAGE_RUNTIME_ACTIVATE_REQUIRED =
@@ -76,7 +79,9 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
       CMD_MANUAL_DEVICE_DUTY_SET,
       CMD_MANUAL_DEVICE_DUTY_CLEAR,
       CMD_MANUAL_GROUP_DUTY_SET,
-      CMD_MANUAL_GROUP_DUTY_CLEAR);
+      CMD_MANUAL_GROUP_DUTY_CLEAR,
+      CMD_DEVICE_OVERRIDE_INSTANTIATE,
+      CMD_DEVICE_OVERRIDE_CLEAR);
 
   /**
    * NAME
@@ -148,6 +153,10 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
     boolean applyManualGroupDuty(String groupName, double duty);
 
     boolean clearManualGroupDuty(String groupName);
+
+    String overrideInstantiateDevice(String deviceName);
+
+    String clearDeviceOverride(String deviceName);
   }
 
   private final Dependencies dependencies;
@@ -429,6 +438,45 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
           break;
         }
         result.message = "Manual group duty cleared.";
+        result.outText = result.message;
+        break;
+      }
+      case CMD_DEVICE_OVERRIDE_INSTANTIATE: {
+        String deviceName = dependencies.parseUiArgString(args, "name");
+        if (deviceName == null) {
+          result.ok = false;
+          result.message = "deviceOverrideInstantiate requires args.name.";
+          break;
+        }
+        if (!dependencies.isRuntimeActive()) {
+          result.ok = false;
+          result.message = MESSAGE_RUNTIME_ACTIVATE_REQUIRED;
+          break;
+        }
+        String error = dependencies.overrideInstantiateDevice(deviceName);
+        if (error != null && !error.isBlank()) {
+          result.ok = false;
+          result.message = error;
+          break;
+        }
+        result.message = "Override instantiation requested: " + deviceName;
+        result.outText = result.message;
+        break;
+      }
+      case CMD_DEVICE_OVERRIDE_CLEAR: {
+        String deviceName = dependencies.parseUiArgString(args, "name");
+        if (deviceName == null) {
+          result.ok = false;
+          result.message = "deviceOverrideClear requires args.name.";
+          break;
+        }
+        String error = dependencies.clearDeviceOverride(deviceName);
+        if (error != null && !error.isBlank()) {
+          result.ok = false;
+          result.message = error;
+          break;
+        }
+        result.message = "Override cleared: " + deviceName;
         result.outText = result.message;
         break;
       }

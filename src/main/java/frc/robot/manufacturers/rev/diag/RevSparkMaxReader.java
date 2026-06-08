@@ -60,6 +60,9 @@ public final class RevSparkMaxReader {
 
     RevMotorAttachment rev = new RevMotorAttachment();
 
+    rev.velRpm = device.getEncoder().getVelocity();
+    rev.positionRot = device.getEncoder().getPosition();
+
     if (detail == SnapshotDetail.FULL) {
       var faults = device.getFaults();
       var stickyFaults = device.getStickyFaults();
@@ -78,8 +81,6 @@ public final class RevSparkMaxReader {
       RevReaderUtil.collectFaultFlags(stickyFaults, rev.stickyFaultFlags);
       RevReaderUtil.collectWarningFlags(warnings, rev.warningFlags);
       RevReaderUtil.collectWarningFlags(stickyWarnings, rev.stickyWarningFlags);
-      rev.velRpm = device.getEncoder().getVelocity();
-      rev.positionRot = device.getEncoder().getPosition();
       rev.follower = device.isFollower();
     }
 

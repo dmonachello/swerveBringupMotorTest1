@@ -32,6 +32,11 @@ import java.util.List;
 public final class RevSparkMaxNeo550Device implements DeviceUnit {
   private static final long CURRENT_WINDOW_MS = 500L;
   private static final double CURRENT_NONZERO_THRESHOLD_A = 0.05;
+  private static final String SNAPSHOT_NOTE_NOT_ADDED = "not added";
+  private static final String SNAPSHOT_NOTE_CLOSED = "closed";
+  private static final String SNAPSHOT_NOTE_READ_FAILED_PREFIX = "read failed: ";
+  private static final String ACTION_SNAPSHOT = "snapshot";
+  private static final String ACTION_SAMPLED_CURRENT = "sampledCurrent";
   public static final RegistrationHeader HEADER = new RegistrationHeader(
       "SparkMax NEO 550",
       "REV",
@@ -300,22 +305,21 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
 
   @Override
   public DeviceSnapshot snapshot(SnapshotDetail detail) {
-    if (device == null) {
-      DeviceSnapshot snap = new DeviceSnapshot();
-      snap.vendor = "REV";
+    if (device == null || closed) {
+      return snapshotUnavailable(SNAPSHOT_NOTE_NOT_ADDED);
+    }
+    try {
+      DeviceSnapshot snap = RevSparkMaxReader.read(device, canId, detail);
       snap.deviceType = getDeviceType();
-      snap.canId = canId;
-      snap.present = false;
-      snap.note = "not added";
       snap.label = label;
       addLimitAttachment(snap);
       return snap;
+    } catch (IllegalStateException ex) {
+      handleClosed(ACTION_SNAPSHOT, ex);
+      return snapshotUnavailable(SNAPSHOT_NOTE_CLOSED);
+    } catch (RuntimeException ex) {
+      return snapshotUnavailable(SNAPSHOT_NOTE_READ_FAILED_PREFIX + ex.getMessage());
     }
-    DeviceSnapshot snap = RevSparkMaxReader.read(device, canId, detail);
-    snap.deviceType = getDeviceType();
-    snap.label = label;
-    addLimitAttachment(snap);
-    return snap;
   }
 
   @Override
@@ -325,7 +329,29 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
             SampledSignalNames.CURRENT_ACTUAL,
             CURRENT_WINDOW_MS,
             CURRENT_NONZERO_THRESHOLD_A,
-            () -> device != null ? device.getOutputCurrent() : null));
+            () -> {
+              if (device == null || closed) {
+                return null;
+              }
+              try {
+                return device.getOutputCurrent();
+              } catch (IllegalStateException ex) {
+                handleClosed(ACTION_SAMPLED_CURRENT, ex);
+                return null;
+              }
+            }));
+  }
+
+  private DeviceSnapshot snapshotUnavailable(String note) {
+    DeviceSnapshot snap = new DeviceSnapshot();
+    snap.vendor = "REV";
+    snap.deviceType = getDeviceType();
+    snap.canId = canId;
+    snap.present = false;
+    snap.note = note;
+    snap.label = label;
+    addLimitAttachment(snap);
+    return snap;
   }
 
   /**

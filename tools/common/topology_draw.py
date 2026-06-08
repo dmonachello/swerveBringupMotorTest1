@@ -22,6 +22,12 @@ GROUP_OVERLAY_WIDTH = 3
 ATTACHMENT_LINK_DASH = (10, 4)
 DIO_LINK_DASH = (2, 3)
 ETHERNET_VIRTUAL_LINK_DASH = (6, 2, 1, 2)
+SELECTION_SHAPE_PADDING = 6.0
+SELECTION_SHAPE_HALO_WIDTH = 6
+SELECTION_SHAPE_OUTLINE_WIDTH = 3
+SELECTION_BOX_PADDING = 10.0
+SELECTION_BOX_WIDTH = 2
+SELECTION_BOX_DASH = (6, 4)
 
 
 def draw_canvas_shape_for_kind(
@@ -203,6 +209,53 @@ def draw_links(
             dx = (dx0 + dx1) / 2.0
             dy = dy0
         canvas.create_line(nx, ny, dx, dy, width=2, fill="#0f766e", dash=cannect_device_dash)
+
+
+def draw_selected_canvas_shape_overlay(
+    canvas,
+    x0: float,
+    y0: float,
+    x1: float,
+    y1: float,
+    kind: str,
+    halo_color: str,
+    outline_color: str,
+) -> List[int]:
+    """
+    NAME
+        draw_selected_canvas_shape_overlay - Draw a shape-aware selection halo.
+
+    DESCRIPTION
+        Adds a thick neutral halo plus a bright selected outline around the node
+        shape without changing the node fill semantics.
+    """
+    padded_x0 = x0 - SELECTION_SHAPE_PADDING
+    padded_y0 = y0 - SELECTION_SHAPE_PADDING
+    padded_x1 = x1 + SELECTION_SHAPE_PADDING
+    padded_y1 = y1 + SELECTION_SHAPE_PADDING
+    halo_ids = draw_canvas_shape_for_kind(
+        canvas,
+        padded_x0,
+        padded_y0,
+        padded_x1,
+        padded_y1,
+        kind,
+        fill="",
+        outline=halo_color,
+        width=SELECTION_SHAPE_HALO_WIDTH,
+    )
+    outline_ids = draw_canvas_shape_for_kind(
+        canvas,
+        padded_x0,
+        padded_y0,
+        padded_x1,
+        padded_y1,
+        kind,
+        fill="",
+        outline=outline_color,
+        width=SELECTION_SHAPE_OUTLINE_WIDTH,
+    )
+    return list(halo_ids) + list(outline_ids)
 
 
 def draw_group_overlays(
@@ -620,6 +673,28 @@ def render_topology_canvas_common(
             outline,
             width=default_outline_width,
         )
+        selected_shape_ids: List[int] = []
+        selected_box_id = None
+        if show_selection_box and getattr(node, "key", None) in selected_node_keys:
+            selected_shape_ids = draw_selected_canvas_shape_overlay(
+                canvas,
+                x0,
+                y0,
+                x1,
+                y1,
+                shape_kind_fn(node),
+                halo_color="#ffffff",
+                outline_color=selected_outline_color,
+            )
+            selected_box_id = canvas.create_rectangle(
+                x0 - SELECTION_BOX_PADDING,
+                y0 - SELECTION_BOX_PADDING,
+                x1 + SELECTION_BOX_PADDING,
+                y1 + SELECTION_BOX_PADDING,
+                outline=selection_box_color,
+                width=SELECTION_BOX_WIDTH,
+                dash=SELECTION_BOX_DASH,
+            )
         text_color = text_color_fn(fill)
         if is_swyft_node_fn(node):
             cy = (y0 + y1) / 2.0
@@ -678,16 +753,18 @@ def render_topology_canvas_common(
         else:
             font_size = fit_font_size_fn(label_text, node_box_w - 10, node_box_h - 10, int(9 * scale * node_scale))
             text_id = canvas.create_text(node_x, (y0 + y1) / 2.0, text=label_text, font=("Segoe UI", font_size), fill=text_color, justify="center", width=max(40, int(node_box_w - 10)))
-        if show_selection_box and getattr(node, "key", None) in selected_node_keys:
-            canvas.create_rectangle(x0 - 4, y0 - 4, x1 + 4, y1 + 4, outline=selection_box_color, width=2)
         node_key = getattr(node, "key", None)
         node_bounds[node_key] = (x0, y0, x1, y1)
         node_centers[node_key] = (node_x, node_bus_y)
         bounds.append((x0, y0, x1, y1))
         if node_tag_name_fn is not None and node_key is not None:
             tag_name = node_tag_name_fn(node_key)
+            for shape_id in selected_shape_ids:
+                canvas.addtag_withtag(tag_name, shape_id)
             for shape_id in shape_ids:
                 canvas.addtag_withtag(tag_name, shape_id)
+            if selected_box_id is not None:
+                canvas.addtag_withtag(tag_name, selected_box_id)
             canvas.addtag_withtag(tag_name, text_id)
     group_regions = []
     if show_groups and groups:

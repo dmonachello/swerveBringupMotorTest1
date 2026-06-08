@@ -26,6 +26,7 @@ public final class BringupRuntime {
   private final BridgeGroupManager.SelectedState bridgeSelected =
       new BridgeGroupManager.SelectedState();
   private final SampledTelemetrySampler sampledTelemetry = new SampledTelemetrySampler();
+  private final DeviceLifecycleRegistry deviceLifecycle = new DeviceLifecycleRegistry();
 
   private BringupCore core;
   private DiagnosticsReporter diagnostics;
@@ -74,6 +75,14 @@ public final class BringupRuntime {
    */
   public SampledTelemetrySampler getSampledTelemetry() {
     return sampledTelemetry;
+  }
+
+  /**
+   * NAME
+   *   getDeviceLifecycle - Return the shared device lifecycle registry.
+   */
+  public DeviceLifecycleRegistry getDeviceLifecycle() {
+    return deviceLifecycle;
   }
 
   /**
@@ -168,8 +177,23 @@ public final class BringupRuntime {
    *   sampleTelemetry - Advance robot-side sampled telemetry for active devices.
    */
   public void sampleTelemetry(long nowMs) {
-    List<DeviceUnit> devices = core != null ? core.getAllDevices() : Collections.emptyList();
+    List<DeviceUnit> devices = Collections.emptyList();
+    if (core != null && BringupUtil.isProfileActive()) {
+      List<DeviceUnit> activeDevices = new java.util.ArrayList<>();
+      for (BringupUtil.DeviceEntry entry : BringupUtil.getActiveDevicesSorted()) {
+        if (entry == null || entry.label == null || entry.label.isBlank()) {
+          continue;
+        }
+        DeviceUnit device = core.findDeviceByLabel(entry.label);
+        if (device == null || !device.isCreated()) {
+          continue;
+        }
+        activeDevices.add(device);
+      }
+      devices = activeDevices;
+    }
     sampledTelemetry.sampleDevices(devices, nowMs);
+    refreshDeviceLifecycle(nowMs);
   }
 
   /**
@@ -378,7 +402,6 @@ public final class BringupRuntime {
     }
     sampledTelemetry.clearAll();
     replaceCore();
-    bridgeGroups.clear();
     bridgeSelected.device = TEXT_EMPTY;
     bridgeSelected.enabled = false;
     if (diagnostics != null) {
@@ -492,7 +515,6 @@ public final class BringupRuntime {
     BringupUtil.deactivateActiveProfile();
     sampledTelemetry.clearAll();
     replaceCore();
-    bridgeGroups.clear();
     bridgeSelected.device = TEXT_EMPTY;
     bridgeSelected.enabled = false;
     if (diagnostics != null) {
@@ -501,13 +523,83 @@ public final class BringupRuntime {
     BringupUtil.validateCanIds(BringupUtil.getSelectedDevicesSorted());
   }
 
+  /**
+   * NAME
+   *   initializeDeviceLifecycle - Rebuild lifecycle registry from profile-defined devices.
+   *
+   * PARAMETERS
+   *   nowMs - Event timestamp.
+   */
+  public void initializeDeviceLifecycle(long nowMs) {
+    List<BringupUtil.DeviceEntry> entries = currentProfileDevices();
+    deviceLifecycle.resetForProfile(currentProfileName(), entries, nowMs);
+    refreshDeviceLifecycle(nowMs);
+  }
+
+  /**
+   * NAME
+   *   refreshDeviceLifecycle - Refresh lifecycle states from current core snapshots.
+   *
+   * PARAMETERS
+   *   nowMs - Event timestamp.
+   */
+  public void refreshDeviceLifecycle(long nowMs) {
+    List<BringupUtil.DeviceEntry> entries = currentProfileDevices();
+    java.util.Map<String, frc.robot.diag.snapshots.DeviceSnapshot> snapshotsByLabel =
+        new java.util.LinkedHashMap<>();
+    java.util.Map<String, Boolean> instantiatedByLabel = new java.util.LinkedHashMap<>();
+    java.util.Map<String, Boolean> inScopeByLabel = new java.util.LinkedHashMap<>();
+    boolean runtimeActive = BringupUtil.isProfileActive();
+    for (BringupUtil.DeviceEntry entry : entries) {
+      if (entry == null || entry.label == null || entry.label.isBlank()) {
+        continue;
+      }
+      inScopeByLabel.put(entry.label.trim().toLowerCase(), runtimeActive);
+    }
+    if (core != null) {
+      for (BringupUtil.DeviceEntry entry : entries) {
+        if (entry == null || entry.label == null || entry.label.isBlank()) {
+          continue;
+        }
+        frc.robot.devices.DeviceUnit device = core.findDeviceByLabel(entry.label);
+        String normalized = entry.label.trim().toLowerCase();
+        boolean instantiated = device != null && device.isCreated();
+        instantiatedByLabel.put(normalized, instantiated);
+        if (!runtimeActive || !instantiated) {
+          continue;
+        }
+        frc.robot.diag.snapshots.DeviceSnapshot snapshot =
+            core.captureCreatedSnapshotForLabel(
+                entry.label, frc.robot.diag.snapshots.SnapshotDetail.FULL);
+        if (snapshot == null || snapshot.label == null || snapshot.label.isBlank()) {
+          continue;
+        }
+        snapshotsByLabel.put(snapshot.label.trim().toLowerCase(), snapshot);
+      }
+    }
+    deviceLifecycle.refresh(entries, snapshotsByLabel, instantiatedByLabel, inScopeByLabel, nowMs);
+  }
+
+  private List<BringupUtil.DeviceEntry> currentProfileDevices() {
+    return BringupUtil.isProfileActive()
+        ? BringupUtil.getActiveDevicesSorted()
+        : BringupUtil.getSelectedDevicesSorted();
+  }
+
+  private String currentProfileName() {
+    return BringupUtil.isProfileActive()
+        ? BringupUtil.getActiveRuntimeProfileLabel()
+        : BringupUtil.getSelectedCanProfileLabel();
+  }
+
   private void replaceCore() {
-    core = new BringupCore(sampledTelemetry, diagTable);
+    core = new BringupCore(sampledTelemetry, diagTable, deviceLifecycle);
     core.setRunTestBindingLabel(runTestBindingLabel);
     if (diagnostics == null) {
       diagnostics = new DiagnosticsReporter(core, canHealth, diagTable);
     } else {
       diagnostics.setCore(core);
     }
+    initializeDeviceLifecycle(System.currentTimeMillis());
   }
 }

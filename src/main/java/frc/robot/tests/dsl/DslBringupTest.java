@@ -2,6 +2,7 @@ package frc.robot.tests.dsl;
 
 import frc.robot.BringupPrinter;
 import frc.robot.BringupUtil;
+import frc.robot.DeviceLifecycleRegistry;
 import frc.robot.devices.DeviceUnit;
 import frc.robot.tests.BringupTest;
 import frc.robot.tests.BringupTestContext;
@@ -157,6 +158,16 @@ public final class DslBringupTest implements BringupTest {
         result = BringupTestResult.FAIL;
         return false;
       }
+      if (!context.isDeviceTestable(ref.name) && !context.isDeviceInstantiable(ref.name)) {
+        status = lifecycleBlockedStatus(context, ref.name, "lifecycle-eligible");
+        result = BringupTestResult.FAIL;
+        return false;
+      }
+      if (!device.isCreated() && !context.isDeviceInstantiable(ref.name)) {
+        status = lifecycleBlockedStatus(context, ref.name, "instantiable");
+        result = BringupTestResult.FAIL;
+        return false;
+      }
       device.ensureCreated();
       devices.put(ref.name, device);
       Object position = readSignalValue(context, ref.name, DslSignalRegistry.SIGNAL_POSITION, nowSec);
@@ -164,8 +175,8 @@ public final class DslBringupTest implements BringupTest {
         startPositions.put(ref.name, numberValue.doubleValue());
       }
     }
-    applySafeValues(nowSec, false);
-    if (!applyClears(test.init.clears)) {
+    applySafeValues(context, nowSec, false);
+    if (!applyClears(context, test.init.clears)) {
       return false;
     }
     if (!applySets(context, test.init.sets, nowSec, PHASE_INIT)) {
@@ -248,9 +259,9 @@ public final class DslBringupTest implements BringupTest {
       result = BringupTestResult.INTERRUPTED;
       status = status == null || status.isBlank() ? "Interrupted" : status;
     }
-    applyClears(test.close.clears);
+    applyClears(context, test.close.clears);
     applySets(context, test.close.sets, startSec, PHASE_CLOSE);
-    applySafeValues(startSec, true);
+    applySafeValues(context, startSec, true);
     finalized = true;
   }
 
@@ -363,14 +374,14 @@ public final class DslBringupTest implements BringupTest {
       if (!resolved.shouldWrite) {
         continue;
       }
-      if (!writeTargetSignal(statement, resolved.value)) {
+      if (!writeTargetSignal(context, statement, resolved.value)) {
         return false;
       }
     }
     return true;
   }
 
-  private boolean applyClears(List<DslClearStatement> clears) {
+  private boolean applyClears(BringupTestContext context, List<DslClearStatement> clears) {
     for (DslClearStatement statement : clears) {
       if (statement == null || statement.target == null) {
         continue;
@@ -378,6 +389,11 @@ public final class DslBringupTest implements BringupTest {
       DeviceUnit device = devices.get(statement.target.device);
       if (device == null) {
         status = "Device not found: " + statement.target.device;
+        result = BringupTestResult.FAIL;
+        return false;
+      }
+      if (!context.isDeviceTestable(statement.target.device)) {
+        status = lifecycleBlockedStatus(context, statement.target.device, "testable for clear");
         result = BringupTestResult.FAIL;
         return false;
       }
@@ -390,9 +406,12 @@ public final class DslBringupTest implements BringupTest {
     return true;
   }
 
-  private void applySafeValues(double nowSec, boolean finalExit) {
+  private void applySafeValues(BringupTestContext context, double nowSec, boolean finalExit) {
     for (Map.Entry<String, DeviceUnit> entry : devices.entrySet()) {
       String deviceName = entry.getKey();
+      if (!context.isDeviceTestable(deviceName)) {
+        continue;
+      }
       String deviceType = resolveDeviceType(deviceName);
       Map<String, frc.robot.tests.dsl.signals.DslSignalMeta> signals =
           DslSignalRegistry.registry().get(deviceType);
@@ -446,7 +465,7 @@ public final class DslBringupTest implements BringupTest {
         return ResolvedSetValue.fail();
       }
       double value = numberValue.doubleValue();
-      if (!isTargetValueInRange(statement.target.device, statement.target.signal, value)) {
+      if (!isTargetValueInRange(context, statement.target.device, statement.target.signal, value)) {
         return handleOutOfRange(statement, value, phaseName, nowSec);
       }
       lastResolvedSetValues.put(statement.id, value);
@@ -459,11 +478,11 @@ public final class DslBringupTest implements BringupTest {
     }
     Object sourceValue = readSignalValue(context, statement.source.device, statement.source.signal, nowSec);
     if (!(sourceValue instanceof Number numberValue)) {
-      return handleUnavailableSource(statement, phaseName, nowSec);
+      return handleUnavailableSource(context, statement, phaseName, nowSec);
     }
     double source = applyDeadband(numberValue.doubleValue(), statement.deadband);
     double resolved = source * statement.scale.doubleValue();
-    if (!isTargetValueInRange(statement.target.device, statement.target.signal, resolved)) {
+    if (!isTargetValueInRange(context, statement.target.device, statement.target.signal, resolved)) {
       return handleOutOfRange(statement, resolved, phaseName, nowSec);
     }
     lastResolvedSetValues.put(statement.id, resolved);
@@ -471,7 +490,11 @@ public final class DslBringupTest implements BringupTest {
     return ResolvedSetValue.write(resolved);
   }
 
-  private ResolvedSetValue handleUnavailableSource(DslSetStatement statement, String phaseName, double nowSec) {
+  private ResolvedSetValue handleUnavailableSource(
+      BringupTestContext context,
+      DslSetStatement statement,
+      String phaseName,
+      double nowSec) {
     if (PHASE_INIT.equals(phaseName)) {
       status = "Signal set source unavailable at startup: " + statement.source.text;
       result = BringupTestResult.FAIL;
@@ -487,7 +510,7 @@ public final class DslBringupTest implements BringupTest {
       return ResolvedSetValue.fail();
     }
     double fallback = fallbackValue.doubleValue();
-    if (!isTargetValueInRange(statement.target.device, statement.target.signal, fallback)) {
+    if (!isTargetValueInRange(context, statement.target.device, statement.target.signal, fallback)) {
       status = "Signal set default out of range: " + statement.text;
       result = BringupTestResult.FAIL;
       return ResolvedSetValue.fail();
@@ -526,10 +549,18 @@ public final class DslBringupTest implements BringupTest {
     return ResolvedSetValue.fail();
   }
 
-  private boolean writeTargetSignal(DslSetStatement statement, double value) {
+  private boolean writeTargetSignal(
+      BringupTestContext context,
+      DslSetStatement statement,
+      double value) {
     DeviceUnit device = devices.get(statement.target.device);
     if (device == null) {
       status = "Device not found: " + statement.target.device;
+      result = BringupTestResult.FAIL;
+      return false;
+    }
+    if (!context.isDeviceTestable(statement.target.device)) {
+      status = lifecycleBlockedStatus(context, statement.target.device, "testable for write");
       result = BringupTestResult.FAIL;
       return false;
     }
@@ -541,9 +572,13 @@ public final class DslBringupTest implements BringupTest {
     return false;
   }
 
-  private boolean isTargetValueInRange(String deviceName, String signalName, double value) {
+  private boolean isTargetValueInRange(
+      BringupTestContext context,
+      String deviceName,
+      String signalName,
+      double value) {
     DeviceUnit device = devices.get(deviceName);
-    if (device == null) {
+    if (device == null || !context.isDeviceTestable(deviceName)) {
       return false;
     }
     return device.isDslWritableValueInRange(signalName, value);
@@ -728,7 +763,7 @@ public final class DslBringupTest implements BringupTest {
       return nowSec - startSec;
     }
     DeviceUnit device = devices.get(deviceName);
-    if (device == null) {
+    if (device == null || !context.isDeviceSnapshotAllowed(deviceName)) {
       return null;
     }
     String deviceType = resolveDeviceType(deviceName);
@@ -767,6 +802,15 @@ public final class DslBringupTest implements BringupTest {
       return configured;
     }
     return devices.containsKey(deviceName) ? DslSignalRegistry.DEVICE_TYPE_MOTOR : null;
+  }
+
+  private String lifecycleBlockedStatus(
+      BringupTestContext context,
+      String deviceName,
+      String operationName) {
+    DeviceLifecycleRegistry.DeviceLifecycleView lifecycle = context.deviceLifecycleView(deviceName);
+    String reason = lifecycle != null ? lifecycle.notTestableReason : "lifecycle blocked";
+    return "Device not " + operationName + ": " + deviceName + " (" + reason + ")";
   }
 
   private static final class ResolvedSetValue {

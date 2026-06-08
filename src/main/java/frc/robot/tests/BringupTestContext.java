@@ -1,5 +1,6 @@
 package frc.robot.tests;
 
+import frc.robot.DeviceLifecycleRegistry;
 import frc.robot.devices.DeviceUnit;
 import frc.robot.manufacturers.ManufacturerGroup;
 import frc.robot.manufacturers.DeviceTypeBucket;
@@ -14,6 +15,7 @@ import java.util.List;
  */
 public final class BringupTestContext {
   private final List<ManufacturerGroup> groups;
+  private final DeviceLifecycleRegistry deviceLifecycle;
   private long runId = 0;
 
   /**
@@ -23,8 +25,15 @@ public final class BringupTestContext {
    * PARAMETERS
    *   groups - Manufacturer groups to search.
    */
-  public BringupTestContext(List<ManufacturerGroup> groups) {
+  public BringupTestContext(
+      List<ManufacturerGroup> groups,
+      DeviceLifecycleRegistry deviceLifecycle) {
     this.groups = groups;
+    this.deviceLifecycle = deviceLifecycle;
+  }
+
+  public BringupTestContext(List<ManufacturerGroup> groups) {
+    this(groups, null);
   }
 
   /**
@@ -131,5 +140,65 @@ public final class BringupTestContext {
       }
     }
     return null;
+  }
+
+  /**
+   * NAME
+   *   isDeviceTestable - Return whether a device is lifecycle-testable.
+   *
+   * PARAMETERS
+   *   label - Device label from bringup_system.json.
+   *
+   * RETURNS
+   *   True when lifecycle state currently permits active testing.
+   */
+  public boolean isDeviceTestable(String label) {
+    return deviceLifecycle == null || deviceLifecycle.isOperationAllowed(label);
+  }
+
+  public boolean isDeviceOperationAllowed(String label) {
+    return isDeviceTestable(label);
+  }
+
+  /**
+   * NAME
+   *   isDeviceInstantiable - Return whether a device may be instantiated now.
+   *
+   * PARAMETERS
+   *   label - Device label from bringup_system.json.
+   *
+   * RETURNS
+   *   True when lifecycle state currently permits instantiation.
+   */
+  public boolean isDeviceInstantiable(String label) {
+    return deviceLifecycle == null || deviceLifecycle.isInstantiationAllowed(label);
+  }
+
+  /**
+   * NAME
+   *   isDeviceSnapshotAllowed - Return whether a device may be sampled now.
+   *
+   * PARAMETERS
+   *   label - Device label from bringup_system.json.
+   *
+   * RETURNS
+   *   True when lifecycle state currently permits snapshot/signal access.
+   */
+  public boolean isDeviceSnapshotAllowed(String label) {
+    return deviceLifecycle == null || deviceLifecycle.isSnapshotAllowed(label);
+  }
+
+  /**
+   * NAME
+   *   deviceLifecycleView - Return lifecycle view for one device label.
+   *
+   * PARAMETERS
+   *   label - Device label from bringup_system.json.
+   *
+   * RETURNS
+   *   Published lifecycle view or null when unavailable.
+   */
+  public DeviceLifecycleRegistry.DeviceLifecycleView deviceLifecycleView(String label) {
+    return deviceLifecycle != null ? deviceLifecycle.viewForLabel(label) : null;
   }
 }

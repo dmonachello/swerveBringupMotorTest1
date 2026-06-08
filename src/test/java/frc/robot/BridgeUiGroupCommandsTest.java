@@ -520,5 +520,15 @@ class BridgeUiGroupCommandsTest {
       lastManualGroupCleared = groupName;
       return true;
     }
+
+    @Override
+    public String overrideInstantiateDevice(String deviceName) {
+      return EMPTY;
+    }
+
+    @Override
+    public String clearDeviceOverride(String deviceName) {
+      return EMPTY;
+    }
   }
 }

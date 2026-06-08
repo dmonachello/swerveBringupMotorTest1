@@ -235,6 +235,7 @@ NODE_CAN_ID_DEFAULT = -1
 ATTACHMENT_KEY_TYPE = "type"
 ATTACHMENT_TYPE_REV_MOTOR = "revMotor"
 ATTACHMENT_TYPE_CTRE_MOTOR = "ctreMotor"
+ATTACHMENT_TYPE_PRESENCE_CHECK = "presenceCheck"
 ATTACHMENT_TYPE_ACTIVE_PRESENCE_PROBE = "activePresenceProbe"
 RUNTIME_KEY_MOTOR_CURRENT_A = "motorCurrentA"
 RUNTIME_KEY_CURRENT_INSTANT_A = "currentInstantA"
@@ -251,6 +252,14 @@ RUNTIME_KEY_ACTIVE_PROBE_BUCKET = "bucket"
 RUNTIME_KEY_ACTIVE_PROBE_SCORE = "score"
 RUNTIME_KEY_ACTIVE_PROBE_MAX_SCORE = "maxScore"
 RUNTIME_KEY_ACTIVE_PROBE_UPDATED_AT_MS = "updatedAtMs"
+RUNTIME_KEY_PRESENCE_CHECK_STATUS = "status"
+RUNTIME_KEY_PRESENCE_CHECK_SOURCE = "source"
+RUNTIME_KEY_PRESENCE_CHECK_UPDATED_AT_MS = "updatedAtMs"
+RUNTIME_PROBE_AGE_FRESH_SEC = 15.0
+RUNTIME_PROBE_AGE_AGING_SEC = 60.0
+RUNTIME_PROBE_AGE_STALE = "stale"
+RUNTIME_PROBE_AGE_AGING = "aging"
+RUNTIME_PROBE_AGE_FRESH = "fresh"
 TITLE_TEXT_DEFAULT = "Live Topology"
 SELECTION_FRAME_TEXT = "Selection"
 ACTIVE_GROUP_NAME = "active-group"
@@ -267,7 +276,7 @@ ACTIVE_GROUP_SELECTED_YES = "selected"
 ACTIVE_GROUP_SELECTED_NO = "not selected"
 ACTIVE_GROUP_ELIGIBLE_DEVICE_TYPE = "2"
 ACTIVE_GROUP_PRESENT_PREFIX = "presence="
-ACTIVE_GROUP_PROBE_PREFIX = "probe="
+ACTIVE_GROUP_FULL_PROBE_PREFIX = "fullProbe="
 ACTIVE_GROUP_VEL_RPM_PREFIX = "vel="
 ACTIVE_GROUP_POSITION_ROT_PREFIX = "position="
 ACTIVE_GROUP_POSITION_DELTA_ROT_PREFIX = "delta="
@@ -301,7 +310,7 @@ GROUP_INSPECTOR_VEL_RPM_PREFIX = "vel="
 GROUP_INSPECTOR_POSITION_ROT_PREFIX = "position="
 GROUP_INSPECTOR_POSITION_DELTA_ROT_PREFIX = "delta="
 GROUP_INSPECTOR_CURRENT_A_PREFIX = "current="
-GROUP_INSPECTOR_PROBE_BUCKET_PREFIX = "probe="
+GROUP_INSPECTOR_FULL_PROBE_BUCKET_PREFIX = "fullProbe="
 GROUP_INSPECTOR_RPM_SUFFIX = " rpm"
 GROUP_INSPECTOR_CURRENT_SUFFIX = " A"
 GROUP_INSPECTOR_ROT_SUFFIX = " rot"
@@ -312,6 +321,7 @@ GROUP_INSPECTOR_MOTION_MIN_RPM = 5.0
 GROUP_INSPECTOR_MOTION_MIN_POSITION_DELTA_ROT = 0.05
 DETAILS_PANEL_INITIAL_WIDTH = 360
 DETAILS_PANEL_MIN_WIDTH = 260
+SELECTION_FRAME_HEIGHT = 360
 ROWS_SCROLL_HEIGHT = 220
 ROW_WRAP_MIN = 120
 ROW_WRAP_PAD = 36
@@ -322,10 +332,20 @@ MANUAL_OBSERVATION_LIVE_WINDOW_SEC = 3.0
 DETAIL_KEY_LABEL = "label"
 DETAIL_KEY_CAN_ID = "can_id"
 DETAIL_KEY_PRESENCE = "presence"
-DETAIL_KEY_PROBE_BUCKET = "probe_bucket"
-DETAIL_KEY_PROBE_SCORE = "probe_score"
-DETAIL_KEY_PROBE_STATUS = "probe_status"
-DETAIL_KEY_PROBE_MESSAGE = "probe_message"
+DETAIL_KEY_PRESENCE_STATUS = "presence_status"
+DETAIL_KEY_PRESENCE_AGE = "presence_age"
+DETAIL_KEY_PRESENCE_SOURCE = "presence_source"
+DETAIL_KEY_FULL_PROBE_BUCKET = "full_probe_bucket"
+DETAIL_KEY_FULL_PROBE_AGE = "full_probe_age"
+DETAIL_KEY_FULL_PROBE_SCORE = "full_probe_score"
+DETAIL_KEY_FULL_PROBE_STATUS = "full_probe_status"
+DETAIL_KEY_FULL_PROBE_MESSAGE = "full_probe_message"
+DETAIL_KEY_LIFECYCLE_STATE = "lifecycle_state"
+DETAIL_KEY_TESTABLE = "testable"
+DETAIL_KEY_OVERRIDE_ACTIVE = "override_active"
+DETAIL_KEY_OVERRIDE_ORIGINATED = "override_originated"
+DETAIL_KEY_OVERRIDE_FAILURE = "override_failure"
+DETAIL_KEY_NOT_TESTABLE_REASON = "not_testable_reason"
 DETAIL_KEY_LAST_SEEN = "last_seen"
 DETAIL_KEY_CURRENT_A = "current_a"
 DETAIL_KEY_CURRENT_AVG_A = "current_avg_a"
@@ -342,10 +362,20 @@ DETAIL_KEY_SELECTED = "selected"
 DETAIL_TITLE_LABEL = "Label"
 DETAIL_TITLE_CAN_ID = "CAN ID"
 DETAIL_TITLE_PRESENCE = "Presence"
-DETAIL_TITLE_PROBE_BUCKET = "Probe Bucket"
-DETAIL_TITLE_PROBE_SCORE = "Probe Score"
-DETAIL_TITLE_PROBE_STATUS = "Probe Status"
-DETAIL_TITLE_PROBE_MESSAGE = "Probe Message"
+DETAIL_TITLE_PRESENCE_STATUS = "Presence Status"
+DETAIL_TITLE_PRESENCE_AGE = "Presence Age"
+DETAIL_TITLE_PRESENCE_SOURCE = "Presence Source"
+DETAIL_TITLE_FULL_PROBE_BUCKET = "Full Probe Bucket"
+DETAIL_TITLE_FULL_PROBE_AGE = "Full Probe Age"
+DETAIL_TITLE_FULL_PROBE_SCORE = "Full Probe Score"
+DETAIL_TITLE_FULL_PROBE_STATUS = "Full Probe Status"
+DETAIL_TITLE_FULL_PROBE_MESSAGE = "Full Probe Message"
+DETAIL_TITLE_LIFECYCLE_STATE = "Lifecycle State"
+DETAIL_TITLE_TESTABLE = "Testable"
+DETAIL_TITLE_OVERRIDE_ACTIVE = "Override Active"
+DETAIL_TITLE_OVERRIDE_ORIGINATED = "Override Originated"
+DETAIL_TITLE_OVERRIDE_FAILURE = "Override Failure"
+DETAIL_TITLE_NOT_TESTABLE_REASON = "Not Testable Reason"
 DETAIL_TITLE_LAST_SEEN = "Last Seen"
 DETAIL_TITLE_CURRENT_A = "Current (A)"
 DETAIL_TITLE_CURRENT_AVG_A = "Current Avg (A)"
@@ -403,6 +433,102 @@ def _runtime_active_probe_attachment(device: Dict[str, object]) -> Optional[Dict
         if attachment_type == ATTACHMENT_TYPE_ACTIVE_PRESENCE_PROBE:
             return attachment
     return None
+
+
+def _runtime_presence_check_attachment(device: Dict[str, object]) -> Optional[Dict[str, object]]:
+    """
+    NAME
+        _runtime_presence_check_attachment - Return the live presence-check attachment when present.
+    """
+    if not isinstance(device, dict):
+        return None
+    attachments = device.get("attachments")
+    if not isinstance(attachments, list):
+        return None
+    for attachment in attachments:
+        if not isinstance(attachment, dict):
+            continue
+        attachment_type = str(attachment.get(ATTACHMENT_KEY_TYPE, "")).strip()
+        if attachment_type == ATTACHMENT_TYPE_PRESENCE_CHECK:
+            return attachment
+    return None
+
+
+def _format_elapsed_age(elapsed_sec: float) -> str:
+    """
+    NAME
+        _format_elapsed_age - Format one elapsed age in seconds for compact UI display.
+    """
+    if elapsed_sec < 0.0:
+        elapsed_sec = 0.0
+    return f"{elapsed_sec:.1f}s"
+
+
+def _runtime_probe_age_seconds(device: Dict[str, object]) -> Optional[float]:
+    """
+    NAME
+        _runtime_probe_age_seconds - Return the age in seconds of one cached active probe result.
+    """
+    attachment = _runtime_active_probe_attachment(device)
+    if not isinstance(attachment, dict):
+        return None
+    updated_at_ms = attachment.get(RUNTIME_KEY_ACTIVE_PROBE_UPDATED_AT_MS)
+    if not isinstance(updated_at_ms, (int, float)) or float(updated_at_ms) <= 0.0:
+        return None
+    return max(0.0, (time.time() * 1000.0 - float(updated_at_ms)) / 1000.0)
+
+
+def _runtime_probe_age_bucket(device: Dict[str, object]) -> str:
+    """
+    NAME
+        _runtime_probe_age_bucket - Classify one cached active probe result by age.
+    """
+    age_sec = _runtime_probe_age_seconds(device)
+    if not isinstance(age_sec, (int, float)):
+        return "--"
+    if age_sec <= RUNTIME_PROBE_AGE_FRESH_SEC:
+        return RUNTIME_PROBE_AGE_FRESH
+    if age_sec <= RUNTIME_PROBE_AGE_AGING_SEC:
+        return RUNTIME_PROBE_AGE_AGING
+    return RUNTIME_PROBE_AGE_STALE
+
+
+def _runtime_probe_age_text(device: Dict[str, object]) -> str:
+    """
+    NAME
+        _runtime_probe_age_text - Return compact age text for one cached active probe result.
+    """
+    age_sec = _runtime_probe_age_seconds(device)
+    if not isinstance(age_sec, (int, float)):
+        return "not run"
+    age_bucket = _runtime_probe_age_bucket(device)
+    age_text = _format_elapsed_age(float(age_sec))
+    return age_text if age_bucket == RUNTIME_PROBE_AGE_FRESH else f"{age_text} ({age_bucket})"
+
+
+def _runtime_presence_age_seconds(device: Dict[str, object]) -> Optional[float]:
+    """
+    NAME
+        _runtime_presence_age_seconds - Return the age in seconds of one live presence check.
+    """
+    attachment = _runtime_presence_check_attachment(device)
+    if not isinstance(attachment, dict):
+        return None
+    updated_at_ms = attachment.get(RUNTIME_KEY_PRESENCE_CHECK_UPDATED_AT_MS)
+    if not isinstance(updated_at_ms, (int, float)) or float(updated_at_ms) <= 0.0:
+        return None
+    return max(0.0, (time.time() * 1000.0 - float(updated_at_ms)) / 1000.0)
+
+
+def _runtime_presence_age_text(device: Dict[str, object]) -> str:
+    """
+    NAME
+        _runtime_presence_age_text - Return compact age text for one live presence check.
+    """
+    age_sec = _runtime_presence_age_seconds(device)
+    if not isinstance(age_sec, (int, float)):
+        return "--"
+    return _format_elapsed_age(float(age_sec))
 
 
 def _manual_observation_is_live(observation: object, now_sec: Optional[float] = None) -> bool:
@@ -753,6 +879,7 @@ class LiveTopologyView(ttk.Frame):
         on_node_right_click: Optional[Callable[[LiveNode, tk.Event], None]] = None,
         on_group_right_click: Optional[Callable[[Dict[str, Any], tk.Event], None]] = None,
         on_active_group_member_toggled: Optional[Callable[[str, bool], None]] = None,
+        on_override_action: Optional[Callable[[str, str], None]] = None,
         on_left_click: Optional[Callable[[Optional[LiveNode], tk.Event], None]] = None,
         on_selection_changed: Optional[Callable[[Optional[LiveNode]], None]] = None,
         show_selection_panel: bool = True,
@@ -801,10 +928,15 @@ class LiveTopologyView(ttk.Frame):
         self._on_node_right_click_cb = on_node_right_click
         self._on_group_right_click_cb = on_group_right_click
         self._on_active_group_member_toggled_cb = on_active_group_member_toggled
+        self._on_override_action_cb = on_override_action
         self._on_left_click_cb = on_left_click
         self._on_selection_changed_cb = on_selection_changed
         self._group_inspector_name = EMPTY_STRING
         self._group_inspector_targets: List[str] = []
+        self._selection_inspector_mode = GROUP_INSPECTOR_MODE_DEVICE
+        self._group_inspector_row_widgets: Dict[str, Dict[str, object]] = {}
+        self._active_group_row_widgets: Dict[str, Dict[str, object]] = {}
+        self._active_group_empty_label: Optional[ttk.Label] = None
         self._connection_filter_vars = {
             key: tk.BooleanVar(value=True) for key in CONNECTION_FILTERS_ORDER
         }
@@ -816,19 +948,6 @@ class LiveTopologyView(ttk.Frame):
         )
         self._status_label = ttk.Label(header, text="Profile: --")
         self._status_label.pack(side="left", padx=(12, 0))
-        self._notice_label = tk.Label(
-            self,
-            text=EMPTY_STRING,
-            anchor="w",
-            justify="left",
-            padx=10,
-            pady=6,
-            bg=NOTICE_COLOR_INFO_BG,
-            fg=NOTICE_COLOR_INFO_FG,
-            font=("Segoe UI", 14, "bold"),
-        )
-        self._notice_label.pack(fill="x", padx=8, pady=(6, 0))
-        self._notice_label.pack_forget()
         filter_frame = ttk.Frame(header)
         filter_frame.pack(side="right")
         ttk.Button(filter_frame, text="All", command=self._enable_all_connection_filters).pack(side="left")
@@ -876,10 +995,42 @@ class LiveTopologyView(ttk.Frame):
             details_container = ttk.Frame(content_pane, width=DETAILS_PANEL_INITIAL_WIDTH)
             content_pane.add(details_container, weight=2)
             details = ttk.LabelFrame(details_container, text=SELECTION_FRAME_TEXT, padding=8)
-            details.pack(side="top", fill="both", expand=True)
-            self._detail_device_frame = ttk.Frame(details)
+            details.pack(side="top", fill="x")
+            details.configure(height=SELECTION_FRAME_HEIGHT)
+            details.pack_propagate(False)
+            selection_rows_container = ttk.Frame(details)
+            selection_rows_container.pack(fill="both", expand=True)
+            selection_rows_canvas = tk.Canvas(
+                selection_rows_container,
+                highlightthickness=0,
+            )
+            selection_rows_canvas.pack(side="left", fill="both", expand=True)
+            selection_rows_scroll = ttk.Scrollbar(
+                selection_rows_container,
+                orient="vertical",
+                command=selection_rows_canvas.yview,
+            )
+            selection_rows_scroll.pack(side="right", fill="y")
+            selection_rows_canvas.configure(yscrollcommand=selection_rows_scroll.set)
+            selection_rows_frame = ttk.Frame(selection_rows_canvas)
+            selection_rows_window = selection_rows_canvas.create_window(
+                (0, 0), window=selection_rows_frame, anchor="nw"
+            )
+
+            def _sync_selection_scrollregion(_event=None) -> None:
+                selection_rows_canvas.configure(
+                    scrollregion=selection_rows_canvas.bbox("all")
+                )
+
+            def _sync_selection_rows_width(_event=None) -> None:
+                width = max(int(selection_rows_canvas.winfo_width()), 1)
+                selection_rows_canvas.itemconfigure(selection_rows_window, width=width)
+
+            selection_rows_frame.bind("<Configure>", _sync_selection_scrollregion)
+            selection_rows_canvas.bind("<Configure>", _sync_selection_rows_width)
+            self._detail_device_frame = ttk.Frame(selection_rows_frame)
             self._detail_device_frame.pack(fill="x")
-            self._group_inspector_frame = ttk.Frame(details)
+            self._group_inspector_frame = ttk.Frame(selection_rows_frame)
             self._group_inspector_summary_var = tk.StringVar(value=GROUP_INSPECTOR_SUMMARY_NONE)
             ttk.Label(
                 self._group_inspector_frame,
@@ -893,10 +1044,20 @@ class LiveTopologyView(ttk.Frame):
                 DETAIL_KEY_LABEL: tk.StringVar(value="--"),
                 DETAIL_KEY_CAN_ID: tk.StringVar(value="--"),
                 DETAIL_KEY_PRESENCE: tk.StringVar(value="--"),
-                DETAIL_KEY_PROBE_BUCKET: tk.StringVar(value="--"),
-                DETAIL_KEY_PROBE_SCORE: tk.StringVar(value="--"),
-                DETAIL_KEY_PROBE_STATUS: tk.StringVar(value="--"),
-                DETAIL_KEY_PROBE_MESSAGE: tk.StringVar(value="--"),
+                DETAIL_KEY_PRESENCE_STATUS: tk.StringVar(value="--"),
+                DETAIL_KEY_PRESENCE_AGE: tk.StringVar(value="--"),
+                DETAIL_KEY_PRESENCE_SOURCE: tk.StringVar(value="--"),
+                DETAIL_KEY_FULL_PROBE_BUCKET: tk.StringVar(value="--"),
+                DETAIL_KEY_FULL_PROBE_AGE: tk.StringVar(value="--"),
+                DETAIL_KEY_FULL_PROBE_SCORE: tk.StringVar(value="--"),
+                DETAIL_KEY_FULL_PROBE_STATUS: tk.StringVar(value="--"),
+                DETAIL_KEY_FULL_PROBE_MESSAGE: tk.StringVar(value="--"),
+                DETAIL_KEY_LIFECYCLE_STATE: tk.StringVar(value="--"),
+                DETAIL_KEY_TESTABLE: tk.StringVar(value="--"),
+                DETAIL_KEY_OVERRIDE_ACTIVE: tk.StringVar(value="--"),
+                DETAIL_KEY_OVERRIDE_ORIGINATED: tk.StringVar(value="--"),
+                DETAIL_KEY_OVERRIDE_FAILURE: tk.StringVar(value="--"),
+                DETAIL_KEY_NOT_TESTABLE_REASON: tk.StringVar(value="--"),
                 DETAIL_KEY_LAST_SEEN: tk.StringVar(value="--"),
                 DETAIL_KEY_CURRENT_A: tk.StringVar(value="--"),
                 DETAIL_KEY_CURRENT_AVG_A: tk.StringVar(value="--"),
@@ -915,10 +1076,20 @@ class LiveTopologyView(ttk.Frame):
                 (DETAIL_TITLE_LABEL, DETAIL_KEY_LABEL),
                 (DETAIL_TITLE_CAN_ID, DETAIL_KEY_CAN_ID),
                 (DETAIL_TITLE_PRESENCE, DETAIL_KEY_PRESENCE),
-                (DETAIL_TITLE_PROBE_BUCKET, DETAIL_KEY_PROBE_BUCKET),
-                (DETAIL_TITLE_PROBE_SCORE, DETAIL_KEY_PROBE_SCORE),
-                (DETAIL_TITLE_PROBE_STATUS, DETAIL_KEY_PROBE_STATUS),
-                (DETAIL_TITLE_PROBE_MESSAGE, DETAIL_KEY_PROBE_MESSAGE),
+                (DETAIL_TITLE_PRESENCE_STATUS, DETAIL_KEY_PRESENCE_STATUS),
+                (DETAIL_TITLE_PRESENCE_AGE, DETAIL_KEY_PRESENCE_AGE),
+                (DETAIL_TITLE_PRESENCE_SOURCE, DETAIL_KEY_PRESENCE_SOURCE),
+                (DETAIL_TITLE_FULL_PROBE_BUCKET, DETAIL_KEY_FULL_PROBE_BUCKET),
+                (DETAIL_TITLE_FULL_PROBE_AGE, DETAIL_KEY_FULL_PROBE_AGE),
+                (DETAIL_TITLE_FULL_PROBE_SCORE, DETAIL_KEY_FULL_PROBE_SCORE),
+                (DETAIL_TITLE_FULL_PROBE_STATUS, DETAIL_KEY_FULL_PROBE_STATUS),
+                (DETAIL_TITLE_FULL_PROBE_MESSAGE, DETAIL_KEY_FULL_PROBE_MESSAGE),
+                (DETAIL_TITLE_LIFECYCLE_STATE, DETAIL_KEY_LIFECYCLE_STATE),
+                (DETAIL_TITLE_TESTABLE, DETAIL_KEY_TESTABLE),
+                (DETAIL_TITLE_OVERRIDE_ACTIVE, DETAIL_KEY_OVERRIDE_ACTIVE),
+                (DETAIL_TITLE_OVERRIDE_ORIGINATED, DETAIL_KEY_OVERRIDE_ORIGINATED),
+                (DETAIL_TITLE_OVERRIDE_FAILURE, DETAIL_KEY_OVERRIDE_FAILURE),
+                (DETAIL_TITLE_NOT_TESTABLE_REASON, DETAIL_KEY_NOT_TESTABLE_REASON),
                 (DETAIL_TITLE_LAST_SEEN, DETAIL_KEY_LAST_SEEN),
                 (DETAIL_TITLE_CURRENT_A, DETAIL_KEY_CURRENT_A),
                 (DETAIL_TITLE_CURRENT_AVG_A, DETAIL_KEY_CURRENT_AVG_A),
@@ -938,6 +1109,19 @@ class LiveTopologyView(ttk.Frame):
                 ttk.Label(self._detail_device_frame, textvariable=self._detail_vars[key]).grid(
                     row=idx, column=1, sticky="w"
                 )
+            if self._on_override_action_cb is not None:
+                override_row = ttk.Frame(self._detail_device_frame)
+                override_row.grid(row=len(rows), column=0, columnspan=2, sticky="w", pady=(8, 0))
+                ttk.Button(
+                    override_row,
+                    text="Override Instantiate",
+                    command=lambda: self._invoke_override_action("instantiate"),
+                ).pack(side="left")
+                ttk.Button(
+                    override_row,
+                    text="Clear Override",
+                    command=lambda: self._invoke_override_action("clear"),
+                ).pack(side="left", padx=(8, 0))
             active_group_frame = ttk.LabelFrame(
                 details_container,
                 text=ACTIVE_GROUP_FRAME_TEXT,
@@ -978,6 +1162,19 @@ class LiveTopologyView(ttk.Frame):
                 justify="left",
                 anchor="nw",
             ).pack(fill="x", pady=(8, 0))
+
+        self._notice_label = tk.Label(
+            self,
+            text=EMPTY_STRING,
+            anchor="w",
+            justify="left",
+            padx=10,
+            pady=6,
+            bg=NOTICE_COLOR_INFO_BG,
+            fg=NOTICE_COLOR_INFO_FG,
+            font=("Segoe UI", 14, "bold"),
+        )
+        self._notice_label.pack_forget()
 
         self.reload_profile(profile_name)
 
@@ -1297,6 +1494,11 @@ class LiveTopologyView(ttk.Frame):
         for label, device in mapped.items():
             presence = device.get("presenceConfidence")
             probe = _runtime_active_probe_attachment(device)
+            lifecycle_state = str(device.get("lifecycleState", EMPTY_STRING)).strip()
+            testable = bool(device.get("testable"))
+            override_active = bool(device.get("overrideActive"))
+            override_originated = bool(device.get("overrideOriginated"))
+            override_failure = bool(device.get("overrideFailure"))
             presence_bucket = None
             if isinstance(presence, (int, float)):
                 if presence <= 0.05:
@@ -1350,6 +1552,11 @@ class LiveTopologyView(ttk.Frame):
                     probe_bucket,
                     probe_score,
                     probe_status,
+                    lifecycle_state,
+                    testable,
+                    override_active,
+                    override_originated,
+                    override_failure,
                 )
             )
         fingerprint_items.sort(key=lambda item: str(item[0]))
@@ -1541,7 +1748,7 @@ class LiveTopologyView(ttk.Frame):
             bg = NOTICE_COLOR_INFO_BG
             fg = NOTICE_COLOR_INFO_FG
         self._notice_label.configure(text=message, bg=bg, fg=fg)
-        self._notice_label.pack(fill="x", padx=8, pady=(6, 0))
+        self._notice_label.pack(side="bottom", fill="x", padx=8, pady=(0, 8))
 
     def _apply_runtime_notice_from_state(
         self,
@@ -1583,6 +1790,7 @@ class LiveTopologyView(ttk.Frame):
             self._selected_node = None
             self._update_details()
         self._notify_selection_changed()
+        self._redraw()
         if callable(self._on_left_click_cb):
             self._on_left_click_cb(self._selected_node, event)
 
@@ -1602,6 +1810,7 @@ class LiveTopologyView(ttk.Frame):
                 self._selected_node = node
                 self._update_details()
                 self._notify_selection_changed()
+                self._redraw()
                 if callable(self._on_node_right_click_cb):
                     self._on_node_right_click_cb(node, event)
                 return
@@ -1831,7 +2040,14 @@ class LiveTopologyView(ttk.Frame):
             now_ms = int(time.time() * 1000)
             presence = live.get("presenceConfidence")
             last_seen = live.get("lastSeenMs")
+            presence_check = _runtime_presence_check_attachment(live)
             probe = _runtime_active_probe_attachment(live)
+            lifecycle_state = str(live.get("lifecycleState", "--")).strip() or "--"
+            testable = live.get("testable")
+            override_active = live.get("overrideActive")
+            override_originated = live.get("overrideOriginated")
+            override_failure = live.get("overrideFailure")
+            not_testable_reason = str(live.get("notTestableReason", "--")).strip() or "--"
             current_a = _runtime_display_current_a(live)
             current_avg_a = _runtime_device_field(live, RUNTIME_KEY_CURRENT_AVG_A)
             current_peak_a = _runtime_device_field(live, RUNTIME_KEY_CURRENT_PEAK_A)
@@ -1854,33 +2070,61 @@ class LiveTopologyView(ttk.Frame):
             self._detail_vars[DETAIL_KEY_PRESENCE].set(
                 f"{float(presence):.2f}" if isinstance(presence, (int, float)) else "--"
             )
-            probe_bucket = (
+            presence_status = (
+                str(presence_check.get(RUNTIME_KEY_PRESENCE_CHECK_STATUS, "--")).strip()
+                if isinstance(presence_check, dict)
+                else "--"
+            )
+            presence_source = (
+                str(presence_check.get(RUNTIME_KEY_PRESENCE_CHECK_SOURCE, "--")).strip()
+                if isinstance(presence_check, dict)
+                else "--"
+            )
+            presence_age = _runtime_presence_age_text(live) if isinstance(live, dict) else "--"
+            full_probe_bucket = (
                 str(probe.get(RUNTIME_KEY_ACTIVE_PROBE_BUCKET, "--")).strip()
                 if isinstance(probe, dict)
                 else "--"
             )
-            probe_status = (
+            full_probe_age = _runtime_probe_age_text(live) if isinstance(live, dict) else "--"
+            full_probe_status = (
                 str(probe.get(RUNTIME_KEY_ACTIVE_PROBE_STATUS, "--")).strip()
                 if isinstance(probe, dict)
                 else "--"
             )
-            probe_message = (
+            full_probe_message = (
                 str(probe.get(RUNTIME_KEY_ACTIVE_PROBE_MESSAGE, "--")).strip()
                 if isinstance(probe, dict)
                 else "--"
             )
-            probe_score = "--"
+            full_probe_score = "--"
             if isinstance(probe, dict):
                 score_value = probe.get(RUNTIME_KEY_ACTIVE_PROBE_SCORE)
                 max_score_value = probe.get(RUNTIME_KEY_ACTIVE_PROBE_MAX_SCORE)
                 if isinstance(score_value, (int, float)) and isinstance(max_score_value, (int, float)):
-                    probe_score = f"{int(score_value)}/{int(max_score_value)}"
+                    full_probe_score = f"{int(score_value)}/{int(max_score_value)}"
                 elif isinstance(score_value, (int, float)):
-                    probe_score = str(int(score_value))
-            self._detail_vars[DETAIL_KEY_PROBE_BUCKET].set(probe_bucket or "--")
-            self._detail_vars[DETAIL_KEY_PROBE_SCORE].set(probe_score)
-            self._detail_vars[DETAIL_KEY_PROBE_STATUS].set(probe_status or "--")
-            self._detail_vars[DETAIL_KEY_PROBE_MESSAGE].set(probe_message or "--")
+                    full_probe_score = str(int(score_value))
+            self._detail_vars[DETAIL_KEY_PRESENCE_STATUS].set(presence_status or "--")
+            self._detail_vars[DETAIL_KEY_PRESENCE_AGE].set(presence_age)
+            self._detail_vars[DETAIL_KEY_PRESENCE_SOURCE].set(presence_source or "--")
+            self._detail_vars[DETAIL_KEY_FULL_PROBE_BUCKET].set(full_probe_bucket or "--")
+            self._detail_vars[DETAIL_KEY_FULL_PROBE_AGE].set(full_probe_age)
+            self._detail_vars[DETAIL_KEY_FULL_PROBE_SCORE].set(full_probe_score)
+            self._detail_vars[DETAIL_KEY_FULL_PROBE_STATUS].set(full_probe_status or "--")
+            self._detail_vars[DETAIL_KEY_FULL_PROBE_MESSAGE].set(full_probe_message or "--")
+            self._detail_vars[DETAIL_KEY_LIFECYCLE_STATE].set(lifecycle_state)
+            self._detail_vars[DETAIL_KEY_TESTABLE].set("yes" if bool(testable) else "no")
+            self._detail_vars[DETAIL_KEY_OVERRIDE_ACTIVE].set(
+                "yes" if bool(override_active) else "no"
+            )
+            self._detail_vars[DETAIL_KEY_OVERRIDE_ORIGINATED].set(
+                "yes" if bool(override_originated) else "no"
+            )
+            self._detail_vars[DETAIL_KEY_OVERRIDE_FAILURE].set(
+                "yes" if bool(override_failure) else "no"
+            )
+            self._detail_vars[DETAIL_KEY_NOT_TESTABLE_REASON].set(not_testable_reason)
             self._detail_vars[DETAIL_KEY_LAST_SEEN].set(_format_last_seen(last_seen, now_ms))
             self._detail_vars[DETAIL_KEY_CURRENT_A].set(
                 f"{float(current_a):.2f}" if isinstance(current_a, (int, float)) else "--"
@@ -1919,10 +2163,20 @@ class LiveTopologyView(ttk.Frame):
             )
         else:
             self._detail_vars[DETAIL_KEY_PRESENCE].set("--")
-            self._detail_vars[DETAIL_KEY_PROBE_BUCKET].set("--")
-            self._detail_vars[DETAIL_KEY_PROBE_SCORE].set("--")
-            self._detail_vars[DETAIL_KEY_PROBE_STATUS].set("--")
-            self._detail_vars[DETAIL_KEY_PROBE_MESSAGE].set("--")
+            self._detail_vars[DETAIL_KEY_PRESENCE_STATUS].set("--")
+            self._detail_vars[DETAIL_KEY_PRESENCE_AGE].set("--")
+            self._detail_vars[DETAIL_KEY_PRESENCE_SOURCE].set("--")
+            self._detail_vars[DETAIL_KEY_FULL_PROBE_BUCKET].set("--")
+            self._detail_vars[DETAIL_KEY_FULL_PROBE_AGE].set("--")
+            self._detail_vars[DETAIL_KEY_FULL_PROBE_SCORE].set("--")
+            self._detail_vars[DETAIL_KEY_FULL_PROBE_STATUS].set("--")
+            self._detail_vars[DETAIL_KEY_FULL_PROBE_MESSAGE].set("--")
+            self._detail_vars[DETAIL_KEY_LIFECYCLE_STATE].set("--")
+            self._detail_vars[DETAIL_KEY_TESTABLE].set("--")
+            self._detail_vars[DETAIL_KEY_OVERRIDE_ACTIVE].set("--")
+            self._detail_vars[DETAIL_KEY_OVERRIDE_ORIGINATED].set("--")
+            self._detail_vars[DETAIL_KEY_OVERRIDE_FAILURE].set("--")
+            self._detail_vars[DETAIL_KEY_NOT_TESTABLE_REASON].set("--")
             self._detail_vars[DETAIL_KEY_LAST_SEEN].set("--")
             self._detail_vars[DETAIL_KEY_CURRENT_A].set("--")
             self._detail_vars[DETAIL_KEY_CURRENT_AVG_A].set("--")
@@ -1947,6 +2201,18 @@ class LiveTopologyView(ttk.Frame):
         else:
             selected_text = "--"
         self._detail_vars[DETAIL_KEY_SELECTED].set(selected_text)
+
+    def _invoke_override_action(self, action: str) -> None:
+        """
+        NAME
+            _invoke_override_action - Forward one explicit override action for the selected device.
+        """
+        if self._on_override_action_cb is None or self._selected_node is None:
+            return
+        label = str(getattr(self._selected_node, "label", EMPTY_STRING)).strip()
+        if not label:
+            return
+        self._on_override_action_cb(label, str(action or EMPTY_STRING).strip().lower())
 
     def set_group_run_inspector(self, group_name: str, targets: List[str]) -> None:
         """
@@ -1977,20 +2243,26 @@ class LiveTopologyView(ttk.Frame):
         NAME
             _show_device_inspector - Show the normal single-device detail view.
         """
+        if self._selection_inspector_mode == GROUP_INSPECTOR_MODE_DEVICE:
+            return
         if getattr(self, "_group_inspector_frame", None) is not None:
             self._group_inspector_frame.pack_forget()
         if getattr(self, "_detail_device_frame", None) is not None:
-            self._detail_device_frame.pack(fill="x")
+            self._detail_device_frame.pack(fill="both", expand=True)
+        self._selection_inspector_mode = GROUP_INSPECTOR_MODE_DEVICE
 
     def _show_group_inspector(self) -> None:
         """
         NAME
             _show_group_inspector - Show the group-run detail view.
         """
+        if self._selection_inspector_mode == GROUP_INSPECTOR_MODE_GROUP:
+            return
         if getattr(self, "_detail_device_frame", None) is not None:
             self._detail_device_frame.pack_forget()
         if getattr(self, "_group_inspector_frame", None) is not None:
-            self._group_inspector_frame.pack(fill="x")
+            self._group_inspector_frame.pack(fill="both", expand=True)
+        self._selection_inspector_mode = GROUP_INSPECTOR_MODE_GROUP
 
     def _update_group_inspector(self) -> None:
         """
@@ -2001,8 +2273,6 @@ class LiveTopologyView(ttk.Frame):
         frame = getattr(self, "_group_inspector_rows_frame", None)
         if summary_var is None or frame is None:
             return
-        for child in frame.winfo_children():
-            child.destroy()
         group = self._runtime_group_by_name(self._group_inspector_name)
         group_member_map: Dict[str, Dict[str, object]] = {}
         primary_label = EMPTY_STRING
@@ -2054,6 +2324,7 @@ class LiveTopologyView(ttk.Frame):
                 if isinstance(probe, dict)
                 else "--"
             )
+            probe_age = _runtime_probe_age_text(live) if isinstance(live, dict) else "--"
             motor_attachment = runtime_motor_attachment(live) if isinstance(live, dict) else None
             cmd_duty = _runtime_device_field(live, "cmdDuty") if isinstance(live, dict) else None
             applied_duty = _runtime_device_field(live, "appliedDuty") if isinstance(live, dict) else None
@@ -2109,7 +2380,9 @@ class LiveTopologyView(ttk.Frame):
                 detail_parts.append(GROUP_INSPECTOR_PRIMARY_MARKER)
             detail_parts.append(ACTIVE_GROUP_MEMBER_ENABLED if enabled else ACTIVE_GROUP_MEMBER_DISABLED)
             detail_parts.append(GROUP_INSPECTOR_ROW_PRESENT if present else GROUP_INSPECTOR_ROW_MISSING)
-            detail_parts.append(f"{GROUP_INSPECTOR_PROBE_BUCKET_PREFIX}{probe_bucket or '--'}")
+            detail_parts.append(
+                f"{GROUP_INSPECTOR_FULL_PROBE_BUCKET_PREFIX}{probe_bucket or '--'}/{probe_age}"
+            )
             detail_parts.append(f"{GROUP_INSPECTOR_CMD_DUTY_PREFIX}{self._format_group_number(cmd_duty)}")
             detail_parts.append(f"{GROUP_INSPECTOR_APPLIED_DUTY_PREFIX}{self._format_group_number(applied_duty)}")
             detail_parts.append(f"{GROUP_INSPECTOR_VEL_RPM_PREFIX}{self._format_group_rpm(vel_rpm)}")
@@ -2131,13 +2404,44 @@ class LiveTopologyView(ttk.Frame):
             ]
         )
         summary_var.set("\n".join(summary_lines))
+        expected_keys = {label.strip().lower() for label, _detail_text in member_rows}
+        stale_keys = [
+            key for key in self._group_inspector_row_widgets.keys() if key not in expected_keys
+        ]
+        for key in stale_keys:
+            widgets = self._group_inspector_row_widgets.pop(key, {})
+            row_widget = widgets.get("row")
+            if isinstance(row_widget, tk.Widget):
+                row_widget.destroy()
         for label, detail_text in member_rows:
-            row = ttk.Frame(frame)
-            row.pack(fill="x", pady=(0, 4))
-            ttk.Label(row, text=label, anchor="w").pack(fill="x")
-            detail_label = ttk.Label(row, text=detail_text, anchor="w", justify="left")
-            detail_label.pack(fill="x", padx=(12, 0))
-            self._bind_wrapped_label(row, detail_label)
+            key = label.strip().lower()
+            widgets = self._group_inspector_row_widgets.get(key)
+            if not isinstance(widgets, dict):
+                row = ttk.Frame(frame)
+                row.pack(fill="x", pady=(0, 4))
+                label_var = tk.StringVar(value=label)
+                detail_var = tk.StringVar(value=detail_text)
+                ttk.Label(row, textvariable=label_var, anchor="w").pack(fill="x")
+                detail_label = ttk.Label(
+                    row,
+                    textvariable=detail_var,
+                    anchor="w",
+                    justify="left",
+                )
+                detail_label.pack(fill="x", padx=(12, 0))
+                self._bind_wrapped_label(row, detail_label)
+                widgets = {
+                    "row": row,
+                    "label_var": label_var,
+                    "detail_var": detail_var,
+                }
+                self._group_inspector_row_widgets[key] = widgets
+            label_var = widgets.get("label_var")
+            detail_var = widgets.get("detail_var")
+            if isinstance(label_var, tk.StringVar):
+                label_var.set(label)
+            if isinstance(detail_var, tk.StringVar):
+                detail_var.set(detail_text)
 
     def _runtime_group_by_name(self, name: str) -> Optional[Dict[str, object]]:
         """
@@ -2278,13 +2582,32 @@ class LiveTopologyView(ttk.Frame):
         frame = self._active_group_rows_frame
         if frame is None:
             return
-        for child in frame.winfo_children():
-            child.destroy()
         eligible_labels = self._eligible_active_group_labels()
-        self._active_group_member_vars = {}
+        expected_keys = {label.lower() for label in eligible_labels}
+        stale_keys = [
+            key for key in self._active_group_row_widgets.keys() if key not in expected_keys
+        ]
+        for key in stale_keys:
+            widgets = self._active_group_row_widgets.pop(key, {})
+            row_widget = widgets.get("row")
+            if isinstance(row_widget, tk.Widget):
+                row_widget.destroy()
+            self._active_group_member_vars.pop(key, None)
         if not eligible_labels:
-            ttk.Label(frame, text=ACTIVE_GROUP_ELIGIBLE_EMPTY_TEXT, anchor="w", justify="left").pack(fill="x")
+            if self._active_group_empty_label is None:
+                self._active_group_empty_label = ttk.Label(
+                    frame,
+                    text=ACTIVE_GROUP_ELIGIBLE_EMPTY_TEXT,
+                    anchor="w",
+                    justify="left",
+                )
+                self._active_group_empty_label.pack(fill="x")
+            else:
+                self._active_group_empty_label.configure(text=ACTIVE_GROUP_ELIGIBLE_EMPTY_TEXT)
             return
+        if self._active_group_empty_label is not None:
+            self._active_group_empty_label.destroy()
+            self._active_group_empty_label = None
         self._active_group_member_update_in_progress = True
         try:
             for label in eligible_labels:
@@ -2313,6 +2636,7 @@ class LiveTopologyView(ttk.Frame):
                     if isinstance(probe, dict)
                     else "--"
                 )
+                probe_age = _runtime_probe_age_text(live) if isinstance(live, dict) else "--"
                 manual_observation = self._manual_test_observations.get(label_key, {})
                 vel_rpm = _runtime_device_field(live, "velRpm") if isinstance(live, dict) else None
                 position_rot = _runtime_device_field(live, RUNTIME_KEY_POSITION_ROT) if isinstance(live, dict) else None
@@ -2335,38 +2659,59 @@ class LiveTopologyView(ttk.Frame):
                     if checked and label_key == primary_label.strip().lower()
                     else EMPTY_STRING
                 )
-                row = ttk.Frame(frame)
-                row.pack(fill="x", pady=(0, 2))
-                variable = tk.BooleanVar(value=checked)
-                self._active_group_member_vars[label_key] = variable
-                top_line = ttk.Frame(row)
-                top_line.pack(fill="x")
-                ttk.Checkbutton(
-                    top_line,
-                    variable=variable,
-                    command=lambda row_label=label: self._on_active_group_member_checkbox_toggled(row_label),
-                ).pack(side="left")
-                ttk.Label(top_line, text=label, anchor="w").pack(side="left")
                 detail_parts = []
                 if primary_text:
                     detail_parts.append(primary_text)
                 detail_parts.append(enabled_text)
                 detail_parts.append(f"{ACTIVE_GROUP_PRESENT_PREFIX}{presence_text}")
-                detail_parts.append(f"{ACTIVE_GROUP_PROBE_PREFIX}{probe_bucket or '--'}")
+                detail_parts.append(f"{ACTIVE_GROUP_FULL_PROBE_PREFIX}{probe_bucket or '--'}/{probe_age}")
                 detail_parts.append(f"{ACTIVE_GROUP_VEL_RPM_PREFIX}{self._format_group_rpm(vel_rpm)}")
                 detail_parts.append(f"{ACTIVE_GROUP_POSITION_ROT_PREFIX}{self._format_group_rot(position_rot)}")
                 detail_parts.append(
                     f"{ACTIVE_GROUP_POSITION_DELTA_ROT_PREFIX}{self._format_group_rot(position_delta_rot)}"
                 )
                 detail_parts.append(selected_text)
-                detail_label = ttk.Label(
-                    row,
-                    text=" | ".join(detail_parts),
-                    anchor="w",
-                    justify="left",
-                )
-                detail_label.pack(fill="x", padx=(24, 0))
-                self._bind_wrapped_label(row, detail_label)
+                widgets = self._active_group_row_widgets.get(label_key)
+                if not isinstance(widgets, dict):
+                    row = ttk.Frame(frame)
+                    row.pack(fill="x", pady=(0, 2))
+                    variable = tk.BooleanVar(value=checked)
+                    top_line = ttk.Frame(row)
+                    top_line.pack(fill="x")
+                    ttk.Checkbutton(
+                        top_line,
+                        variable=variable,
+                        command=lambda row_label=label: self._on_active_group_member_checkbox_toggled(row_label),
+                    ).pack(side="left")
+                    label_var = tk.StringVar(value=label)
+                    ttk.Label(top_line, textvariable=label_var, anchor="w").pack(side="left")
+                    detail_var = tk.StringVar(value=" | ".join(detail_parts))
+                    detail_label = ttk.Label(
+                        row,
+                        textvariable=detail_var,
+                        anchor="w",
+                        justify="left",
+                    )
+                    detail_label.pack(fill="x", padx=(24, 0))
+                    self._bind_wrapped_label(row, detail_label)
+                    widgets = {
+                        "row": row,
+                        "label_var": label_var,
+                        "detail_var": detail_var,
+                        "variable": variable,
+                    }
+                    self._active_group_row_widgets[label_key] = widgets
+                    self._active_group_member_vars[label_key] = variable
+                label_var = widgets.get("label_var")
+                detail_var = widgets.get("detail_var")
+                variable = widgets.get("variable")
+                if isinstance(label_var, tk.StringVar):
+                    label_var.set(label)
+                if isinstance(detail_var, tk.StringVar):
+                    detail_var.set(" | ".join(detail_parts))
+                if isinstance(variable, tk.BooleanVar):
+                    variable.set(checked)
+                    self._active_group_member_vars[label_key] = variable
         finally:
             self._active_group_member_update_in_progress = False
 
@@ -2490,11 +2835,15 @@ class LiveTopologyView(ttk.Frame):
             list(self._bus_rights),
             max_x,
         )
-        selected_keys = {
-            node.key
-            for node in self._nodes
-            if self._selected_label and node.label.strip().lower() == self._selected_label
-        }
+        selected_keys = set()
+        if self._selected_node is not None and getattr(self._selected_node, "key", None) is not None:
+            selected_keys.add(self._selected_node.key)
+        if self._selected_label:
+            selected_keys.update(
+                node.key
+                for node in self._nodes
+                if node.label.strip().lower() == self._selected_label
+            )
         rendered = render_topology_canvas_common(
             canvas=self._canvas,
             nodes=self._nodes,

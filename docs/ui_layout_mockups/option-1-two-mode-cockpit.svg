@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="850" viewBox="0 0 1400 850">
+  <defs>
+    <style>
+      .bg{fill:#f5f7f9}.chrome{fill:#ffffff;stroke:#c7cdd4;stroke-width:1}.title{font:700 24px Segoe UI,Arial,sans-serif;fill:#111827}.h{font:700 15px Segoe UI,Arial,sans-serif;fill:#111827}.t{font:12px Segoe UI,Arial,sans-serif;fill:#1f2937}.small{font:11px Segoe UI,Arial,sans-serif;fill:#374151}.muted{fill:#6b7280}.blue{fill:#e8f1ff;stroke:#2563eb}.green{fill:#e9f8ec;stroke:#16a34a}.orange{fill:#fff3e4;stroke:#f97316}.red{fill:#ffe8e8;stroke:#dc2626}.gray{fill:#eef1f4;stroke:#94a3b8}.line{stroke:#475569;stroke-width:4}.dash{stroke:#2563eb;stroke-width:2;stroke-dasharray:5 4}.pill{rx:5;ry:5}.node{rx:10;ry:10}.label{font:700 13px Segoe UI,Arial,sans-serif;fill:#111827}
+    </style>
+  </defs>
+  <rect class="bg" width="1400" height="850"/>
+  <rect class="chrome" x="20" y="20" width="1360" height="60" rx="6"/>
+  <text class="title" x="42" y="58">Option 1: Two-Mode Cockpit</text>
+  <rect class="green pill" x="420" y="32" width="120" height="32"/><text class="h" x="451" y="53">Bringup</text>
+  <rect class="gray pill" x="548" y="32" width="120" height="32"/><text class="h" x="585" y="53">Diagnose</text>
+  <text class="small" x="900" y="51">Runtime: scoped in Bringup, all-profile in Diagnose</text>
+  <text class="small" x="1210" y="51">Robot: teleop | Clock</text>
+
+  <rect class="chrome" x="20" y="100" width="205" height="720" rx="6"/>
+  <text class="h" x="38" y="132">Mode Actions</text>
+  <rect class="green pill" x="38" y="155" width="166" height="34"/><text class="t" x="56" y="177">Runtime Activate Scope</text>
+  <rect class="green pill" x="38" y="199" width="166" height="34"/><text class="t" x="72" y="221">Active Add</text>
+  <rect class="green pill" x="38" y="243" width="166" height="34"/><text class="t" x="72" y="265">Active Next</text>
+  <rect class="orange pill" x="38" y="287" width="166" height="34"/><text class="t" x="60" y="309">Stop Active Command</text>
+  <text class="small" x="38" y="354">Bringup hides DSL tests</text>
+  <text class="small" x="38" y="374">and full raw tables until</text>
+  <text class="small" x="38" y="394">the operator expands them.</text>
+  <line x1="38" y1="430" x2="204" y2="430" stroke="#cbd5e1"/>
+  <text class="h" x="38" y="460">Diagnose Actions</text>
+  <rect class="blue pill" x="38" y="480" width="166" height="34"/><text class="t" x="68" y="502">Run DSL Test</text>
+  <rect class="blue pill" x="38" y="524" width="166" height="34"/><text class="t" x="56" y="546">Active Probe Sweep</text>
+  <rect class="blue pill" x="38" y="568" width="166" height="34"/><text class="t" x="56" y="590">CAN Fault Report</text>
+
+  <rect class="chrome" x="245" y="100" width="815" height="575" rx="6"/>
+  <text class="h" x="266" y="130">Read-Only Topology</text>
+  <rect class="orange" x="320" y="210" width="160" height="65" rx="12"/><text class="label" x="368" y="247">roboRIO</text>
+  <rect class="blue" x="555" y="205" width="190" height="70" rx="20"/><text class="label" x="595" y="247">CAN analyzer</text>
+  <rect class="green" x="790" y="190" width="185" height="72" rx="18"/><text class="label" x="840" y="233">FALCON 9</text>
+  <rect class="green" x="650" y="440" width="200" height="75" rx="18"/><text class="label" x="690" y="485">SPARKMAX 25</text>
+  <rect class="gray" x="330" y="520" width="170" height="68" rx="8"/><text class="label" x="382" y="560">lmtSw0</text>
+  <line class="line" x1="285" y1="360" x2="1015" y2="360"/>
+  <line class="dash" x1="400" y1="275" x2="390" y2="520"/>
+  <line class="dash" x1="650" y1="275" x2="650" y2="360"/>
+  <line class="dash" x1="883" y1="262" x2="883" y2="360"/>
+  <line class="dash" x1="750" y1="360" x2="750" y2="440"/>
+  <rect fill="none" stroke="#f97316" stroke-width="3" x="635" y="425" width="230" height="105"/>
+  <text class="h" fill="#f97316" x="650" y="418">active-group overlay</text>
+
+  <rect class="chrome" x="1080" y="100" width="300" height="575" rx="6"/>
+  <text class="h" x="1100" y="130">Mode-Specific Inspector</text>
+  <rect class="green" x="1100" y="152" width="250" height="185" rx="6"/>
+  <text class="h" x="1118" y="181">Bringup</text>
+  <text class="t" x="1118" y="208">Activation scope: active-group</text>
+  <text class="t" x="1118" y="232">Members with checkboxes</text>
+  <text class="t" x="1118" y="256">Selected device telemetry</text>
+  <text class="t" x="1118" y="280">Basic result: moves / no motion</text>
+  <text class="t" x="1118" y="304">Out-of-scope devices are neutral</text>
+  <rect class="blue" x="1100" y="360" width="250" height="225" rx="6"/>
+  <text class="h" x="1118" y="389">Diagnose</text>
+  <text class="t" x="1118" y="416">Activation scope: all</text>
+  <text class="t" x="1118" y="440">Selected evidence stack</text>
+  <text class="t" x="1118" y="464">Passive / console / probe</text>
+  <text class="t" x="1118" y="488">Manual result conflicts</text>
+  <text class="t" x="1118" y="512">Suggested next checks</text>
+
+  <rect class="chrome" x="245" y="695" width="1135" height="125" rx="6"/>
+  <text class="h" x="266" y="727">Bottom Workbench</text>
+  <text class="t" x="266" y="755">Bringup: scoped device checklist, current manual test values, recent basic result.</text>
+  <text class="t" x="266" y="780">Diagnose: evidence summary table, likely CAN break region, console events, DSL test launcher.</text>
+</svg>
+

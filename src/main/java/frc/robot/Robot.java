@@ -48,6 +48,7 @@ public class Robot extends TimedRobot {
   private final SampledTelemetrySampler sampledTelemetry = new SampledTelemetrySampler();
   private final NetworkTable diagTable =
       NetworkTableInstance.getDefault().getTable("bringup").getSubTable("diag");
+  private final DeviceLifecycleRegistry deviceLifecycle = new DeviceLifecycleRegistry();
   // Local bringup behaviors for device creation and health.
   private BringupCore core;
   // Edge-detect state for one-shot actions.
@@ -70,7 +71,7 @@ public class Robot extends TimedRobot {
   public void robotInit() {
     // Load profile before devices are created.
     BringupUtil.applyProfileFromArgs();
-    core = new BringupCore(sampledTelemetry, diagTable);
+    core = new BringupCore(sampledTelemetry, diagTable, deviceLifecycle);
     printStartupInfo();
     validateCanIds();
     CameraServer.startAutomaticCapture();

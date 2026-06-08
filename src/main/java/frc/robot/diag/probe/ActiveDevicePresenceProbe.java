@@ -28,13 +28,15 @@ import frc.robot.manufacturers.rev.diag.RevReaderUtil;
 import frc.robot.manufacturers.rev.util.PdhStatusReader;
 import frc.robot.status.generated.StatusCatalogGenerated;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * NAME
- *   ActiveDevicePresenceProbe - One-shot active vendor-API presence probe for runtime-owned devices.
+ *   ActiveDevicePresenceProbe - One-shot heavy full-state probe for runtime-owned devices.
  *
  * DESCRIPTION
  *   Probes the currently active runtime-owned CAN devices using already-open
@@ -141,6 +143,21 @@ public final class ActiveDevicePresenceProbe {
   private static final String EVENT_PDP_STATUS_READER_TIMEOUT = "PDP_STATUS_READER_TIMEOUT";
   private static final String EVENT_PDH_STATUS_READER_TIMEOUT = "PDH_STATUS_READER_TIMEOUT";
   private static final String MESSAGE_CONSOLE_TIMEOUT_PREFIX = "Active console timeout evidence: ";
+  private static final String TEXT_SESSION_HEADER = "=== Full Device State Probe ===";
+  private static final String TEXT_DURATION_MS = "durationMs";
+  private static final String TEXT_TOTAL_DURATION_MS = "totalDurationMs";
+  private static final String TEXT_SLOWEST_DEVICE_LABEL = "slowestDeviceLabel";
+  private static final String TEXT_SLOWEST_DEVICE_DURATION_MS = "slowestDeviceDurationMs";
+  private static final String TEXT_STAGE_TIMINGS = "stageTimings";
+  private static final String TEXT_STAGE_HANDLE = "handle";
+  private static final String TEXT_STAGE_GET_HANDLE = "getHandle";
+  private static final String TEXT_STAGE_PREFLIGHT = "preflight";
+  private static final String TEXT_STAGE_CLEAR_STICKY = "clearSticky";
+  private static final String TEXT_STAGE_VENDOR_READ = "vendorRead";
+  private static final String TEXT_STAGE_EVALUATE = "evaluate";
+  private static final String TEXT_STAGE_CONSOLE_EVIDENCE = "consoleEvidence";
+  private static final String TEXT_STAGE_SNAPSHOT = "snapshot";
+  private static final String TEXT_MS_SUFFIX = " ms";
 
   /**
    * NAME
@@ -154,8 +171,11 @@ public final class ActiveDevicePresenceProbe {
    *   Session result containing per-device evidence plus text/JSON output.
    */
   public ProbeSessionResult runOnce(BringupCore core, NetworkTable diagTable, boolean preclearSticky) {
+    long sessionStartNs = System.nanoTime();
     if (core == null) {
-      return ProbeSessionResult.failed(TEXT_SESSION_EMPTY);
+      ProbeSessionResult result = ProbeSessionResult.failed(TEXT_SESSION_EMPTY);
+      result.totalDurationMs = nanosToMs(System.nanoTime() - sessionStartNs);
+      return result;
     }
     List<ProbeDeviceResult> results = new ArrayList<>();
     int unsupportedCount = 0;
@@ -166,6 +186,9 @@ public final class ActiveDevicePresenceProbe {
       }
       canCount++;
       DeviceUnit device = core.findDeviceByLabel(entry.label);
+      if (!core.isLifecycleSnapshotAllowed(entry.label)) {
+        continue;
+      }
       ProbeTarget target = resolveTarget(entry, device);
       if (MODEL_UNSUPPORTED.equals(target.model)) {
         unsupportedCount++;
@@ -175,11 +198,18 @@ public final class ActiveDevicePresenceProbe {
     }
     if (results.isEmpty()) {
       if (canCount == 0) {
-        return ProbeSessionResult.failed(TEXT_SESSION_EMPTY);
+        ProbeSessionResult result = ProbeSessionResult.failed(TEXT_SESSION_EMPTY);
+        result.totalDurationMs = nanosToMs(System.nanoTime() - sessionStartNs);
+        return result;
       }
-      return ProbeSessionResult.failed(TEXT_SESSION_UNSUPPORTED);
+      ProbeSessionResult result = ProbeSessionResult.failed(TEXT_SESSION_UNSUPPORTED);
+      result.totalDurationMs = nanosToMs(System.nanoTime() - sessionStartNs);
+      return result;
     }
-    return ProbeSessionResult.fromDevices(results, unsupportedCount);
+    ProbeSessionResult session = ProbeSessionResult.fromDevices(results, unsupportedCount);
+    session.totalDurationMs = nanosToMs(System.nanoTime() - sessionStartNs);
+    session.finishProfilingSummary();
+    return session;
   }
 
   private boolean isCanEntry(BringupUtil.DeviceEntry entry) {
@@ -250,15 +280,24 @@ public final class ActiveDevicePresenceProbe {
       CtreTalonFxDevice device,
       NetworkTable diagTable,
       boolean preclearSticky) {
+    long deviceStartNs = System.nanoTime();
     ProbeAccumulator acc = new ProbeAccumulator(target);
+    long stageStartNs = System.nanoTime();
     TalonFX talon = device.getActiveHandleForProbe();
+    acc.recordStageDuration(TEXT_STAGE_GET_HANDLE, nanosToMs(System.nanoTime() - stageStartNs));
     if (talon == null) {
-      return missingRuntimeDevice(target);
+      ProbeDeviceResult result = missingRuntimeDevice(target);
+      result.totalDurationMs = nanosToMs(System.nanoTime() - deviceStartNs);
+      return result;
     }
+    stageStartNs = System.nanoTime();
     acc.pass(CODE_OBJECT_HANDLE_REUSED, "Using runtime-owned TalonFX handle.", WEIGHT_CONSTRUCT,
         Integer.toString(target.canId));
+    acc.recordStageDuration(TEXT_STAGE_PREFLIGHT, nanosToMs(System.nanoTime() - stageStartNs));
+    acc.recordStageDuration(TEXT_STAGE_HANDLE, nanosToMs(System.nanoTime() - deviceStartNs));
     try {
       if (preclearSticky) {
+        stageStartNs = System.nanoTime();
         StatusCode clearStatus = talon.clearStickyFaults();
         if (clearStatus == StatusCode.OK) {
           acc.pass(CODE_CLEAR_STICKY_OK, "Cleared Phoenix sticky faults.", 0, OBSERVED_OK);
@@ -266,7 +305,9 @@ public final class ActiveDevicePresenceProbe {
           acc.warn(CODE_CLEAR_STICKY_FAILED, "Phoenix sticky-fault clear did not return OK.", 0,
               String.valueOf(clearStatus), StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK);
         }
+        acc.recordStageDuration(TEXT_STAGE_CLEAR_STICKY, nanosToMs(System.nanoTime() - stageStartNs));
       }
+      stageStartNs = System.nanoTime();
       var supplyVoltage = talon.getSupplyVoltage();
       var dutyCycle = talon.getDutyCycle();
       var faultField = talon.getFaultField();
@@ -282,6 +323,8 @@ public final class ActiveDevicePresenceProbe {
           deviceTemp,
           supplyCurrent,
           position);
+      acc.recordStageDuration(TEXT_STAGE_VENDOR_READ, nanosToMs(System.nanoTime() - stageStartNs));
+      stageStartNs = System.nanoTime();
       boolean allOk = true;
       allOk &= isOkStatus(supplyVoltage.getStatus());
       allOk &= isOkStatus(dutyCycle.getStatus());
@@ -362,12 +405,19 @@ public final class ActiveDevicePresenceProbe {
       if (!allOk) {
         acc.forceBucket(BUCKET_ABSENT, StatusCatalogGenerated.SS__DEVICE__ABSENT, TEXT_STATUS_FORCE_ABSENT);
       }
+      acc.recordStageDuration(TEXT_STAGE_EVALUATE, nanosToMs(System.nanoTime() - stageStartNs));
+      stageStartNs = System.nanoTime();
       applyConsoleEvidence(acc, target, diagTable);
+      acc.recordStageDuration(TEXT_STAGE_CONSOLE_EVIDENCE, nanosToMs(System.nanoTime() - stageStartNs));
+      acc.setTotalDurationMs(nanosToMs(System.nanoTime() - deviceStartNs));
       return acc.finish();
     } catch (Exception ex) {
       acc.error(CODE_EXCEPTION_THROWN, TEXT_EXCEPTION_PREFIX + ex.getClass().getSimpleName(),
           MAX_SCORE, safeExceptionMessage(ex), StatusCatalogGenerated.SS__DEVICE__PROBE_EXCEPTION);
+      stageStartNs = System.nanoTime();
       applyConsoleEvidence(acc, target, diagTable);
+      acc.recordStageDuration(TEXT_STAGE_CONSOLE_EVIDENCE, nanosToMs(System.nanoTime() - stageStartNs));
+      acc.setTotalDurationMs(nanosToMs(System.nanoTime() - deviceStartNs));
       return acc.finish();
     }
   }
@@ -399,14 +449,19 @@ public final class ActiveDevicePresenceProbe {
       SparkBase device,
       NetworkTable diagTable,
       boolean preclearSticky) {
+    long deviceStartNs = System.nanoTime();
     ProbeAccumulator acc = new ProbeAccumulator(target);
     if (device == null) {
-      return missingRuntimeDevice(target);
+      ProbeDeviceResult result = missingRuntimeDevice(target);
+      result.totalDurationMs = nanosToMs(System.nanoTime() - deviceStartNs);
+      return result;
     }
     acc.pass(CODE_OBJECT_HANDLE_REUSED, "Using runtime-owned REV handle.", WEIGHT_CONSTRUCT,
         Integer.toString(target.canId));
     try {
+      acc.recordStageDuration(TEXT_STAGE_HANDLE, nanosToMs(System.nanoTime() - deviceStartNs));
       if (preclearSticky) {
+        long stageStartNs = System.nanoTime();
         device.clearFaults();
         REVLibError clearError = device.getLastError();
         if (clearError == REVLibError.kOk) {
@@ -415,7 +470,9 @@ public final class ActiveDevicePresenceProbe {
           acc.warn(CODE_CLEAR_STICKY_FAILED, "REV clearFaults did not return kOk.", 0,
               String.valueOf(clearError), StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK);
         }
+        acc.recordStageDuration(TEXT_STAGE_CLEAR_STICKY, nanosToMs(System.nanoTime() - stageStartNs));
       }
+      long stageStartNs = System.nanoTime();
       double busV = device.getBusVoltage();
       double appliedOutput = device.getAppliedOutput();
       double currentA = device.getOutputCurrent();
@@ -425,6 +482,8 @@ public final class ActiveDevicePresenceProbe {
       var warnings = device.getWarnings();
       var stickyWarnings = device.getStickyWarnings();
       REVLibError lastError = device.getLastError();
+      acc.recordStageDuration(TEXT_STAGE_VENDOR_READ, nanosToMs(System.nanoTime() - stageStartNs));
+      stageStartNs = System.nanoTime();
       boolean commHealthy = lastError == REVLibError.kOk;
       if (commHealthy) {
         acc.pass(CODE_LAST_ERROR_OK, "REV last error returned kOk.", REV_LAST_ERROR_OK, String.valueOf(lastError));
@@ -503,12 +562,19 @@ public final class ActiveDevicePresenceProbe {
         acc.warn(CODE_LAST_ERROR_OK, "REV communication evidence was weak.", 0,
             String.valueOf(lastError), StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK);
       }
+      acc.recordStageDuration(TEXT_STAGE_EVALUATE, nanosToMs(System.nanoTime() - stageStartNs));
+      stageStartNs = System.nanoTime();
       applyConsoleEvidence(acc, target, diagTable);
+      acc.recordStageDuration(TEXT_STAGE_CONSOLE_EVIDENCE, nanosToMs(System.nanoTime() - stageStartNs));
+      acc.setTotalDurationMs(nanosToMs(System.nanoTime() - deviceStartNs));
       return acc.finish();
     } catch (Exception ex) {
       acc.error(CODE_EXCEPTION_THROWN, TEXT_EXCEPTION_PREFIX + ex.getClass().getSimpleName(),
           MAX_SCORE, safeExceptionMessage(ex), StatusCatalogGenerated.SS__DEVICE__PROBE_EXCEPTION);
+      long stageStartNs = System.nanoTime();
       applyConsoleEvidence(acc, target, diagTable);
+      acc.recordStageDuration(TEXT_STAGE_CONSOLE_EVIDENCE, nanosToMs(System.nanoTime() - stageStartNs));
+      acc.setTotalDurationMs(nanosToMs(System.nanoTime() - deviceStartNs));
       return acc.finish();
     }
   }
@@ -518,23 +584,31 @@ public final class ActiveDevicePresenceProbe {
       CtrePdpDevice device,
       NetworkTable diagTable,
       boolean preclearSticky) {
+    long deviceStartNs = System.nanoTime();
     ProbeAccumulator acc = new ProbeAccumulator(target);
     PdpStatusReader reader = device.getActiveReaderForProbe();
     if (reader == null) {
-      return missingRuntimeDevice(target);
+      ProbeDeviceResult result = missingRuntimeDevice(target);
+      result.totalDurationMs = nanosToMs(System.nanoTime() - deviceStartNs);
+      return result;
     }
     acc.pass(CODE_OBJECT_HANDLE_REUSED, "Using runtime-owned PDP reader.", WEIGHT_CONSTRUCT,
         Integer.toString(target.canId));
     try {
+      acc.recordStageDuration(TEXT_STAGE_HANDLE, nanosToMs(System.nanoTime() - deviceStartNs));
       if (preclearSticky) {
+        long stageStartNs = System.nanoTime();
         reader.clearStickyFaults();
         acc.pass(CODE_CLEAR_STICKY_OK, "Cleared PDP sticky faults.", 0, OBSERVED_OK);
+        acc.recordStageDuration(TEXT_STAGE_CLEAR_STICKY, nanosToMs(System.nanoTime() - stageStartNs));
       }
+      long stageStartNs = System.nanoTime();
       PdpStatusAttachment status = reader.snapshot();
+      acc.recordStageDuration(TEXT_STAGE_SNAPSHOT, nanosToMs(System.nanoTime() - stageStartNs));
+      stageStartNs = System.nanoTime();
       scorePowerStatus(acc, status.voltage, status.totalCurrent, status.temperature,
           status.switchableEnabled, status.brownout || status.canWarning || status.hardwareFault,
           status.stickyBrownout || status.stickyCanWarning || status.stickyCanBusOff || status.stickyHasReset);
-      applyConsoleEvidence(acc, target, diagTable);
       if (!hasStrongPowerPresenceEvidence(status.voltage, status.temperature, status.totalCurrent, status.channelCurrentA)) {
         acc.warn(
             CODE_POWER_FRESHNESS_GATE,
@@ -546,12 +620,20 @@ public final class ActiveDevicePresenceProbe {
       } else if (acc.score() < PRESENT_THRESHOLD) {
         acc.forceBucket(BUCKET_UNKNOWN, StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK, TEXT_PD_WEAK);
       }
+      acc.recordStageDuration(TEXT_STAGE_EVALUATE, nanosToMs(System.nanoTime() - stageStartNs));
+      stageStartNs = System.nanoTime();
+      applyConsoleEvidence(acc, target, diagTable);
+      acc.recordStageDuration(TEXT_STAGE_CONSOLE_EVIDENCE, nanosToMs(System.nanoTime() - stageStartNs));
+      acc.setTotalDurationMs(nanosToMs(System.nanoTime() - deviceStartNs));
       return acc.finish();
     } catch (Exception ex) {
       acc.warn(CODE_EXCEPTION_THROWN, TEXT_EXCEPTION_PREFIX + ex.getClass().getSimpleName(), 0,
           safeExceptionMessage(ex), StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK);
+      long stageStartNs = System.nanoTime();
       applyConsoleEvidence(acc, target, diagTable);
+      acc.recordStageDuration(TEXT_STAGE_CONSOLE_EVIDENCE, nanosToMs(System.nanoTime() - stageStartNs));
       acc.forceBucket(BUCKET_UNKNOWN, StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK, TEXT_PD_WEAK);
+      acc.setTotalDurationMs(nanosToMs(System.nanoTime() - deviceStartNs));
       return acc.finish();
     }
   }
@@ -561,23 +643,31 @@ public final class ActiveDevicePresenceProbe {
       RevPdhDevice device,
       NetworkTable diagTable,
       boolean preclearSticky) {
+    long deviceStartNs = System.nanoTime();
     ProbeAccumulator acc = new ProbeAccumulator(target);
     PdhStatusReader reader = device.getActiveReaderForProbe();
     if (reader == null) {
-      return missingRuntimeDevice(target);
+      ProbeDeviceResult result = missingRuntimeDevice(target);
+      result.totalDurationMs = nanosToMs(System.nanoTime() - deviceStartNs);
+      return result;
     }
     acc.pass(CODE_OBJECT_HANDLE_REUSED, "Using runtime-owned PDH reader.", WEIGHT_CONSTRUCT,
         Integer.toString(target.canId));
     try {
+      acc.recordStageDuration(TEXT_STAGE_HANDLE, nanosToMs(System.nanoTime() - deviceStartNs));
       if (preclearSticky) {
+        long stageStartNs = System.nanoTime();
         reader.clearStickyFaults();
         acc.pass(CODE_CLEAR_STICKY_OK, "Cleared PDH sticky faults.", 0, OBSERVED_OK);
+        acc.recordStageDuration(TEXT_STAGE_CLEAR_STICKY, nanosToMs(System.nanoTime() - stageStartNs));
       }
+      long stageStartNs = System.nanoTime();
       PdhStatusAttachment status = reader.snapshot();
+      acc.recordStageDuration(TEXT_STAGE_SNAPSHOT, nanosToMs(System.nanoTime() - stageStartNs));
+      stageStartNs = System.nanoTime();
       scorePowerStatus(acc, status.voltage, status.totalCurrent, status.temperature,
           status.switchableEnabled, status.brownout || status.canWarning || status.hardwareFault,
           status.stickyBrownout || status.stickyCanWarning || status.stickyCanBusOff || status.stickyHasReset);
-      applyConsoleEvidence(acc, target, diagTable);
       if (!hasStrongPowerPresenceEvidence(status.voltage, status.temperature, status.totalCurrent, status.channelCurrentA)) {
         acc.warn(
             CODE_POWER_FRESHNESS_GATE,
@@ -589,12 +679,20 @@ public final class ActiveDevicePresenceProbe {
       } else if (acc.score() < PRESENT_THRESHOLD) {
         acc.forceBucket(BUCKET_UNKNOWN, StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK, TEXT_PD_WEAK);
       }
+      acc.recordStageDuration(TEXT_STAGE_EVALUATE, nanosToMs(System.nanoTime() - stageStartNs));
+      stageStartNs = System.nanoTime();
+      applyConsoleEvidence(acc, target, diagTable);
+      acc.recordStageDuration(TEXT_STAGE_CONSOLE_EVIDENCE, nanosToMs(System.nanoTime() - stageStartNs));
+      acc.setTotalDurationMs(nanosToMs(System.nanoTime() - deviceStartNs));
       return acc.finish();
     } catch (Exception ex) {
       acc.warn(CODE_EXCEPTION_THROWN, TEXT_EXCEPTION_PREFIX + ex.getClass().getSimpleName(), 0,
           safeExceptionMessage(ex), StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK);
+      long stageStartNs = System.nanoTime();
       applyConsoleEvidence(acc, target, diagTable);
+      acc.recordStageDuration(TEXT_STAGE_CONSOLE_EVIDENCE, nanosToMs(System.nanoTime() - stageStartNs));
       acc.forceBucket(BUCKET_UNKNOWN, StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK, TEXT_PD_WEAK);
+      acc.setTotalDurationMs(nanosToMs(System.nanoTime() - deviceStartNs));
       return acc.finish();
     }
   }
@@ -817,7 +915,7 @@ public final class ActiveDevicePresenceProbe {
     return Double.isFinite(value) && value >= min && value <= max;
   }
 
-  private String formatDouble(double value) {
+  private static String formatDouble(double value) {
     if (!Double.isFinite(value)) {
       return "NaN";
     }
@@ -829,6 +927,10 @@ public final class ActiveDevicePresenceProbe {
       return ex != null ? ex.getClass().getSimpleName() : TEXT_EMPTY;
     }
     return ex.getClass().getSimpleName() + ": " + ex.getMessage();
+  }
+
+  private double nanosToMs(long elapsedNs) {
+    return elapsedNs / 1_000_000.0;
   }
 
   private ProbeDeviceResult invalidTarget(ProbeTarget target, String detail) {
@@ -906,6 +1008,20 @@ public final class ActiveDevicePresenceProbe {
 
     private ProbeAccumulator(ProbeTarget target) {
       this.result = baseResult(target);
+    }
+
+    private void recordStageDuration(String stage, double durationMs) {
+      if (stage == null || stage.isBlank() || !Double.isFinite(durationMs)) {
+        return;
+      }
+      result.stageDurationsMs.put(stage, durationMs);
+    }
+
+    private void setTotalDurationMs(double durationMs) {
+      if (!Double.isFinite(durationMs)) {
+        return;
+      }
+      result.totalDurationMs = durationMs;
     }
 
     private void pass(String code, String description, int weight, String observedValue) {
@@ -995,6 +1111,9 @@ public final class ActiveDevicePresenceProbe {
     public int absentCount;
     public int unknownCount;
     public int unsupportedCount;
+    public double totalDurationMs;
+    public String slowestDeviceLabel = TEXT_EMPTY;
+    public double slowestDeviceDurationMs;
     public final List<ProbeDeviceResult> devices = new ArrayList<>();
 
     private static ProbeSessionResult failed(String message) {
@@ -1040,6 +1159,24 @@ public final class ActiveDevicePresenceProbe {
       return session;
     }
 
+    private void finishProfilingSummary() {
+      double slowestMs = -1.0;
+      String slowestLabel = TEXT_EMPTY;
+      for (ProbeDeviceResult result : devices) {
+        if (result == null || !Double.isFinite(result.totalDurationMs)) {
+          continue;
+        }
+        if (result.totalDurationMs > slowestMs) {
+          slowestMs = result.totalDurationMs;
+          slowestLabel = result.label != null ? result.label : TEXT_EMPTY;
+        }
+      }
+      if (slowestMs >= 0.0) {
+        slowestDeviceDurationMs = slowestMs;
+        slowestDeviceLabel = slowestLabel;
+      }
+    }
+
     public String toJsonString() {
       return toJsonObject().toString();
     }
@@ -1051,6 +1188,9 @@ public final class ActiveDevicePresenceProbe {
       root.addProperty("message", message);
       root.addProperty("mode", mode);
       root.addProperty("targetCount", targetCount);
+      root.addProperty(TEXT_TOTAL_DURATION_MS, totalDurationMs);
+      root.addProperty(TEXT_SLOWEST_DEVICE_LABEL, slowestDeviceLabel);
+      root.addProperty(TEXT_SLOWEST_DEVICE_DURATION_MS, slowestDeviceDurationMs);
       JsonObject summary = new JsonObject();
       summary.addProperty(BUCKET_PRESENT, presentCount);
       summary.addProperty(BUCKET_DEGRADED, degradedCount);
@@ -1068,16 +1208,28 @@ public final class ActiveDevicePresenceProbe {
 
     public String toText() {
       StringBuilder sb = new StringBuilder();
-      sb.append("=== Active Device Presence Probe ===").append(TEXT_NEWLINE);
+      sb.append(TEXT_SESSION_HEADER).append(TEXT_NEWLINE);
       sb.append("Session").append(TEXT_FIELD_SEPARATOR)
           .append(message).append(TEXT_FIELD_SEPARATOR)
           .append("targets ").append(targetCount).append(TEXT_FIELD_SEPARATOR)
           .append("present ").append(presentCount).append(TEXT_FIELD_SEPARATOR)
           .append("degraded ").append(degradedCount).append(TEXT_FIELD_SEPARATOR)
           .append("absent ").append(absentCount).append(TEXT_FIELD_SEPARATOR)
-          .append("unknown ").append(unknownCount);
+          .append("unknown ").append(unknownCount)
+          .append(TEXT_FIELD_SEPARATOR).append(TEXT_TOTAL_DURATION_MS).append(TEXT_EQUALS)
+          .append(formatDouble(totalDurationMs));
       if (unsupportedCount > 0) {
         sb.append(TEXT_FIELD_SEPARATOR).append("unsupported ").append(unsupportedCount);
+      }
+      if (slowestDeviceLabel != null && !slowestDeviceLabel.isBlank()) {
+        sb.append(TEXT_FIELD_SEPARATOR)
+            .append(TEXT_SLOWEST_DEVICE_LABEL)
+            .append(TEXT_EQUALS)
+            .append(slowestDeviceLabel)
+            .append('(')
+            .append(formatDouble(slowestDeviceDurationMs))
+            .append(TEXT_MS_SUFFIX)
+            .append(')');
       }
       sb.append(TEXT_NEWLINE);
       for (ProbeDeviceResult device : devices) {
@@ -1102,6 +1254,8 @@ public final class ActiveDevicePresenceProbe {
     public String bucket = BUCKET_UNKNOWN;
     public int score;
     public int maxScore;
+    public double totalDurationMs;
+    public final Map<String, Double> stageDurationsMs = new LinkedHashMap<>();
     public final List<ProbeEvidence> evidence = new ArrayList<>();
     public final LinkedHashSet<String> warnings = new LinkedHashSet<>();
     public final LinkedHashSet<String> errors = new LinkedHashSet<>();
@@ -1118,6 +1272,15 @@ public final class ActiveDevicePresenceProbe {
       root.addProperty("bucket", bucket);
       root.addProperty("score", score);
       root.addProperty("maxScore", maxScore);
+      root.addProperty(TEXT_DURATION_MS, totalDurationMs);
+      JsonObject stageObject = new JsonObject();
+      for (Map.Entry<String, Double> entry : stageDurationsMs.entrySet()) {
+        if (entry.getKey() == null || entry.getKey().isBlank() || entry.getValue() == null) {
+          continue;
+        }
+        stageObject.addProperty(entry.getKey(), entry.getValue());
+      }
+      root.add(TEXT_STAGE_TIMINGS, stageObject);
       JsonArray evidenceArray = new JsonArray();
       for (ProbeEvidence row : evidence) {
         evidenceArray.add(row.toJsonObject());
@@ -1147,7 +1310,22 @@ public final class ActiveDevicePresenceProbe {
           .append("CAN ").append(canId).append(TEXT_FIELD_SEPARATOR)
           .append(bucket).append(TEXT_FIELD_SEPARATOR)
           .append("score ").append(score).append('/').append(maxScore)
+          .append(TEXT_FIELD_SEPARATOR).append(TEXT_DURATION_MS).append(TEXT_EQUALS)
+          .append(formatDouble(totalDurationMs))
           .append(TEXT_NEWLINE);
+      if (!stageDurationsMs.isEmpty()) {
+        sb.append(TEXT_EVIDENCE_PREFIX).append("timings");
+        boolean first = true;
+        for (Map.Entry<String, Double> entry : stageDurationsMs.entrySet()) {
+          if (entry.getKey() == null || entry.getKey().isBlank() || entry.getValue() == null) {
+            continue;
+          }
+          sb.append(first ? TEXT_FIELD_SEPARATOR : ", ");
+          sb.append(entry.getKey()).append(TEXT_EQUALS).append(formatDouble(entry.getValue()));
+          first = false;
+        }
+        sb.append(TEXT_NEWLINE);
+      }
       for (ProbeEvidence row : evidence) {
         sb.append(TEXT_EVIDENCE_PREFIX)
             .append(row.passed ? TEXT_PASS_PREFIX : TEXT_FAIL_PREFIX)

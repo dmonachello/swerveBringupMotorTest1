@@ -9,11 +9,12 @@ import frc.robot.devices.DeviceUnit;
 import frc.robot.diag.probe.ActiveDevicePresenceProbe;
 import frc.robot.diag.snapshots.ActivePresenceProbeAttachment;
 import frc.robot.diag.snapshots.DeviceSnapshot;
-import frc.robot.diag.snapshots.SnapshotDetail;
+import frc.robot.diag.snapshots.DevicePresenceCheckAttachment;
 import frc.robot.diag.snapshots.EncoderAttachment;
 import frc.robot.diag.snapshots.LimitsAttachment;
 import frc.robot.diag.snapshots.MotorSpecAttachment;
 import frc.robot.diag.snapshots.SampledSignalsAttachment;
+import frc.robot.diag.snapshots.SnapshotDetail;
 import frc.robot.manufacturers.DeviceAddResult;
 import frc.robot.manufacturers.DeviceRole;
 import frc.robot.manufacturers.DeviceTypeBucket;
@@ -84,6 +85,8 @@ public final class BringupCore {
       "test blocked (device(s) not instantiated): ";
   private static final String WARNING_SET_DUTY_FAILED_PREFIX =
       "Warning: failed to set duty for device ";
+  private static final String WARNING_INSTANTIATE_FAILED_PREFIX =
+      "Warning: instantiate failed for device ";
   private static final String WARNING_DETAIL_OPEN = " (";
   private static final String WARNING_DETAIL_CLOSE = ").";
   private static final int DEVICE_KEY_INITIAL_BUILDER_CAPACITY = 96;
@@ -124,6 +127,7 @@ public final class BringupCore {
   private static final double SAFETY_COOLDOWN_SEC = 5.0;
   private BringupTestContext testContext;
   private final SampledTelemetrySampler sampledTelemetry;
+  private final DeviceLifecycleRegistry deviceLifecycle;
   private final ActiveDevicePresenceProbe activePresenceProbe = new ActiveDevicePresenceProbe();
   private final Map<String, ActivePresenceProbeAttachment> latestActivePresenceByLabel = new HashMap<>();
   private final NetworkTable diagTable;
@@ -135,10 +139,14 @@ public final class BringupCore {
    * SIDE EFFECTS
    *   Loads bringup tests and initializes device groups.
    */
-  public BringupCore(SampledTelemetrySampler sampledTelemetry, NetworkTable diagTable) {
+  public BringupCore(
+      SampledTelemetrySampler sampledTelemetry,
+      NetworkTable diagTable,
+      DeviceLifecycleRegistry deviceLifecycle) {
     this.sampledTelemetry = sampledTelemetry;
     this.diagTable = diagTable;
-    testContext = new BringupTestContext(manufacturerGroups);
+    this.deviceLifecycle = deviceLifecycle;
+    testContext = new BringupTestContext(manufacturerGroups, deviceLifecycle);
     syncProfileRuntimeFromRegistry();
   }
 
@@ -298,6 +306,9 @@ public final class BringupCore {
    *   True when a matching device is found and updated.
    */
   public boolean setDutyByDeviceLabel(String label, double duty) {
+    if (!isLifecycleOperationAllowed(label)) {
+      return false;
+    }
     DeviceUnit device = findCreatedDeviceByLabel(label);
     if (device == null) {
       return false;
@@ -309,6 +320,48 @@ public final class BringupCore {
       String key = "setDuty:" + device.getCanId();
       String message =
           WARNING_SET_DUTY_FAILED_PREFIX
+              + device.getLabel()
+              + WARNING_DETAIL_OPEN
+              + ex.getMessage()
+              + WARNING_DETAIL_CLOSE;
+      logWarningThrottled(key, message);
+      return false;
+    }
+  }
+
+  /**
+   * NAME
+   *   instantiateDeviceByLabel - Ensure one configured device wrapper is created.
+   *
+   * PARAMETERS
+   *   label - Device label from bringup_system.json.
+   *
+   * RETURNS
+   *   True when the device exists and is created after the call.
+   *
+   * NOTES
+   *   This is the explicit one-device instantiation path used by lifecycle
+   *   override handling. It reuses the prebuilt wrapper from the current core
+   *   rather than allocating a second vendor object.
+   */
+  public boolean instantiateDeviceByLabel(String label) {
+    if (!isLifecycleInstantiationAllowed(label)) {
+      return false;
+    }
+    DeviceUnit device = findDeviceByLabel(label);
+    if (device == null) {
+      return false;
+    }
+    if (device.isCreated()) {
+      return true;
+    }
+    try {
+      device.ensureCreated();
+      return device.isCreated();
+    } catch (RuntimeException ex) {
+      String key = "instantiate:" + device.getCanId();
+      String message =
+          WARNING_INSTANTIATE_FAILED_PREFIX
               + device.getLabel()
               + WARNING_DETAIL_OPEN
               + ex.getMessage()
@@ -372,6 +425,29 @@ public final class BringupCore {
    *   as REVLib.
    */
   private DeviceUnit findCreatedDeviceByLabel(String label) {
+    if (!isLifecycleSnapshotAllowed(label) && !isLifecycleOperationAllowed(label)) {
+      return null;
+    }
+    return findCreatedDeviceByLabelUngated(label);
+  }
+
+  /**
+   * NAME
+   *   findCreatedDeviceByLabelUngated - Find an already-instantiated device without lifecycle gating.
+   *
+   * PARAMETERS
+   *   label - Device label from bringup_system.json.
+   *
+   * RETURNS
+   *   Created DeviceUnit instance, or null when the label is missing or not
+   *   currently instantiated.
+   *
+   * NOTES
+   *   Use only for internal lifecycle refresh/bootstrap paths that must gather
+   *   local presence evidence before the FSM can promote the device into a
+   *   snapshot-allowed state.
+   */
+  private DeviceUnit findCreatedDeviceByLabelUngated(String label) {
     DeviceUnit device = findDeviceByLabel(label);
     if (device == null || !device.isCreated()) {
       return null;
@@ -565,7 +641,7 @@ public final class BringupCore {
       if (!device.hasTest()) {
         continue;
       }
-      if (!device.isCreated()) {
+      if (!isLifecycleOperationAllowed(device.getLabel())) {
         continue;
       }
       device.runTest();
@@ -953,8 +1029,10 @@ public final class BringupCore {
     BringupUtil.clearRuntimeOwnedDeviceInstanceRegistry();
     manufacturerGroups = ManufacturerRegistry.buildGroups();
     manufacturerByVendor = ManufacturerRegistry.indexByVendor(manufacturerGroups);
-    testContext = new BringupTestContext(manufacturerGroups);
-    restoreCreatedDevices(createdLabels);
+    testContext = new BringupTestContext(manufacturerGroups, deviceLifecycle);
+    if (BringupUtil.isProfileActive()) {
+      restoreCreatedDevices(createdLabels);
+    }
     runAllActive = false;
     runAllQueue.clear();
     runAllIndex = 0;
@@ -999,7 +1077,7 @@ public final class BringupCore {
     }
     for (String label : labels) {
       DeviceUnit device = findDeviceByLabel(label);
-      if (device == null) {
+      if (device == null || !isLifecycleInstantiationAllowed(label)) {
         continue;
       }
       try {
@@ -1523,6 +1601,10 @@ public final class BringupCore {
    */
   private void addNextMotor() {
     syncProfileRuntimeFromRegistry();
+    if (!BringupUtil.isProfileActive()) {
+      BringupPrinter.enqueue("Runtime inactive. Click Runtime Activate.");
+      return;
+    }
     int count = manufacturerGroups.size();
     if (count == 0) {
       BringupPrinter.enqueue("No manufacturers registered.");
@@ -1553,6 +1635,10 @@ public final class BringupCore {
    */
   private void addAllDevices() {
     syncProfileRuntimeFromRegistry();
+    if (!BringupUtil.isProfileActive()) {
+      BringupPrinter.enqueue("Runtime inactive. Click Runtime Activate.");
+      return;
+    }
     for (ManufacturerGroup group : manufacturerGroups) {
       group.addAll();
     }
@@ -1860,7 +1946,7 @@ public final class BringupCore {
     }
     sb.append("  index ").append(item.index)
         .append(" CAN ").append(item.device.getCanId())
-        .append(item.device.isCreated() ? " ACTIVE" : " not added")
+        .append(isLifecycleSnapshotAllowed(item.device.getLabel()) ? " ACTIVE" : " not added")
         .append('\n');
   }
 
@@ -1874,7 +1960,7 @@ public final class BringupCore {
       sb.append(bucket.getRegistration().displayName()).append(":\n");
     }
     DeviceUnit device = item.device;
-    if (!device.isCreated()) {
+    if (!isLifecycleSnapshotAllowed(device.getLabel())) {
       sb.append("  index ").append(item.index)
           .append(" CAN ").append(device.getCanId())
           .append(" NOT_ADDED\n");
@@ -1893,6 +1979,13 @@ public final class BringupCore {
    */
   private void appendCANCoderDevice(StringBuilder sb, DevicePrintItem item) {
     DeviceUnit device = item.device;
+    if (!isLifecycleInstantiationAllowed(device.getLabel())) {
+      sb.append(item.bucket.getRegistration().displayName())
+          .append(" index ").append(item.index)
+          .append(" CAN ").append(device.getCanId())
+          .append(" not instantiable\n");
+      return;
+    }
     device.ensureCreated();
     DeviceSnapshot snap = device.snapshot();
     EncoderAttachment encoder = snap.getAttachment(EncoderAttachment.class);
@@ -2793,7 +2886,7 @@ public final class BringupCore {
       sb.append(bucket.getRegistration().displayName()).append(":\n");
       for (int i = 0; i < devices.size(); i++) {
         DeviceUnit device = devices.get(i);
-        if (!device.isCreated()) {
+        if (!isLifecycleSnapshotAllowed(device.getLabel()) || !device.isCreated()) {
           sb.append("  index ").append(i)
               .append(" CAN ").append(device.getCanId())
               .append(" NOT_ADDED\n");
@@ -2847,6 +2940,17 @@ public final class BringupCore {
       List<DeviceUnit> devices = bucket.getDevices();
       for (int i = 0; i < devices.size(); i++) {
         DeviceUnit device = devices.get(i);
+        if (!isLifecycleInstantiationAllowed(device.getLabel())) {
+          appendLine(
+              sb,
+              bucket.getRegistration().displayName()
+                  + " index "
+                  + i
+                  + " CAN "
+                  + device.getCanId()
+                  + " not instantiable");
+          continue;
+        }
         device.ensureCreated();
         DeviceSnapshot snap = device.snapshot();
         EncoderAttachment encoder = snap.getAttachment(EncoderAttachment.class);
@@ -2908,6 +3012,32 @@ public final class BringupCore {
     if (label == null || label.isBlank()) {
       return null;
     }
+    if (!isLifecycleSnapshotAllowed(label)) {
+      return null;
+    }
+    return captureCreatedSnapshotForLabel(label, detail);
+  }
+
+  /**
+   * NAME
+   *   captureCreatedSnapshotForLabel - Snapshot one already-created device without lifecycle gating.
+   *
+   * PARAMETERS
+   *   label - Device label from bringup_system.json.
+   *   detail - Requested snapshot detail level.
+   *
+   * RETURNS
+   *   Snapshot for a created device, or null when the device does not exist or
+   *   is not currently instantiated.
+   *
+   * NOTES
+   *   This path exists for lifecycle refresh so local vendor reads can supply
+   *   the presence evidence needed to advance the FSM into testable states.
+   */
+  public DeviceSnapshot captureCreatedSnapshotForLabel(String label, SnapshotDetail detail) {
+    if (label == null || label.isBlank()) {
+      return null;
+    }
     double nowSec = Timer.getFPGATimestamp();
     String needle = label.trim();
     for (ManufacturerGroup group : manufacturerGroups) {
@@ -2921,7 +3051,7 @@ public final class BringupCore {
         List<DeviceUnit> devices = bucket.getDevices();
         for (int i = 0; i < devices.size(); i++) {
           DeviceUnit device = devices.get(i);
-          if (device == null || device.getLabel() == null) {
+          if (device == null || device.getLabel() == null || !device.isCreated()) {
             continue;
           }
           if (!needle.equalsIgnoreCase(device.getLabel())) {
@@ -2967,8 +3097,27 @@ public final class BringupCore {
    *   Structured probe session result for the current active runtime devices.
    */
   public ActiveDevicePresenceProbe.ProbeSessionResult runActivePresenceProbe() {
+    return refreshActivePresenceProbeCache(true);
+  }
+
+  /**
+   * NAME
+   *   refreshActivePresenceProbeCache - Refresh cached active-probe evidence.
+   *
+   * PARAMETERS
+   *   preclearSticky - Whether sticky faults may be cleared during this probe pass.
+   *
+   * RETURNS
+   *   Structured probe session result for the current active runtime devices.
+   *
+   * NOTES
+   *   Background refresh callers should pass false so they do not clear sticky
+   *   faults or change the diagnostic meaning of the cached evidence.
+   */
+  public ActiveDevicePresenceProbe.ProbeSessionResult refreshActivePresenceProbeCache(
+      boolean preclearSticky) {
     ActiveDevicePresenceProbe.ProbeSessionResult session =
-        activePresenceProbe.runOnce(this, diagTable, true);
+        activePresenceProbe.runOnce(this, diagTable, preclearSticky);
     cacheActivePresenceProbeSession(session, System.currentTimeMillis());
     return session;
   }
@@ -3002,7 +3151,7 @@ public final class BringupCore {
         return false;
       }
       DeviceUnit device = findDeviceByLabel(entry.label);
-      if (device == null || !device.isCreated()) {
+      if (device == null || !isLifecycleOperationAllowed(entry.label) || !device.isCreated()) {
         return false;
       }
     }
@@ -3024,8 +3173,10 @@ public final class BringupCore {
       if (snapshot == null) {
         continue;
       }
+      attachPresenceCheck(snapshot);
       DeviceUnit device = byKey.get(buildDeviceKey(snapshot));
       if (device == null) {
+        attachActivePresenceProbe(snapshot);
         continue;
       }
       Map<String, SampledSignalSummary> summaries = sampledTelemetry.getDeviceSummaries(device);
@@ -3038,6 +3189,29 @@ public final class BringupCore {
       snapshot.addAttachment(sampled);
       attachActivePresenceProbe(snapshot);
     }
+  }
+
+  private void attachPresenceCheck(DeviceSnapshot snapshot) {
+    if (snapshot == null) {
+      return;
+    }
+    if (snapshot.getAttachment(DevicePresenceCheckAttachment.class) != null) {
+      return;
+    }
+    DevicePresenceCheckAttachment attachment = new DevicePresenceCheckAttachment();
+    attachment.updatedAtMs = System.currentTimeMillis();
+    if (snapshot.present) {
+      attachment.bucket = DevicePresenceCheckAttachment.BUCKET_PRESENT;
+      attachment.status = DevicePresenceCheckAttachment.STATUS_OK;
+      attachment.score = DevicePresenceCheckAttachment.SCORE_PRESENT;
+      attachment.message = DevicePresenceCheckAttachment.MESSAGE_PRESENT;
+    } else {
+      attachment.bucket = DevicePresenceCheckAttachment.BUCKET_ABSENT;
+      attachment.status = DevicePresenceCheckAttachment.STATUS_WARNING;
+      attachment.score = DevicePresenceCheckAttachment.SCORE_ABSENT;
+      attachment.message = DevicePresenceCheckAttachment.MESSAGE_ABSENT;
+    }
+    snapshot.addAttachment(attachment);
   }
 
   private void attachActivePresenceProbe(DeviceSnapshot snapshot) {
@@ -3224,7 +3398,9 @@ public final class BringupCore {
     }
     for (DeviceTypeBucket bucket : group.getDeviceBuckets()) {
       for (DeviceUnit device : bucket.getDevices()) {
-        if (device != null && device.isCreated()) {
+        if (device != null
+            && device.isCreated()
+            && isLifecycleSnapshotAllowed(device.getLabel())) {
           return true;
         }
       }
@@ -3274,8 +3450,7 @@ public final class BringupCore {
     }
     List<String> missing = new ArrayList<>();
     for (String label : labels) {
-      DeviceUnit device = testContext.findDeviceByLabel(label);
-      if (device == null || !device.isCreated()) {
+      if (!testContext.isDeviceTestable(label)) {
         missing.add(label);
       }
     }
@@ -3354,6 +3529,9 @@ public final class BringupCore {
             if (!createIfMissing) {
               continue;
             }
+            if (!isLifecycleInstantiationAllowed(device.getLabel())) {
+              continue;
+            }
             device.ensureCreated();
             counts.created++;
           }
@@ -3393,6 +3571,22 @@ public final class BringupCore {
   private static final class StopCounts {
     int stopped = 0;
     int created = 0;
+  }
+
+  public boolean isLifecycleInstantiationAllowed(String label) {
+    return deviceLifecycle != null && deviceLifecycle.isInstantiationAllowed(label);
+  }
+
+  public boolean isLifecycleSnapshotAllowed(String label) {
+    return deviceLifecycle != null && deviceLifecycle.isSnapshotAllowed(label);
+  }
+
+  public boolean isLifecycleOperationAllowed(String label) {
+    return deviceLifecycle != null && deviceLifecycle.isOperationAllowed(label);
+  }
+
+  public DeviceLifecycleRegistry.DeviceLifecycleView lifecycleViewForLabel(String label) {
+    return deviceLifecycle != null ? deviceLifecycle.viewForLabel(label) : null;
   }
 
   /**

@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="850" viewBox="0 0 1400 850">
+  <defs>
+    <style>
+      .bg{fill:#f7f9fb}.panel{fill:#fff;stroke:#cbd5e1}.title{font:700 24px Segoe UI,Arial,sans-serif;fill:#111827}.h{font:700 16px Segoe UI,Arial,sans-serif;fill:#111827}.t{font:12px Segoe UI,Arial,sans-serif;fill:#1f2937}.small{font:11px Segoe UI,Arial,sans-serif;fill:#475569}.node{fill:#dcfce7;stroke:#16a34a}.infra{fill:#e5e7eb;stroke:#64748b}.raw{fill:#eff6ff;stroke:#2563eb}.scope{fill:none;stroke:#f97316;stroke-width:3}.bus{stroke:#475569;stroke-width:4}.dash{stroke:#2563eb;stroke-width:2;stroke-dasharray:5 4}.pill{rx:6;ry:6}.cmd{fill:#e8f1ff;stroke:#2563eb}
+    </style>
+  </defs>
+  <rect class="bg" width="1400" height="850"/>
+  <rect class="panel" x="20" y="20" width="1360" height="58" rx="6"/>
+  <text class="title" x="42" y="57">Option 3: Topology First With Workbench Drawer</text>
+  <text class="small" x="820" y="52">Topology stays dominant. Task drawers change by mode.</text>
+
+  <rect class="panel" x="20" y="96" width="990" height="610" rx="6"/>
+  <text class="h" x="42" y="126">Large Read-Only Topology</text>
+  <line class="bus" x1="80" y1="390" x2="940" y2="390"/>
+  <rect class="infra" x="130" y="250" width="160" height="70" rx="10"/><text class="t" x="184" y="290">roboRIO</text>
+  <rect class="raw" x="395" y="250" width="175" height="72" rx="18"/><text class="t" x="430" y="291">CAN analyzer</text>
+  <rect class="node" x="700" y="220" width="190" height="78" rx="18"/><text class="t" x="756" y="265">FALCON 9</text>
+  <rect class="node" x="590" y="505" width="220" height="78" rx="18"/><text class="t" x="644" y="550">SPARKMAX 25</text>
+  <rect class="infra" x="150" y="560" width="175" height="72" rx="8"/><text class="t" x="212" y="602">lmtSw0</text>
+  <line class="dash" x1="210" y1="320" x2="210" y2="390"/>
+  <line class="dash" x1="482" y1="322" x2="482" y2="390"/>
+  <line class="dash" x1="795" y1="298" x2="795" y2="390"/>
+  <line class="dash" x1="700" y1="390" x2="700" y2="505"/>
+  <rect class="scope" x="575" y="490" width="245" height="105"/>
+  <text class="h" fill="#f97316" x="595" y="480">active scope</text>
+
+  <rect class="panel" x="1030" y="96" width="350" height="610" rx="6"/>
+  <text class="h" x="1054" y="126">Right Inspector Drawer</text>
+  <rect class="cmd pill" x="1054" y="154" width="292" height="118"/>
+  <text class="h" x="1070" y="184">Bringup Inspector</text>
+  <text class="t" x="1070" y="212">Active-group membership</text>
+  <text class="t" x="1070" y="236">Selected device live telemetry</text>
+  <text class="t" x="1070" y="260">Basic motion result</text>
+  <rect class="cmd pill" x="1054" y="298" width="292" height="150"/>
+  <text class="h" x="1070" y="328">Diagnose Inspector</text>
+  <text class="t" x="1070" y="356">Evidence stack</text>
+  <text class="t" x="1070" y="380">Passive / console / active probe</text>
+  <text class="t" x="1070" y="404">Fault notes and conflicts</text>
+  <text class="t" x="1070" y="428">Selected DSL test result</text>
+  <rect class="cmd pill" x="1054" y="480" width="292" height="96"/>
+  <text class="h" x="1070" y="510">Always Available</text>
+  <text class="t" x="1070" y="538">Manual right-click run</text>
+  <text class="t" x="1070" y="562">Stop command / clear latch</text>
+
+  <rect class="panel" x="20" y="725" width="1360" height="95" rx="6"/>
+  <text class="h" x="42" y="755">Bottom Workbench Drawer</text>
+  <text class="t" x="42" y="782">Bringup: next eligible device, scoped activate, test checklist.</text>
+  <text class="t" x="560" y="782">Diagnose: robot-wide clue list, evidence table, DSL tests, raw visibility.</text>
+</svg>
+

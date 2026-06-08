@@ -177,6 +177,8 @@ MANUAL_DUTY_CMD_SET = "manualDeviceDutySet"
 MANUAL_DUTY_CMD_CLEAR = "manualDeviceDutyClear"
 MANUAL_GROUP_DUTY_CMD_SET = "manualGroupDutySet"
 MANUAL_GROUP_DUTY_CMD_CLEAR = "manualGroupDutyClear"
+DEVICE_OVERRIDE_CMD_INSTANTIATE = "deviceOverrideInstantiate"
+DEVICE_OVERRIDE_CMD_CLEAR = "deviceOverrideClear"
 MANUAL_DUTY_ARG_NAME = "name"
 MANUAL_DUTY_ARG_DUTY = "duty"
 MANUAL_DUTY_MIN = -1.0
@@ -194,6 +196,10 @@ MANUAL_DUTY_STOPPED_FMT = "Manual motor duty cleared: {label}"
 MANUAL_DUTY_GROUP_STATUS_FMT = "Manual group duty active: {label} = {duty:.2f}"
 MANUAL_DUTY_GROUP_STOPPED_FMT = "Manual group duty cleared: {label}"
 MANUAL_DUTY_BLOCKED_TEXT = "Manual motor control blocked: not connected."
+MANUAL_DUTY_BLOCKED_STALE_TEXT = "Manual motor control blocked: robot state stale."
+MANUAL_DUTY_BLOCKED_ESTOP_TEXT = "Manual motor control blocked: robot estopped."
+MANUAL_DUTY_BLOCKED_DISABLED_TEXT = "Manual motor control blocked: robot disabled."
+MANUAL_DUTY_BLOCKED_RUNTIME_TEXT = "Manual motor control blocked: runtime inactive."
 MANUAL_DUTY_BUSY_TEXT = "Manual motor control blocked: command in flight."
 MANUAL_DUTY_SCALE_ELEMENT_SLIDER = "slider"
 MANUAL_DUTY_NO_LABEL = ""
@@ -224,8 +230,8 @@ VIS_COL_IDENTITY = "Identity"
 VIS_COL_LAST_SEEN = "Last Seen"
 VIS_COL_PACKETS = "Packets"
 VIS_COL_RATE = "Rate"
-VIS_COL_PROBE_BUCKET = "Probe"
-VIS_COL_PROBE_SCORE = "Probe Score"
+VIS_COL_PROBE_BUCKET = "Full Probe"
+VIS_COL_PROBE_SCORE = "Full Probe Score"
 VIS_COL_VISIBLE = "Visible"
 VIS_VALUE_YES = "Y"
 VIS_VALUE_NO = "N"
@@ -256,6 +262,7 @@ VIS_RATE_UNKNOWN = "--"
 VIS_RATE_FMT = "{value:.1f}/s"
 VIS_TABLE_SPLIT_ORIENT = "vertical"
 VIS_RAW_EMPTY_MESSAGE = "Select a CTRE row to inspect contributing raw IDs."
+LIVE_TOPOLOGY_TAB_LABEL = "Live Topology"
 VIS_RAW_COL_ARB = "Arb ID"
 VIS_RAW_COL_PACKETS = "Packets"
 VIS_RAW_COL_RATE = "Rate"
@@ -335,6 +342,7 @@ VIS_COL_SOURCE_WIDTH = 72
 EVIDENCE_TAB_LABEL = "Evidence"
 EVIDENCE_SUMMARY_DEFAULT = "Select a device to inspect interpreted evidence."
 EVIDENCE_TITLE_TEXT = "Device Evidence"
+EVIDENCE_BUS_HEALTH_TEXT = "CAN Bus Health (System Console)"
 EVIDENCE_FILTER_ALL = "all"
 EVIDENCE_FILTER_CONFLICTED = "conflicted"
 EVIDENCE_FILTER_MISSING = "missing"
@@ -352,10 +360,10 @@ EVIDENCE_FILTER_LABELS = {
     EVIDENCE_FILTER_DEGRADED: "Degraded",
 }
 EVIDENCE_COL_DEVICE = "Device"
-EVIDENCE_COL_PASSIVE = "Passive"
+EVIDENCE_COL_PASSIVE = "Passive CAN"
 EVIDENCE_COL_CONSOLE = "Console"
-EVIDENCE_COL_PROBE = "Probe"
-EVIDENCE_COL_PROBE_SCORE = "Probe Score"
+EVIDENCE_COL_PROBE = "Full Probe"
+EVIDENCE_COL_PROBE_SCORE = "Full Probe Score"
 EVIDENCE_COL_MANUAL = "Manual"
 EVIDENCE_COL_EXISTENCE = "Existence"
 EVIDENCE_COL_OPERABILITY = "Operability"
@@ -403,7 +411,7 @@ EVIDENCE_MANUAL_DIALOG_OK = "Record"
 EVIDENCE_MANUAL_DIALOG_CANCEL = "Cancel"
 EVIDENCE_MANUAL_DIALOG_WIDTH = 320
 EVIDENCE_MANUAL_DIALOG_HEIGHT = 140
-EVIDENCE_PROBE_STATS_WAITING = "Session stats: no active probe launched yet"
+EVIDENCE_PROBE_STATS_WAITING = "Updates only when Full Probe is run."
 EVIDENCE_MANUAL_OPERABILITY_WINDOW_SEC = 120.0
 EVIDENCE_MANUAL_IDENTITY_WINDOW_SEC = 900.0
 EVIDENCE_MOTION_CMD_THRESHOLD_DUTY = 0.15
@@ -455,10 +463,11 @@ EVIDENCE_MANUAL_AUTO_RESULT_LABELS = {
 }
 EVIDENCE_VALUE_NOT_APPLICABLE = "n/a"
 EVIDENCE_INTERPRETATION_TEXT = "Final Interpretation"
-EVIDENCE_PASSIVE_TEXT = "Passive Evidence"
-EVIDENCE_CONSOLE_TEXT = "Console Evidence"
-EVIDENCE_PROBE_TEXT = "Active Probe"
-EVIDENCE_MANUAL_TEXT = "Manual Test"
+EVIDENCE_PRESENCE_TEXT = "Presence Check (Robot Local Snapshot)"
+EVIDENCE_PASSIVE_TEXT = "Passive CAN Evidence (CANable Observer)"
+EVIDENCE_CONSOLE_TEXT = "Console Evidence (Robot/NT)"
+EVIDENCE_PROBE_TEXT = "Full Probe (Manual One-Shot)"
+EVIDENCE_MANUAL_TEXT = "Manual Test (Operator / Motion)"
 EVIDENCE_NOTES_TEXT = "Conflicts / Notes"
 EVIDENCE_LABEL_EXISTENCE = "Existence"
 EVIDENCE_LABEL_OPERABILITY = "Operability"
@@ -469,6 +478,15 @@ EVIDENCE_LABEL_CONSOLE = "Console"
 EVIDENCE_LABEL_PROBE = "Probe"
 EVIDENCE_LABEL_MANUAL = "Manual"
 EVIDENCE_NOTE_NONE = "No major source conflict."
+EVIDENCE_BUS_HEALTH_OK = "OK"
+EVIDENCE_BUS_HEALTH_ELEVATED = "ELEVATED LOAD"
+EVIDENCE_BUS_HEALTH_DEGRADED = "DEGRADED"
+EVIDENCE_BUS_HEALTH_CRITICAL = "CRITICAL"
+EVIDENCE_CAN_TEXT_HIGH_UTIL = "high utilization"
+EVIDENCE_CAN_TEXT_RECOVERED = "utilization recovered"
+EVIDENCE_CAN_TEXT_BUS_OFF = "bus off"
+EVIDENCE_CAN_TEXT_ERROR_SPIKE = "error spike"
+EVIDENCE_CAN_TEXT_TX_FULL = "tx full"
 EVIDENCE_CONSOLE_SCOPE_DEVICES = "devices"
 EVIDENCE_CONSOLE_SCOPE_SYSTEM = "system"
 EVIDENCE_CONSOLE_KEY_ACTIVE = "Active"
@@ -487,12 +505,25 @@ EVIDENCE_STATE_DEGRADED = "degraded"
 EVIDENCE_STATE_MISSING = "missing"
 EVIDENCE_STATE_UNKNOWN = "unknown"
 EVIDENCE_STATE_IDENTITY = "identity"
-EVIDENCE_ACTIVE_PROBE_INTERVAL_SEC = 8.0
-EVIDENCE_ACTIVE_PROBE_STALE_SEC = 12.0
+EVIDENCE_ACTIVE_PROBE_FRESH_SEC = 15.0
+EVIDENCE_ACTIVE_PROBE_AGING_SEC = 60.0
+EVIDENCE_ACTIVE_PROBE_STALE_SEC = 180.0
+EVIDENCE_PROBE_AGE_FRESH = "fresh"
+EVIDENCE_PROBE_AGE_AGING = "aging"
+EVIDENCE_PROBE_AGE_STALE = "stale"
+EVIDENCE_PROBE_NOTE_AGING = "Full-probe result is aging; lowering its weight."
+EVIDENCE_PROBE_NOTE_STALE = "Full-probe result is stale; using it only as historical evidence."
+EVIDENCE_PROBE_NOTE_ONE_SHOT = "Full Probe is a cached manual one-shot diagnostic result."
 ATTACHMENT_KEY_TYPE = "type"
+ATTACHMENT_TYPE_PRESENCE_CHECK = "presenceCheck"
 ATTACHMENT_TYPE_ACTIVE_PRESENCE_PROBE = "activePresenceProbe"
 ATTACHMENT_TYPE_REV_MOTOR = "revMotor"
 ATTACHMENT_TYPE_CTRE_MOTOR = "ctreMotor"
+RUNTIME_PRESENCE_KEY_BUCKET = "bucket"
+RUNTIME_PRESENCE_KEY_STATUS = "status"
+RUNTIME_PRESENCE_KEY_SOURCE = "source"
+RUNTIME_PRESENCE_KEY_UPDATED_AT_MS = "updatedAtMs"
+RUNTIME_PRESENCE_KEY_MESSAGE = "message"
 RUNTIME_PROBE_KEY_BUCKET = "bucket"
 RUNTIME_PROBE_KEY_SCORE = "score"
 RUNTIME_PROBE_KEY_MAX_SCORE = "maxScore"
@@ -876,6 +907,25 @@ def _runtime_active_probe_attachment(device: Dict[str, Any]) -> Optional[Dict[st
     return None
 
 
+def _runtime_presence_check_attachment(device: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    NAME
+        _runtime_presence_check_attachment - Return the live presence-check attachment from one runtime-state device.
+    """
+    if not isinstance(device, dict):
+        return None
+    attachments = device.get("attachments")
+    if not isinstance(attachments, list):
+        return None
+    for attachment in attachments:
+        if not isinstance(attachment, dict):
+            continue
+        attachment_type = str(attachment.get(ATTACHMENT_KEY_TYPE, "")).strip()
+        if attachment_type == ATTACHMENT_TYPE_PRESENCE_CHECK:
+            return attachment
+    return None
+
+
 def _runtime_device_field(device: Dict[str, Any], key: str) -> object:
     """
     NAME
@@ -928,6 +978,71 @@ def _format_runtime_probe_score(device: Optional[Dict[str, Any]]) -> str:
     if isinstance(score, (int, float)):
         return str(int(score))
     return VIS_LAST_SEEN_UNKNOWN
+
+
+def _runtime_probe_age_seconds(device: Optional[Dict[str, Any]]) -> Optional[float]:
+    """
+    NAME
+        _runtime_probe_age_seconds - Return the age in seconds of one cached active probe result.
+    """
+    attachment = _runtime_active_probe_attachment(device or {})
+    if not isinstance(attachment, dict):
+        return None
+    updated_at_ms = attachment.get(RUNTIME_PROBE_KEY_UPDATED_AT_MS)
+    if not isinstance(updated_at_ms, (int, float)) or float(updated_at_ms) <= 0.0:
+        return None
+    return max(0.0, time.time() - (float(updated_at_ms) / 1000.0))
+
+
+def _runtime_probe_age_bucket(device: Optional[Dict[str, Any]]) -> str:
+    """
+    NAME
+        _runtime_probe_age_bucket - Classify one cached active probe result by age.
+    """
+    age_sec = _runtime_probe_age_seconds(device)
+    if not isinstance(age_sec, (int, float)):
+        return VIS_VALUE_UNKNOWN
+    if age_sec <= EVIDENCE_ACTIVE_PROBE_FRESH_SEC:
+        return EVIDENCE_PROBE_AGE_FRESH
+    if age_sec <= EVIDENCE_ACTIVE_PROBE_AGING_SEC:
+        return EVIDENCE_PROBE_AGE_AGING
+    return EVIDENCE_PROBE_AGE_STALE
+
+
+def _runtime_probe_age_text(device: Optional[Dict[str, Any]]) -> str:
+    """
+    NAME
+        _runtime_probe_age_text - Format one cached active probe age for UI display.
+    """
+    age_sec = _runtime_probe_age_seconds(device)
+    if not isinstance(age_sec, (int, float)):
+        return EVIDENCE_STATUS_NOT_RUN
+    return _format_age_seconds(float(age_sec))
+
+
+def _runtime_presence_age_seconds(device: Optional[Dict[str, Any]]) -> Optional[float]:
+    """
+    NAME
+        _runtime_presence_age_seconds - Return the age in seconds of one live presence-check result.
+    """
+    attachment = _runtime_presence_check_attachment(device or {})
+    if not isinstance(attachment, dict):
+        return None
+    updated_at_ms = attachment.get(RUNTIME_PRESENCE_KEY_UPDATED_AT_MS)
+    if not isinstance(updated_at_ms, (int, float)) or float(updated_at_ms) <= 0.0:
+        return None
+    return max(0.0, time.time() - (float(updated_at_ms) / 1000.0))
+
+
+def _runtime_presence_age_text(device: Optional[Dict[str, Any]]) -> str:
+    """
+    NAME
+        _runtime_presence_age_text - Format one live presence-check age for UI display.
+    """
+    age_sec = _runtime_presence_age_seconds(device)
+    if not isinstance(age_sec, (int, float)):
+        return VIS_LAST_SEEN_UNKNOWN
+    return _format_age_seconds(float(age_sec))
 
 
 def _format_age_seconds(elapsed_sec: float) -> str:
@@ -1091,6 +1206,7 @@ class BringupControlUI(tk.Tk):
         self._runtime_state_timeout_sec = 0.6
         self._runtime_active_known: Optional[bool] = None
         self._robot_enabled_known = True
+        self._robot_estopped_known = False
         self._runtime_state_notice_text = NT_VALUE_EMPTY
         self._runtime_state_notice_level = "warn"
         self._runtime_event_notice_text = NT_VALUE_EMPTY
@@ -1416,6 +1532,7 @@ class BringupControlUI(tk.Tk):
             on_node_right_click=self._on_live_node_right_click,
             on_group_right_click=self._on_live_group_right_click,
             on_active_group_member_toggled=self._on_active_group_member_toggled,
+            on_override_action=self._on_live_override_action,
             on_left_click=self._on_live_view_left_click,
         )
         self._live_view.set_show_groups(self._live_groups_var.get())
@@ -1452,6 +1569,7 @@ class BringupControlUI(tk.Tk):
             on_node_right_click=self._on_live_node_right_click,
             on_group_right_click=self._on_live_group_right_click,
             on_active_group_member_toggled=self._on_active_group_member_toggled,
+            on_override_action=self._on_live_override_action,
             on_left_click=self._on_live_view_left_click,
         )
         self._visibility_live_view.set_show_groups(self._live_groups_var.get())
@@ -1639,9 +1757,19 @@ class BringupControlUI(tk.Tk):
                 sticky=VIS_TREE_ANCHOR_W,
             )
         self._evidence_text_widgets = {}
+        bus_health = ttk.LabelFrame(parent, text=EVIDENCE_BUS_HEALTH_TEXT, padding=6)
+        bus_health.pack(fill=VIS_FILL_X, pady=(0, 8))
+        self._evidence_text_widgets[EVIDENCE_BUS_HEALTH_TEXT] = tk.Text(
+            bus_health,
+            height=EVIDENCE_TEXT_HEIGHT_DEFAULT,
+            wrap="word",
+        )
+        self._evidence_text_widgets[EVIDENCE_BUS_HEALTH_TEXT].pack(fill=VIS_FILL_BOTH, expand=True)
+        self._evidence_text_widgets[EVIDENCE_BUS_HEALTH_TEXT].configure(state="disabled")
         sections = ttk.Panedwindow(parent, orient="vertical")
         sections.pack(fill=VIS_FILL_BOTH, expand=True)
         for title in (
+            EVIDENCE_PRESENCE_TEXT,
             EVIDENCE_PASSIVE_TEXT,
             EVIDENCE_CONSOLE_TEXT,
             EVIDENCE_PROBE_TEXT,
@@ -1749,34 +1877,6 @@ class BringupControlUI(tk.Tk):
         """
         if self._evidence_tab_active():
             self._refresh_evidence_view()
-            self._maybe_send_evidence_active_probe(force=True)
-
-    def _maybe_send_evidence_active_probe(self, force: bool = False) -> None:
-        """
-        NAME
-            _maybe_send_evidence_active_probe - Throttled auto-probe for the Evidence tab.
-        """
-        if not self._evidence_tab_active():
-            return
-        if not self._tcp_connected or not self._handshake_done:
-            return
-        if self._evidence_probe_pending:
-            return
-        if self._tracker.is_pending() or self._log_poll_inflight or self._runtime_state_pending_seq is not None:
-            return
-        if self._runtime_active_known is False:
-            return
-        now = time.time()
-        if not force and (now - self._evidence_last_probe_at) < EVIDENCE_ACTIVE_PROBE_INTERVAL_SEC:
-            return
-        seq = self._send_tcp_command("activePresenceProbe", {})
-        if seq is None:
-            return
-        self._last_sent_seq = seq
-        self._tracker.start("activePresenceProbe", {}, seq, now=now)
-        self._evidence_last_probe_at = now
-        self._evidence_probe_pending = True
-        self._evidence_probe_run_count += 1
 
     def _build_visibility_ctre_raw_table_widget(self, parent: tk.Widget) -> ttk.Treeview:
         """
@@ -1947,6 +2047,23 @@ class BringupControlUI(tk.Tk):
             views.append(self._evidence_live_view)
         return views
 
+    def _manual_duty_block_message(self) -> str:
+        """
+        NAME
+            _manual_duty_block_message - Return the current operator-facing reason manual duty is blocked.
+        """
+        if not self._tcp_connected:
+            return MANUAL_DUTY_BLOCKED_TEXT
+        if self._state_stale:
+            return MANUAL_DUTY_BLOCKED_STALE_TEXT
+        if self._robot_estopped_known:
+            return MANUAL_DUTY_BLOCKED_ESTOP_TEXT
+        if not self._robot_enabled_known:
+            return MANUAL_DUTY_BLOCKED_DISABLED_TEXT
+        if self._runtime_active_known is False:
+            return MANUAL_DUTY_BLOCKED_RUNTIME_TEXT
+        return NT_VALUE_EMPTY
+
     def _is_manual_motor_node(self, node: object) -> bool:
         """
         NAME
@@ -1964,8 +2081,9 @@ class BringupControlUI(tk.Tk):
         """
         if not self._is_manual_motor_node(node):
             return
-        if not self._tcp_connected:
-            self._append_output(MANUAL_DUTY_BLOCKED_TEXT)
+        blocked = self._manual_duty_block_message()
+        if blocked:
+            self._append_output(blocked)
             return
         if self._tracker.is_pending():
             self._append_output(MANUAL_DUTY_BUSY_TEXT)
@@ -2022,13 +2140,41 @@ class BringupControlUI(tk.Tk):
         if seq is not None:
             self.after_idle(self._request_runtime_state_refresh)
 
+    def _on_live_override_action(self, label: str, action: str) -> None:
+        """
+        NAME
+            _on_live_override_action - Send one explicit lifecycle override action for the selected device.
+        """
+        clean_label = str(label or NT_VALUE_EMPTY).strip()
+        clean_action = str(action or NT_VALUE_EMPTY).strip().lower()
+        if not clean_label or clean_action not in ("instantiate", "clear"):
+            return
+        if not self._tcp_connected:
+            self._append_output(OUTPUT_NOT_CONNECTED)
+            return
+        if self._tracker.is_pending():
+            self._append_output(OUTPUT_BUSY)
+            return
+        command = (
+            DEVICE_OVERRIDE_CMD_INSTANTIATE
+            if clean_action == "instantiate"
+            else DEVICE_OVERRIDE_CMD_CLEAR
+        )
+        args = {MANUAL_DUTY_ARG_NAME: clean_label}
+        self._append_output(f'{timestamp_hms()} CMD {command} "{clean_label}"')
+        self._last_cmd = (command, args)
+        seq = self._send_tcp_command(command, args)
+        if seq is not None:
+            self.after_idle(self._request_runtime_state_refresh)
+
     def _open_manual_duty_targets(self, label: str, targets: List[str], x_root: int, y_root: int) -> None:
         """
         NAME
             _open_manual_duty_targets - Validate manual-duty preconditions then open the shared popup for one or more targets.
         """
-        if not self._tcp_connected:
-            self._append_output(MANUAL_DUTY_BLOCKED_TEXT)
+        blocked = self._manual_duty_block_message()
+        if blocked:
+            self._append_output(blocked)
             return
         if self._tracker.is_pending():
             self._append_output(MANUAL_DUTY_BUSY_TEXT)
@@ -2047,8 +2193,9 @@ class BringupControlUI(tk.Tk):
         NAME
             _open_manual_group_duty_targets - Validate group manual-duty preconditions then open the shared popup.
         """
-        if not self._tcp_connected:
-            self._append_output(MANUAL_DUTY_BLOCKED_TEXT)
+        blocked = self._manual_duty_block_message()
+        if blocked:
+            self._append_output(blocked)
             return
         if self._tracker.is_pending():
             self._append_output(MANUAL_DUTY_BUSY_TEXT)
@@ -2343,8 +2490,9 @@ class BringupControlUI(tk.Tk):
         self._manual_duty_pending_after = None
         if not self._manual_duty_label or not self._manual_duty_targets:
             return
-        if not self._tcp_connected:
-            self._append_output(MANUAL_DUTY_BLOCKED_TEXT)
+        blocked = self._manual_duty_block_message()
+        if blocked:
+            self._append_output(blocked)
             return
         duty = max(
             MANUAL_DUTY_MIN,
@@ -2825,6 +2973,50 @@ class BringupControlUI(tk.Tk):
         )
         return result
 
+    def _build_evidence_can_bus_health_text(self, system_console: Dict[str, Any]) -> str:
+        """
+        NAME
+            _build_evidence_can_bus_health_text - Build one operator-facing CAN-bus health summary from system console evidence.
+        """
+        system_events = (
+            system_console.get(EVIDENCE_CONSOLE_SCOPE_SYSTEM, [])
+            if isinstance(system_console, dict)
+            else []
+        )
+        if not isinstance(system_events, list) or not system_events:
+            return "Overall Health=OK | Active Events=0\nNo active CAN-bus warning events in system console."
+        normalized = [str(entry or "").strip() for entry in system_events if str(entry or "").strip()]
+        lower_events = [entry.lower() for entry in normalized]
+        high_util_count = sum(EVIDENCE_CAN_TEXT_HIGH_UTIL in entry for entry in lower_events)
+        recovered_count = sum(EVIDENCE_CAN_TEXT_RECOVERED in entry for entry in lower_events)
+        bus_off_count = sum(EVIDENCE_CAN_TEXT_BUS_OFF in entry for entry in lower_events)
+        error_spike_count = sum(EVIDENCE_CAN_TEXT_ERROR_SPIKE in entry for entry in lower_events)
+        tx_full_count = sum(EVIDENCE_CAN_TEXT_TX_FULL in entry for entry in lower_events)
+        if bus_off_count > 0:
+            overall = EVIDENCE_BUS_HEALTH_CRITICAL
+            impact = "Bus-off evidence can invalidate device freshness and per-device confidence."
+        elif error_spike_count > 0 or tx_full_count > 0 or bool(system_console.get("systemConflict")):
+            overall = EVIDENCE_BUS_HEALTH_DEGRADED
+            impact = "CAN errors/contention may reduce confidence in timing and device-level conclusions."
+        elif high_util_count > 0:
+            overall = EVIDENCE_BUS_HEALTH_ELEVATED
+            impact = "High bus load may reduce freshness and increase latency, but not all devices are necessarily unhealthy."
+        else:
+            overall = EVIDENCE_BUS_HEALTH_OK
+            impact = "No active CAN-bus warning conditions are currently surfaced."
+        summary = (
+            f"Overall Health={overall}"
+            f"{EVIDENCE_NOTE_SEPARATOR}Active Events={len(normalized)}"
+            f"{EVIDENCE_NOTE_SEPARATOR}HighUtil={high_util_count}"
+            f"{EVIDENCE_NOTE_SEPARATOR}Recovered={recovered_count}"
+            f"{EVIDENCE_NOTE_SEPARATOR}ErrorSpike={error_spike_count}"
+            f"{EVIDENCE_NOTE_SEPARATOR}TxFull={tx_full_count}"
+            f"{EVIDENCE_NOTE_SEPARATOR}BusOff={bus_off_count}"
+        )
+        lines = [summary, impact]
+        lines.extend(normalized[:4])
+        return "\n".join(lines)
+
     def _manual_evidence_for_label(self, label: str) -> Optional[Dict[str, Any]]:
         """
         NAME
@@ -2924,20 +3116,7 @@ class BringupControlUI(tk.Tk):
         NAME
             _build_evidence_probe_stats_text - Summarize active-probe session cadence for the Evidence inspector.
         """
-        if self._evidence_probe_run_count <= 0:
-            return EVIDENCE_PROBE_STATS_WAITING
-        now = time.time()
-        pending_text = "yes" if self._evidence_probe_pending else "no"
-        parts = [
-            f"autoEvery={EVIDENCE_ACTIVE_PROBE_INTERVAL_SEC:.1f}s",
-            f"runs={self._evidence_probe_run_count}",
-            f"completed={self._evidence_probe_complete_count}",
-            f"pending={pending_text}",
-            f"lastSent={_format_age_seconds(now - self._evidence_last_probe_at)}",
-        ]
-        if self._evidence_last_probe_completed_at > 0.0:
-            parts.append(f"lastCompleted={_format_age_seconds(now - self._evidence_last_probe_completed_at)}")
-        return EVIDENCE_NOTE_SEPARATOR.join(parts)
+        return EVIDENCE_PROBE_STATS_WAITING
 
     def _infer_device_evidence(
         self,
@@ -2951,8 +3130,29 @@ class BringupControlUI(tk.Tk):
         NAME
             _infer_device_evidence - Build one first-pass interpreted evidence row.
         """
+        presence_attachment = _runtime_presence_check_attachment(runtime_device or {})
         probe_attachment = _runtime_active_probe_attachment(runtime_device or {})
-        probe_bucket = _format_runtime_probe_bucket(runtime_device)
+        presence_value = (
+            runtime_device.get("presenceConfidence")
+            if isinstance(runtime_device, dict)
+            else None
+        )
+        presence_bucket = VIS_VALUE_UNKNOWN
+        if isinstance(presence_attachment, dict):
+            presence_bucket = str(
+                presence_attachment.get(RUNTIME_PRESENCE_KEY_BUCKET, VIS_VALUE_UNKNOWN)
+            ).strip() or VIS_VALUE_UNKNOWN
+        elif isinstance(presence_value, (int, float)):
+            presence_bucket = (
+                EVIDENCE_STATUS_PRESENT.lower()
+                if float(presence_value) > 0.05
+                else EVIDENCE_STATUS_ABSENT.lower()
+            )
+        presence_age_text = _runtime_presence_age_text(runtime_device)
+        raw_probe_bucket = _format_runtime_probe_bucket(runtime_device)
+        probe_bucket = raw_probe_bucket
+        probe_age_bucket = _runtime_probe_age_bucket(runtime_device)
+        probe_age_text = _runtime_probe_age_text(runtime_device)
         passive_summary = EVIDENCE_SOURCE_NONE
         passive_visible = False
         passive_identity = EVIDENCE_STATUS_UNKNOWN
@@ -3032,23 +3232,54 @@ class BringupControlUI(tk.Tk):
             motion_detected = True
             manual_motion_failed = False
 
-        if probe_attachment is None:
-            probe_bucket = "not_run"
-        if probe_bucket == "present":
+        if presence_bucket == EVIDENCE_STATUS_PRESENT.lower():
             existence = EVIDENCE_STATUS_PRESENT
-            operability = EVIDENCE_STATUS_OK
             confidence = EVIDENCE_CONFIDENCE_HIGH
             evidence_state = EVIDENCE_STATE_OK
-        elif probe_bucket == "degraded":
-            existence = EVIDENCE_STATUS_PRESENT
+        elif presence_bucket == EVIDENCE_STATUS_ABSENT.lower():
+            existence = EVIDENCE_STATUS_ABSENT
+            confidence = EVIDENCE_CONFIDENCE_MEDIUM
+            evidence_state = EVIDENCE_STATE_MISSING
+
+        if probe_attachment is None:
+            probe_bucket = "not_run"
+        elif probe_age_bucket == EVIDENCE_PROBE_AGE_STALE:
+            notes.append(EVIDENCE_PROBE_NOTE_STALE)
+        elif probe_age_bucket == EVIDENCE_PROBE_AGE_AGING:
+            notes.append(EVIDENCE_PROBE_NOTE_AGING)
+        if probe_bucket == "present" and probe_age_bucket != EVIDENCE_PROBE_AGE_STALE:
+            if existence == EVIDENCE_STATUS_UNKNOWN:
+                existence = EVIDENCE_STATUS_PRESENT
+            if operability == EVIDENCE_STATUS_UNKNOWN:
+                operability = EVIDENCE_STATUS_OK
+            if confidence == EVIDENCE_CONFIDENCE_LOW:
+                confidence = EVIDENCE_CONFIDENCE_MEDIUM
+            if evidence_state == EVIDENCE_STATE_UNKNOWN:
+                evidence_state = EVIDENCE_STATE_OK
+        elif probe_bucket == "degraded" and probe_age_bucket != EVIDENCE_PROBE_AGE_STALE:
+            if existence == EVIDENCE_STATUS_UNKNOWN:
+                existence = EVIDENCE_STATUS_PRESENT
             operability = EVIDENCE_STATUS_DEGRADED
             confidence = EVIDENCE_CONFIDENCE_MEDIUM
             evidence_state = EVIDENCE_STATE_DEGRADED
-        elif probe_bucket == "absent":
-            existence = EVIDENCE_STATUS_ABSENT
-            operability = EVIDENCE_STATUS_FAILED
-            confidence = EVIDENCE_CONFIDENCE_HIGH
-            evidence_state = EVIDENCE_STATE_MISSING
+        elif probe_bucket == "absent" and probe_age_bucket != EVIDENCE_PROBE_AGE_STALE:
+            if existence == EVIDENCE_STATUS_PRESENT:
+                existence = EVIDENCE_STATUS_CONFLICT
+                evidence_conflicted = True
+                notes.append("Full probe says absent but live presence check says present.")
+                if confidence == EVIDENCE_CONFIDENCE_HIGH:
+                    confidence = EVIDENCE_CONFIDENCE_MEDIUM
+            elif existence == EVIDENCE_STATUS_UNKNOWN:
+                existence = EVIDENCE_STATUS_ABSENT
+                confidence = EVIDENCE_CONFIDENCE_HIGH
+                evidence_state = EVIDENCE_STATE_MISSING
+            if operability == EVIDENCE_STATUS_UNKNOWN:
+                operability = EVIDENCE_STATUS_FAILED
+        if probe_age_bucket == EVIDENCE_PROBE_AGE_AGING:
+            if confidence == EVIDENCE_CONFIDENCE_HIGH:
+                confidence = EVIDENCE_CONFIDENCE_MEDIUM
+            elif confidence == EVIDENCE_CONFIDENCE_MEDIUM:
+                confidence = EVIDENCE_CONFIDENCE_LOW
 
         if existence == EVIDENCE_STATUS_UNKNOWN and passive_visible:
             existence = EVIDENCE_STATUS_PRESENT
@@ -3187,14 +3418,45 @@ class BringupControlUI(tk.Tk):
             identity = EVIDENCE_STATUS_UNKNOWN
 
         if probe_bucket in (VIS_VALUE_UNKNOWN, "not_run") and passive_visible and not console_has_error:
-            notes.append("Passive traffic present but no active-probe conclusion yet.")
+            notes.append("Passive CAN traffic present but no full-probe conclusion yet.")
         if not notes:
             notes.append(EVIDENCE_NOTE_NONE)
+
+        presence_lines = [EVIDENCE_SOURCE_NONE]
+        if isinstance(presence_attachment, dict):
+            presence_lines = [
+                EVIDENCE_NOTE_SEPARATOR.join(
+                    (
+                        f"bucket={presence_bucket}",
+                        f"score={float(presence_value):.2f}" if isinstance(presence_value, (int, float)) else "score=--",
+                        f"updated={presence_age_text}",
+                        f"source={str(presence_attachment.get(RUNTIME_PRESENCE_KEY_SOURCE, EVIDENCE_SOURCE_NONE)).strip() or EVIDENCE_SOURCE_NONE}",
+                    )
+                )
+            ]
+            message_text = str(
+                presence_attachment.get(RUNTIME_PRESENCE_KEY_MESSAGE, EVIDENCE_SOURCE_NONE)
+            ).strip() or EVIDENCE_SOURCE_NONE
+            if message_text:
+                presence_lines.append(message_text)
+        elif isinstance(presence_value, (int, float)):
+            presence_lines = [
+                EVIDENCE_NOTE_SEPARATOR.join(
+                    (
+                        f"bucket={presence_bucket}",
+                        f"score={float(presence_value):.2f}",
+                        f"updated={presence_age_text}",
+                        "source=runtimeState",
+                    )
+                )
+            ]
+        presence_text = "\n".join(presence_lines)
 
         passive_text = passive_summary
         if isinstance(visibility_device, dict):
             passive_text = EVIDENCE_NOTE_SEPARATOR.join(
                 (
+                    "source=CANable observer",
                     f"identity={self._format_visibility_identity(visibility_device)}",
                     f"lastSeen={self._format_visibility_last_seen(visibility_device.get(VIS_KEY_METRICS, {})) if isinstance(visibility_device.get(VIS_KEY_METRICS), dict) else VIS_LAST_SEEN_UNKNOWN}",
                     f"packets={self._format_visibility_packet_count(visibility_device.get(VIS_KEY_METRICS, {})) if isinstance(visibility_device.get(VIS_KEY_METRICS), dict) else VIS_PACKETS_UNKNOWN}",
@@ -3205,19 +3467,16 @@ class BringupControlUI(tk.Tk):
         probe_stats_text = self._build_evidence_probe_stats_text()
         probe_lines = ["Not run yet", probe_stats_text]
         if isinstance(probe_attachment, dict):
-            updated_age = VIS_LAST_SEEN_UNKNOWN
-            updated_at_ms = probe_attachment.get(RUNTIME_PROBE_KEY_UPDATED_AT_MS)
-            if isinstance(updated_at_ms, (int, float)) and float(updated_at_ms) > 0.0:
-                updated_age = _format_age_seconds(max(0.0, time.time() - (float(updated_at_ms) / 1000.0)))
             failed_checks = _attachment_string_list(probe_attachment, RUNTIME_PROBE_KEY_FAILED_CHECKS)
             warnings = _attachment_string_list(probe_attachment, RUNTIME_PROBE_KEY_WARNINGS)
             errors = _attachment_string_list(probe_attachment, RUNTIME_PROBE_KEY_ERRORS)
             probe_lines = [
                 EVIDENCE_NOTE_SEPARATOR.join(
                     (
-                        f"bucket={probe_bucket}",
+                        f"bucket={raw_probe_bucket}",
                         f"score={_format_runtime_probe_score(runtime_device)}",
-                        f"updated={updated_age}",
+                        f"updated={probe_age_text}",
+                        f"ageClass={probe_age_bucket if probe_age_bucket != VIS_VALUE_UNKNOWN else EVIDENCE_STATUS_NOT_RUN}",
                     )
                 )
             ]
@@ -3231,6 +3490,7 @@ class BringupControlUI(tk.Tk):
             message_text = str(probe_attachment.get("message", EVIDENCE_SOURCE_NONE)).strip() or EVIDENCE_SOURCE_NONE
             if message_text:
                 probe_lines.append(message_text)
+            probe_lines.append(EVIDENCE_PROBE_NOTE_ONE_SHOT)
         probe_text = "\n".join(probe_lines)
         if isinstance(manual_observation, dict):
             auto_result = str(manual_observation.get("autoResult", NT_VALUE_EMPTY)).strip()
@@ -3324,13 +3584,22 @@ class BringupControlUI(tk.Tk):
             "label": label,
             "passive": passive_summary,
             "console": console_summary or EVIDENCE_SOURCE_NONE,
-            "probe": probe_bucket if probe_bucket not in (VIS_VALUE_UNKNOWN, "not_run") else "Waiting",
+            "probe": (
+                "Waiting"
+                if probe_bucket in (VIS_VALUE_UNKNOWN, "not_run")
+                else (
+                    f"{probe_bucket}*"
+                    if probe_age_bucket in (EVIDENCE_PROBE_AGE_AGING, EVIDENCE_PROBE_AGE_STALE)
+                    else probe_bucket
+                )
+            ),
             "probeScore": _format_runtime_probe_score(runtime_device),
             "manual": manual_summary,
             "existence": existence,
             "operability": operability,
             "identity": identity,
             "confidence": confidence,
+            "presenceText": presence_text,
             "passiveText": passive_text,
             "consoleText": console_text,
             "probeText": probe_text,
@@ -3416,7 +3685,14 @@ class BringupControlUI(tk.Tk):
                     var.set(EVIDENCE_CONFIDENCE_LOW)
                 else:
                     var.set(EVIDENCE_STATUS_UNKNOWN)
+            console_snapshot = self._collect_console_snapshot()
+            self._set_evidence_text(
+                EVIDENCE_BUS_HEALTH_TEXT,
+                self._build_evidence_can_bus_health_text(console_snapshot),
+            )
             for section in self._evidence_text_widgets:
+                if section == EVIDENCE_BUS_HEALTH_TEXT:
+                    continue
                 self._set_evidence_text(section, EVIDENCE_SOURCE_NONE)
             return
         self._evidence_selected_title_var.set(str(row.get("label", NT_VALUE_EMPTY)))
@@ -3424,6 +3700,12 @@ class BringupControlUI(tk.Tk):
         self._evidence_detail_vars[EVIDENCE_LABEL_OPERABILITY].set(str(row.get("operability", EVIDENCE_STATUS_UNKNOWN)))
         self._evidence_detail_vars[EVIDENCE_LABEL_IDENTITY].set(str(row.get("identity", EVIDENCE_STATUS_UNKNOWN)))
         self._evidence_detail_vars[EVIDENCE_LABEL_CONFIDENCE].set(str(row.get("confidence", EVIDENCE_CONFIDENCE_LOW)))
+        console_snapshot = self._collect_console_snapshot()
+        self._set_evidence_text(
+            EVIDENCE_BUS_HEALTH_TEXT,
+            self._build_evidence_can_bus_health_text(console_snapshot),
+        )
+        self._set_evidence_text(EVIDENCE_PRESENCE_TEXT, str(row.get("presenceText", EVIDENCE_SOURCE_NONE)))
         self._set_evidence_text(EVIDENCE_PASSIVE_TEXT, str(row.get("passiveText", EVIDENCE_SOURCE_NONE)))
         self._set_evidence_text(EVIDENCE_CONSOLE_TEXT, str(row.get("consoleText", EVIDENCE_SOURCE_NONE)))
         self._set_evidence_text(EVIDENCE_PROBE_TEXT, str(row.get("probeText", EVIDENCE_SOURCE_NONE)))
@@ -3439,6 +3721,10 @@ class BringupControlUI(tk.Tk):
         live_view = self._evidence_live_view
         if table is None or live_view is None:
             return
+        yview_state = table.yview()
+        if not isinstance(yview_state, tuple) or len(yview_state) != 2:
+            yview_state = (0.0, 1.0)
+        existing_selection = tuple(table.selection())
         for row_id in table.get_children():
             table.delete(row_id)
         rows = self._build_evidence_rows()
@@ -3473,9 +3759,11 @@ class BringupControlUI(tk.Tk):
             f"Devices: {len(rows)} | Showing: {len(shown_rows)} | Filter: {EVIDENCE_FILTER_LABELS.get(filter_key, EVIDENCE_FILTER_LABELS[EVIDENCE_FILTER_ALL])}"
         )
         selected_label = self._evidence_selected_label
+        auto_selected_label = False
         if not selected_label and shown_rows:
             selected_label = str(shown_rows[0].get("label", NT_VALUE_EMPTY)).strip().lower()
             self._evidence_selected_label = selected_label
+            auto_selected_label = True
         if selected_label:
             self._evidence_syncing_selection = True
             try:
@@ -3488,12 +3776,21 @@ class BringupControlUI(tk.Tk):
                 if selected_item:
                     table.selection_set(selected_item)
                     table.focus(selected_item)
-                    table.see(selected_item)
                 self._apply_evidence_selection(selected_label)
             finally:
                 self._evidence_syncing_selection = False
         else:
             self._apply_evidence_selection(NT_VALUE_EMPTY)
+        if auto_selected_label and selected_label:
+            selected_items = table.selection()
+            if selected_items:
+                table.see(selected_items[0])
+            return
+        if existing_selection:
+            try:
+                table.yview_moveto(float(yview_state[0]))
+            except Exception:
+                pass
 
     def _apply_evidence_table_selection_by_label(self, label: str) -> None:
         """
@@ -5095,6 +5392,7 @@ class BringupControlUI(tk.Tk):
         if self._robot_enabled_known and not enabled:
             self._runtime_active_known = False
         self._robot_enabled_known = enabled
+        self._robot_estopped_known = estopped
         if self._tests_table is not None:
             selected_name = self._tests_table.getEntry("selectedName").getString("")
             if not selected_name:
@@ -5153,6 +5451,10 @@ class BringupControlUI(tk.Tk):
             elif mode:
                 self._pending_label.configure(text=f"Robot: {mode}")
         self._apply_live_runtime_notice_from_nt_state(enabled, estopped, stale_state)
+        blocked = self._manual_duty_block_message()
+        if blocked and self._manual_duty_popup is not None:
+            self._append_output(blocked)
+            self._close_manual_duty_popup(stop_motor=False)
         if (
             self._tcp_connected
             and not stale_state
@@ -5181,7 +5483,6 @@ class BringupControlUI(tk.Tk):
         self._poll_live_overlay(now)
         self._poll_presence_overrides()
         self._poll_visibility_snapshot(now)
-        self._maybe_send_evidence_active_probe(force=False)
         self._update_action_enabled()
         idle = (
             not self._tcp_connected

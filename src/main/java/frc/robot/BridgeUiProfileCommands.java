@@ -46,6 +46,8 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
   private static final String TEXT_PROFILE_ACTIVATE_FAIL = "Profile activation failed.";
   private static final String TEXT_NONE = "(none)";
   private static final String TEXT_RUNTIME_DEACTIVATE_OK = "Runtime deactivated.";
+  private static final String TEXT_RUNTIME_ACTIVATE_BLOCKED_DISABLED =
+      "Runtime activate blocked: robot not in enabled teleop. Enable teleop, then activate runtime.";
   private static final String TEXT_PROFILES_RELOAD_OK = "Profiles reloaded.";
   private static final String TEXT_PROFILES_RELOAD_FAILED = "Profiles reload failed: %s";
   private static final String MESSAGE_PROFILE_NOT_FOUND = "Profile not found.";
@@ -83,6 +85,10 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
     void deactivateActiveProfile();
 
     boolean isProfileActive();
+
+    boolean isRuntimeDeclaredActive();
+
+    boolean isRuntimeActivationAllowed();
 
     String getActiveCanProfileLabel();
 
@@ -137,8 +143,10 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
         executeSelectProfile(args, result);
         break;
       case CMD_PROFILE_ACTIVATE:
+        executeProfileActivate(args, result, false);
+        break;
       case CMD_RUNTIME_ACTIVATE:
-        executeProfileActivate(args, result);
+        executeProfileActivate(args, result, true);
         break;
       case CMD_RUNTIME_DEACTIVATE:
         executeRuntimeDeactivate(result);
@@ -180,7 +188,16 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
     result.outText = result.message;
   }
 
-  private void executeProfileActivate(JsonObject args, BridgeUiCommandResult result) {
+  private void executeProfileActivate(
+      JsonObject args,
+      BridgeUiCommandResult result,
+      boolean requireEnabledTeleop) {
+    if (requireEnabledTeleop && !dependencies.isRuntimeActivationAllowed()) {
+      result.ok = false;
+      result.message = TEXT_RUNTIME_ACTIVATE_BLOCKED_DISABLED;
+      result.outText = result.message;
+      return;
+    }
     String profileName = dependencies.parseUiArgString(args, ARG_NAME);
     if (profileName != null && !profileName.isBlank()) {
       dependencies.selectCanProfile(profileName.trim());
@@ -193,7 +210,7 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
     }
     dependencies.prepareActivationForSelectedProfile();
     dependencies.activateSelectedProfile();
-    if (dependencies.isProfileActive()) {
+    if (dependencies.isRuntimeDeclaredActive()) {
       dependencies.runProfileActivateAction();
       result.message = String.format(TEXT_PROFILE_ACTIVATE_OK, dependencies.getActiveCanProfileLabel());
       result.outText = result.message;

@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="850" viewBox="0 0 1400 850">
+  <defs>
+    <style>
+      .bg{fill:#f6f8fb}.panel{fill:#fff;stroke:#cbd5e1}.h{font:700 16px Segoe UI,Arial,sans-serif;fill:#111827}.title{font:700 24px Segoe UI,Arial,sans-serif;fill:#111827}.t{font:12px Segoe UI,Arial,sans-serif;fill:#1f2937}.small{font:11px Segoe UI,Arial,sans-serif;fill:#475569}.step{fill:#e7f0ff;stroke:#2563eb}.stepOn{fill:#dcfce7;stroke:#16a34a}.warn{fill:#fff7ed;stroke:#f97316}.node{fill:#e5e7eb;stroke:#64748b}.motor{fill:#dcfce7;stroke:#16a34a}.bus{stroke:#475569;stroke-width:4}.dash{stroke:#2563eb;stroke-width:2;stroke-dasharray:5 4}.pill{rx:6;ry:6}
+    </style>
+  </defs>
+  <rect class="bg" width="1400" height="850"/>
+  <rect class="panel" x="20" y="20" width="1360" height="58" rx="6"/>
+  <text class="title" x="42" y="57">Option 2: Workflow Stepper</text>
+  <text class="small" x="845" y="52">Mode switch changes the step list and default actions</text>
+
+  <rect class="panel" x="20" y="96" width="1360" height="86" rx="6"/>
+  <text class="h" x="42" y="128">Bringup Steps</text>
+  <rect class="stepOn pill" x="170" y="110" width="160" height="46"/><text class="t" x="194" y="138">1 Select Scope</text>
+  <rect class="step pill" x="345" y="110" width="160" height="46"/><text class="t" x="376" y="138">2 Add Device</text>
+  <rect class="step pill" x="520" y="110" width="160" height="46"/><text class="t" x="548" y="138">3 Basic Test</text>
+  <rect class="step pill" x="695" y="110" width="160" height="46"/><text class="t" x="723" y="138">4 Record Result</text>
+  <rect class="step pill" x="870" y="110" width="160" height="46"/><text class="t" x="898" y="138">5 Next Device</text>
+  <text class="small" x="1065" y="128">Diagnose steps: faults, suspect region, evidence, tests, finding.</text>
+  <text class="small" x="1065" y="150">Good for training and repeatability.</text>
+
+  <rect class="panel" x="20" y="205" width="240" height="640" rx="6"/>
+  <text class="h" x="42" y="236">Step Actions</text>
+  <rect class="stepOn pill" x="42" y="260" width="190" height="42"/><text class="t" x="66" y="286">Runtime Activate Scope</text>
+  <rect class="step pill" x="42" y="316" width="190" height="42"/><text class="t" x="77" y="342">Active Add</text>
+  <rect class="step pill" x="42" y="372" width="190" height="42"/><text class="t" x="64" y="398">Right-Click Motion</text>
+  <rect class="step pill" x="42" y="428" width="190" height="42"/><text class="t" x="71" y="454">Mark Result</text>
+  <rect class="warn pill" x="42" y="504" width="190" height="105"/><text class="t" x="58" y="532">Diagnose mode swaps</text><text class="t" x="58" y="556">these for probe sweep,</text><text class="t" x="58" y="580">DSL tests, and CAN clues.</text>
+
+  <rect class="panel" x="280" y="205" width="680" height="500" rx="6"/>
+  <text class="h" x="304" y="236">Topology With Current Step Highlight</text>
+  <line class="bus" x1="330" y1="430" x2="900" y2="430"/>
+  <rect class="node" x="360" y="310" width="150" height="62" rx="8"/><text class="t" x="412" y="346">roboRIO</text>
+  <rect class="motor" x="680" y="288" width="170" height="70" rx="14"/><text class="t" x="728" y="326">FALCON 9</text>
+  <rect class="motor" x="610" y="515" width="190" height="70" rx="14"/><text class="t" x="657" y="555">SPARKMAX 25</text>
+  <line class="dash" x1="435" y1="372" x2="435" y2="430"/>
+  <line class="dash" x1="765" y1="358" x2="765" y2="430"/>
+  <line class="dash" x1="705" y1="430" x2="705" y2="515"/>
+  <rect fill="none" stroke="#f97316" stroke-width="3" x="595" y="500" width="220" height="95"/>
+  <text class="h" fill="#f97316" x="614" y="492">current test target</text>
+
+  <rect class="panel" x="980" y="205" width="380" height="500" rx="6"/>
+  <text class="h" x="1004" y="236">Current Step Panel</text>
+  <text class="t" x="1004" y="270">Scope: Group active-group</text>
+  <text class="t" x="1004" y="298">Primary: SPARKMAX/NEO 25</text>
+  <text class="t" x="1004" y="326">Command: 0.22 duty</text>
+  <text class="t" x="1004" y="354">Vel: 1480 rpm</text>
+  <text class="t" x="1004" y="382">Position delta: 14.2 rot</text>
+  <text class="t" x="1004" y="410">Result: rotation detected</text>
+  <rect class="warn pill" x="1004" y="455" width="320" height="80"/>
+  <text class="t" x="1020" y="485">Only step-relevant actions are visible.</text>
+  <text class="t" x="1020" y="510">Advanced panels are one click away.</text>
+
+  <rect class="panel" x="280" y="725" width="1080" height="90" rx="6"/>
+  <text class="h" x="304" y="755">Collapsible Output Drawer</text>
+  <text class="t" x="304" y="782">Shows command ACK/OUT, console snippets, and DSL output only when expanded.</text>
+</svg>
+

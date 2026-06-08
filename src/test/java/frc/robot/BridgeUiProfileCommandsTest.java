@@ -72,6 +72,7 @@ class BridgeUiProfileCommandsTest {
   void runtimeActivateSuccessRunsActivateAction() {
     ProfileDeps deps = new ProfileDeps();
     deps.profileActive = true;
+    deps.runtimeActivationAllowed = true;
     deps.activeRuntimeProfile = "beta";
     deps.nextName = "beta";
     BridgeUiProfileCommands commands = new BridgeUiProfileCommands(deps);
@@ -98,6 +99,7 @@ class BridgeUiProfileCommandsTest {
   @Test
   void runtimeActivateFailsClearlyWhenNoProfileIsSelected() {
     ProfileDeps deps = new ProfileDeps();
+    deps.runtimeActivationAllowed = true;
     deps.selectedProfileLabel = "(none)";
     BridgeUiProfileCommands commands = new BridgeUiProfileCommands(deps);
     BridgeUiIngressPolicy.Ingress ingress = new BridgeUiIngressPolicy.Ingress(
@@ -117,6 +119,31 @@ class BridgeUiProfileCommandsTest {
 
     assertFalse(result.ok);
     assertEquals("No profile selected.", result.message);
+  }
+
+  @Test
+  void runtimeActivateFailsClearlyWhenRobotNotInTeleop() {
+    ProfileDeps deps = new ProfileDeps();
+    BridgeUiProfileCommands commands = new BridgeUiProfileCommands(deps);
+    BridgeUiIngressPolicy.Ingress ingress = new BridgeUiIngressPolicy.Ingress(
+        CMD_RUNTIME_ACTIVATE,
+        new JsonObject(),
+        "clientA",
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        false);
+
+    BridgeUiCommandResult result = commands.execute(ingress, 0.0, false);
+
+    assertFalse(result.ok);
+    assertEquals(
+        "Runtime activate blocked: robot not in enabled teleop. Enable teleop, then activate runtime.",
+        result.message);
   }
 
   @Test
@@ -225,6 +252,7 @@ class BridgeUiProfileCommandsTest {
   private static final class ProfileDeps implements BridgeUiProfileCommands.Dependencies {
     private String nextName;
     private boolean profileActive;
+    private boolean runtimeActivationAllowed;
     private boolean activateActionRan;
     private boolean deactivateActionRan;
     private boolean deactivateCalled;
@@ -254,6 +282,16 @@ class BridgeUiProfileCommandsTest {
     @Override
     public boolean isProfileActive() {
       return profileActive;
+    }
+
+    @Override
+    public boolean isRuntimeDeclaredActive() {
+      return profileActive;
+    }
+
+    @Override
+    public boolean isRuntimeActivationAllowed() {
+      return runtimeActivationAllowed;
     }
 
     @Override

@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from tools.can_topology import live_topology_view as live_view_module
+from tools.common import topology_draw
 
 
 class _BoolVarStub:
@@ -55,11 +56,35 @@ class _CanvasStub:
     def winfo_height(self) -> int:
         return 600
 
+    def canvasx(self, value: int) -> float:
+        return float(value)
+
+    def canvasy(self, value: int) -> float:
+        return float(value)
+
     def xview_moveto(self, fraction: float) -> None:
         self.xview = fraction
 
     def yview_moveto(self, fraction: float) -> None:
         self.yview = fraction
+
+
+class _ShapeCanvasStub:
+    def __init__(self) -> None:
+        self.calls = []
+        self._next_id = 1
+
+    def _record(self, kind: str, *args, **kwargs) -> int:
+        item_id = self._next_id
+        self._next_id += 1
+        self.calls.append((kind, args, kwargs))
+        return item_id
+
+    def create_polygon(self, *args, **kwargs) -> int:
+        return self._record("polygon", *args, **kwargs)
+
+    def create_rectangle(self, *args, **kwargs) -> int:
+        return self._record("rectangle", *args, **kwargs)
 
 
 class LiveTopologyViewTests(unittest.TestCase):
@@ -223,6 +248,67 @@ class LiveTopologyViewTests(unittest.TestCase):
         self.assertLessEqual(view._zoom, live_view_module.ZOOM_MAX)
         self.assertIsNotNone(view._canvas.xview)
         self.assertEqual(view._canvas.yview, 0.0)
+
+    def test_selected_canvas_shape_overlay_draws_halo_and_outline(self) -> None:
+        canvas = _ShapeCanvasStub()
+
+        ids = topology_draw.draw_selected_canvas_shape_overlay(
+            canvas,
+            10.0,
+            20.0,
+            110.0,
+            70.0,
+            "motor",
+            halo_color="#ffffff",
+            outline_color="#1f6feb",
+        )
+
+        self.assertEqual(len(ids), 2)
+        self.assertEqual(len(canvas.calls), 2)
+        first_kind, _first_args, first_kwargs = canvas.calls[0]
+        second_kind, _second_args, second_kwargs = canvas.calls[1]
+        self.assertEqual(first_kind, "polygon")
+        self.assertEqual(second_kind, "polygon")
+        self.assertEqual(first_kwargs["fill"], "")
+        self.assertEqual(first_kwargs["outline"], "#ffffff")
+        self.assertEqual(
+            first_kwargs["width"],
+            topology_draw.SELECTION_SHAPE_HALO_WIDTH,
+        )
+        self.assertEqual(second_kwargs["fill"], "")
+        self.assertEqual(second_kwargs["outline"], "#1f6feb")
+        self.assertEqual(
+            second_kwargs["width"],
+            topology_draw.SELECTION_SHAPE_OUTLINE_WIDTH,
+        )
+
+    def test_canvas_click_selects_node_and_triggers_redraw(self) -> None:
+        view = self._make_view()
+        redraw_calls = []
+        selection_events = []
+        details_calls = []
+        node = live_view_module.LiveNode(
+            key=25,
+            category="neos",
+            label="SPARKMAX/NEO 25",
+            can_id=25,
+            bus_index=0,
+            row=0,
+            x=0.0,
+        )
+        view._nodes = [node]
+        view._node_bounds = {25: (10.0, 20.0, 110.0, 70.0)}
+        view._redraw = lambda *_args, **_kwargs: redraw_calls.append(True)
+        view._update_details = lambda: details_calls.append(True)
+        view._on_selection_changed_cb = lambda selected: selection_events.append(selected)
+        view._on_left_click_cb = None
+
+        view._on_canvas_click(type("Event", (), {"x": 50, "y": 40})())
+
+        self.assertIs(view._selected_node, node)
+        self.assertTrue(details_calls)
+        self.assertTrue(redraw_calls)
+        self.assertEqual(selection_events, [node])
 
     def test_diagram_nodes_preserve_topology_layout_y_and_registry_category(self) -> None:
         registry = {
