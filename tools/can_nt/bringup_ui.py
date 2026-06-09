@@ -17,15 +17,20 @@ NOTES
 """
 
 import json
-import importlib
 import time
 import tkinter as tk
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 from typing import Callable, Dict, List, Optional, Tuple, Any
 
 from .bridge_cmd_tracker import CommandTracker
+from .command_catalog_service import (
+    load_host_ui_command_metadata,
+    merge_host_ui_actions as merge_host_ui_actions_shared,
+)
+from .command_workflow_service import send_tracked_command
 from .bridge_ops import (
     connect,
     download_current_config,
@@ -46,17 +51,30 @@ from .bridge_session import BridgeEvent, BridgeSession
 from .host_ui_actions import (
     ACTION_KIND_HOST_LOCAL,
     ACTION_SOURCE_HOST,
+    HOST_ACTION_DSL_TEST_IMPORT,
+    HOST_ACTION_DSL_TEST_VALIDATE,
     HOST_ACTION_RECONNECT_UI_SESSION,
     HOST_UI_ACTIONS,
 )
+from .status import SS__NORMAL
 from tools.common.json_io import read_json, write_json
+from tools.common.config_api import ConfigEditSession, ConfigRepository
 from tools.common.nt_labels import decode_label_from_nt, encode_label_for_nt
 from tools.common.paths import repo_root, tests_deploy_path
+from tools.common.profile_constants import KEY_DEFAULT_PROFILE, KEY_DSL_TESTS
 from tools.common.tests_domain import collect_available_tests
-from tools.common.config_lifecycle import ConfigLifecycleService
+from tools.common.config_lifecycle import LocalConfigQueryService
 from tools.common.profiles import list_profile_names
 from tools.common.profile_constants import KEY_DEVICE_TYPE, KEY_ID, KEY_LABEL as PROFILE_KEY_LABEL, KEY_MANUFACTURER
 from tools.common.profile_constants import KEY_ENABLED
+from tools.common.robot_test_dsl import (
+    DslServiceError,
+    import_test_into_root_payload,
+    render_validation_text,
+    resolve_profile_test_names,
+    store_from_root_payload as robot_test_dsl_store_from_root_payload,
+    validate_store_for_profile,
+)
 from tools.common.time_utils import timestamp_hms
 from tools.common.motor_runtime_verdict import (
     infer_motor_runtime_verdict,
@@ -537,8 +555,6 @@ VIS_RAW_COL_RATE_WIDTH = 72
 VIS_RAW_COL_SMALL_WIDTH = 42
 VIS_RAW_COL_API_WIDTH = 46
 VIS_RAW_COL_PGN_WIDTH = 84
-GENERATED_MODULE_NAME = "tools.can_nt.generated.robot_local_commands_generated"
-GENERATED_INVENTORY_PATH = repo_root() / "tools" / "can_nt" / "generated" / "robot_local_command_inventory.json"
 INVENTORY_KEY_COMMANDS = "commands"
 INVENTORY_KEY_SHOW_IN_HOST_UI = "showInHostUi"
 INVENTORY_KEY_UI_SECTION = "uiSection"
@@ -552,6 +568,19 @@ KEY_NAME = "name"
 CMD_SHOW_RUNTIME_STATE = "showRuntimeState"
 ACTION_KIND_REMOTE_COMMAND = "remoteCommand"
 ACTION_SOURCE_ROBOT = "robot"
+DSL_FILE_TYPES = (("DSL files", "*.dsl"), ("Text files", "*.txt"), ("All files", "*.*"))
+DSL_IMPORT_CANCELLED = "DSL import cancelled."
+DSL_VALIDATE_CANCELLED = "DSL validation cancelled."
+DSL_IMPORT_PATH_FMT = "IMPORT DSL {path}"
+DSL_VALIDATE_START_FMT = "VALIDATE DSL profile={profile}"
+DSL_IMPORT_SAVED_FMT = "Local DSL import saved. Push config to the robot to use the updated test."
+DSL_VALIDATE_OK_FMT = "DSL validation OK for profile {profile}."
+DSL_VALIDATE_FAIL_FMT = "DSL validation failed for profile {profile}."
+DSL_DIALOG_IMPORT_NAME_TITLE = "Import DSL Test"
+DSL_DIALOG_IMPORT_NAME_PROMPT = "Test name:"
+DSL_DIALOG_IMPORT_SET_TITLE = "Import DSL Test"
+DSL_DIALOG_IMPORT_SET_PROMPT = "Set name (blank uses current default set):"
+DSL_OUTPUT_NO_PROFILE = "No profile selected for DSL action."
 
 
 def _normalize_host_action_row(row: Dict[str, Any], default_source: str, default_kind: str) -> Dict[str, Any]:
@@ -559,30 +588,9 @@ def _normalize_host_action_row(row: Dict[str, Any], default_source: str, default
     NAME
         _normalize_host_action_row - Normalize a host UI action row to the merged action schema.
     """
-    normalized = dict(row)
-    normalized[INVENTORY_KEY_NAME] = str(row.get(INVENTORY_KEY_NAME, NT_VALUE_EMPTY)).strip()
-    normalized[INVENTORY_KEY_UI_SECTION] = str(
-        row.get(INVENTORY_KEY_UI_SECTION, NT_VALUE_EMPTY)
-    ).strip()
-    normalized[INVENTORY_KEY_UI_LABEL] = str(
-        row.get(INVENTORY_KEY_UI_LABEL, normalized[INVENTORY_KEY_NAME])
-    ).strip()
-    normalized[INVENTORY_KEY_UI_DESCRIPTION] = str(
-        row.get(INVENTORY_KEY_UI_DESCRIPTION, NT_VALUE_EMPTY)
-    ).strip()
-    normalized[INVENTORY_KEY_UI_ARGS_JSON] = str(
-        row.get(INVENTORY_KEY_UI_ARGS_JSON, NT_VALUE_EMPTY)
-    ).strip()
-    normalized[INVENTORY_KEY_SHOW_IN_HOST_UI] = bool(
-        row.get(INVENTORY_KEY_SHOW_IN_HOST_UI, True)
-    )
-    normalized[INVENTORY_KEY_ACTION_KIND] = str(
-        row.get(INVENTORY_KEY_ACTION_KIND, default_kind)
-    ).strip() or default_kind
-    normalized[INVENTORY_KEY_SOURCE] = str(
-        row.get(INVENTORY_KEY_SOURCE, default_source)
-    ).strip() or default_source
-    return normalized
+    from .command_catalog_service import normalize_action_row
+
+    return normalize_action_row(row, default_source, default_kind)
 
 
 def _build_host_ui_sections_from_inventory(commands: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -590,21 +598,9 @@ def _build_host_ui_sections_from_inventory(commands: List[Dict[str, Any]]) -> Li
     NAME
         _build_host_ui_sections_from_inventory - Build host UI sections from command inventory rows.
     """
-    grouped: Dict[str, List[Dict[str, Any]]] = {}
-    for row in commands:
-        if not isinstance(row, dict):
-            continue
-        if not bool(row.get(INVENTORY_KEY_SHOW_IN_HOST_UI)):
-            continue
-        section = str(row.get(INVENTORY_KEY_UI_SECTION, NT_VALUE_EMPTY)).strip()
-        if not section:
-            continue
-        grouped.setdefault(section, []).append(dict(row))
-    sections: List[Dict[str, Any]] = []
-    for section, items in grouped.items():
-        items.sort(key=lambda row: str(row.get(INVENTORY_KEY_NAME, NT_VALUE_EMPTY)))
-        sections.append({"section": section, "commands": items})
-    return sections
+    from .command_catalog_service import build_host_ui_sections_from_inventory
+
+    return build_host_ui_sections_from_inventory(commands)
 
 
 def _merge_host_ui_actions(
@@ -614,23 +610,13 @@ def _merge_host_ui_actions(
     NAME
         _merge_host_ui_actions - Merge robot and host action metadata into one UI action model.
     """
-    merged_actions = [
-        _normalize_host_action_row(row, ACTION_SOURCE_ROBOT, ACTION_KIND_REMOTE_COMMAND)
-        for row in robot_actions
-        if isinstance(row, dict)
-    ]
-    merged_actions.extend(
-        _normalize_host_action_row(row, ACTION_SOURCE_HOST, ACTION_KIND_HOST_LOCAL)
-        for row in host_actions
-        if isinstance(row, dict)
+    return merge_host_ui_actions_shared(
+        robot_actions,
+        host_actions,
+        ACTION_SOURCE_ROBOT,
+        ACTION_SOURCE_HOST,
+        ACTION_KIND_HOST_LOCAL,
     )
-    actions_by_name: Dict[str, Dict[str, Any]] = {}
-    for row in merged_actions:
-        name = str(row.get(INVENTORY_KEY_NAME, NT_VALUE_EMPTY)).strip()
-        if not name:
-            continue
-        actions_by_name[name] = row
-    return actions_by_name, _build_host_ui_sections_from_inventory(merged_actions)
 
 
 def _load_generated_command_metadata() -> Tuple[Dict[str, Dict[str, Any]], List[Dict[str, Any]]]:
@@ -638,26 +624,12 @@ def _load_generated_command_metadata() -> Tuple[Dict[str, Dict[str, Any]], List[
     NAME
         _load_generated_command_metadata - Load merged robot and host UI action metadata.
     """
-    robot_actions: List[Dict[str, Any]] = []
-    try:
-        generated = importlib.import_module(GENERATED_MODULE_NAME)
-        commands_by_name = getattr(generated, "COMMANDS_BY_NAME", {})
-        if isinstance(commands_by_name, dict):
-            robot_actions = [
-                dict(row) for row in commands_by_name.values() if isinstance(row, dict)
-            ]
-            return _merge_host_ui_actions(robot_actions, HOST_UI_ACTIONS)
-    except Exception:
-        pass
-    try:
-        payload = read_json(GENERATED_INVENTORY_PATH)
-    except Exception:
-        return _merge_host_ui_actions([], HOST_UI_ACTIONS)
-    commands = payload.get(INVENTORY_KEY_COMMANDS)
-    if not isinstance(commands, list):
-        return _merge_host_ui_actions([], HOST_UI_ACTIONS)
-    robot_actions = [dict(row) for row in commands if isinstance(row, dict)]
-    return _merge_host_ui_actions(robot_actions, HOST_UI_ACTIONS)
+    return load_host_ui_command_metadata(
+        HOST_UI_ACTIONS,
+        ACTION_SOURCE_ROBOT,
+        ACTION_SOURCE_HOST,
+        ACTION_KIND_HOST_LOCAL,
+    )
 
 
 ACTIONS_BY_NAME, HOST_UI_SECTIONS = _load_generated_command_metadata()
@@ -674,10 +646,8 @@ def _load_profiles() -> List[str]:
         if err:
             print(f"ERROR: bringup_system.json load failed: {err}")
         return []
-    service = ConfigLifecycleService()
     try:
-        payload = service.load_profiles_payload(service.default_paths().canonical_profiles_path)
-        names = list_profile_names(payload)
+        names = LocalConfigQueryService().list_profiles()
         if names:
             return names
     except Exception:
@@ -692,13 +662,8 @@ def _load_tests(profile_name: str) -> List[str]:
     """
     if not profile_name or profile_name == PROFILE_NONE:
         return []
-    store_names = _load_tests_from_store(profile_name)
-    if store_names is not None:
-        return store_names
     try:
-        path = tests_deploy_path()
-        data = read_json(path)
-        return collect_available_tests(data)
+        return LocalConfigQueryService().test_names_for_profile(profile_name)
     except Exception:
         pass
     return []
@@ -722,7 +687,10 @@ def _selectable_profiles() -> List[str]:
     NAME
         _selectable_profiles - Return the UI profile list including the empty selection.
     """
-    return [PROFILE_NONE] + (_load_profiles() or [])
+    try:
+        return LocalConfigQueryService().selectable_profiles(PROFILE_NONE)
+    except Exception:
+        return [PROFILE_NONE] + (_load_profiles() or [])
 
 
 def _startup_selected_profile(profile_names: List[str], auto_select_default: bool) -> str:
@@ -760,6 +728,20 @@ def _load_tests_from_store(profile_name: str) -> Optional[List[str]]:
             if isinstance(name, str) and name and name != TEST_NAME_EMPTY:
                 names.append(name)
     return sorted(set(names))
+
+
+def _load_tests_from_dsl_store(profile_name: str) -> Optional[List[str]]:
+    """
+    NAME
+        _load_tests_from_dsl_store - Load test names for a profile from top-level dslTests.
+    """
+    try:
+        payload = ConfigRepository().load_canonical().to_payload()
+    except Exception:
+        return None
+    if not isinstance(payload.get(KEY_DSL_TESTS), dict):
+        return None
+    return resolve_profile_test_names(payload, profile_name)
 
 
 def _ui_prefs_path() -> Path:
@@ -5004,10 +4986,17 @@ class BringupControlUI(tk.Tk):
             label = "uiHandshake (reset)" if reset else "uiHandshake"
             self._append_output(f"{ts} CMD {label}")
         self._session.set_client_id(self._client_id)
-        seq = ui_handshake(self._session, self._client_id, reset)
+        seq = send_tracked_command(
+            self._session,
+            self._tracker,
+            "uiHandshake",
+            payload,
+            sender=lambda session, _name, _args: ui_handshake(session, self._client_id, reset),
+            now=time.time(),
+            retryable=False,
+        )
         if seq is not None:
             self._last_sent_seq = seq
-            self._tracker.start("uiHandshake", payload, seq, now=time.time(), retryable=False)
             self._handshake_inflight = True
             self._last_handshake_attempt = time.time()
             self._last_cmd = ("uiHandshake", payload)
@@ -5029,10 +5018,17 @@ class BringupControlUI(tk.Tk):
         ts = timestamp_hms()
         self._append_output(f"{ts} CMD uiDisconnect")
         self._last_cmd = ("uiDisconnect", None)
-        seq = ui_disconnect(self._session)
+        seq = send_tracked_command(
+            self._session,
+            self._tracker,
+            "uiDisconnect",
+            None,
+            sender=lambda session, _name, _args: ui_disconnect(session),
+            now=time.time(),
+            retryable=False,
+        )
         if seq is not None:
             self._last_sent_seq = seq
-            self._tracker.start("uiDisconnect", None, seq, now=time.time(), retryable=False)
 
     def _send_monitor(self, enabled: bool) -> None:
         """
@@ -5049,10 +5045,16 @@ class BringupControlUI(tk.Tk):
         self._append_output(f"{ts} CMD {label}")
         args = {"enabled": enabled}
         self._last_cmd = (label, args)
-        seq = ui_monitor(self._session, enabled)
+        seq = send_tracked_command(
+            self._session,
+            self._tracker,
+            label,
+            args,
+            sender=lambda session, _name, _args: ui_monitor(session, enabled),
+            now=time.time(),
+        )
         if seq is not None:
             self._last_sent_seq = seq
-            self._tracker.start(label, args, seq, now=time.time())
 
     def _reconnect_ui_session(self) -> None:
         """
@@ -5074,6 +5076,12 @@ class BringupControlUI(tk.Tk):
         if command == HOST_ACTION_RECONNECT_UI_SESSION:
             self._reconnect_ui_session()
             return True
+        if command == HOST_ACTION_DSL_TEST_IMPORT:
+            self._dsl_import_from_ui()
+            return True
+        if command == HOST_ACTION_DSL_TEST_VALIDATE:
+            self._dsl_validate_from_ui()
+            return True
         return False
 
     def _host_local_action_enabled(self, command: str) -> bool:
@@ -5082,6 +5090,8 @@ class BringupControlUI(tk.Tk):
             _host_local_action_enabled - Return whether a host-local UI action should be enabled.
         """
         if command == HOST_ACTION_RECONNECT_UI_SESSION:
+            return not self._tracker.is_pending()
+        if command in (HOST_ACTION_DSL_TEST_IMPORT, HOST_ACTION_DSL_TEST_VALIDATE):
             return not self._tracker.is_pending()
         return not self._tracker.is_pending()
 
@@ -5098,10 +5108,16 @@ class BringupControlUI(tk.Tk):
             return
         ts = timestamp_hms()
         self._append_output(f"{ts} RETRY {name}")
-        seq = self._send_tcp_command(name, args)
+        seq = send_tracked_command(
+            self._session,
+            self._tracker,
+            name,
+            args,
+            sender=lambda session, command_name, command_args: self._send_tcp_command(command_name, command_args),
+            now=time.time(),
+        )
         if seq is not None:
             self._last_sent_seq = seq
-            self._tracker.start(name, args, seq, now=time.time())
 
     def _on_action(self, command: Optional[str]) -> None:
         """
@@ -5139,10 +5155,16 @@ class BringupControlUI(tk.Tk):
         ts = timestamp_hms()
         self._append_output(f"{ts} CMD {command}")
         self._last_cmd = (command, args)
-        seq = send_command(self._session, command, args)
+        seq = send_tracked_command(
+            self._session,
+            self._tracker,
+            command,
+            args,
+            sender=lambda session, command_name, command_args: send_command(session, command_name, command_args),
+            now=time.time(),
+        )
         if seq is not None:
             self._last_sent_seq = seq
-            self._tracker.start(command, args, seq, now=time.time())
 
     def _on_test_selected(self, _event=None) -> None:
         """
@@ -5166,10 +5188,16 @@ class BringupControlUI(tk.Tk):
         ts = timestamp_hms()
         self._append_output(f"{ts} CMD selectTestByName \"{name}\"")
         self._last_cmd = ("selectTestByName", {"name": name})
-        seq = select_test_by_name(self._session, name)
+        seq = send_tracked_command(
+            self._session,
+            self._tracker,
+            "selectTestByName",
+            {"name": name},
+            sender=lambda session, _command_name, _command_args: select_test_by_name(session, name),
+            now=time.time(),
+        )
         if seq is not None:
             self._last_sent_seq = seq
-            self._tracker.start("selectTestByName", {"name": name}, seq, now=time.time())
 
     def _selected_real_profile(self) -> str:
         """
@@ -5184,8 +5212,161 @@ class BringupControlUI(tk.Tk):
         NAME
             _default_profiles_path - Return the canonical bringup_system.json path.
         """
-        service = ConfigLifecycleService()
-        return service.default_paths().canonical_profiles_path
+        return ConfigRepository().canonical_path()
+
+    def _load_local_profiles_payload(self) -> Dict[str, object]:
+        """
+        NAME
+            _load_local_profiles_payload - Load the canonical local bringup_system.json payload.
+        """
+        return ConfigRepository().load_canonical().to_payload()
+
+    def _begin_local_profiles_edit(self) -> ConfigEditSession:
+        """
+        NAME
+            _begin_local_profiles_edit - Open a mutable edit session for canonical local bringup config.
+        """
+        return ConfigRepository().begin_canonical_edit()
+
+    def _persist_local_profiles_payload(self, payload: Dict[str, object]) -> None:
+        """
+        NAME
+            _persist_local_profiles_payload - Persist a local bringup_system.json payload with shared sync semantics.
+        """
+        session = ConfigRepository().begin_canonical_edit()
+        session.to_payload().clear()
+        session.to_payload().update(payload)
+        session.mark_dirty()
+        ConfigRepository().sync(session)
+
+    def _persist_local_profiles_edit(self, session: ConfigEditSession) -> None:
+        """
+        NAME
+            _persist_local_profiles_edit - Persist a mutable local config edit session through the shared repository.
+        """
+        ConfigRepository().sync(session)
+
+    def _dsl_import_from_ui(self) -> None:
+        """
+        NAME
+            _dsl_import_from_ui - Import a DSL source file into local bringup_system.json from the UI.
+        """
+        profile_name = self._selected_real_profile()
+        if not profile_name:
+            self._append_output(DSL_OUTPUT_NO_PROFILE)
+            return
+        selected = filedialog.askopenfilename(
+            title=DSL_DIALOG_IMPORT_NAME_TITLE,
+            initialdir=str(self._default_profiles_path().parent),
+            filetypes=DSL_FILE_TYPES,
+        )
+        if not selected:
+            self._append_output(DSL_IMPORT_CANCELLED)
+            return
+        selected_path = Path(selected)
+        default_name = selected_path.stem.strip() or TEST_NAME_EMPTY
+        test_name = simpledialog.askstring(
+            DSL_DIALOG_IMPORT_NAME_TITLE,
+            DSL_DIALOG_IMPORT_NAME_PROMPT,
+            parent=self,
+            initialvalue=default_name,
+        )
+        if test_name is None:
+            self._append_output(DSL_IMPORT_CANCELLED)
+            return
+        test_name = test_name.strip()
+        if not test_name:
+            self._append_output("DSL import blocked: test name is required.")
+            return
+        try:
+            session = self._begin_local_profiles_edit()
+        except Exception as exc:
+            self._append_output(str(exc))
+            return
+        payload = session.to_payload()
+        store = robot_test_dsl_store_from_root_payload(payload)
+        initial_set = store.default_set or ""
+        set_name = simpledialog.askstring(
+            DSL_DIALOG_IMPORT_SET_TITLE,
+            DSL_DIALOG_IMPORT_SET_PROMPT,
+            parent=self,
+            initialvalue=initial_set,
+        )
+        if set_name is None:
+            self._append_output(DSL_IMPORT_CANCELLED)
+            return
+        cleaned_set = set_name.strip()
+        def _operation() -> object:
+            try:
+                result = import_test_into_root_payload(
+                    payload,
+                    profile_name,
+                    test_name,
+                    selected_path,
+                    set_name=cleaned_set or None,
+                )
+            except DslServiceError as exc:
+                return exc
+            if result.ok():
+                session.mark_dirty()
+                self._persist_local_profiles_edit(session)
+            return result
+
+        outcome = self._run_blocking_status_operation(
+            DSL_IMPORT_PATH_FMT.format(path=str(selected_path)),
+            _operation,
+        )
+        if isinstance(outcome, DslServiceError):
+            self._append_output(str(outcome))
+            return
+        validation_text = render_validation_text(
+            outcome.validation,
+            robot_test_dsl_store_from_root_payload(payload),
+            entries_override={test_name: outcome.entry},
+        )
+        if validation_text != "OK":
+            for line in validation_text.splitlines():
+                self._append_output(line)
+            return
+        if outcome.ok():
+            self._refresh_tests_for_profile(profile_name)
+            if hasattr(self, "_test_box"):
+                values = list(self._test_box.cget("values"))
+                if test_name in values:
+                    self._test_box.set(test_name)
+                    self._last_selected_test = test_name
+            self._append_output(DSL_IMPORT_SAVED_FMT)
+
+    def _dsl_validate_from_ui(self) -> None:
+        """
+        NAME
+            _dsl_validate_from_ui - Validate local DSL tests for the selected profile from the UI.
+        """
+        profile_name = self._selected_real_profile()
+        if not profile_name:
+            self._append_output(DSL_OUTPUT_NO_PROFILE)
+            return
+        try:
+            payload = self._load_local_profiles_payload()
+        except Exception as exc:
+            self._append_output(str(exc))
+            return
+
+        def _operation() -> object:
+            store = robot_test_dsl_store_from_root_payload(payload)
+            return validate_store_for_profile(payload, store, profile_name)
+
+        result = self._run_blocking_status_operation(
+            DSL_VALIDATE_START_FMT.format(profile=profile_name),
+            _operation,
+        )
+        store = robot_test_dsl_store_from_root_payload(payload)
+        for line in render_validation_text(result, store).splitlines():
+            self._append_output(line)
+        if result.ok():
+            self._append_output(DSL_VALIDATE_OK_FMT.format(profile=profile_name))
+            return
+        self._append_output(DSL_VALIDATE_FAIL_FMT.format(profile=profile_name))
 
     def _config_dialog_start(self) -> Tuple[Path, str]:
         """
@@ -5228,10 +5409,16 @@ class BringupControlUI(tk.Tk):
             f"{timestamp_hms()} {OUTPUT_RUNTIME_ACTIVATE_FMT.format(profile=profile_name)}"
         )
         self._last_cmd = ("runtimeActivate", args)
-        seq = runtime_activate(self._session, profile_name)
+        seq = send_tracked_command(
+            self._session,
+            self._tracker,
+            "runtimeActivate",
+            args,
+            sender=lambda session, _command_name, _command_args: runtime_activate(session, profile_name),
+            now=time.time(),
+        )
         if seq is not None:
             self._last_sent_seq = seq
-            self._tracker.start("runtimeActivate", args, seq, now=time.time())
 
     def _runtime_deactivate_from_ui(self) -> None:
         """
@@ -5246,10 +5433,16 @@ class BringupControlUI(tk.Tk):
             return
         self._append_output(f"{timestamp_hms()} {OUTPUT_RUNTIME_DEACTIVATE}")
         self._last_cmd = ("runtimeDeactivate", {})
-        seq = runtime_deactivate(self._session)
+        seq = send_tracked_command(
+            self._session,
+            self._tracker,
+            "runtimeDeactivate",
+            {},
+            sender=lambda session, _command_name, _command_args: runtime_deactivate(session),
+            now=time.time(),
+        )
         if seq is not None:
             self._last_sent_seq = seq
-            self._tracker.start("runtimeDeactivate", {}, seq, now=time.time())
 
     def _show_runtime_state_from_ui(self) -> None:
         """

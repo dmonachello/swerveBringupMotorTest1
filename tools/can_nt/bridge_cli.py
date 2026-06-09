@@ -37,6 +37,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from tools.can_nt.bridge_cmd_tracker import CommandTracker
+from tools.can_nt.command_workflow_service import wait_for_command_event
 from tools.can_nt.bridge_cli_parser import BridgeCliParser, CliParseError
 from tools.can_nt.bridge_cli_ast import BridgeCliAstExecutor, AST_EXEC_SPEC
 from tools.can_nt.bridge_cli_facades import (
@@ -179,6 +180,7 @@ from tools.common.paths import (
     bindings_deploy_path,
     test_templates_dir,
 )
+from tools.common.config_api import ConfigRepository
 from tools.common.config_lifecycle import ConfigLifecycleService
 from tools.common.workflows import Workflow01Service
 from tools.common.tests_domain import collect_available_tests
@@ -318,12 +320,17 @@ from tools.common.robot_test_dsl import (
     DEFAULT_TEST_SET as DSL_DEFAULT_TEST_SET,
     RobotTestDslEntry,
     RobotTestDslStore,
-    compile_source as compile_robot_test_dsl_source,
-    source_hash as robot_test_dsl_source_hash,
-    store_from_payload as robot_test_dsl_store_from_payload,
+    ValidationResult,
+    cleanup_stale_tests_in_store as robot_test_dsl_cleanup_stale_tests_in_store,
+    device_catalog as robot_test_dsl_device_catalog,
+    import_test_into_root_payload as robot_test_dsl_import_test_into_root_payload,
+    issue_detail as robot_test_dsl_issue_detail,
+    render_validation_text as robot_test_dsl_render_validation_text,
+    signal_catalog as robot_test_dsl_signal_catalog,
+    store_from_root_payload as robot_test_dsl_store_from_root_payload,
     store_to_payload as robot_test_dsl_store_to_payload,
-    validate_entry as validate_robot_test_dsl_entry,
-    validate_store as validate_robot_test_dsl_store,
+    validate_store_for_profile as robot_test_dsl_validate_store_for_profile,
+    write_store_to_root_payload as robot_test_dsl_write_store_to_root_payload,
 )
 from tools.common.test_authoring import (
     BUILTIN_TIMER_NAME,
@@ -2189,6 +2196,7 @@ class BridgeCli:
         self._execute_facade = BridgeCliExecuteFacade()
         self._output_facade = BridgeCliOutputFacade()
         self._config_lifecycle = ConfigLifecycleService()
+        self._config_repository = ConfigRepository(self._config_lifecycle)
         self._workflow01 = Workflow01Service()
         self._parse_context = BridgeCliParseContext(
             parse_line=lambda line, mode: self._parser.parse(line, mode=mode),
@@ -2712,7 +2720,7 @@ class BridgeCli:
         """
         if self._local_config is not None:
             return
-        path = profiles_canonical_path()
+        path = self._config_repository.canonical_path()
         if not path.exists():
             return
         self._load_profiles_from_path(path, announce=True)
@@ -2740,7 +2748,7 @@ class BridgeCli:
         read_failed = False
         if path.exists():
             try:
-                payload = read_json(path)
+                payload = self._config_repository.load_path(path).to_payload()
             except Exception:
                 read_failed = True
                 self._warn(MESSAGE_ERR_PROFILES_PUSH_READ.format(path=path), essential=True)
@@ -3254,7 +3262,7 @@ class BridgeCli:
         NAME
             _init_profiles_payload - Initialize an empty profiles payload.
         """
-        root_path = profiles_canonical_path()
+        root_path = self._config_repository.canonical_path()
         self._local_root_path = root_path
         self._local_config_path = root_path
         payload: Dict[str, object] = {
@@ -5734,8 +5742,8 @@ class BridgeCli:
             print(MESSAGE_HINT_RESET_ZERO_CONFIG)
             return StatusResult(code=SS__CLI_PARSER__INVALID_FLAG)
 
-        canonical_path = profiles_canonical_path()
-        deploy_path = profiles_deploy_path()
+        canonical_path = self._config_repository.canonical_path()
+        deploy_path = self._config_repository.deploy_path()
         print(MESSAGE_RESET_ZERO_CONFIG_WARNING)
         print(MESSAGE_RESET_ZERO_CONFIG_TARGET.format(path=canonical_path))
         print(MESSAGE_RESET_ZERO_CONFIG_TARGET.format(path=deploy_path))
@@ -6513,85 +6521,34 @@ class BridgeCli:
         return profile_name
 
     def _dsl_store(self) -> RobotTestDslStore:
-        payload = {}
-        if isinstance(self._local_root_payload, dict):
-            payload = self._local_root_payload.get(KEY_DSL_TESTS)
-            if not isinstance(payload, dict):
-                payload = {}
-        return robot_test_dsl_store_from_payload(payload)
+        payload = self._local_root_payload if isinstance(self._local_root_payload, dict) else {}
+        return robot_test_dsl_store_from_root_payload(payload)
 
     def _dsl_write_store(self, store: RobotTestDslStore) -> None:
         if self._local_root_payload is None:
             return
-        self._local_root_payload[KEY_DSL_TESTS] = robot_test_dsl_store_to_payload(store)
+        robot_test_dsl_write_store_to_root_payload(self._local_root_payload, store)
         self._mark_tests_dirty()
         self._mark_profiles_dirty()
 
     def _dsl_signal_catalog(self) -> Dict[str, Dict[str, object]]:
-        payload = read_json(ROBOT_TEST_DSL_SIGNALS_PATH)
-        if not isinstance(payload, dict):
-            return {}
-        device_types = payload.get("deviceTypes")
-        if not isinstance(device_types, dict):
-            return {}
-        return {str(name): value for name, value in device_types.items() if isinstance(value, dict)}
+        return robot_test_dsl_signal_catalog(ROBOT_TEST_DSL_SIGNALS_PATH)
 
     def _dsl_device_catalog(self, profile_name: str) -> Dict[str, Dict[str, object]]:
-        result: Dict[str, Dict[str, object]] = {}
         payload = self._local_root_payload if isinstance(self._local_root_payload, dict) else {}
-        profiles = payload.get(KEY_PROFILES)
-        devices = payload.get(KEY_DEVICES)
-        if not isinstance(profiles, dict) or not isinstance(devices, list):
-            return result
-        profile = profiles.get(profile_name)
-        if not isinstance(profile, dict):
-            return result
-        selected = profile.get(KEY_PROFILE_DEVICES, [])
-        by_label = {
-            str(item.get(KEY_LABEL)): item
-            for item in devices
-            if isinstance(item, dict) and isinstance(item.get(KEY_LABEL), str)
-        }
-        if isinstance(selected, list):
-            for label in selected:
-                if isinstance(label, str) and label in by_label:
-                    result[label] = by_label[label]
-        return result
+        return robot_test_dsl_device_catalog(payload, profile_name)
 
     def _dsl_validate_store(self, store: RobotTestDslStore, profile_name: str):
         payload = self._local_root_payload if isinstance(self._local_root_payload, dict) else {}
-        profiles = payload.get(KEY_PROFILES)
-        if isinstance(profiles, dict) and profile_name not in profiles:
-            from tools.common.robot_test_dsl import ValidationResult, ValidationIssue
-
-            return ValidationResult(errors=[ValidationIssue(MESSAGE_ERROR_DSL_PROFILE_UNKNOWN.format(name=profile_name))])
-        return validate_robot_test_dsl_store(
-            store,
-            self._dsl_device_catalog(profile_name),
-            self._dsl_signal_catalog(),
-        )
+        return robot_test_dsl_validate_store_for_profile(payload, store, profile_name, ROBOT_TEST_DSL_SIGNALS_PATH)
 
     def _dsl_cleanup_stale_tests(self, store: RobotTestDslStore, profile_name: str) -> List[str]:
         """
         NAME
             _dsl_cleanup_stale_tests - Remove DSL tests that do not validate for the active profile.
         """
-        device_catalog = self._dsl_device_catalog(profile_name)
-        signal_catalog = self._dsl_signal_catalog()
-        removed: List[str] = []
-        for test_name in sorted(list(store.tests_by_name.keys())):
-            entry = store.tests_by_name.get(test_name)
-            if not isinstance(entry, RobotTestDslEntry):
-                continue
-            result = validate_robot_test_dsl_entry(test_name, entry, device_catalog, signal_catalog)
-            if result.ok():
-                continue
-            del store.tests_by_name[test_name]
-            removed.append(test_name)
-            for set_names in store.test_sets.values():
-                while test_name in set_names:
-                    set_names.remove(test_name)
-        return removed
+        payload = self._local_root_payload if isinstance(self._local_root_payload, dict) else {}
+        return robot_test_dsl_cleanup_stale_tests_in_store(payload, store, profile_name, ROBOT_TEST_DSL_SIGNALS_PATH)
 
     @staticmethod
     def _dsl_issue_line_excerpt(entry: RobotTestDslEntry, field: str) -> Optional[str]:
@@ -6621,29 +6578,8 @@ class BridgeCli:
         NAME
             _dsl_issue_detail - Render a location detail suffix for one DSL validation issue.
         """
-        field = getattr(issue, "field", None)
-        if not isinstance(field, str) or not field.strip():
-            return EMPTY_STRING
-        entry: Optional[RobotTestDslEntry] = None
-        test_name = getattr(issue, "test_name", None)
-        if isinstance(entries_override, dict) and isinstance(test_name, str):
-            candidate = entries_override.get(test_name)
-            if isinstance(candidate, RobotTestDslEntry):
-                entry = candidate
-        if entry is None:
-            store = self._dsl_store()
-            if isinstance(test_name, str):
-                candidate = store.tests_by_name.get(test_name)
-                if isinstance(candidate, RobotTestDslEntry):
-                    entry = candidate
-        if entry is None:
-            if field.strip() in DSL_VALIDATION_META_FIELDS:
-                return EMPTY_STRING
-            return f" ({MESSAGE_DSL_VALIDATION_FIELD_FMT.format(field=field.strip())})"
-        excerpt = self._dsl_issue_line_excerpt(entry, field)
-        if not excerpt:
-            return EMPTY_STRING
-        return f" ({excerpt})"
+        store = self._dsl_store()
+        return robot_test_dsl_issue_detail(issue, store, entries_override)
 
     def _dsl_print_validation(
         self,
@@ -6652,22 +6588,14 @@ class BridgeCli:
         pretty: bool,
         entries_override: Optional[Dict[str, RobotTestDslEntry]] = None,
     ) -> None:
-        payload = {
-            "errors": [issue.__dict__ for issue in result.errors],
-            "warnings": [issue.__dict__ for issue in result.warnings],
-        }
-        if json_output:
-            print(self._dump_json(payload, pretty))
-            return
-        if not result.errors and not result.warnings:
-            print("OK")
-            return
-        for issue in result.errors:
-            prefix = issue.test_name or "-"
-            print(f"ERROR: {prefix}: {issue.message}{self._dsl_issue_detail(issue, entries_override)}")
-        for issue in result.warnings:
-            prefix = issue.test_name or "-"
-            print(f"WARNING: {prefix}: {issue.message}{self._dsl_issue_detail(issue, entries_override)}")
+        text = robot_test_dsl_render_validation_text(
+            result,
+            self._dsl_store(),
+            json_output=json_output,
+            pretty=pretty,
+            entries_override=entries_override,
+        )
+        print(text)
 
     def _dsl_show_command(self, tokens: List[str]) -> StatusResult:
         root = self._dsl_require_local_root()
@@ -6769,39 +6697,28 @@ class BridgeCli:
                     return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
                 set_name = tokens[5]
             try:
-                source = source_path.read_text(encoding=ENCODING_UTF8)
-                normalized = compile_robot_test_dsl_source(test_name, source)
+                import_result = robot_test_dsl_import_test_into_root_payload(
+                    root,
+                    profile_name,
+                    test_name,
+                    source_path,
+                    set_name=set_name,
+                    signal_catalog_path=ROBOT_TEST_DSL_SIGNALS_PATH,
+                )
             except Exception as exc:
-                print(f"ERROR: {exc}")
+                print(str(exc))
                 return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
-            entry = RobotTestDslEntry(
-                name=test_name,
-                source=source,
-                normalized=normalized,
-                source_hash=robot_test_dsl_source_hash(source),
-            )
-            result = validate_robot_test_dsl_entry(
-                test_name,
-                entry,
-                self._dsl_device_catalog(profile_name),
-                self._dsl_signal_catalog(),
-            )
+            result = import_result.validation
             if not result.ok():
-                self._dsl_print_validation(result, False, False, entries_override={test_name: entry})
+                self._dsl_print_validation(
+                    result,
+                    False,
+                    False,
+                    entries_override={test_name: import_result.entry},
+                )
                 return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
-            store.tests_by_name[test_name] = entry
-            names = list(store.test_sets.get(set_name, []))
-            if test_name not in names:
-                names.append(test_name)
-            store.test_sets[set_name] = names
-            if not store.default_set:
-                store.default_set = set_name
-            profiles = root.get(KEY_PROFILES)
-            if isinstance(profiles, dict):
-                profile = profiles.get(profile_name)
-                if isinstance(profile, dict):
-                    profile[KEY_DSL_TEST_SET] = set_name
-            self._dsl_write_store(store)
+            self._mark_tests_dirty()
+            self._mark_profiles_dirty()
             print(MESSAGE_DSL_TEST_IMPORTED.format(name=test_name))
             return StatusResult(code=SS__NORMAL)
         if sub == CMD_EXPORT:
@@ -10561,35 +10478,26 @@ class BridgeCli:
             return None
         self._tracker.start("cli", None, seq, now=time.time(), retryable=False)
         self._last_seq = seq
-        deadline = time.time() + timeout_sec
-        ack_status = ""
-        ack_message = ""
-        while time.time() < deadline:
-            events = self._session.poll_events()
-            if not events:
-                time.sleep(0.02)
-                continue
-            for event in events:
-                if print_events:
-                    self._print_event(event)
-                if event.type == EVENT_TYPE_ACK:
-                    self._proto_mark_ack(event.seq, now=time.time())
-                if event.type == EVENT_TYPE_OUT:
-                    self._proto_mark_out(event.seq, now=time.time())
-                if event.type in ("ack", "out"):
-                    self._tracker.handle_event(event)
-                if event.seq == seq and event.type == "ack":
-                    ack_status = event.status
-                    ack_message = event.message
-                if event.seq == seq and event.type == "out":
-                    if ack_status:
-                        event.status = ack_status
-                        event.message = ack_message
-                    return event
+        def _on_event(event: BridgeEvent) -> None:
+            if print_events:
+                self._print_event(event)
+            if event.type == EVENT_TYPE_ACK:
+                self._proto_mark_ack(event.seq, now=time.time())
+            if event.type == EVENT_TYPE_OUT:
+                self._proto_mark_out(event.seq, now=time.time())
+
+        result = wait_for_command_event(
+            self._session,
+            self._tracker,
+            seq,
+            timeout_sec=timeout_sec,
+            on_event=_on_event,
+        )
+        if result.event is None:
             self._proto_mark_timeout(now=time.time())
             if not suppress_timeout_warning:
                 self._debug_log(MESSAGE_WAITING_FOR_OUT)
-        return None
+        return result.event
 
     def _event_failed(self, event: Optional[BridgeEvent], context: str) -> bool:
         if event is None:
@@ -15789,33 +15697,22 @@ class BridgeCli:
         self._sync_store_tests()
         payload = dict(self._local_root_payload)
         payload["bridgeConfig"] = self._ordered_bridge_config(self._local_config)
+        target_path = Path(path)
         payload["schema_version"] = PROFILE_SCHEMA_VERSION
         payload["data_version"] = timestamp_version()
         payload["data_hash"] = compute_profiles_hash(payload)
-        ok, error = self._atomic_write_json(
-            Path(path),
-            payload,
-            JSON_PRETTY_INDENT,
-            True,
-        )
-        if not ok:
-            print(MESSAGE_ERR_SAVE_WRITE.format(path=path, error=error))
+        try:
+            target = target_path.resolve()
+            canonical = self._config_repository.canonical_path().resolve()
+            deploy = self._config_repository.deploy_path().resolve()
+            session = self._config_repository.session_for_payload(target_path, payload)
+            if target == canonical or target == deploy:
+                self._config_repository.sync(session, stamp=False)
+            else:
+                self._config_repository.save(session, path=target_path, stamp=False)
+        except Exception as exc:
+            print(MESSAGE_ERR_SAVE_WRITE.format(path=path, error=exc))
             return StatusResult(code=SS__CONFIG__INVALID)
-        mirror_path = self._mirror_repo_save_target(
-            Path(path),
-            profiles_canonical_path(),
-            profiles_deploy_path(),
-        )
-        if mirror_path is not None:
-            ok, error = self._atomic_write_json(
-                mirror_path,
-                payload,
-                JSON_PRETTY_INDENT,
-                True,
-            )
-            if not ok:
-                print(MESSAGE_ERR_SAVE_WRITE.format(path=mirror_path, error=error))
-                return StatusResult(code=SS__CONFIG__INVALID)
         self._profiles_dirty = False
         self._groups_dirty = False
         self._tests_dirty = False
@@ -15831,8 +15728,15 @@ class BridgeCli:
         )
         self._record_last_save(Path(path))
         print(f"Wrote profiles to {path}.")
-        if mirror_path is not None:
-            print(MESSAGE_INFO_PROFILES_MIRRORED.format(path=mirror_path))
+        if target_path.resolve() in (
+            self._config_repository.canonical_path().resolve(),
+            self._config_repository.deploy_path().resolve(),
+        ):
+            canonical = self._config_repository.canonical_path().resolve()
+            deploy = self._config_repository.deploy_path().resolve()
+            if canonical != deploy:
+                other = deploy if target_path.resolve() == canonical else canonical
+                print(MESSAGE_INFO_PROFILES_MIRRORED.format(path=other))
         return StatusResult(code=SS__CONFIG__SAVED)
 
     def _save_all(self, prompt: bool, force: bool = False) -> StatusResult:
@@ -16692,7 +16596,7 @@ class BridgeCli:
         NAME
             _profile_export_save_source_lines - Build explicit save commands.
         """
-        profiles_path = self._local_root_path or profiles_canonical_path()
+        profiles_path = self._local_root_path or self._config_repository.canonical_path()
         bindings_path = self._bindings_path or bindings_deploy_path()
         mappings_path = self._can_mappings_path or can_mappings_path()
         return [
@@ -17684,14 +17588,18 @@ class BridgeCli:
         payload = self._build_unified_payload()
         if payload is None:
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
-        ok, error = self._atomic_write_json(
-            Path(path),
-            payload,
-            JSON_PRETTY_INDENT,
-            True,
-        )
-        if not ok:
-            print(MESSAGE_ERR_SAVE_WRITE.format(path=path, error=error))
+        target_path = Path(path)
+        try:
+            target = target_path.resolve()
+            canonical = self._config_repository.canonical_path().resolve()
+            deploy = self._config_repository.deploy_path().resolve()
+            session = self._config_repository.session_for_payload(target_path, payload)
+            if target == canonical or target == deploy:
+                self._config_repository.sync(session, stamp=False)
+            else:
+                self._config_repository.save(session, path=target_path, stamp=False)
+        except Exception as exc:
+            print(MESSAGE_ERR_SAVE_WRITE.format(path=path, error=exc))
             return StatusResult(code=SS__CONFIG__INVALID)
         self._profiles_dirty = False
         self._groups_dirty = False
@@ -17775,7 +17683,7 @@ class BridgeCli:
                 print(message)
             return StatusResult(code=SS__CONFIG__INVALID)
         try:
-            payload = read_json(temp_path)
+            payload = self._config_repository.load_path(temp_path).to_payload()
         except Exception as exc:
             print(MESSAGE_ERR_SAVE_WRITE.format(path=path, error=exc))
             return StatusResult(code=SS__CONFIG__INVALID)
@@ -17784,14 +17692,12 @@ class BridgeCli:
                 temp_path.unlink()
         except Exception:
             pass
-        ok, error = self._atomic_write_json(
-            target_path,
-            payload,
-            JSON_PRETTY_INDENT,
-            True,
-        )
-        if not ok:
-            print(MESSAGE_ERR_SAVE_WRITE.format(path=path, error=error))
+        try:
+            session = self._config_repository.session_for_payload(target_path, payload)
+            self._config_repository.save(session, path=target_path)
+            payload = session.to_payload()
+        except Exception as exc:
+            print(MESSAGE_ERR_SAVE_WRITE.format(path=path, error=exc))
             return StatusResult(code=SS__CONFIG__INVALID)
         self._post_save(
             AUDIT_ACTION_SAVE,
@@ -18161,7 +18067,7 @@ class BridgeCli:
                 print("INFO: repair mode enabled")
         source_path = Path(path)
         try:
-            payload = read_json(source_path)
+            payload = self._config_repository.load_path(source_path).to_payload()
         except Exception:
             print(MESSAGE_VALIDATE_FILE_LOAD.format(path=path))
             return StatusResult(code=SS__CONFIG__INVALID)
@@ -18171,14 +18077,11 @@ class BridgeCli:
         if repair:
             repaired, changed = self._repair_profiles_payload(payload)
             if changed:
-                ok, error = self._atomic_write_json(
-                    source_path,
-                    repaired,
-                    JSON_PRETTY_INDENT,
-                    True,
-                )
-                if not ok:
-                    print(MESSAGE_ERR_SAVE_WRITE.format(path=path, error=error))
+                try:
+                    session = self._config_repository.session_for_payload(source_path, repaired)
+                    self._config_repository.save(session, path=source_path)
+                except Exception as exc:
+                    print(MESSAGE_ERR_SAVE_WRITE.format(path=path, error=exc))
                     return StatusResult(code=SS__CONFIG__INVALID)
                 self._post_save(
                     AUDIT_ACTION_REPAIR,

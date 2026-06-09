@@ -590,6 +590,8 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
     def test_robot_2026_swerve_save_restart_roundtrip_retains_values(self) -> None:
         profile_name = "robot_2026_swerve"
         source_path = self._regression_fixture_path(profile_name, "bringup_system.json")
+        if not source_path.exists():
+            self.skipTest(f"Missing regression fixture: {source_path}")
         original_messagebox = can_top_editor.messagebox
         can_top_editor.messagebox = _MessageBoxStub
         try:
@@ -1153,8 +1155,8 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
         editor._non_topology_profile_labels = []
         editor._profile_source_path = ""
         editor._default_profiles_path = lambda: Path("does_not_exist.json")
-        original_read_json = can_top_editor.read_json
-        can_top_editor.read_json = lambda _path: {
+        original_load_config_payload = TopologyEditor._load_config_payload
+        TopologyEditor._load_config_payload = lambda self, _path: {
             "profiles": {
                 "current_profile": {"devices": []},
                 "alpha": {"devices": ["Motor 25"]},
@@ -1165,7 +1167,7 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
             editor._profile_source_path = str(Path(__file__))
             editor._refresh_list()
         finally:
-            can_top_editor.read_json = original_read_json
+            TopologyEditor._load_config_payload = original_load_config_payload
 
         self.assertEqual(
             editor.node_list.items["inventory:Motor 25"][5],

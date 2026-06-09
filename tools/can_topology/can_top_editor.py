@@ -494,12 +494,19 @@ except ImportError:  # Allow running as a script from this folder.
     from common.topology_draw import draw_group_overlays, render_topology_canvas_common  # type: ignore
 try:
     from tools.common.paths import profiles_canonical_path, profiles_deploy_path, repo_root
+    from tools.common.config_api import ConfigRepository
     from tools.common.profile_io import compute_profiles_hash
 except ImportError:
-    profiles_canonical_path = None
-    profiles_deploy_path = None
-    repo_root = None
-    compute_profiles_hash = None
+    try:
+        from common.paths import profiles_canonical_path, profiles_deploy_path, repo_root  # type: ignore
+        from common.config_api import ConfigRepository  # type: ignore
+        from common.profile_io import compute_profiles_hash  # type: ignore
+    except ImportError:
+        profiles_canonical_path = None
+        profiles_deploy_path = None
+        repo_root = None
+        ConfigRepository = None
+        compute_profiles_hash = None
 
 try:
     from tools.common import profile_constants as profile_consts
@@ -739,6 +746,49 @@ class TopologyEditor(tk.Tk):
         Manages the node list, canvas rendering, and file export of a bringup
         system JSON.
     """
+
+    @staticmethod
+    def _config_repository() -> Optional["ConfigRepository"]:
+        """
+        NAME
+            _config_repository - Return the shared config repository when available.
+        """
+        if ConfigRepository is None:
+            return None
+        return ConfigRepository()
+
+    def _load_config_payload(self, path: Path) -> Dict[str, object]:
+        """
+        NAME
+            _load_config_payload - Load a bringup_system.json-compatible payload through the shared repository.
+        """
+        repository = self._config_repository()
+        if repository is not None:
+            return repository.load_path(path).to_payload()
+        return read_json(path)
+
+    def _save_config_payload(self, path: Path, data: Dict[str, object]) -> Dict[str, object]:
+        """
+        NAME
+            _save_config_payload - Save a bringup_system.json-compatible payload through the shared repository.
+        """
+        repository = self._config_repository()
+        if repository is not None:
+            session = repository.session_for_payload(path, data)
+            target = path.resolve()
+            canonical = repository.canonical_path().resolve()
+            deploy = repository.deploy_path().resolve()
+            if target == canonical or target == deploy:
+                repository.sync(session)
+            else:
+                repository.save(session, path=path)
+            return session.to_payload()
+        data["schema_version"] = self._expected_schema_version()
+        data["data_version"] = timestamp_version()
+        data["data_hash"] = self._compute_data_hash(data)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        return data
 
     def __init__(self) -> None:
         super().__init__()
@@ -2002,13 +2052,13 @@ class TopologyEditor(tk.Tk):
                 )
             ):
                 try:
-                    data = read_json(path)
+                    data = self._load_config_payload(path)
                 except Exception as exc:
                     messagebox.showerror("Error", f"Failed to open file: {exc}")
                     return None
         else:
             try:
-                data = read_json(path)
+                data = self._load_config_payload(path)
             except Exception as exc:
                 messagebox.showerror("Error", f"Failed to open file: {exc}")
                 return None
@@ -2073,12 +2123,27 @@ class TopologyEditor(tk.Tk):
         self._apply_node_updates_to_registry()
         if self._device_registry_list:
             data["devices"] = self._device_registry_list
-        data["schema_version"] = self._expected_schema_version()
-        data["data_version"] = timestamp_version()
-        data["data_hash"] = self._compute_data_hash(data)
         try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+            if ConfigRepository is not None:
+                repository = ConfigRepository()
+                session = repository.session_for_payload(path, data)
+                target = path.resolve()
+                canonical = repository.canonical_path().resolve()
+                deploy = repository.deploy_path().resolve()
+                if target == canonical or target == deploy:
+                    repository.sync(session)
+                    data.clear()
+                    data.update(session.to_payload())
+                else:
+                    repository.save(session, path=path)
+                    data.clear()
+                    data.update(session.to_payload())
+            else:
+                data["schema_version"] = self._expected_schema_version()
+                data["data_version"] = timestamp_version()
+                data["data_hash"] = self._compute_data_hash(data)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
         except Exception as exc:
             messagebox.showerror("Error", f"Failed to write {path}: {exc}")
             return False
@@ -2482,8 +2547,7 @@ class TopologyEditor(tk.Tk):
             selected_name: Optional profile name to load.
         """
         try:
-            with open(path, "r", encoding="utf-8") as handle:
-                data = json.load(handle)
+            data = self._load_config_payload(Path(path))
         except Exception as exc:
             messagebox.showerror("Error", f"Failed to open file: {exc}")
             return
@@ -2763,14 +2827,14 @@ class TopologyEditor(tk.Tk):
 
     @staticmethod
     def _canonical_profiles_path() -> Path:
-        if profiles_canonical_path is not None:
-            return profiles_canonical_path()
+        if ConfigRepository is not None:
+            return ConfigRepository().canonical_path()
         return Path(__file__).resolve().parents[2] / "src" / "main" / "deploy" / "bringup_system.json"
 
     @staticmethod
     def _deploy_profiles_path() -> Path:
-        if profiles_deploy_path is not None:
-            return profiles_deploy_path()
+        if ConfigRepository is not None:
+            return ConfigRepository().deploy_path()
         return Path(__file__).resolve().parents[2] / "src" / "main" / "deploy" / "bringup_system.json"
 
     def _read_profile_index(self) -> Tuple[List[str], Optional[str]]:
@@ -2778,7 +2842,7 @@ class TopologyEditor(tk.Tk):
             path = self._default_profiles_path()
             if not path.exists():
                 return [], None
-            data = read_json(path)
+            data = self._load_config_payload(path)
             profiles = data.get("profiles")
             if not isinstance(profiles, dict) or not profiles:
                 return [], None
@@ -2946,11 +3010,8 @@ class TopologyEditor(tk.Tk):
         self._apply_node_updates_to_registry()
         if self._device_registry_list:
             data["devices"] = self._device_registry_list
-        data["data_hash"] = self._compute_data_hash(data)
         try:
-            with open(path, "w", encoding="utf-8") as handle:
-                json.dump(data, handle, indent=2)
-                handle.write("\n")
+            data = self._save_config_payload(Path(path), data)
         except Exception as exc:
             messagebox.showerror("Error", f"Failed to write file: {exc}")
             return
@@ -3074,9 +3135,7 @@ class TopologyEditor(tk.Tk):
             if link.get(KEY_LINK_A) in selected_keys and link.get(KEY_LINK_B) in selected_keys
         ]
         try:
-            with open(path, "w", encoding="utf-8") as handle:
-                json.dump(data, handle, indent=2)
-                handle.write("\n")
+            self._save_config_payload(Path(path), data)
         except Exception as exc:
             messagebox.showerror("Error", f"Failed to write file: {exc}")
             return
@@ -3101,8 +3160,14 @@ class TopologyEditor(tk.Tk):
             _sync_profiles_to_deploy - Copy canonical profiles into deploy path.
         """
         try:
-            deploy.parent.mkdir(parents=True, exist_ok=True)
-            deploy.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+            if ConfigRepository is not None:
+                repository = ConfigRepository()
+                payload = repository.load_path(source).to_payload()
+                session = repository.session_for_payload(deploy, payload)
+                repository.save(session, path=deploy)
+            else:
+                deploy.parent.mkdir(parents=True, exist_ok=True)
+                deploy.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
         except Exception:
             # Best-effort sync; report via UI only if needed.
             pass
@@ -3141,8 +3206,7 @@ class TopologyEditor(tk.Tk):
         data = {}
         if path.exists():
             try:
-                with path.open("r", encoding="utf-8") as handle:
-                    data = json.load(handle)
+                data = self._load_config_payload(path)
             except Exception as exc:
                 messagebox.showerror("Error", f"Failed to read {path}: {exc}")
                 return
@@ -4620,8 +4684,7 @@ class TopologyEditor(tk.Tk):
             )
             return
         try:
-            with open(path, "r", encoding="utf-8") as handle:
-                data = json.load(handle)
+            data = self._load_config_payload(path)
             schema_version = data.get("schema_version")
             if schema_version not in self._accepted_schema_versions():
                 messagebox.showerror(
@@ -4680,9 +4743,7 @@ class TopologyEditor(tk.Tk):
             KEY_TOPOLOGY_PROFILES: topology_profiles,
         }
         try:
-            with open(path, "w", encoding="utf-8") as handle:
-                json.dump(data, handle, indent=2)
-                handle.write("\n")
+            self._save_config_payload(path, data)
         except Exception as exc:
             messagebox.showerror("Error", f"Failed to save file: {exc}")
             return
@@ -6154,7 +6215,7 @@ class TopologyEditor(tk.Tk):
         if not source_path.exists():
             return []
         try:
-            data = read_json(source_path)
+            data = self._load_config_payload(source_path)
         except Exception:
             return []
         profiles = data.get(KEY_PROFILES)
@@ -6182,7 +6243,7 @@ class TopologyEditor(tk.Tk):
         data: Dict[str, object] = {}
         if source_path.exists():
             try:
-                loaded = read_json(source_path)
+                loaded = self._load_config_payload(source_path)
                 if isinstance(loaded, dict):
                     data = loaded
             except Exception:
@@ -6303,7 +6364,7 @@ class TopologyEditor(tk.Tk):
         if not source_path.exists():
             return entries
         try:
-            loaded = read_json(source_path)
+            loaded = self._load_config_payload(source_path)
         except Exception:
             return entries
         if not isinstance(loaded, dict):

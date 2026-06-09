@@ -20,7 +20,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from tools.can_nt.config_transfer_service import (
+    download_current_config as shared_download_current_config,
+    push_config as shared_push_config,
+)
 from tools.can_nt.bridge_session import BridgeEvent, BridgeSession, _local_timezone_args
+from tools.can_nt.runtime_query_service import fetch_json_command
 from tools.can_nt.status import (
     StatusResult,
     SS__CONFIG__INVALID,
@@ -105,6 +110,13 @@ from tools.common.profile_constants import (
 from tools.common.profile_io import validate_profiles_schema
 from tools.common.profile_io import compute_profiles_hash
 from tools.common.profile_constants import PROFILE_SCHEMA_VERSION, KEY_SCHEMA_VERSION, KEY_DATA_VERSION, KEY_DATA_HASH
+from tools.can_nt.test_execution_service import (
+    run_all_tests as shared_run_all_tests,
+    run_selected_test as shared_run_test,
+    select_test_by_name as shared_select_test_by_name,
+    show_tests as shared_show_tests,
+    toggle_test as shared_toggle_test,
+)
 
 CONFIG_SCHEMA_VERSION = BRIDGE_CONFIG_SCHEMA_VERSION
 SEP_COMMA_SPACE = ", "
@@ -439,7 +451,7 @@ def select_test_by_name(session: BridgeSession, name: str) -> Optional[int]:
     NAME
         select_test_by_name - Select a scripted test by name.
     """
-    return _send(session, CMD_SELECT_TEST_BY_NAME, {"name": name})
+    return shared_select_test_by_name(session, name)
 
 
 def toggle_test(session: BridgeSession) -> Optional[int]:
@@ -447,7 +459,7 @@ def toggle_test(session: BridgeSession) -> Optional[int]:
     NAME
         toggle_test - Toggle enabled state of the currently selected test.
     """
-    return _send(session, CMD_TOGGLE_TEST, {})
+    return shared_toggle_test(session)
 
 
 def run_test(session: BridgeSession) -> Optional[int]:
@@ -455,7 +467,7 @@ def run_test(session: BridgeSession) -> Optional[int]:
     NAME
         run_test - Run the currently selected test once.
     """
-    return _send(session, CMD_RUN_TEST, {})
+    return shared_run_test(session)
 
 
 def run_all_tests(session: BridgeSession) -> Optional[int]:
@@ -463,7 +475,7 @@ def run_all_tests(session: BridgeSession) -> Optional[int]:
     NAME
         run_all_tests - Run all enabled tests sequentially.
     """
-    return _send(session, CMD_RUN_ALL_TESTS, {})
+    return shared_run_all_tests(session)
 
 
 def active_add(session: BridgeSession) -> Optional[int]:
@@ -593,7 +605,7 @@ def show_tests(session: BridgeSession, json_output: bool = False) -> Optional[in
     NAME
         show_tests - Request bringup tests overview output.
     """
-    return _send(session, CMD_SHOW_TESTS, _json_arg(json_output))
+    return shared_show_tests(session, json_output=json_output)
 
 
 def group_create(session: BridgeSession, name: str) -> Optional[int]:
@@ -1194,11 +1206,7 @@ def _fetch_runtime_json_command(
     NAME
         _fetch_runtime_json_command - Fetch one JSON show-command payload from the robot.
     """
-    seq = send_command(session, command_name, {"json": True})
-    event = _wait_for_command_event(session, seq)
-    if not _event_succeeded(event):
-        return None
-    return parse_json_arg(event.json_text) if event is not None else None
+    return fetch_json_command(session, command_name, timeout_sec=PUSH_TIMEOUT_SEC)
 
 
 def push_config(
@@ -1211,51 +1219,12 @@ def push_config(
     NAME
         push_config - Push a full bringup_system.json payload plus profile groups to the robot.
     """
-    if not profile_name:
-        return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED, message=MSG_PROFILE_REQUIRED)
-    ok, error, raw, payload = _read_registry_raw(path)
-    if not ok or payload is None:
-        return StatusResult(code=SS__CONFIG__INVALID, message=error or MSG_PUSH_PARSE_ROOT)
-    valid, message = _validate_registry_payload(payload, profile_name)
-    if not valid:
-        return StatusResult(code=SS__CONFIG__INVALID, message=message)
-    registry_hash = _hash_raw_registry(raw)
-    registry_bytes = len(raw.encode(ENCODING_UTF8))
-    args = {
-        "registryJson": raw,
-        "registryHash": registry_hash,
-        "registryBytes": registry_bytes,
-    }
-    event = _wait_for_command_event(session, send_command(session, "profilesApply", args))
-    if event is None:
-        return StatusResult(code=SS__NETWORK__ROBOT_UNAVAILABLE, message=MSG_PUSH_TIMEOUT)
-    apply_payload = parse_json_arg(event.json_text) if event.json_text else None
-    if not _event_succeeded(event):
-        return StatusResult(code=SS__CONFIG__INVALID, message=event.message or MSG_PUSH_APPLY_FAILED)
-    select_event = _wait_for_command_event(
-        session, send_command(session, "selectProfile", {KEY_NAME: profile_name})
-    )
-    if not _event_succeeded(select_event):
-        return StatusResult(
-            code=SS__NETWORK__ROBOT_UNAVAILABLE,
-            message=(select_event.message if select_event is not None else MSG_PUSH_TIMEOUT),
-        )
-    cleared, clear_message = _clear_existing_groups_remote(session)
-    if not cleared:
-        return StatusResult(code=SS__NETWORK__ROBOT_UNAVAILABLE, message=clear_message)
-    plan = import_config(path, conflict_policy, profile_name)
-    if not plan.ok:
-        return StatusResult(code=SS__CONFIG__INVALID, message=plan.message)
-    for command in plan.commands:
-        event = _wait_for_command_event(session, send_command(session, command.name, command.args))
-        if not _event_succeeded(event):
-            return StatusResult(
-                code=SS__NETWORK__ROBOT_UNAVAILABLE,
-                message=(event.message if event is not None else MSG_PUSH_TIMEOUT),
-            )
-    return StatusResult(
-        code=SS__CONFIG__SAVED,
-        message=MSG_PUSH_OK if not isinstance(apply_payload, dict) else str(apply_payload.get("message", MSG_PUSH_OK)),
+    return shared_push_config(
+        session,
+        path,
+        profile_name,
+        conflict_policy,
+        plan_loader=import_config,
     )
 
 
@@ -1264,16 +1233,7 @@ def download_current_config(session: BridgeSession, path: str) -> StatusResult:
     NAME
         download_current_config - Download the robot's current bringup_system.json to disk.
     """
-    if not path:
-        return StatusResult(code=SS__CONFIG__INVALID, message=MSG_PUSH_PATH_REQUIRED)
-    payload = session.fetch_current_config()
-    if not isinstance(payload, dict):
-        return StatusResult(code=SS__NETWORK__ROBOT_UNAVAILABLE, message=MSG_DOWNLOAD_FETCH_FAILED)
-    try:
-        write_json(Path(path), payload, indent=2, trailing_newline=True)
-    except Exception:
-        return StatusResult(code=SS__CONFIG__INVALID, message=MSG_DOWNLOAD_WRITE_FAILED.format(path=path))
-    return StatusResult(code=SS__CONFIG__SAVED, message=f"Wrote current robot config to {path}.")
+    return shared_download_current_config(session, path)
 
 
 def group_add_device(

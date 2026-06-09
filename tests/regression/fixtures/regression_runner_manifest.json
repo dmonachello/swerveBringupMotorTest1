@@ -127,6 +127,18 @@
         "{repo}/tools/can_nt/scripts/changelog_guard.py"
       ]
     },
+    "config-api-guard": {
+      "label": "config-api-guard",
+      "mode": "local",
+      "features": [
+        "shared config API policy",
+        "bringup_system access guard"
+      ],
+      "argv": [
+        "{python}",
+        "{repo}/tools/can_nt/scripts/config_api_guard.py"
+      ]
+    },
     "robot-non-motion": {
       "label": "robot-non-motion",
       "mode": "connected",
@@ -164,7 +176,8 @@
       "cross-surface"
     ],
     "changelog": [
-      "changelog-guard"
+      "changelog-guard",
+      "config-api-guard"
     ],
     "local": [
       "dsl-unit",
@@ -174,7 +187,8 @@
       "group-targeting-4m2g3t",
       "topology-editor",
       "cross-surface",
-      "changelog-guard"
+      "changelog-guard",
+      "config-api-guard"
     ],
     "robot-non-motion": [
       "robot-non-motion"

@@ -14,11 +14,7 @@ DESCRIPTION
 
 from typing import Any, Dict, List, Set, Tuple
 
-from tools.common.json_io import read_json
-from tools.common.paths import (
-    profiles_canonical_path,
-    legacy_profiles_canonical_path,
-)
+from tools.common.config_api.repository import ConfigRepository
 from tools.common.profile_constants import (
     INTERFACE_CAN,
     KEY_ATTACHMENTS,
@@ -45,8 +41,6 @@ from tools.common.profile_io import compute_profiles_hash
 from .can_frc_defs import uses_status_presence
 
 DEFAULT_PROFILE_NAME = "robot"
-CANONICAL_PROFILE_FILE = profiles_canonical_path()
-LEGACY_PROFILE_FILE = legacy_profiles_canonical_path()
 _LOAD_ERROR: str = ""
 _DATA_VERSION: str = ""
 _DATA_HASH: str = ""
@@ -85,13 +79,13 @@ def _load_profiles() -> Tuple[str, Dict[str, List[Dict[str, Any]]]]:
     _LOAD_ERROR = EMPTY_STRING
     _DATA_VERSION = EMPTY_STRING
     _DATA_HASH = EMPTY_STRING
-    path = CANONICAL_PROFILE_FILE if CANONICAL_PROFILE_FILE.exists() else LEGACY_PROFILE_FILE
+    path = ConfigRepository().canonical_path()
     if not path.exists():
         _LOAD_ERROR = MSG_LOAD_MISSING.format(path=path)
         return (_fallback_default(), _fallback_profiles())
 
     try:
-        payload = read_json(path)
+        payload = ConfigRepository().load_path(path).to_payload()
     except Exception:
         _LOAD_ERROR = MSG_LOAD_PARSE.format(path=path)
         return (_fallback_default(), _fallback_profiles())

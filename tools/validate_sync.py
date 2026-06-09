@@ -36,7 +36,7 @@ import argparse
 from pathlib import Path
 from typing import List
 
-from tools.common.json_io import read_json
+from tools.common.config_api.repository import ConfigRepository
 from tools.common.paths import repo_root as repo_root_path
 from tools.common.config_lifecycle import ConfigLifecycleService
 from tools.common.profile_constants import (
@@ -168,7 +168,7 @@ def main() -> int:
             print(MSG_FMT_ISSUE.format(level=MSG_WARNING, location=location, message=message))
 
     try:
-        payload = read_json(canonical_path)
+        payload = ConfigRepository().load_path(canonical_path).to_payload()
     except Exception as exc:
         print(MSG_ERR_READ.format(path=canonical_path, error=exc))
         return EXIT_ERROR
@@ -203,7 +203,7 @@ def main() -> int:
 
     if args.validate_deploy:
         try:
-            deployed = read_json(deploy_path)
+            deployed = ConfigRepository().load_path(deploy_path).to_payload()
         except Exception as exc:
             print(MSG_ERR_DEPLOY_READ.format(path=deploy_path, error=exc))
             return EXIT_ERROR

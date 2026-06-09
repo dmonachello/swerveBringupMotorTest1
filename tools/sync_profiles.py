@@ -25,7 +25,7 @@ ERRORS
 import argparse
 from pathlib import Path
 
-from tools.common.json_io import read_json, write_json
+from tools.common.config_api.repository import ConfigRepository
 from tools.common.profile_constants import (
     KEY_DATA_HASH,
     KEY_DATA_VERSION,
@@ -67,7 +67,7 @@ def main() -> int:
         print(MSG_ERR_SOURCE_MISSING.format(path=source))
         return 2
     try:
-        payload = read_json(source)
+        payload = ConfigRepository().load_path(source).to_payload()
     except Exception as exc:
         print(MSG_ERR_READ.format(error=exc))
         return 2
@@ -83,9 +83,11 @@ def main() -> int:
     payload[KEY_DATA_HASH] = compute_profiles_hash(payload)
     payload[KEY_SCHEMA_VERSION] = PROFILE_SCHEMA_VERSION
     try:
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        write_json(source, payload)
-        write_json(dest, payload)
+        repository = ConfigRepository()
+        source_session = repository.session_for_payload(source, payload)
+        repository.save(source_session, path=source, stamp=False)
+        dest_session = repository.session_for_payload(dest, source_session.to_payload())
+        repository.save(dest_session, path=dest, stamp=False)
     except Exception as exc:
         print(MSG_ERR_COPY.format(error=exc))
         return 2

@@ -142,6 +142,8 @@ The canonical machine-readable source is:
 
 - [tools/common/generated/robot_test_dsl_signals.json](../tools/common/generated/robot_test_dsl_signals.json)
 
+That generated file is exported from the robot-side DSL signal registry and should match the host-side validator and runtime.
+
 The table below is the human-readable summary.
 
 <!-- markdownlint-disable MD013 -->
@@ -529,6 +531,13 @@ test validate spin_up_motor1 --json --pretty
 end
 show test spin_up_motor1
 show test spin_up_motor1 normalized --json --pretty
+```
+
+Robot-side execution then uses the selected-test runner:
+
+```text
+tests select spin_up_motor1
+tests run --wait --timeout 10
 ```
 
 ## 12. Examples

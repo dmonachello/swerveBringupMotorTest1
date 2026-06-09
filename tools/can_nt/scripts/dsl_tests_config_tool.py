@@ -18,7 +18,8 @@ REPO_ROOT = SCRIPT_PATH.parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from tools.common.json_io import read_json, write_json
+from tools.common.config_api.repository import ConfigRepository
+from tools.common.json_io import read_json
 from tools.common.profile_constants import (
     KEY_DEFAULT_PROFILE,
     KEY_DSL_DEFAULT_SET,
@@ -70,7 +71,7 @@ def main() -> int:
 
     args = parser.parse_args()
     path = Path(args.config)
-    payload = read_json(path)
+    payload = ConfigRepository().load_path(path).to_payload()
     if not isinstance(payload, dict):
         print("ERROR: config payload must be a JSON object.")
         return 1
@@ -93,7 +94,9 @@ def _load_store(payload: dict) -> RobotTestDslStore:
 
 def _save_store(payload: dict, path: Path, store: RobotTestDslStore) -> int:
     payload[KEY_DSL_TESTS] = store_to_payload(store)
-    write_json(path, payload)
+    repository = ConfigRepository()
+    session = repository.session_for_payload(path, payload)
+    repository.save(session, path=path, stamp=False)
     return 0
 
 

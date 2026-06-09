@@ -19,10 +19,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import tkinter as tk
 from tkinter import ttk
 
-from tools.common.json_io import read_json
+from tools.common.config_api.repository import ConfigRepository
 from tools.common.paths import (
-    legacy_profiles_canonical_path,
-    profiles_canonical_path,
     repo_root,
 )
 import tkinter.font as tkfont
@@ -631,13 +629,11 @@ def _load_profiles_payload() -> Tuple[Optional[Dict[str, object]], str]:
     payload = _load_profiles_payload_from_store()
     if payload is not None:
         return payload, EMPTY_STRING
-    path = profiles_canonical_path()
-    if not path.exists():
-        path = legacy_profiles_canonical_path()
+    path = ConfigRepository().canonical_path()
     if not path.exists():
         return None, f"Profiles file not found at {path}"
     try:
-        payload = read_json(path)
+        payload = ConfigRepository().load_path(path).to_payload()
     except Exception as exc:
         return None, f"Failed to read profiles file: {exc}"
     if not isinstance(payload, dict):

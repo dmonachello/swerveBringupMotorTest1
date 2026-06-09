@@ -26,6 +26,21 @@ from .model import (
 from .compiler import compile_source, compile_store_sources
 from .serializer import store_from_payload, store_to_payload, source_hash
 from .validator import ValidationIssue, ValidationResult, validate_entry, validate_store
+from .service import (
+    DslImportResult,
+    DslServiceError,
+    cleanup_stale_tests_in_store,
+    device_catalog,
+    import_test_into_root_payload,
+    issue_detail,
+    issue_line_excerpt,
+    render_validation_text,
+    resolve_profile_test_names,
+    signal_catalog,
+    store_from_root_payload,
+    validate_store_for_profile,
+    write_store_to_root_payload,
+)
 
 __all__ = [
     "DSL_SCHEMA_VERSION",
@@ -51,4 +66,17 @@ __all__ = [
     "ValidationResult",
     "validate_entry",
     "validate_store",
+    "DslImportResult",
+    "DslServiceError",
+    "cleanup_stale_tests_in_store",
+    "device_catalog",
+    "import_test_into_root_payload",
+    "issue_detail",
+    "issue_line_excerpt",
+    "render_validation_text",
+    "resolve_profile_test_names",
+    "signal_catalog",
+    "store_from_root_payload",
+    "validate_store_for_profile",
+    "write_store_to_root_payload",
 ]

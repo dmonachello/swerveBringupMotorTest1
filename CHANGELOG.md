@@ -2,6 +2,25 @@
 
 All notable user-facing changes are documented in this file.
 
+## 2026-06-09
+
+### Added - 2026-06-09
+
+- Added a shared config API guard and wired it into the canonical regression
+  runner so local policy checks now fail when host Python code bypasses the
+  repository-owned `bringup_system.json` access path.
+
+### Improved - 2026-06-09
+
+- Moved major host surfaces, shared support code, and remaining config-focused
+  utility scripts onto the shared config API so CLI, Bringup Control UI, and
+  the topology editor no longer own direct `bringup_system.json` reads,
+  writes, or canonical/deploy path resolution.
+- Continued the host-side layering refactor by pushing more shared workflow
+  behavior into reusable services for DSL operations, local config queries,
+  command workflow handling, runtime queries, test execution, and config
+  transfer.
+
 ## 2026-05-31
 
 ### Added - 2026-05-31

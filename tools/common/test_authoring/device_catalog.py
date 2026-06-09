@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Dict, Optional, Set, Tuple
 
 from tools.can_nt.can_profiles import reload_profiles
+from tools.common.config_api.repository import ConfigRepository
 from tools.common.paths import bindings_deploy_path
 from tools.common.profile_constants import (
     KEY_DEFAULT_PROFILE,
@@ -30,7 +31,6 @@ from tools.common.profile_constants import (
     TYPE_XBOX_CONTROLLER,
 )
 from tools.common.json_io import read_json
-from tools.common.paths import legacy_profiles_canonical_path, profiles_canonical_path
 
 
 KEY_CONTROLLERS = "controllers"
@@ -58,13 +58,11 @@ def load_profile_devices(profile_name: str) -> Tuple[Dict[str, Dict[str, object]
     reload_profiles()
     catalog: Dict[str, Dict[str, object]] = {}
     duplicates: Set[str] = set()
-    path = profiles_canonical_path()
-    if not path.exists():
-        path = legacy_profiles_canonical_path()
+    path = ConfigRepository().canonical_path()
     if not path.exists():
         return catalog, duplicates
     try:
-        payload = read_json(path)
+        payload = ConfigRepository().load_path(path).to_payload()
     except Exception:
         return catalog, duplicates
     if not isinstance(payload, dict):
@@ -136,12 +134,10 @@ def load_controller_names(
         if candidate.exists():
             profile_path = candidate
     if profile_path is None:
-        profile_path = profiles_canonical_path()
-        if not profile_path.exists():
-            profile_path = legacy_profiles_canonical_path()
+        profile_path = ConfigRepository().canonical_path()
     if profile_path.exists():
         try:
-            loaded_payload = json.loads(profile_path.read_text(encoding="utf-8"))
+            loaded_payload = ConfigRepository().load_path(profile_path).to_payload()
         except Exception:
             loaded_payload = {}
         names = _controller_names_from_profiles_payload(loaded_payload, profile_name)

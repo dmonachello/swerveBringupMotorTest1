@@ -125,6 +125,20 @@
         "major push guard"
       ],
       "expectedExitCode": 0
+    },
+    {
+      "commandId": "config-api-guard",
+      "label": "config-api-guard",
+      "mode": "local",
+      "argv": [
+        "C:\\Users\\dmona\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "C:\\Users\\dmona\\swerveBringupMotorTest\\swerveBringupMotorTest1/tools/can_nt/scripts/config_api_guard.py"
+      ],
+      "features": [
+        "shared config API policy",
+        "bringup_system access guard"
+      ],
+      "expectedExitCode": 0
     }
   ]
 }

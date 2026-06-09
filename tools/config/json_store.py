@@ -19,12 +19,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
+from tools.common.config_api.repository import ConfigRepository
 from tools.common.json_io import read_json, write_json
 
 BOOL_TRUE = True
 BOOL_FALSE = False
 
 EMPTY_STRING = ""
+DOC_PROFILES = "profiles"
 
 
 @dataclass
@@ -77,9 +79,9 @@ class JsonStore:
         root_payload: Dict[str, object] = dict()
         deploy_payload: Dict[str, object] = dict()
         if root_path is not None and root_path.exists():
-            root_payload = read_json(root_path)
+            root_payload = self._load_payload(doc_id, root_path)
         if deploy_path is not None and deploy_path.exists():
-            deploy_payload = read_json(deploy_path)
+            deploy_payload = self._load_payload(doc_id, deploy_path)
         if not isinstance(root_payload, dict):
             root_payload = dict()
         if not isinstance(deploy_payload, dict):
@@ -158,4 +160,25 @@ class JsonStore:
         """
 
         payload = self.get_payload(doc_id)
+        if doc_id == DOC_PROFILES:
+            repository = ConfigRepository()
+            session = repository.session_for_payload(path, payload)
+            target = path.resolve()
+            canonical = repository.canonical_path().resolve()
+            deploy = repository.deploy_path().resolve()
+            if target == canonical or target == deploy:
+                repository.sync(session)
+            else:
+                repository.save(session, path=path)
+            return
         write_json(path, payload)
+
+    @staticmethod
+    def _load_payload(doc_id: str, path: Path) -> Dict[str, object]:
+        """
+        NAME
+            _load_payload - Load one document payload, routing profiles through the shared config repository.
+        """
+        if doc_id == DOC_PROFILES:
+            return ConfigRepository().load_path(path).to_payload()
+        return read_json(path)

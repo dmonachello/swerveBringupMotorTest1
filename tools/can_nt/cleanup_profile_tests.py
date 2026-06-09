@@ -24,7 +24,7 @@ REPO_ROOT = Path(__file__).resolve().parents[REPO_ROOT_DEPTH]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from tools.common.json_io import read_json, write_json
+from tools.common.config_api.repository import ConfigRepository
 from tools.common.paths import repo_root
 from tools.common.profile_constants import (
     KEY_BRIDGE_BY_PROFILE,
@@ -106,7 +106,9 @@ def main() -> int:
         return EXIT_OK
 
     _apply_removals(payload, removals)
-    write_json(profiles_path, payload, indent=2, trailing_newline=True)
+    repository = ConfigRepository()
+    session = repository.session_for_payload(profiles_path, payload)
+    repository.save(session, path=profiles_path, stamp=False)
     print(MESSAGE_WROTE.format(path=profiles_path))
     return EXIT_OK
 
@@ -129,7 +131,7 @@ def _read_json_or_empty(path: Path) -> Dict[str, object]:
     """
 
     try:
-        payload = read_json(path)
+        payload = ConfigRepository().load_path(path).to_payload()
     except Exception:
         payload = {}
     if isinstance(payload, dict):

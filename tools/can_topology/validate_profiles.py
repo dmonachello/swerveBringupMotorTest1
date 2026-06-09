@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from tools.common.cli_helpers import add_path_arg
-from tools.common.json_io import read_json
+from tools.common.config_api.repository import ConfigRepository
 from tools.common.profile_constants import (
     INTERFACE_ANALOG,
     INTERFACE_CAN,
@@ -181,7 +181,7 @@ def load_profiles_json(path: Path) -> Dict[str, Any]:
     if not path.exists():
         raise ValueError(MSG_ERR_FILE_MISSING.format(path=path))
     try:
-        return read_json(path)
+        return ConfigRepository().load_path(path).to_payload()
     except Exception as exc:
         raise ValueError(MSG_ERR_JSON_PARSE.format(error=exc)) from exc
 

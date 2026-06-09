@@ -642,7 +642,8 @@ def main() -> int:
     if not path.exists():
         print(f"ERROR: input not found: {path}")
         return 2
-    payload = read_json(path)
+    from tools.common.config_api.repository import ConfigRepository
+    payload = ConfigRepository().load_path(path).to_payload()
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(_html(payload), encoding="utf-8")

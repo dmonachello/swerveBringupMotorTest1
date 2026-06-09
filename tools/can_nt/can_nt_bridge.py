@@ -544,9 +544,9 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     if (args.cli or args.batch) and load_error:
         print(f"WARNING: bringup_system.json load failed: {load_error}")
         print("WARNING: Starting CLI in recovery mode (profiles must be repaired before robot tools).")
-        from tools.common.paths import profiles_canonical_path
+        from tools.common.config_api.repository import ConfigRepository
 
-        profiles_path = profiles_canonical_path()
+        profiles_path = ConfigRepository().canonical_path()
         print(f"Recovery profiles source: {profiles_path}")
         print("Next: show workspace")
         print("Next: validate profiles --active")

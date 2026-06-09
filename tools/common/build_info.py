@@ -3,11 +3,11 @@ NAME
     build_info.py - Build metadata captured from git.
 """
 
-BUILD_GIT_DESCRIBE = "checkpoint-ui-visibility-2026-06-06-2-g1f554bc-dirty"
-BUILD_GIT_SHA = "1f554bc"
+BUILD_GIT_DESCRIBE = "runtime-lifecycle-evidence-ui-2026-06-08-1-gd7c84cc-dirty"
+BUILD_GIT_SHA = "d7c84cc"
 BUILD_GIT_BRANCH = "main"
 BUILD_GIT_DIRTY = "dirty"
-BUILD_TIMESTAMP = "2026-06-06T12:51:11-04:00"
+BUILD_TIMESTAMP = "2026-06-08T20:43:05-04:00"
 
 BUILD_LABEL_GIT = "git"
 BUILD_LABEL_SHA = "git-sha"

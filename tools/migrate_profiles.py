@@ -14,11 +14,11 @@ DESCRIPTION
 """
 
 import argparse
-import json
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-from tools.common.json_io import read_json, write_json
+from tools.common.config_api.repository import ConfigRepository
+from tools.common.json_io import write_json
 from tools.common.profile_io import compute_profiles_hash
 from tools.common.time_utils import timestamp_version
 
@@ -163,12 +163,14 @@ def main() -> int:
     args = parse_args()
     source = Path(args.source)
     dest = Path(args.dest)
-    payload = read_json(source)
+    payload = ConfigRepository().load_path(source).to_payload()
     migrated, report = migrate(payload)
     if args.dry_run:
         print(f"Dry run: {len(report)} labels renamed.")
         return 0
-    write_json(dest, migrated, indent=2, trailing_newline=True)
+    repository = ConfigRepository()
+    session = repository.session_for_payload(dest, migrated)
+    repository.save(session, path=dest, stamp=False)
     if args.report:
         report_path = Path(args.report)
         write_json(report_path, {"renames": report}, indent=2, trailing_newline=True)

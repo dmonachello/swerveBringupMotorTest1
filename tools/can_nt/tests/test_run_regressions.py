@@ -86,6 +86,7 @@ class RunRegressionsTests(unittest.TestCase):
                 "topology-editor",
                 "cross-surface",
                 "changelog-guard",
+                "config-api-guard",
             ],
             labels,
         )
@@ -113,9 +114,11 @@ class RunRegressionsTests(unittest.TestCase):
     def test_build_suite_commands_changelog_contains_guard_script(self) -> None:
         commands = build_suite_commands(SUITE_CHANGELOG)
 
-        self.assertEqual(1, len(commands))
+        self.assertEqual(2, len(commands))
         self.assertEqual("changelog-guard", commands[0].label)
         self.assertIn("changelog_guard.py", commands[0].argv[1])
+        self.assertEqual("config-api-guard", commands[1].label)
+        self.assertIn("config_api_guard.py", commands[1].argv[1])
 
     def test_build_suite_commands_robot_suite_requires_rio(self) -> None:
         with self.assertRaises(ValueError):

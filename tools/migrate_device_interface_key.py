@@ -25,7 +25,7 @@ import argparse
 from pathlib import Path
 from typing import Any, Dict, List
 
-from tools.common.json_io import read_json, write_json
+from tools.common.config_api.repository import ConfigRepository
 from tools.common.profile_constants import (
     KEY_DEVICES,
     KEY_INTERFACE,
@@ -104,7 +104,7 @@ def main(argv: List[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     path = Path(getattr(args, "path"))
     try:
-        root = read_json(path)
+        root = ConfigRepository().load_path(path).to_payload()
     except Exception as exc:
         print(f"ERROR: failed to read {path}: {exc}")
         return EXIT_ERROR
@@ -118,7 +118,9 @@ def main(argv: List[str] | None = None) -> int:
     migrated = _migrate_devices(devices, bool(getattr(args, "keep_legacy", False)))
     if not bool(getattr(args, "no_write", False)):
         try:
-            write_json(path, root)
+            repository = ConfigRepository()
+            session = repository.session_for_payload(path, root)
+            repository.save(session, path=path, stamp=False)
         except Exception as exc:
             print(f"ERROR: failed to write {path}: {exc}")
             return EXIT_ERROR

@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
+from tools.common.config_api.repository import ConfigRepository
 from tools.common.json_io import write_json
 from tools.common.paths import repo_root as repo_root_path
 from tools.common.profile_io import compute_profiles_hash
@@ -388,6 +389,7 @@ class ConfigSchemaStore:
         """
 
         self._repo_root: Path = repo_root_path()
+        self._config_repository = ConfigRepository()
         self._db = JsonStore()
         self._tests_by_profile: Dict[str, TestAuthoringModel] = dict()
         self._dirty_flags: Dict[str, bool] = {
@@ -680,7 +682,14 @@ class ConfigSchemaStore:
 
         payload = dict(self._db.get_payload(DOC_PROFILES))
         self._write_tests_into_profiles(payload)
-        write_json(Path(path), payload)
+        session = self._config_repository.session_for_payload(Path(path), payload)
+        target = Path(path).resolve()
+        canonical = self._config_repository.canonical_path().resolve()
+        deploy = self._config_repository.deploy_path().resolve()
+        if target == canonical or target == deploy:
+            self._config_repository.sync(session)
+        else:
+            self._config_repository.save(session, path=Path(path))
 
     def save_bindings(self, path: str | Path) -> None:
         """
@@ -716,7 +725,7 @@ class ConfigSchemaStore:
             _profiles_path - Resolve bringup_system.json path.
         """
 
-        return repo_root / DIR_DATA / FILE_PROFILES
+        return self._config_repository.canonical_path()
 
     def _deploy_path(self, filename: str) -> Path:
         """
@@ -731,8 +740,7 @@ class ConfigSchemaStore:
         NAME
             _load_profiles - Load bringup_system.json.
         """
-        self._db.load_document(DOC_PROFILES, path, None, None)
-        payload = self._db.get_payload(DOC_PROFILES)
+        payload = self._config_repository.load_path(path).to_payload()
         sanitized, warnings, _changed = self.sanitize_profiles_payload(payload)
         self._warnings.extend(warnings)
         self._db.set_payload(DOC_PROFILES, sanitized)

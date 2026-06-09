@@ -31,7 +31,7 @@ _ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pa
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from tools.common.json_io import read_json, write_json
+from tools.common.config_api.repository import ConfigRepository
 from tools.common.profile_constants import (
     KEY_BRIDGE_BY_PROFILE,
     KEY_BRIDGE_CONFIG,
@@ -151,7 +151,7 @@ def _load_bringup_system(path: Path) -> Dict[str, object]:
         _load_bringup_system - Load bringup_system.json from disk.
     """
 
-    payload = read_json(path)
+    payload = ConfigRepository().load_path(path).to_payload()
     if not isinstance(payload, dict):
         raise ValueError("bringup_system.json root must be an object")
     return payload
@@ -353,10 +353,16 @@ def _finalize_and_write(payload: Dict[str, object], canonical_path: Path, deploy
     payload[KEY_SCHEMA_VERSION] = PROFILE_SCHEMA_VERSION
     payload[KEY_DATA_VERSION] = timestamp_version()
     payload[KEY_DATA_HASH] = compute_profiles_hash(payload)
-    write_json(canonical_path, payload)
+    repository = ConfigRepository()
+    if canonical_path.resolve() == repository.canonical_path().resolve() and deploy_path.resolve() == repository.deploy_path().resolve():
+        session = repository.session_for_payload(canonical_path, payload)
+        repository.sync(session, stamp=False)
+        return
+    canonical_session = repository.session_for_payload(canonical_path, payload)
+    repository.save(canonical_session, path=canonical_path, stamp=False)
     if canonical_path.resolve() != deploy_path.resolve():
-        deploy_path.parent.mkdir(parents=True, exist_ok=True)
-        write_json(deploy_path, payload)
+        deploy_session = repository.session_for_payload(deploy_path, canonical_session.to_payload())
+        repository.save(deploy_session, path=deploy_path, stamp=False)
 
 
 def _parse_args() -> argparse.Namespace:
