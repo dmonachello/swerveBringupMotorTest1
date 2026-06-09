@@ -637,6 +637,11 @@ public class RobotV2 extends TimedRobot {
     }
 
     @Override
+    public com.google.gson.JsonObject buildCommandOutputJson(String name) {
+      return uiHandler != null ? uiHandler.buildRestCommandOutputJson(name) : null;
+    }
+
+    @Override
     public BridgeUiCommandHandler.RestCommandResult executeCommand(
         String name,
         String argsJson,

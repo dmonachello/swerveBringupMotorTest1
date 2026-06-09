@@ -160,6 +160,7 @@ public final class BringupRestServer {
     JsonObject buildDevicesJson();
     JsonObject buildRuntimeStateJson();
     JsonObject buildCurrentConfigJson();
+    JsonObject buildCommandOutputJson(String name);
     frc.robot.BridgeUiCommandHandler.RestCommandResult executeCommand(
         String name,
         String argsJson,
@@ -834,6 +835,10 @@ public final class BringupRestServer {
     if (callbacks.isCommandActive(activeCommand.name)) {
       activeCommand.updatedAtMs = nowMs();
       return;
+    }
+    JsonObject payload = callbacks.buildCommandOutputJson(activeCommand.name);
+    if (payload != null) {
+      activeCommand.appendOutput(GSON.toJson(payload), nowMs());
     }
     activeCommand.finish(STATUS_FINISHED, MESSAGE_FINISHED, nowMs());
     activeCommand = null;

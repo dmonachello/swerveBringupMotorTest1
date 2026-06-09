@@ -285,6 +285,17 @@ public final class BringupRuntime {
 
   /**
    * NAME
+   *   getLatestTestRunSnapshot - Return the latest bringup test lifecycle snapshot.
+   *
+   * RETURNS
+   *   Latest test-run state for REST/UI completion payloads.
+   */
+  public BringupCore.TestRunSnapshot getLatestTestRunSnapshot() {
+    return core != null ? core.getLatestTestRunSnapshot() : BringupCore.TestRunSnapshot.idle();
+  }
+
+  /**
+   * NAME
    *   runAllTests - Run all enabled bringup tests.
    */
   public void runAllTests() {
@@ -412,6 +423,35 @@ public final class BringupRuntime {
 
   /**
    * NAME
+   *   prepareForRegistryApply - Tear down runtime-owned state before config replacement.
+   *
+   * PARAMETERS
+   *   reason - Reset reason label.
+   *
+   * SIDE EFFECTS
+   *   Stops actuation/tests, clears the declared active profile, resets
+   *   sampled telemetry, diagnostics, lifecycle state, selected device state,
+   *   and runtime groups so the next config becomes the sole source of truth.
+   */
+  public void prepareForRegistryApply(String reason) {
+    if (core != null) {
+      core.resetState(reason);
+    }
+    BringupUtil.deactivateActiveProfile();
+    sampledTelemetry.clearAll();
+    replaceCore();
+    bridgeGroups.clear();
+    bridgeSelected.device = TEXT_EMPTY;
+    bridgeSelected.enabled = false;
+    deviceLifecycle.resetForProfile(TEXT_EMPTY, Collections.emptyList(), System.currentTimeMillis());
+    if (diagnostics != null) {
+      diagnostics.resetState();
+    }
+    BringupUtil.validateCanIds(BringupUtil.getSelectedDevicesSorted());
+  }
+
+  /**
+   * NAME
    *   resetAndInstantiateForProfile - Rebuild runtime and instantiate devices.
    *
    * PARAMETERS
@@ -458,12 +498,29 @@ public final class BringupRuntime {
       String rawJson,
       String activateProfile,
       String reason) {
+    prepareForRegistryApply(reason);
     BringupUtil.RegistryApplyReport report =
         BringupUtil.applyRegistryJson(rawJson, activateProfile);
     if (report.overallOk && activateProfile != null && !activateProfile.isBlank()) {
       resetAndInstantiateForProfile(reason);
     }
     return report;
+  }
+
+  /**
+   * NAME
+   *   applyRegistry - Replace the canonical config while leaving runtime inactive.
+   *
+   * PARAMETERS
+   *   rawJson - Full registry payload.
+   *   reason - Reset reason label.
+   *
+   * RETURNS
+   *   Registry apply report.
+   */
+  public BringupUtil.RegistryApplyReport applyRegistry(String rawJson, String reason) {
+    prepareForRegistryApply(reason);
+    return BringupUtil.applyRegistryJson(rawJson, TEXT_EMPTY);
   }
 
   /**

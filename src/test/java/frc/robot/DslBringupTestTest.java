@@ -193,7 +193,7 @@ class DslBringupTestTest {
     test.update(context, 11.1);
 
     assertEquals(BringupTestResult.FAIL, test.getResult());
-    assertEquals("until until_1: timer.elapsed >= 1.0 (fallback active)", test.getStatus());
+    assertEquals("until until_1: timer.elapsed >= 1.0 value=1.100 (fallback active)", test.getStatus());
     assertEquals(1, motor.dutyWrites);
     assertEquals(0.0, motor.lastDuty, 0.0001);
     assertTrue(test.buildRunDetails().toString().contains("signalSetFallbacks"));
@@ -314,7 +314,7 @@ class DslBringupTestTest {
     test.update(context, START_SEC + 0.36);
 
     assertEquals(BringupTestResult.FAIL, test.getResult());
-    assertEquals("abort abort_1: abort motor-a.current > 40 stable 0.1", test.getStatus());
+    assertEquals("abort abort_1: abort motor-a.current > 40 stable 0.1 value=45.000", test.getStatus());
   }
 
   @Test

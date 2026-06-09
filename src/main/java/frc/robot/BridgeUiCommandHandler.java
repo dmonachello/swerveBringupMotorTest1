@@ -282,6 +282,7 @@ public class BridgeUiCommandHandler {
   private static final String ARG_PROFILE_NAME = "name";
   private static final String TEXT_PROFILE_ACTIVATE_OK = "Profile activated: %s";
   private static final String TEXT_PROFILE_ACTIVATE_FAIL = "Profile activation failed.";
+  private static final String TEXT_PROFILES_APPLY_RESET_REASON = "profilesApply";
   private static final String TEXT_PROFILE_ACTIVATE_RESET_REASON = "profilesApplyActivate";
   private static final String TEXT_PROFILES_RELOAD_OK = "Profiles reloaded.";
   private static final String TEXT_PROFILES_RELOAD_FAILED = "Profiles reload failed: %s";
@@ -1473,6 +1474,25 @@ public class BridgeUiCommandHandler {
         running);
   }
 
+  /**
+   * NAME
+   *   buildRestCommandOutputJson - Build the latest terminal payload for long-running REST commands.
+   *
+   * PARAMETERS
+   *   name - Robot-local wire command name.
+   *
+   * RETURNS
+   *   JSON payload for the command's current/final lifecycle state, or null when none applies.
+   */
+  public JsonObject buildRestCommandOutputJson(String name) {
+    String commandName = name != null ? name.trim() : TEXT_EMPTY;
+    if (RobotLocalCommandRegistry.COMMAND_RUN_TEST.equals(commandName)
+        || RobotLocalCommandRegistry.COMMAND_RUN_ALL_TESTS.equals(commandName)) {
+      return buildTestRunJson(runtime.getLatestTestRunSnapshot());
+    }
+    return null;
+  }
+
   public void handleUiCommands() {
     long seq = (long) uiTable.getEntry("cmd/seq").getInteger(-1);
     if (seq <= lastUiSeq) {
@@ -2331,7 +2351,10 @@ public class BridgeUiCommandHandler {
         profileActivateAction.run();
       }
     } else if (transfer.ok) {
-      report = BringupUtil.applyRegistryJson(registryJson, activateProfile);
+      report = runtime.applyRegistry(registryJson, TEXT_PROFILES_APPLY_RESET_REASON);
+      if (report.overallOk && profileDeactivateAction != null) {
+        profileDeactivateAction.run();
+      }
     }
     boolean overallOk = transfer.ok && report.overallOk;
     result.ok = overallOk;

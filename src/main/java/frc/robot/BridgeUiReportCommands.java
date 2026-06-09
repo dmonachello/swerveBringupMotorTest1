@@ -26,6 +26,8 @@ final class BridgeUiReportCommands implements BridgeUiCommandDispatcher.CommandF
 
   private static final String JSON_KEY_JSON = "json";
   private static final String MESSAGE_DIAGNOSTICS_UNAVAILABLE = "Diagnostics unavailable.";
+  private static final String MESSAGE_PROFILE_DEVICES_PRINTED = "Printed profile devices.";
+  private static final String MESSAGE_REPORT_DUMPED = "Dumped report.";
   private static final String TEXT_INPUTS_REPORT_TEMPLATE =
       "Inputs: leftY=%.2f rightY=%.2f (NEO/FLEX=%.2f, KRAKEN/FALCON=%.2f)";
 
@@ -150,7 +152,8 @@ final class BridgeUiReportCommands implements BridgeUiCommandDispatcher.CommandF
         result.outText = dependencies.printBindings();
         break;
       case CMD_PRINT_PROFILE_DEVICES:
-        result.outText = dependencies.printProfileDevices();
+        dependencies.printProfileDevices();
+        result.outText = MESSAGE_PROFILE_DEVICES_PRINTED;
         break;
       case CMD_PRINT_SELECTED_TEST_SOURCE:
         result.outText = emitReport(dependencies.buildSelectedTestSourceReportText(), 4);
@@ -241,17 +244,14 @@ final class BridgeUiReportCommands implements BridgeUiCommandDispatcher.CommandF
     String json = dependencies.buildReportJsonForDump();
     String wrapped = ReportTextUtil.wrapLongLine(json, 120);
     dependencies.requestTextReport(wrapped, 4);
-    StringBuilder dumpOut = new StringBuilder(wrapped);
     if (dependencies.writeReportJsonToFile(json)) {
       String message = "Wrote CAN report JSON to " + dependencies.getReportPath();
       dependencies.requestTextReport(message, 4);
-      dumpOut.append('\n').append(message);
     } else {
       String message = "Failed to write CAN report JSON.";
       dependencies.requestTextReport(message, 4);
-      dumpOut.append('\n').append(message);
     }
-    result.outText = dumpOut.toString();
+    result.outText = MESSAGE_REPORT_DUMPED;
   }
 
   private void executeShow(

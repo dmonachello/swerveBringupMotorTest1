@@ -46,6 +46,9 @@ public final class DslBringupTest implements BringupTest {
   private static final String DETAIL_KEY_STABLE_ELAPSED_SEC = "stableElapsedSec";
   private static final String DETAIL_KEY_STABLE_TARGET_SEC = "stableTargetSec";
   private static final String DETAIL_KEY_STABLE_SATISFIED = "stableSatisfied";
+  private static final String STATUS_VALUE_PREFIX = " value=";
+  private static final String STATUS_VALUE_NA = "n/a";
+  private static final String STATUS_NUMBER_FMT = "%.3f";
   private static final double WARNING_COOLDOWN_SEC = 1.0;
   private static final double SAFE_STOP_OUTPUT = 0.0;
   private static final double DEFAULT_SIGNAL_SET_FALLBACK = 0.0;
@@ -214,7 +217,7 @@ public final class DslBringupTest implements BringupTest {
     }
     for (DslCondition condition : test.main.aborts) {
       if (Boolean.TRUE.equals(conditionValues.get(condition.id))) {
-        status = "abort " + condition.id + ": " + condition.text;
+        status = triggeredConditionStatus("abort " + condition.id + ": " + condition.text, condition, samples);
         result = BringupTestResult.FAIL;
         stop(context);
         return;
@@ -222,7 +225,7 @@ public final class DslBringupTest implements BringupTest {
     }
     for (DslCondition condition : test.main.successes) {
       if (Boolean.TRUE.equals(conditionValues.get(condition.id))) {
-        status = "success " + condition.id + ": " + condition.text;
+        status = triggeredConditionStatus("success " + condition.id + ": " + condition.text, condition, samples);
         result = BringupTestResult.PASS;
         stop(context);
         return;
@@ -237,7 +240,7 @@ public final class DslBringupTest implements BringupTest {
             break;
           }
         }
-        status = "until " + condition.id + ": " + condition.text;
+        status = triggeredConditionStatus("until " + condition.id + ": " + condition.text, condition, samples);
         if (!fallbackActiveThisTick.isEmpty()) {
           status = status + " (fallback active)";
           result = BringupTestResult.FAIL;
@@ -735,6 +738,30 @@ public final class DslBringupTest implements BringupTest {
     double high = highNumber.doubleValue();
     boolean inside = sample >= low && sample <= high;
     return outsideMode ? !inside : inside;
+  }
+
+  private String triggeredConditionStatus(
+      String baseStatus,
+      DslCondition condition,
+      Map<String, Object> samples) {
+    if (condition == null || condition.reference == null || samples == null) {
+      return baseStatus;
+    }
+    Object value = samples.get(condition.reference.text);
+    return baseStatus + STATUS_VALUE_PREFIX + formatConditionValue(value);
+  }
+
+  private String formatConditionValue(Object value) {
+    if (value instanceof Number numberValue) {
+      return String.format(STATUS_NUMBER_FMT, numberValue.doubleValue());
+    }
+    if (value instanceof Boolean booleanValue) {
+      return Boolean.toString(booleanValue);
+    }
+    if (value != null) {
+      return String.valueOf(value);
+    }
+    return STATUS_VALUE_NA;
   }
 
   private boolean updateStableFilter(DslCondition condition, boolean rawValue, double nowSec) {

@@ -157,6 +157,11 @@ public final class BringupRestServerTest {
     }
 
     @Override
+    public JsonObject buildCommandOutputJson(String name) {
+      return null;
+    }
+
+    @Override
     public frc.robot.BridgeUiCommandHandler.RestCommandResult executeCommand(
         String name,
         String argsJson,

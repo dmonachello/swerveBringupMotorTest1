@@ -78,6 +78,28 @@ class RobotTestDslServiceTests(unittest.TestCase):
         self.assertEqual(["spin_up"], store.test_sets["pit"])
         self.assertEqual("pit", payload["profiles"]["demo"]["dslTestSet"])
 
+    def test_import_test_into_root_payload_blank_set_uses_profile_set(self) -> None:
+        payload = self._root_payload(include_controller=True)
+        source = (
+            'test "spin_up"\n'
+            'device "FALCON 9"\n'
+            'device "controller0"\n\n'
+            "main:\n"
+            '    set "FALCON 9".output = controller0.leftY scaled 0.25 default 0.0\n'
+            "    until timer.elapsed >= 3.0\n"
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source_path = Path(temp_dir) / "spin_up.dsl"
+            source_path.write_text(source, encoding="utf-8")
+
+            result = import_test_into_root_payload(payload, "demo", "spin_up", source_path, set_name=None)
+
+        self.assertTrue(result.ok())
+        self.assertEqual("pit", result.set_name)
+        store = store_from_root_payload(payload)
+        self.assertEqual(["spin_up"], store.test_sets["pit"])
+        self.assertEqual("pit", payload["profiles"]["demo"]["dslTestSet"])
+
     def test_resolve_profile_test_names_prefers_profile_set(self) -> None:
         payload = self._root_payload(include_controller=True)
         payload["dslTests"] = {
@@ -104,6 +126,80 @@ class RobotTestDslServiceTests(unittest.TestCase):
 
         self.assertFalse(result.ok())
         self.assertIn("unknown profile: missing", render_validation_text(result, store))
+
+    def test_validate_store_for_profile_only_checks_selected_profile_set(self) -> None:
+        payload = self._root_payload(include_controller=True)
+        payload["profiles"]["demo"]["dslTestSet"] = "pit"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            good_path = Path(temp_dir) / "pit_good.dsl"
+            good_path.write_text(
+                'test "pit_good"\n'
+                'device "FALCON 9"\n'
+                'device "controller0"\n\n'
+                "main:\n"
+                '    set "FALCON 9".output = controller0.leftY scaled 0.25 default 0.0\n'
+                "    until timer.elapsed >= 1.0\n",
+                encoding="utf-8",
+            )
+            import_result = import_test_into_root_payload(payload, "demo", "pit_good", good_path, set_name="pit")
+        self.assertTrue(import_result.ok())
+        payload["dslTests"]["defaultSet"] = "robot_2026_swerve"
+        payload["dslTests"]["testSets"]["robot_2026_swerve"] = ["swerve_only"]
+        payload["dslTests"]["testsByName"]["swerve_only"] = {
+            "source": 'test "swerve_only"\ndevice "Missing Device"\n\nmain:\n    until timer.elapsed >= 1.0\n',
+            "sourceHash": "",
+            "normalized": {
+                "name": "swerve_only",
+                "devices": [{"name": "Missing Device"}],
+                "unsafeExit": [],
+                "init": {},
+                "main": {
+                    "sets": [],
+                    "clears": [],
+                    "aborts": [],
+                    "successes": [],
+                    "untils": [{
+                        "conditionId": "u1",
+                        "kind": "until",
+                        "text": "timer.elapsed >= 1.0",
+                        "reference": {"device": "timer", "signal": "elapsed", "text": "timer.elapsed"},
+                        "mode": "comparison",
+                        "operator": ">=",
+                        "literal": {"value": 1.0, "valueType": "number"},
+                    }],
+                    "requires": [],
+                },
+                "close": {"sets": [], "clears": [], "aborts": [], "successes": [], "untils": [], "requires": []},
+            },
+        }
+        store = store_from_root_payload(payload)
+
+        result = validate_store_for_profile(payload, store, "demo")
+
+        self.assertTrue(result.ok(), render_validation_text(result, store))
+
+    def test_import_warning_points_to_specific_until_line(self) -> None:
+        payload = self._root_payload(include_controller=True)
+        source = (
+            'test "two_untils"\n'
+            'device "FALCON 9"\n'
+            'device "controller0"\n\n'
+            "main:\n"
+            '    set "FALCON 9".output = controller0.leftY scaled 0.25 default 0.0\n'
+            '    until "FALCON 9".position_delta > 150.0\n'
+            "    until timer.elapsed >= 60.0\n"
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source_path = Path(temp_dir) / "two_untils.dsl"
+            source_path.write_text(source, encoding="utf-8")
+
+            result = import_test_into_root_payload(payload, "demo", "two_untils", source_path, set_name="pit")
+
+        self.assertTrue(result.ok())
+        self.assertEqual(2, len(result.validation.warnings))
+        text = render_validation_text(result.validation, store_from_root_payload(payload), entries_override={"two_untils": result.entry})
+        self.assertIn("line 7: until \"FALCON 9\".position_delta > 150.0", text)
+        self.assertIn("line 8: until timer.elapsed >= 60.0", text)
 
     def test_cleanup_stale_tests_removes_invalid_entries(self) -> None:
         payload = self._root_payload(include_controller=False)

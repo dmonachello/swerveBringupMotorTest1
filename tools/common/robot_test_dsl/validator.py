@@ -149,7 +149,16 @@ def _validate_normalized(
     if not normalized.main.untils and normalized.main.aborts and not normalized.main.successes:
         result.warnings.append(ValidationIssue("only abort termination -> may never stop", test_name=normalized.name))
     if normalized.main.untils and not normalized.main.requires:
-        result.warnings.append(ValidationIssue("until without require -> may pass without proof", test_name=normalized.name))
+        for condition in normalized.main.untils:
+            if condition is None:
+                continue
+            result.warnings.append(
+                ValidationIssue(
+                    "until without require -> may pass without proof",
+                    test_name=normalized.name,
+                    field=condition.text,
+                )
+            )
 
 
 def _validate_phase(

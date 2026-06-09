@@ -1197,6 +1197,17 @@ public final class BringupCore {
 
   /**
    * NAME
+   *   getLatestTestRunSnapshot - Return the latest test-run lifecycle snapshot.
+   *
+   * RETURNS
+   *   Defensive copy of the latest test-run state for UI/REST surfaces.
+   */
+  public TestRunSnapshot getLatestTestRunSnapshot() {
+    return latestTestRun != null ? latestTestRun.copy() : TestRunSnapshot.idle();
+  }
+
+  /**
+   * NAME
    *   toggleSelectedBringupTestEnabled - Toggle enable state for selected test.
    *
    * RETURNS

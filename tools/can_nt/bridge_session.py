@@ -622,7 +622,7 @@ class BridgeSession:
             if not chunk_text:
                 continue
             parsed = _parse_json_text(chunk_text)
-            if parsed is not None and json_text == EMPTY_STRING:
+            if parsed is not None:
                 json_text = chunk_text
             else:
                 texts.append(chunk_text)

@@ -259,6 +259,7 @@ public final class BringupUtil {
   private static String defaultProfile = NT_LABEL_EMPTY;
   private static String selectedProfile = NT_LABEL_EMPTY;
   private static boolean activeProfileApplied = false;
+  private static String currentRegistryRawJson = NT_LABEL_EMPTY;
   private static final Map<String, MotorSpec> MOTOR_SPECS = loadMotorSpecs();
   private static final CanMappings CAN_MAPPINGS = loadCanMappings();
   private static final Map<DeviceKey, List<DeviceConfig>> DEVICE_CONFIGS = new LinkedHashMap<>();
@@ -848,13 +849,22 @@ public final class BringupUtil {
    *   Parsed JSON object for the currently resolved profile path, or null on read/parse failure.
    */
   public static JsonObject readCurrentProfilesJson() {
+    String rawJson = safeText(currentRegistryRawJson);
+    if (!rawJson.isBlank()) {
+      try {
+        JsonElement parsed = JsonParser.parseString(rawJson);
+        return parsed != null && parsed.isJsonObject() ? parsed.getAsJsonObject() : null;
+      } catch (JsonParseException ex) {
+        // Fall through to disk read.
+      }
+    }
     Path path = resolveProfilePath();
     if (path == null) {
       return null;
     }
     try {
-      String rawJson = Files.readString(path, StandardCharsets.UTF_8);
-      JsonElement parsed = JsonParser.parseString(rawJson);
+      String diskJson = Files.readString(path, StandardCharsets.UTF_8);
+      JsonElement parsed = JsonParser.parseString(diskJson);
       return parsed != null && parsed.isJsonObject() ? parsed.getAsJsonObject() : null;
     } catch (IOException | JsonParseException ex) {
       return null;
@@ -1648,6 +1658,7 @@ public final class BringupUtil {
       }
       profiles = new LinkedHashMap<>(root.profiles);
       profileOrder = new ArrayList<>(profiles.keySet());
+      currentRegistryRawJson = rawJson;
       defaultProfile =
           root.defaultProfile != null ? root.defaultProfile : NT_LABEL_EMPTY;
       if (!profiles.containsKey(defaultProfile)) {
@@ -1697,6 +1708,14 @@ public final class BringupUtil {
   private static Path resolveProfilePath() {
     // Use deploy folder on roboRIO, fallback to repo-relative path.
     try {
+      Path runtimePath = Filesystem.getOperatingDirectory().toPath().resolve(DEFAULT_PROFILE_FILE);
+      if (Files.exists(runtimePath)) {
+        return runtimePath;
+      }
+      Path legacyRuntime = Filesystem.getOperatingDirectory().toPath().resolve(LEGACY_PROFILE_FILE);
+      if (Files.exists(legacyRuntime)) {
+        return legacyRuntime;
+      }
       Path deployPath = Filesystem.getDeployDirectory().toPath().resolve(DEFAULT_PROFILE_FILE);
       if (Files.exists(deployPath)) {
         return deployPath;
@@ -1705,14 +1724,6 @@ public final class BringupUtil {
       Path legacyDeploy = Filesystem.getDeployDirectory().toPath().resolve(LEGACY_PROFILE_FILE);
       if (Files.exists(legacyDeploy)) {
         return legacyDeploy;
-      }
-      Path runtimePath = Filesystem.getOperatingDirectory().toPath().resolve(DEFAULT_PROFILE_FILE);
-      if (Files.exists(runtimePath)) {
-        return runtimePath;
-      }
-      Path legacyRuntime = Filesystem.getOperatingDirectory().toPath().resolve(LEGACY_PROFILE_FILE);
-      if (Files.exists(legacyRuntime)) {
-        return legacyRuntime;
       }
     } catch (Exception ex) {
       // Fall through to local dev path.
@@ -1784,6 +1795,7 @@ public final class BringupUtil {
     defaultProfile = NT_LABEL_EMPTY;
     selectedProfile = NT_LABEL_EMPTY;
     activeProfile = NT_LABEL_EMPTY;
+    currentRegistryRawJson = NT_LABEL_EMPTY;
     activeProfileApplied = false;
     PDH_CAN_ID = DISABLED_CAN_ID;
     PDP_CAN_ID = DISABLED_CAN_ID;
@@ -1843,12 +1855,9 @@ public final class BringupUtil {
       return report;
     }
     report.contentValidation.ok = true;
-    boolean applied = applyRegistryPayload(payload, activateProfile, report);
-    if (!applied) {
-      return report;
-    }
-    boolean verified = verifyRegistryApply(activateProfile, report);
-    if (!verified) {
+    String activationError = validateRegistryActivationPayload(payload, activateProfile);
+    if (!activationError.isBlank()) {
+      report.apply.message = activationError;
       return report;
     }
     if (REGISTRY_PERSIST_ON_APPLY) {
@@ -1857,6 +1866,15 @@ public final class BringupUtil {
         return report;
       }
     }
+    boolean applied = applyRegistryPayload(payload, activateProfile, report);
+    if (!applied) {
+      return report;
+    }
+    boolean verified = verifyRegistryApply(activateProfile, report);
+    if (!verified) {
+      return report;
+    }
+    currentRegistryRawJson = rawJson;
     report.overallOk = true;
     report.activeProfile = safeText(activeProfile);
     report.activated = activateProfile != null
@@ -2511,6 +2529,40 @@ public final class BringupUtil {
 
   /**
    * NAME
+   *   validateRegistryActivationPayload - Prevalidate activation against a candidate payload.
+   *
+   * PARAMETERS
+   *   payload - Candidate registry payload.
+   *   activateProfile - Optional profile to activate after apply.
+   *
+   * RETURNS
+   *   Empty string when activation is valid, otherwise a human-readable error.
+   */
+  private static String validateRegistryActivationPayload(
+      RegistryPayload payload,
+      String activateProfile) {
+    String resolved = safeText(activateProfile);
+    if (resolved.isBlank()) {
+      return NT_LABEL_EMPTY;
+    }
+    if (payload == null || payload.root == null || payload.root.profiles == null) {
+      return MESSAGE_REGISTRY_PROFILES_MISSING;
+    }
+    ProfileConfig config = payload.root.profiles.get(resolved);
+    if (config == null) {
+      return String.format(MESSAGE_REGISTRY_ACTIVATE_UNKNOWN, resolved);
+    }
+    try {
+      validateProfileCanIdsStrict(resolved, config, payload.registry);
+      validateProfileLabelsStrict(resolved, config);
+    } catch (JsonParseException ex) {
+      return safeText(ex.getMessage());
+    }
+    return NT_LABEL_EMPTY;
+  }
+
+  /**
+   * NAME
    *   validateProfileCanIdsStrict - Fail fast on duplicate CAN IDs in a profile.
    *
    * PARAMETERS
@@ -2521,6 +2573,13 @@ public final class BringupUtil {
    *   Throws JsonParseException when duplicates are found.
    */
   private static void validateProfileCanIdsStrict(String profileName, ProfileConfig config) {
+    validateProfileCanIdsStrict(profileName, config, DEVICE_REGISTRY);
+  }
+
+  private static void validateProfileCanIdsStrict(
+      String profileName,
+      ProfileConfig config,
+      Map<String, DeviceDefinition> registry) {
     if (config == null || config.devices == null) {
       return;
     }
@@ -2532,7 +2591,7 @@ public final class BringupUtil {
       if (lookup.isEmpty()) {
         continue;
       }
-      DeviceDefinition def = DEVICE_REGISTRY.get(lookup);
+      DeviceDefinition def = registry != null ? registry.get(lookup) : null;
       if (def == null) {
         throw new JsonParseException(String.format(MESSAGE_UNKNOWN_DEVICE, profileName, display));
       }

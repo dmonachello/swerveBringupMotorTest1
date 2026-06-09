@@ -22,6 +22,8 @@ class BridgeUiReportCommandsTest {
   private static final String MSG_DIAG_UNAVAILABLE = "Diagnostics unavailable.";
   private static final String MSG_DUMP_WRITE_PREFIX = "Wrote CAN report JSON to ";
   private static final String MSG_DUMP_WRITE_FAIL = "Failed to write CAN report JSON.";
+  private static final String MSG_REPORT_DUMPED = "Dumped report.";
+  private static final String MSG_PROFILE_DEVICES_PRINTED = "Printed profile devices.";
   private static final String REPORT_PATH = "logs/report.json";
 
   @Test
@@ -83,6 +85,18 @@ class BridgeUiReportCommandsTest {
   }
 
   @Test
+  void printProfileDevicesReturnsShortAckInsteadOfDuplicatingReportBody() {
+    TestDeps deps = new TestDeps();
+    BridgeUiReportCommands commands = new BridgeUiReportCommands(deps);
+
+    BridgeUiCommandResult result =
+        commands.execute(ingress("printProfileDevices", new JsonObject()), 0.0, false);
+
+    assertTrue(result.ok);
+    assertEquals(MSG_PROFILE_DEVICES_PRINTED, result.outText);
+  }
+
+  @Test
   void dumpReportWriteSuccessIncludesPathMessage() {
     TestDeps deps = new TestDeps();
     deps.writeReportSuccess = true;
@@ -91,7 +105,7 @@ class BridgeUiReportCommandsTest {
     BridgeUiCommandResult result = commands.execute(ingress(CMD_DUMP_REPORT, new JsonObject()), 0.0, false);
 
     assertTrue(result.ok);
-    assertTrue(result.outText.contains(MSG_DUMP_WRITE_PREFIX + REPORT_PATH));
+    assertEquals(MSG_REPORT_DUMPED, result.outText);
   }
 
   @Test
@@ -103,7 +117,7 @@ class BridgeUiReportCommandsTest {
     BridgeUiCommandResult result = commands.execute(ingress(CMD_DUMP_REPORT, new JsonObject()), 0.0, false);
 
     assertTrue(result.ok);
-    assertTrue(result.outText.contains(MSG_DUMP_WRITE_FAIL));
+    assertEquals(MSG_REPORT_DUMPED, result.outText);
   }
 
   private static BridgeUiIngressPolicy.Ingress ingress(String name, JsonObject args) {

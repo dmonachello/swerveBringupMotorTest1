@@ -219,6 +219,22 @@ MANUAL_DUTY_BLOCKED_ESTOP_TEXT = "Manual motor control blocked: robot estopped."
 MANUAL_DUTY_BLOCKED_DISABLED_TEXT = "Manual motor control blocked: robot disabled."
 MANUAL_DUTY_BLOCKED_RUNTIME_TEXT = "Manual motor control blocked: runtime inactive."
 MANUAL_DUTY_BUSY_TEXT = "Manual motor control blocked: command in flight."
+RUNTIME_NOTICE_STALE_TEXT = "Robot state stale (code not running?)"
+RUNTIME_NOTICE_ESTOP_TEXT = "Robot E-Stop. Manual run blocked."
+RUNTIME_NOTICE_INACTIVE_TEXT = "Runtime inactive. Click Runtime Activate."
+RUNTIME_NOTICE_DISABLED_TEXT = "Robot disabled. Enable teleop to run motors."
+RUNTIME_NOTICE_PUSHED_CONFIG_FMT = (
+    "Config pushed to robot for profile '{profile}'. Runtime is inactive. "
+    "Enable teleop, then click Runtime Activate before motion/testing."
+)
+RUNTIME_NOTICE_PROFILE_MISMATCH_FMT = (
+    "Selected config '{selected}' does not match active runtime '{active}'. "
+    "Runtime Activate is required before motion/testing."
+)
+OUTPUT_PUSH_RUNTIME_REBUILD_FMT = (
+    "Config pushed to robot for profile '{profile}'. Runtime is now inactive; "
+    "enable teleop and click Runtime Activate before motion/testing."
+)
 MANUAL_DUTY_SCALE_ELEMENT_SLIDER = "slider"
 MANUAL_DUTY_NO_LABEL = ""
 MANUAL_DUTY_NO_TARGETS: List[str] = []
@@ -573,14 +589,256 @@ DSL_IMPORT_CANCELLED = "DSL import cancelled."
 DSL_VALIDATE_CANCELLED = "DSL validation cancelled."
 DSL_IMPORT_PATH_FMT = "IMPORT DSL {path}"
 DSL_VALIDATE_START_FMT = "VALIDATE DSL profile={profile}"
-DSL_IMPORT_SAVED_FMT = "Local DSL import saved. Push config to the robot to use the updated test."
+DSL_IMPORT_SAVED_FMT = "DSL import saved locally and synced to the robot config."
+DSL_IMPORT_SAVED_LOCAL_ONLY_FMT = (
+    "DSL import saved locally for profile '{profile}'. Push config to the robot to use the updated test."
+)
+DSL_IMPORT_SYNC_START_FMT = "SYNC DSL IMPORT {path} profile={profile}"
+DSL_IMPORT_SYNC_FAILED_FMT = (
+    "DSL import saved locally for profile '{profile}', but robot sync failed: {message}"
+)
+DSL_IMPORT_TARGET_SET_FMT = "Import target set for profile '{profile}': {set_name}"
 DSL_VALIDATE_OK_FMT = "DSL validation OK for profile {profile}."
 DSL_VALIDATE_FAIL_FMT = "DSL validation failed for profile {profile}."
 DSL_DIALOG_IMPORT_NAME_TITLE = "Import DSL Test"
 DSL_DIALOG_IMPORT_NAME_PROMPT = "Test name:"
-DSL_DIALOG_IMPORT_SET_TITLE = "Import DSL Test"
-DSL_DIALOG_IMPORT_SET_PROMPT = "Set name (blank uses current default set):"
 DSL_OUTPUT_NO_PROFILE = "No profile selected for DSL action."
+SECTION_CONFIG_RUNTIME = "Config / Runtime"
+SECTION_RUN_TESTS = "Run Tests"
+SECTION_MANAGE_DSL = "Manage DSL Tests"
+SECTION_ACTIVE_GROUP = "Active Group"
+SECTION_DIAG_STATUS = "Diagnostics / Status"
+SECTION_DIAG_REPORTS = "Diagnostics / Reports"
+SECTION_SESSION_UI = "Session / UI"
+SECTION_OTHER = "Other"
+COMMAND_ACTIVE_ADD = "activeAdd"
+COMMAND_ACTIVE_NEXT = "activeNext"
+COMMAND_ACTIVE_PRESENCE_PROBE = "activePresenceProbe"
+COMMAND_ADD_ALL = "addAll"
+COMMAND_ADD_MOTOR = "addMotor"
+COMMAND_CAN_SWEEP = "canSweep"
+COMMAND_CLEAR_FAULTS = "clearFaults"
+COMMAND_CLEAR_STOP_LATCH = "clearStopLatch"
+COMMAND_DUMP_REPORT = "dumpReport"
+COMMAND_GROUP_ADD_DEVICE = "groupAddDevice"
+COMMAND_GROUP_BIND = "groupBind"
+COMMAND_GROUP_CREATE = "groupCreate"
+COMMAND_GROUP_DELETE = "groupDelete"
+COMMAND_GROUP_DISABLE = "groupDisable"
+COMMAND_GROUP_ENABLE = "groupEnable"
+COMMAND_GROUP_MEMBER_DISABLE = "groupMemberDisable"
+COMMAND_GROUP_MEMBER_ENABLE = "groupMemberEnable"
+COMMAND_GROUP_MEMBER_TOGGLE = "groupMemberToggle"
+COMMAND_GROUP_REMOVE_DEVICE = "groupRemoveDevice"
+COMMAND_GROUP_RUN_TEST = "groupRunTest"
+COMMAND_GROUP_UNBIND = "groupUnbind"
+COMMAND_HOST_DSL_IMPORT = "hostDslTestImport"
+COMMAND_HOST_DSL_VALIDATE = "hostDslTestValidate"
+COMMAND_HOST_RECONNECT_UI_SESSION = "hostReconnectUiSession"
+COMMAND_MANUAL_DEVICE_DUTY_CLEAR = "manualDeviceDutyClear"
+COMMAND_MANUAL_DEVICE_DUTY_SET = "manualDeviceDutySet"
+COMMAND_PRINT_BINDINGS = "printBindings"
+COMMAND_PRINT_CANCODER = "printCANcoder"
+COMMAND_PRINT_CAN_DIAG = "printCANdiag"
+COMMAND_PRINT_HEALTH = "printHealth"
+COMMAND_PRINT_INPUTS = "printInputs"
+COMMAND_PRINT_NT_DIAG = "printNTdiag"
+COMMAND_PRINT_NEXT_TEST = "printNextTest"
+COMMAND_PRINT_PROFILE_DEVICES = "printProfileDevices"
+COMMAND_PRINT_SELECTED_TEST_SOURCE = "printSelectedTestSource"
+COMMAND_PRINT_STATE = "printState"
+COMMAND_PRINT_SUMMARY = "printSummary"
+COMMAND_PRINT_TESTS_INFO = "printTestsInfo"
+COMMAND_PRINT_TESTS_OVERVIEW = "printTestsOverview"
+COMMAND_PROFILE_ACTIVATE = "profileActivate"
+COMMAND_PROFILE_TOGGLE = "profileToggle"
+COMMAND_PROFILES_APPLY = "profilesApply"
+COMMAND_PROFILES_RELOAD = "profilesReload"
+COMMAND_RUN_ALL_TESTS = "runAllTests"
+COMMAND_RUN_TEST = "runTest"
+COMMAND_RUNTIME_ACTIVATE = "runtimeActivate"
+COMMAND_RUNTIME_DEACTIVATE = "runtimeDeactivate"
+COMMAND_SELECT_PROFILE = "selectProfile"
+COMMAND_SELECT_TEST_BY_NAME = "selectTestByName"
+COMMAND_SELECT_TEST_NEXT = "selectTestNext"
+COMMAND_SELECT_TEST_PREV = "selectTestPrev"
+COMMAND_SELECTED_DEVICE_SET = "selectedDeviceSet"
+COMMAND_SELECTED_MODE_SET = "selectedModeSet"
+COMMAND_SHOW_BINDINGS = "showBindings"
+COMMAND_SHOW_DEVICE = "showDevice"
+COMMAND_SHOW_DEVICES = "showDevices"
+COMMAND_SHOW_GROUP = "showGroup"
+COMMAND_SHOW_GROUPS = "showGroups"
+COMMAND_SHOW_PROFILE = "showProfile"
+COMMAND_SHOW_PROFILES = "showProfiles"
+COMMAND_SHOW_RUNTIME_STATE = "showRuntimeState"
+COMMAND_SHOW_SELECTED_DEVICE = "showSelectedDevice"
+COMMAND_SHOW_SOURCES = "showSources"
+COMMAND_SHOW_STATUS = "showStatus"
+COMMAND_SHOW_TESTS = "showTests"
+COMMAND_SHOW_VERSION = "showVersion"
+COMMAND_STOP_COMMAND = "stopCommand"
+COMMAND_TOGGLE_DASHBOARD = "toggleDashboard"
+COMMAND_TOGGLE_TEST = "toggleTest"
+COMMAND_UI_DISCONNECT = "uiDisconnect"
+COMMAND_UI_HANDSHAKE = "uiHandshake"
+COMMAND_UI_MONITOR_DISABLE = "uiMonitorDisable"
+COMMAND_UI_MONITOR_ENABLE = "uiMonitorEnable"
+COMMAND_UI_PING = "uiPing"
+COMMAND_UI_POLL_LOG = "uiPollLog"
+ACTION_SECTION_LAYOUT: List[Tuple[str, List[str]]] = [
+    (
+        SECTION_CONFIG_RUNTIME,
+        [
+            COMMAND_PROFILES_APPLY,
+            COMMAND_PROFILES_RELOAD,
+            COMMAND_RUNTIME_ACTIVATE,
+            COMMAND_RUNTIME_DEACTIVATE,
+            COMMAND_ADD_MOTOR,
+            COMMAND_ADD_ALL,
+            COMMAND_SELECT_PROFILE,
+            COMMAND_SHOW_PROFILE,
+            COMMAND_SHOW_PROFILES,
+            COMMAND_PROFILE_TOGGLE,
+            COMMAND_PROFILE_ACTIVATE,
+        ],
+    ),
+    (
+        SECTION_RUN_TESTS,
+        [
+            COMMAND_RUN_TEST,
+            COMMAND_RUN_ALL_TESTS,
+            COMMAND_STOP_COMMAND,
+            COMMAND_SELECT_TEST_NEXT,
+            COMMAND_SELECT_TEST_PREV,
+            COMMAND_TOGGLE_TEST,
+            COMMAND_SHOW_TESTS,
+            COMMAND_SELECT_TEST_BY_NAME,
+        ],
+    ),
+    (
+        SECTION_MANAGE_DSL,
+        [
+            COMMAND_HOST_DSL_IMPORT,
+            COMMAND_HOST_DSL_VALIDATE,
+            COMMAND_PRINT_SELECTED_TEST_SOURCE,
+            COMMAND_SHOW_SOURCES,
+            COMMAND_PRINT_TESTS_INFO,
+            COMMAND_PRINT_TESTS_OVERVIEW,
+            COMMAND_PRINT_NEXT_TEST,
+        ],
+    ),
+    (
+        SECTION_ACTIVE_GROUP,
+        [
+            COMMAND_ACTIVE_ADD,
+            COMMAND_ACTIVE_NEXT,
+            COMMAND_SHOW_GROUPS,
+            COMMAND_SHOW_GROUP,
+            COMMAND_SHOW_DEVICES,
+            COMMAND_SHOW_DEVICE,
+            COMMAND_SHOW_BINDINGS,
+            COMMAND_SHOW_SELECTED_DEVICE,
+            COMMAND_SELECTED_DEVICE_SET,
+            COMMAND_SELECTED_MODE_SET,
+            COMMAND_GROUP_RUN_TEST,
+            COMMAND_GROUP_ADD_DEVICE,
+            COMMAND_GROUP_REMOVE_DEVICE,
+            COMMAND_GROUP_BIND,
+            COMMAND_GROUP_UNBIND,
+            COMMAND_GROUP_CREATE,
+            COMMAND_GROUP_DELETE,
+            COMMAND_GROUP_ENABLE,
+            COMMAND_GROUP_DISABLE,
+            COMMAND_GROUP_MEMBER_ENABLE,
+            COMMAND_GROUP_MEMBER_DISABLE,
+            COMMAND_GROUP_MEMBER_TOGGLE,
+            COMMAND_MANUAL_DEVICE_DUTY_SET,
+            COMMAND_MANUAL_DEVICE_DUTY_CLEAR,
+        ],
+    ),
+    (
+        SECTION_DIAG_STATUS,
+        [
+            COMMAND_SHOW_RUNTIME_STATE,
+            COMMAND_SHOW_STATUS,
+            COMMAND_PRINT_STATE,
+            COMMAND_PRINT_SUMMARY,
+            COMMAND_PRINT_HEALTH,
+            COMMAND_PRINT_INPUTS,
+            COMMAND_PRINT_CAN_DIAG,
+            COMMAND_PRINT_CANCODER,
+            COMMAND_PRINT_NT_DIAG,
+            COMMAND_PRINT_PROFILE_DEVICES,
+            COMMAND_SHOW_VERSION,
+            COMMAND_CAN_SWEEP,
+            COMMAND_CLEAR_FAULTS,
+            COMMAND_CLEAR_STOP_LATCH,
+            COMMAND_TOGGLE_DASHBOARD,
+        ],
+    ),
+    (
+        SECTION_DIAG_REPORTS,
+        [
+            COMMAND_DUMP_REPORT,
+            COMMAND_ACTIVE_PRESENCE_PROBE,
+        ],
+    ),
+    (
+        SECTION_SESSION_UI,
+        [
+            COMMAND_HOST_RECONNECT_UI_SESSION,
+            COMMAND_UI_DISCONNECT,
+            COMMAND_UI_HANDSHAKE,
+            COMMAND_UI_MONITOR_ENABLE,
+            COMMAND_UI_MONITOR_DISABLE,
+            COMMAND_UI_PING,
+            COMMAND_UI_POLL_LOG,
+        ],
+    ),
+]
+HIDDEN_BY_DEFAULT_COMMANDS = {
+    COMMAND_SELECT_PROFILE,
+    COMMAND_SHOW_PROFILE,
+    COMMAND_SHOW_PROFILES,
+    COMMAND_PROFILE_TOGGLE,
+    COMMAND_PROFILE_ACTIVATE,
+    COMMAND_SELECT_TEST_BY_NAME,
+    COMMAND_SHOW_TESTS,
+    COMMAND_PRINT_NEXT_TEST,
+    COMMAND_SHOW_GROUPS,
+    COMMAND_SHOW_GROUP,
+    COMMAND_SHOW_DEVICES,
+    COMMAND_SHOW_DEVICE,
+    COMMAND_SHOW_BINDINGS,
+    COMMAND_SHOW_SELECTED_DEVICE,
+    COMMAND_SELECTED_DEVICE_SET,
+    COMMAND_SELECTED_MODE_SET,
+    COMMAND_GROUP_RUN_TEST,
+    COMMAND_GROUP_ADD_DEVICE,
+    COMMAND_GROUP_REMOVE_DEVICE,
+    COMMAND_GROUP_BIND,
+    COMMAND_GROUP_UNBIND,
+    COMMAND_GROUP_CREATE,
+    COMMAND_GROUP_DELETE,
+    COMMAND_GROUP_ENABLE,
+    COMMAND_GROUP_DISABLE,
+    COMMAND_GROUP_MEMBER_ENABLE,
+    COMMAND_GROUP_MEMBER_DISABLE,
+    COMMAND_GROUP_MEMBER_TOGGLE,
+    COMMAND_MANUAL_DEVICE_DUTY_SET,
+    COMMAND_MANUAL_DEVICE_DUTY_CLEAR,
+    COMMAND_CAN_SWEEP,
+    COMMAND_CLEAR_FAULTS,
+    COMMAND_CLEAR_STOP_LATCH,
+    COMMAND_TOGGLE_DASHBOARD,
+    COMMAND_UI_DISCONNECT,
+    COMMAND_UI_HANDSHAKE,
+    COMMAND_UI_MONITOR_ENABLE,
+    COMMAND_UI_MONITOR_DISABLE,
+    COMMAND_UI_PING,
+    COMMAND_UI_POLL_LOG,
+}
 
 
 def _normalize_host_action_row(row: Dict[str, Any], default_source: str, default_kind: str) -> Dict[str, Any]:
@@ -815,13 +1073,11 @@ def _action_sections() -> List[Tuple[str, List[Tuple[str, Optional[str]]]]]:
     NAME
         _action_sections - Build action sections with labels and commands.
     """
-    sections: List[Tuple[str, List[Tuple[str, Optional[str]]]]] = []
+    rows_by_command: Dict[str, Dict[str, Any]] = {}
     for section in HOST_UI_SECTIONS:
-        title = str(section.get("section", "")).strip()
         commands = section.get("commands", [])
-        if not title or not isinstance(commands, list):
+        if not isinstance(commands, list):
             continue
-        items: List[Tuple[str, Optional[str]]] = []
         for row in commands:
             if not isinstance(row, dict):
                 continue
@@ -831,14 +1087,46 @@ def _action_sections() -> List[Tuple[str, List[Tuple[str, Optional[str]]]]]:
             host_ui_allowed = bool(row.get("hostUiAllowed", True))
             if action_kind == ACTION_KIND_REMOTE_COMMAND and not host_ui_allowed:
                 continue
-            label = str(row.get("uiLabel", row.get("name", ""))).strip()
             command = str(row.get("name", "")).strip()
-            if not label or not command:
+            if command:
+                rows_by_command[command] = row
+    sections: List[Tuple[str, List[Tuple[str, Optional[str]]]]] = []
+    used_commands: set[str] = set()
+    for title, command_names in ACTION_SECTION_LAYOUT:
+        items: List[Tuple[str, Optional[str]]] = []
+        for command in command_names:
+            row = rows_by_command.get(command)
+            if not isinstance(row, dict):
+                continue
+            label = str(row.get("uiLabel", row.get("name", ""))).strip()
+            if not label:
                 continue
             items.append((label, command))
+            used_commands.add(command)
         if items:
             sections.append((title, items))
+    remaining: List[Tuple[str, Optional[str]]] = []
+    for command, row in sorted(rows_by_command.items()):
+        if command in used_commands:
+            continue
+        label = str(row.get("uiLabel", row.get("name", ""))).strip()
+        if not label:
+            continue
+        remaining.append((label, command))
+    if remaining:
+        sections.append((SECTION_OTHER, remaining))
     return sections
+
+
+def _default_command_visible(command: str) -> bool:
+    """
+    NAME
+        _default_command_visible - Return whether a command should be shown by default.
+    """
+    metadata = ACTIONS_BY_NAME.get(command, {})
+    if command in HIDDEN_BY_DEFAULT_COMMANDS:
+        return False
+    return bool(metadata.get("showInHostUi", True))
 
 
 def _build_visibility_expected_devices(devices: List[Dict[str, Any]]) -> List[Tuple[str, str]]:
@@ -1193,6 +1481,8 @@ class BringupControlUI(tk.Tk):
         self._runtime_state_notice_level = "warn"
         self._runtime_event_notice_text = NT_VALUE_EMPTY
         self._runtime_event_notice_level = "warn"
+        self._config_push_requires_activation = False
+        self._config_push_profile = PROFILE_NONE
         self._runtime_state_path: Optional[str] = None
         self._runtime_state_path_mtime: Optional[float] = None
         self._latest_runtime_devices: Dict[str, Dict[str, Any]] = {}
@@ -1284,7 +1574,7 @@ class BringupControlUI(tk.Tk):
                     continue
                 metadata = ACTIONS_BY_NAME.get(command, {})
                 label = str(metadata.get("uiLabel", command))
-                default_visible = bool(metadata.get("showInHostUi", True))
+                default_visible = _default_command_visible(command)
                 visible = self._ui_command_prefs.get(command, default_visible)
                 var = tk.BooleanVar(value=visible)
                 self._ui_pref_vars[command] = var
@@ -4260,7 +4550,7 @@ class BringupControlUI(tk.Tk):
             metadata.get("hostUiAllowed", True)
         ):
             return False
-        return self._ui_command_prefs.get(command, bool(metadata.get("showInHostUi", True)))
+        return self._ui_command_prefs.get(command, _default_command_visible(command))
 
     def _set_command_visibility(self, command: str, visible: bool) -> None:
         """
@@ -4964,6 +5254,21 @@ class BringupControlUI(tk.Tk):
             self._runtime_state_pending_seq = int(seq)
             self._runtime_state_pending_at = time.time()
 
+    def _request_ui_log_poll_now(self) -> None:
+        """
+        NAME
+            _request_ui_log_poll_now - Trigger an immediate one-shot UI printer log fetch.
+        """
+        if not self._tcp_connected or not self._handshake_done:
+            return
+        if self._log_poll_inflight:
+            return
+        seq = ui_poll_log(self._session)
+        if seq is not None:
+            self._log_poll_inflight = True
+            self._log_poll_seq = seq
+            self._last_log_poll = time.time()
+
     def _send_handshake(self, reset: bool, force: bool = False, log: bool = True) -> None:
         """
         NAME
@@ -5246,6 +5551,30 @@ class BringupControlUI(tk.Tk):
         """
         ConfigRepository().sync(session)
 
+    def _profile_current_dsl_test_set(self, payload: Dict[str, object], profile_name: str) -> str:
+        """
+        NAME
+            _profile_current_dsl_test_set - Resolve the current DSL test set for one profile.
+        """
+        profiles = payload.get("profiles") if isinstance(payload, dict) else None
+        profile_entry = profiles.get(profile_name) if isinstance(profiles, dict) else None
+        if isinstance(profile_entry, dict):
+            profile_set = str(profile_entry.get("dslTestSet", "") or "").strip()
+            if profile_set:
+                return profile_set
+        return profile_name.strip()
+
+    def _sync_local_config_to_robot(self, profile_name: str) -> object:
+        """
+        NAME
+            _sync_local_config_to_robot - Push the canonical local config to the robot for one selected profile.
+        """
+        canonical_path = self._default_profiles_path()
+        return self._run_blocking_status_operation(
+            DSL_IMPORT_SYNC_START_FMT.format(path=str(canonical_path), profile=profile_name),
+            lambda: push_config(self._session, str(canonical_path), profile_name),
+        )
+
     def _dsl_import_from_ui(self) -> None:
         """
         NAME
@@ -5284,18 +5613,13 @@ class BringupControlUI(tk.Tk):
             self._append_output(str(exc))
             return
         payload = session.to_payload()
-        store = robot_test_dsl_store_from_root_payload(payload)
-        initial_set = store.default_set or ""
-        set_name = simpledialog.askstring(
-            DSL_DIALOG_IMPORT_SET_TITLE,
-            DSL_DIALOG_IMPORT_SET_PROMPT,
-            parent=self,
-            initialvalue=initial_set,
+        target_set_name = self._profile_current_dsl_test_set(payload, profile_name)
+        self._append_output(
+            DSL_IMPORT_TARGET_SET_FMT.format(
+                profile=profile_name,
+                set_name=target_set_name,
+            )
         )
-        if set_name is None:
-            self._append_output(DSL_IMPORT_CANCELLED)
-            return
-        cleaned_set = set_name.strip()
         def _operation() -> object:
             try:
                 result = import_test_into_root_payload(
@@ -5303,7 +5627,7 @@ class BringupControlUI(tk.Tk):
                     profile_name,
                     test_name,
                     selected_path,
-                    set_name=cleaned_set or None,
+                    set_name=target_set_name,
                 )
             except DslServiceError as exc:
                 return exc
@@ -5335,7 +5659,33 @@ class BringupControlUI(tk.Tk):
                 if test_name in values:
                     self._test_box.set(test_name)
                     self._last_selected_test = test_name
-            self._append_output(DSL_IMPORT_SAVED_FMT)
+            if self._tcp_connected:
+                sync_result = self._sync_local_config_to_robot(profile_name)
+                if sync_result is not None and callable(getattr(sync_result, "ok", None)) and sync_result.ok():
+                    self._append_output(DSL_IMPORT_SAVED_FMT)
+                    self._config_push_requires_activation = True
+                    self._config_push_profile = profile_name
+                    self._set_runtime_event_notice(
+                        RUNTIME_NOTICE_PUSHED_CONFIG_FMT.format(profile=profile_name),
+                        "warn",
+                    )
+                    self._append_output(
+                        OUTPUT_PUSH_RUNTIME_REBUILD_FMT.format(profile=profile_name)
+                    )
+                    self._refresh_profiles()
+                    self._request_runtime_state_refresh()
+                else:
+                    message = getattr(sync_result, "message", "") if sync_result is not None else ""
+                    self._append_output(
+                        DSL_IMPORT_SYNC_FAILED_FMT.format(
+                            profile=profile_name,
+                            message=message or "unknown failure",
+                        )
+                    )
+            else:
+                self._append_output(
+                    DSL_IMPORT_SAVED_LOCAL_ONLY_FMT.format(profile=profile_name)
+                )
 
     def _dsl_validate_from_ui(self) -> None:
         """
@@ -5486,6 +5836,16 @@ class BringupControlUI(tk.Tk):
         )
         message = getattr(result, "message", "") if result is not None else ""
         self._append_output(message or "Config push finished.")
+        if result is not None and callable(getattr(result, "ok", None)) and result.ok():
+            self._config_push_requires_activation = True
+            self._config_push_profile = profile_name
+            self._append_output(
+                OUTPUT_PUSH_RUNTIME_REBUILD_FMT.format(profile=profile_name)
+            )
+            self._set_runtime_event_notice(
+                RUNTIME_NOTICE_PUSHED_CONFIG_FMT.format(profile=profile_name),
+                "warn",
+            )
         self._refresh_profiles()
 
     def _download_current_config_from_ui(self) -> None:
@@ -5802,6 +6162,30 @@ class BringupControlUI(tk.Tk):
         label.configure(text=message, bg=bg, fg=fg)
         label.pack(fill="x", padx=8, pady=(6, 8))
 
+    def _runtime_activation_pending_message(self) -> str:
+        """
+        NAME
+            _runtime_activation_pending_message - Build the operator warning for a pushed but inactive config.
+        """
+        profile = _normalize_profile_name(self._config_push_profile)
+        if not profile or profile == PROFILE_NONE:
+            profile = _normalize_profile_name(self._robot_selected_profile)
+        if not profile or profile == PROFILE_NONE:
+            profile = _normalize_profile_name(self._selected_real_profile())
+        return RUNTIME_NOTICE_PUSHED_CONFIG_FMT.format(profile=profile or PROFILE_NONE)
+
+    def _runtime_profile_mismatch_message(self) -> str:
+        """
+        NAME
+            _runtime_profile_mismatch_message - Build the selected-vs-active profile mismatch warning.
+        """
+        selected = _normalize_profile_name(self._robot_selected_profile)
+        active = _normalize_profile_name(self._robot_active_runtime_profile)
+        return RUNTIME_NOTICE_PROFILE_MISMATCH_FMT.format(
+            selected=selected or PROFILE_NONE,
+            active=active or PROFILE_NONE,
+        )
+
     def _apply_runtime_state_payload(self, payload: Dict[str, Any]) -> None:
         """
         NAME
@@ -5817,6 +6201,15 @@ class BringupControlUI(tk.Tk):
         )
         self._robot_selected_profile = selected_profile
         self._robot_active_runtime_profile = active_runtime_profile
+        if (
+            self._config_push_requires_activation
+            and isinstance(runtime_active, bool)
+            and runtime_active
+            and active_runtime_profile
+            and active_runtime_profile == _normalize_profile_name(self._config_push_profile)
+        ):
+            self._config_push_requires_activation = False
+            self._config_push_profile = PROFILE_NONE
         self._sync_diagnostic_profile_context(reload_views=True)
         devices = payload.get("devices")
         if isinstance(devices, list):
@@ -5938,30 +6331,54 @@ class BringupControlUI(tk.Tk):
             _apply_live_runtime_notice_from_nt_state - Surface DS/NT state directly in Live Topology.
         """
         if stale_state:
-            self._set_runtime_state_notice(
-                "Robot state stale (code not running?)", "warn"
-            )
+            self._set_runtime_state_notice(RUNTIME_NOTICE_STALE_TEXT, "warn")
         elif estopped:
-            self._set_runtime_state_notice("Robot E-Stop. Manual run blocked.", "error")
+            self._set_runtime_state_notice(RUNTIME_NOTICE_ESTOP_TEXT, "error")
+        elif self._config_push_requires_activation:
+            self._set_runtime_state_notice(
+                self._runtime_activation_pending_message(),
+                "warn",
+            )
+        elif (
+            self._runtime_active_known
+            and self._robot_selected_profile not in (PROFILE_NONE, NT_VALUE_EMPTY)
+            and self._robot_active_runtime_profile not in (PROFILE_NONE, NT_VALUE_EMPTY)
+            and self._robot_selected_profile != self._robot_active_runtime_profile
+        ):
+            self._set_runtime_state_notice(
+                self._runtime_profile_mismatch_message(),
+                "warn",
+            )
         elif self._runtime_active_known is False:
-            self._set_runtime_state_notice(
-                "Runtime inactive. Click Runtime Activate.", "warn"
-            )
+            self._set_runtime_state_notice(RUNTIME_NOTICE_INACTIVE_TEXT, "warn")
         elif not enabled:
-            self._set_runtime_state_notice(
-                "Robot disabled. Enable teleop to run motors.", "info"
-            )
+            self._set_runtime_state_notice(RUNTIME_NOTICE_DISABLED_TEXT, "info")
         else:
             self._clear_runtime_state_notice()
         for live_view in self._iter_live_views():
             if stale_state:
-                live_view.set_runtime_state_notice("Robot state stale (code not running?)", "warn")
+                live_view.set_runtime_state_notice(RUNTIME_NOTICE_STALE_TEXT, "warn")
             elif estopped:
-                live_view.set_runtime_state_notice("Robot E-Stop. Manual run blocked.", "error")
+                live_view.set_runtime_state_notice(RUNTIME_NOTICE_ESTOP_TEXT, "error")
+            elif self._config_push_requires_activation:
+                live_view.set_runtime_state_notice(
+                    self._runtime_activation_pending_message(),
+                    "warn",
+                )
+            elif (
+                self._runtime_active_known
+                and self._robot_selected_profile not in (PROFILE_NONE, NT_VALUE_EMPTY)
+                and self._robot_active_runtime_profile not in (PROFILE_NONE, NT_VALUE_EMPTY)
+                and self._robot_selected_profile != self._robot_active_runtime_profile
+            ):
+                live_view.set_runtime_state_notice(
+                    self._runtime_profile_mismatch_message(),
+                    "warn",
+                )
             elif self._runtime_active_known is False:
-                live_view.set_runtime_state_notice("Runtime inactive. Click Runtime Activate.", "warn")
+                live_view.set_runtime_state_notice(RUNTIME_NOTICE_INACTIVE_TEXT, "warn")
             elif not enabled:
-                live_view.set_runtime_state_notice("Robot disabled. Enable teleop to run motors.", "info")
+                live_view.set_runtime_state_notice(RUNTIME_NOTICE_DISABLED_TEXT, "info")
             else:
                 live_view.clear_runtime_state_notice()
 
@@ -6094,6 +6511,15 @@ class BringupControlUI(tk.Tk):
                 "activepresenceprobe",
             }:
                 self.after_idle(self._request_runtime_state_refresh)
+            if (
+                msg_type == "out"
+                and not self._tracker.is_pending()
+                and command_lower in {
+                    COMMAND_RUN_TEST.lower(),
+                    COMMAND_RUN_ALL_TESTS.lower(),
+                }
+            ):
+                self._request_ui_log_poll_now()
 
     def _apply_live_runtime_notice_from_ack(
         self,

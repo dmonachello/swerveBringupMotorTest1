@@ -131,7 +131,21 @@ def validate_store_for_profile(
     profiles = root_payload.get(KEY_PROFILES) if isinstance(root_payload, dict) else None
     if isinstance(profiles, dict) and profile_name not in profiles:
         return ValidationResult(errors=[ValidationIssue(MESSAGE_UNKNOWN_PROFILE.format(name=profile_name))])
-    return validate_store(store, device_catalog(root_payload, profile_name), signal_catalog(signal_catalog_path))
+    selected_names = resolve_profile_test_names(root_payload, profile_name)
+    selected_store = RobotTestDslStore(
+        tests_by_name={
+            name: entry
+            for name, entry in store.tests_by_name.items()
+            if name in selected_names
+        },
+        test_sets={_profile_test_set_name(root_payload, profile_name): list(selected_names)},
+        default_set=_profile_test_set_name(root_payload, profile_name),
+    )
+    return validate_store(
+        selected_store,
+        device_catalog(root_payload, profile_name),
+        signal_catalog(signal_catalog_path),
+    )
 
 
 def import_test_into_root_payload(
@@ -148,7 +162,8 @@ def import_test_into_root_payload(
         import_test_into_root_payload - Import one DSL file into the root config payload.
     """
     store = store_from_root_payload(root_payload)
-    effective_set = (set_name or store.default_set or DEFAULT_TEST_SET).strip() or DEFAULT_TEST_SET
+    requested_set = (set_name or "").strip()
+    effective_set = requested_set or _profile_current_test_set(root_payload, store, profile_name)
     try:
         source = source_path.read_text(encoding=ENCODING_UTF8)
         normalized = compile_source(test_name, source)
@@ -215,11 +230,7 @@ def resolve_profile_test_names(root_payload: Dict[str, object], profile_name: st
     store = store_from_root_payload(root_payload)
     if not store.tests_by_name:
         return []
-    profiles = root_payload.get(KEY_PROFILES) if isinstance(root_payload, dict) else None
-    profile_entry = profiles.get(profile_name) if isinstance(profiles, dict) else None
-    profile_set = ""
-    if isinstance(profile_entry, dict):
-        profile_set = str(profile_entry.get(KEY_DSL_TEST_SET, "") or "").strip()
+    profile_set = _profile_test_set_name(root_payload, profile_name)
     selected_names: List[str]
     if profile_set and profile_set in store.test_sets:
         selected_names = list(store.test_sets.get(profile_set, []))
@@ -231,6 +242,38 @@ def resolve_profile_test_names(root_payload: Dict[str, object], profile_name: st
     else:
         selected_names = list(store.tests_by_name.keys())
     return _dedupe_preserve_order(selected_names)
+
+
+def _profile_test_set_name(root_payload: Dict[str, object], profile_name: str) -> str:
+    """
+    NAME
+        _profile_test_set_name - Return the configured test-set name for one profile.
+    """
+    profiles = root_payload.get(KEY_PROFILES) if isinstance(root_payload, dict) else None
+    profile_entry = profiles.get(profile_name) if isinstance(profiles, dict) else None
+    if isinstance(profile_entry, dict):
+        return str(profile_entry.get(KEY_DSL_TEST_SET, "") or "").strip()
+    return ""
+
+
+def _profile_current_test_set(
+    root_payload: Dict[str, object],
+    store: RobotTestDslStore,
+    profile_name: str,
+) -> str:
+    """
+    NAME
+        _profile_current_test_set - Resolve the safest default import target set for one profile.
+    """
+    profile_set = _profile_test_set_name(root_payload, profile_name)
+    if profile_set:
+        return profile_set
+    candidate = str(profile_name or "").strip()
+    if candidate:
+        return candidate
+    if store.default_set:
+        return store.default_set
+    return DEFAULT_TEST_SET
 
 
 def issue_line_excerpt(entry: RobotTestDslEntry, field: str) -> Optional[str]:
