@@ -6,6 +6,8 @@ Purpose: explain how to write Robot Diagnostic Test DSL source files that match 
 
 This guide is for people authoring `.dsl` tests.
 
+It describes the DSL-authored test surface only. It does not define every quick-bind or code-backed robot testing workflow in this repo.
+
 Use this document for:
 
 - writing syntax

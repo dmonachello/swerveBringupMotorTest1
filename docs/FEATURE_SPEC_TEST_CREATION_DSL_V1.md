@@ -10,6 +10,8 @@ This document is historical.
 
 It is not the canonical description of the current language.
 
+It does not define the entire robot test system or replace every robot-side testing workflow.
+
 Use these documents for the current implementation:
 
 - [ROBOT_DIAGNOSTIC_TEST_DSL_SPEC_V0_3.md](./ROBOT_DIAGNOSTIC_TEST_DSL_SPEC_V0_3.md)
