@@ -48,6 +48,26 @@ class _SessionStub:
     def is_connected() -> bool:
         return False
 
+    @staticmethod
+    def get_state_snapshot() -> dict:
+        return {}
+
+    @staticmethod
+    def session_id() -> str:
+        return ""
+
+    @staticmethod
+    def handshake_done() -> bool:
+        return False
+
+    @staticmethod
+    def disconnect() -> None:
+        return None
+
+    @staticmethod
+    def send_command(_name: str, _args: dict | None = None):
+        return None
+
 
 class CrossSurfaceRegressionTests(unittest.TestCase):
     """
@@ -97,14 +117,11 @@ class CrossSurfaceRegressionTests(unittest.TestCase):
 
     @staticmethod
     def _build_cli(payload: dict[str, object]) -> BridgeCli:
-        cli = BridgeCli.__new__(BridgeCli)
+        cli = BridgeCli(_SessionStub(), batch=True)
         cli._local_root_payload = payload
-        cli._local_config = {}
         cli._groups_profile = None
         cli._profiles_dirty = False
         cli._active_group_members = []
-        cli._batch = False
-        cli._session = _SessionStub()
         return cli
 
     @staticmethod

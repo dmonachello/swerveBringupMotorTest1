@@ -174,6 +174,7 @@ def import_test_into_root_payload(
         source=source,
         normalized=normalized,
         source_hash=source_hash(source),
+        enabled=True,
     )
     result = validate_entry(
         test_name,

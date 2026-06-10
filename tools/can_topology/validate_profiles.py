@@ -25,6 +25,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from tools.common.cli_helpers import add_path_arg
 from tools.common.config_api.repository import ConfigRepository
+from tools.common.device_definition_rules import format_device_required_field_issue
 from tools.common.profile_constants import (
     INTERFACE_ANALOG,
     INTERFACE_CAN,
@@ -96,11 +97,6 @@ MSG_ERR_PROFILE_OBJECT = "Profile '{name}' must be an object."
 MSG_ERR_PROFILE_DEVICES = "Profile '{name}' missing devices list."
 MSG_ERR_PROFILE_LABEL_UNKNOWN = "Profile '{name}' references unknown device label '{label}'."
 MSG_ERR_PROFILE_LABEL_DUP = "Profile '{name}' has duplicate label '{label}'."
-MSG_ERR_DEVICE_CAN_FIELDS = "Device '{label}' missing CAN fields: id/manufacturer/deviceType."
-MSG_ERR_DEVICE_DIO_FIELDS = "Device '{label}' missing DIO fields: id/invert."
-MSG_ERR_DEVICE_PWM_FIELDS = "Device '{label}' missing PWM field: pwm."
-MSG_ERR_DEVICE_ANALOG_FIELDS = "Device '{label}' missing ANALOG field: analog."
-MSG_ERR_DEVICE_USB_FIELDS = "Device '{label}' missing USB fields: id."
 MSG_ERR_DEVICE_ATTACHMENTS = "Device '{label}' references unknown attachment '{attachment}'."
 MSG_ERR_TOPOLOGY_NODE_KEY_DUP = "Profile '{profile}' topology duplicate node key: {key}."
 MSG_ERR_TOPOLOGY_DEVICE_REF = "Profile '{profile}' topology node {key} missing deviceRef."
@@ -314,33 +310,10 @@ def validate_device_registry(
             errors.append(msg)
             reporter.fail(msg)
             continue
-        if interface == INTERFACE_CAN:
-            if not _has_can_fields(entry):
-                msg = MSG_ERR_DEVICE_CAN_FIELDS.format(label=label)
-                errors.append(msg)
-                reporter.fail(msg)
-        elif interface == INTERFACE_DIO:
-            if not _has_dio_fields(entry):
-                msg = MSG_ERR_DEVICE_DIO_FIELDS.format(label=label)
-                errors.append(msg)
-                reporter.fail(msg)
-        elif interface == INTERFACE_PWM:
-            if not _has_pwm_fields(entry):
-                msg = MSG_ERR_DEVICE_PWM_FIELDS.format(label=label)
-                errors.append(msg)
-                reporter.fail(msg)
-        elif interface == INTERFACE_ANALOG:
-            if not _has_analog_fields(entry):
-                msg = MSG_ERR_DEVICE_ANALOG_FIELDS.format(label=label)
-                errors.append(msg)
-                reporter.fail(msg)
-        elif interface == INTERFACE_INTERNAL:
-            pass
-        elif interface == INTERFACE_USB:
-            if not _has_usb_fields(entry):
-                msg = MSG_ERR_DEVICE_USB_FIELDS.format(label=label)
-                errors.append(msg)
-                reporter.fail(msg)
+        issue = format_device_required_field_issue(label, entry)
+        if issue is not None:
+            errors.append(issue)
+            reporter.fail(issue)
 
     for entry in devices:
         if not isinstance(entry, dict):
@@ -518,39 +491,6 @@ def validate_topology(
                 warnings.append(msg)
                 reporter.warn(msg)
     return errors, warnings
-
-
-
-def _has_can_fields(entry: Dict[str, Any]) -> bool:
-    manufacturer = entry.get(KEY_MANUFACTURER)
-    device_type = entry.get(KEY_DEVICE_TYPE)
-    device_id = entry.get(KEY_ID)
-    return isinstance(manufacturer, int) and isinstance(device_type, int) and isinstance(device_id, int)
-
-
-
-def _has_dio_fields(entry: Dict[str, Any]) -> bool:
-    dio = entry.get(KEY_ID)
-    invert = entry.get(KEY_INVERT)
-    return isinstance(dio, int) and isinstance(invert, bool)
-
-
-
-def _has_pwm_fields(entry: Dict[str, Any]) -> bool:
-    pwm = entry.get(KEY_PWM)
-    return isinstance(pwm, int)
-
-
-
-def _has_analog_fields(entry: Dict[str, Any]) -> bool:
-    analog = entry.get(KEY_ANALOG)
-    return isinstance(analog, int)
-
-
-def _has_usb_fields(entry: Dict[str, Any]) -> bool:
-    device_id = entry.get(KEY_ID)
-    return isinstance(device_id, int)
-
 
 class Reporter:
     """

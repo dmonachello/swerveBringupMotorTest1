@@ -72,10 +72,16 @@ public final class DslBringupTest implements BringupTest {
   private String status = "";
   private double startSec = 0.0;
   private boolean finalized = false;
+  private boolean enabled = true;
   private final Map<String, Object> lastSampleValues = new LinkedHashMap<>();
 
   public DslBringupTest(DslNormalizedTest test) {
+    this(test, true);
+  }
+
+  public DslBringupTest(DslNormalizedTest test, boolean enabled) {
     this.test = test;
+    this.enabled = enabled;
   }
 
   @Override
@@ -85,7 +91,12 @@ public final class DslBringupTest implements BringupTest {
 
   @Override
   public boolean isEnabled() {
-    return true;
+    return enabled;
+  }
+
+  @Override
+  public void setEnabled(boolean enabled) {
+    this.enabled = enabled;
   }
 
   @Override

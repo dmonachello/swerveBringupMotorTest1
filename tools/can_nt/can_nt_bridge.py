@@ -239,8 +239,17 @@ SOURCE_ERR_DUP = "ERROR: Duplicate source id: {source_id}"
 SOURCE_ERR_PORT = "ERROR: Source '{source_id}' missing port."
 SOURCE_ERR_OPEN = "ERROR: Failed to open CAN bus for source {source_id}: {error}"
 SOURCE_WARN_OPEN = "WARNING: Source {source_id} unavailable ({error})."
-SOURCE_INFO_DISABLED = "Source {source_id} disabled; marking unavailable."
+SOURCE_INFO_DISABLED = "CAN source {source_id} disabled by --no-can; marking unavailable."
 SOURCE_INFO_AVAILABLE = "Source {source_id} available."
+BUG_ERR_CLI_PROFILE_SYNC_HOOKS = (
+    "BUG: host profile context sync requested for '{profile}', but CLI sync hooks are unavailable."
+)
+BUG_ERR_CLI_PROFILE_SYNC_SET = (
+    "BUG: host profile context switched to '{profile}', but CLI rejected the profile sync."
+)
+BUG_ERR_CLI_PROFILE_SYNC_MISMATCH = (
+    "BUG: host profile context is '{profile}', but CLI prompt/profile state is '{actual}'."
+)
 PCAP_LOGGER_STOPPED = "PCAP logger stopped."
 THREAD_NAME_SNIFFER = "sniffer"
 THREAD_NAME_KEYBOARD = "keyboard"
@@ -308,6 +317,40 @@ def _build_device_maps(
         can_to_label[key] = label
         id_to_labels.setdefault(did, []).append(label)
     return can_to_label, id_to_labels
+
+
+def _sync_cli_profile_context(cli: Optional[object], profile_name: str) -> bool:
+    """
+    NAME
+        _sync_cli_profile_context - Keep CLI profile state aligned with host profile context.
+
+    DESCRIPTION
+        Applies a host-selected profile to the interactive CLI when present.
+        Reports loud BUG messages when the bridge host context and CLI prompt
+        state diverge after a sync attempt.
+    """
+
+    desired = str(profile_name or EMPTY_STRING).strip()
+    if cli is None or not desired:
+        return True
+    set_profile = getattr(cli, "_set_active_profile", None)
+    get_profile = getattr(cli, "_active_profile_name", None)
+    if not callable(set_profile) or not callable(get_profile):
+        print(BUG_ERR_CLI_PROFILE_SYNC_HOOKS.format(profile=desired))
+        return False
+    try:
+        result = set_profile(desired)
+    except Exception:
+        print(BUG_ERR_CLI_PROFILE_SYNC_SET.format(profile=desired))
+        return False
+    if hasattr(result, "ok") and callable(result.ok) and not bool(result.ok()):
+        print(BUG_ERR_CLI_PROFILE_SYNC_SET.format(profile=desired))
+        return False
+    actual = str(get_profile() or EMPTY_STRING).strip()
+    if actual != desired:
+        print(BUG_ERR_CLI_PROFILE_SYNC_MISMATCH.format(profile=desired, actual=actual or PROFILE_NONE))
+        return False
+    return True
 
 
 def _normalize_profile_name(value: object) -> str:
@@ -740,6 +783,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     profile_context_name = _normalize_profile_name(args.profile)
 
     profile_context_error_name = EMPTY_STRING
+    cli_context_target: Optional[BridgeCli] = None
 
     def _apply_profile_context(profile_name: str) -> bool:
         """
@@ -779,6 +823,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         state.control_last_seen.clear()
         state.msg_count.clear()
         state.last_status.clear()
+        _sync_cli_profile_context(cli_context_target, resolved_name)
         return True
 
     initial_context = _resolve_profile_context_name(ui_table, profile_context_name)
@@ -1418,6 +1463,8 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             visibility_provider=visibility_provider,
             runtime_details_provider=_runtime_details_snapshot,
         )
+        cli_context_target = cli
+        _sync_cli_profile_context(cli_context_target, profile_context_name)
         stop_event = None
         if sniffer_enabled:
             stop_event = threading.Event()

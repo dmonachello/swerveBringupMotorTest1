@@ -43,6 +43,8 @@ if __package__ in (None, ""):
         sys.path.insert(0, repo_root_text)
     __package__ = SCRIPT_PACKAGE_NAME
 
+from tools.common.device_definition_rules import format_device_required_field_issue
+
 ENABLE_CANNECT_BUS_LINKS = True
 ENABLE_CANNECT_FREE_FLOAT = True
 ENABLE_CANNECT_CLUSTER_DRAG = True
@@ -206,7 +208,6 @@ MSG_INVALID_DIO_CHANNEL = "Invalid DIO channel for {}."
 MSG_GENERIC_DEVICE_VENDOR_TYPE_REQUIRED = (
     "Generic device '{}' requires vendor and device type."
 )
-MSG_DEVICE_CAN_FIELDS_REQUIRED = "Device '{}' missing CAN fields: id/manufacturer/deviceType."
 MSG_MISSING_DIO_TYPE = "Missing DIO device type for {}."
 MSG_INVALID_DIO_TYPE = "Invalid DIO device type for {}."
 MSG_ATTACH_SELECT = "Select exactly two nodes (one DIO device and one host device)."
@@ -494,17 +495,21 @@ except ImportError:  # Allow running as a script from this folder.
     from common.topology_draw import draw_group_overlays, render_topology_canvas_common  # type: ignore
 try:
     from tools.common.paths import profiles_canonical_path, profiles_deploy_path, repo_root
+    from tools.common.bridge_config_io import default_bridge_config, normalize_bridge_config
     from tools.common.config_api import ConfigRepository
     from tools.common.profile_io import compute_profiles_hash
 except ImportError:
     try:
         from common.paths import profiles_canonical_path, profiles_deploy_path, repo_root  # type: ignore
+        from common.bridge_config_io import default_bridge_config, normalize_bridge_config  # type: ignore
         from common.config_api import ConfigRepository  # type: ignore
         from common.profile_io import compute_profiles_hash  # type: ignore
     except ImportError:
         profiles_canonical_path = None
         profiles_deploy_path = None
         repo_root = None
+        default_bridge_config = None
+        normalize_bridge_config = None
         ConfigRepository = None
         compute_profiles_hash = None
 
@@ -2115,8 +2120,12 @@ class TopologyEditor(tk.Tk):
         if include_extras:
             for key, value in self._root_extras.items():
                 if key == "bridgeConfig":
-                    # Always persist the latest bridgeConfig (per-profile groups/selectedDevice).
-                    data[key] = value
+                    # Always persist the latest bridgeConfig using shared normalization policy.
+                    data[key] = (
+                        normalize_bridge_config(value, stamp_generated_at=True)
+                        if normalize_bridge_config is not None
+                        else value
+                    )
                     continue
                 if key not in data:
                     data[key] = value
@@ -3363,8 +3372,9 @@ class TopologyEditor(tk.Tk):
                 if not self._is_valid_can_id(node.can_id):
                     return f"Invalid CAN ID {node.can_id} for {node.label}."
                 generated_entry = self._device_entry_from_node(node)
-                if "manufacturer" not in generated_entry or "deviceType" not in generated_entry:
-                    return MSG_DEVICE_CAN_FIELDS_REQUIRED.format(node.label)
+                issue = format_device_required_field_issue(node.label, generated_entry)
+                if issue is not None:
+                    return issue
             strict_key = self._dup_key_for_node(node)
             if strict_key is not None:
                 vendor, dev_type, can_id = strict_key
@@ -9539,15 +9549,19 @@ class TopologyEditor(tk.Tk):
         if isinstance(existing, dict):
             config = existing
         else:
-            config = {
-                KEY_BRIDGE_SCHEMA_VERSION: (
-                    profile_consts.BRIDGE_CONFIG_SCHEMA_VERSION
-                    if profile_consts is not None
-                    else BRIDGE_CONFIG_SCHEMA_VERSION_FALLBACK
-                ),
-                KEY_BRIDGE_GENERATED_AT: None,
-                KEY_BRIDGE_BY_PROFILE: {},
-            }
+            config = (
+                default_bridge_config()
+                if default_bridge_config is not None
+                else {
+                    KEY_BRIDGE_SCHEMA_VERSION: (
+                        profile_consts.BRIDGE_CONFIG_SCHEMA_VERSION
+                        if profile_consts is not None
+                        else BRIDGE_CONFIG_SCHEMA_VERSION_FALLBACK
+                    ),
+                    KEY_BRIDGE_GENERATED_AT: None,
+                    KEY_BRIDGE_BY_PROFILE: {},
+                }
+            )
             self._root_extras["bridgeConfig"] = config
         by_profile = config.get(KEY_BRIDGE_BY_PROFILE)
         if not isinstance(by_profile, dict):

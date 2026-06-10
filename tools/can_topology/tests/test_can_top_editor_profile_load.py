@@ -2227,7 +2227,7 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
 
         self.assertEqual(
             validation_error,
-            "Device 'Falcon 9' missing CAN fields: id/manufacturer/deviceType.",
+            "Device 'Falcon 9' missing CAN fields: manufacturer/deviceType.",
         )
 
     def test_validate_nodes_accepts_generic_motor_controller_type_from_editor_dropdown(self) -> None:

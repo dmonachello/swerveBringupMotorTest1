@@ -2,6 +2,34 @@
 
 All notable user-facing changes are documented in this file.
 
+## 2026-06-10
+
+### Added - 2026-06-10
+
+- Added louder host-side invariant diagnostics so parsed-but-unrouted CLI
+  commands and host/CLI profile-context sync failures now surface as explicit
+  internal `BUG:` reports instead of quietly degrading into misleading generic
+  errors.
+- Added a `--verbose` mode to the shared config API guard so local policy runs
+  can print per-file scan progress and elapsed timing while preserving the same
+  pass/fail contract.
+
+### Improved - 2026-06-10
+
+- Consolidated host-side `bridgeConfig` write preparation into shared common
+  code so CLI saves, runtime exports, and topology editor writes now share one
+  generated-at stamping and normalization path.
+- Aligned DSL test enabled-state handling across host and robot paths so
+  toggled tests now persist in config, stay visible in overview/reporting
+  surfaces, and are skipped correctly by `Run All` when disabled.
+- Tightened CLI and UI profile/test behavior so profile-scoped test lists,
+  selected-test synchronization, and `profile device show-all` cross-profile
+  lookup now reflect the active shared config contract instead of stale or
+  surface-local interpretations.
+- Updated local runtime-state and source/config inspection paths to keep host
+  testing workflows stable after the shared-config refactor, including startup
+  dirty-state cleanup and local `show runtime-state --json --pretty` support.
+
 ## 2026-06-09
 
 ### Added - 2026-06-09

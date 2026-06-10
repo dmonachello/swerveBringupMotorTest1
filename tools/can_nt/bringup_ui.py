@@ -67,6 +67,11 @@ from tools.common.config_lifecycle import LocalConfigQueryService
 from tools.common.profiles import list_profile_names
 from tools.common.profile_constants import KEY_DEVICE_TYPE, KEY_ID, KEY_LABEL as PROFILE_KEY_LABEL, KEY_MANUFACTURER
 from tools.common.profile_constants import KEY_ENABLED
+from tools.common.selected_test_sync import (
+    current_test_choices,
+    plan_selected_test_command,
+    should_accept_robot_selected_test,
+)
 from tools.common.robot_test_dsl import (
     DslServiceError,
     import_test_into_root_payload,
@@ -161,6 +166,7 @@ NT_UI_STATE_SELECTED_PROFILE = "state/selectedProfile"
 NT_UI_STATE_ACTIVE_RUNTIME_PROFILE = "state/activeRuntimeProfile"
 DEFAULT_RUNTIME_STATE_RATE_HZ = 2.0
 ACTIVE_MANUAL_RUNTIME_STATE_RATE_HZ = 10.0
+TEST_LOG_FOLLOWUP_WINDOW_SEC = 4.0
 DEFAULT_RUNTIME_STATE_RATE_TEXT = "2"
 BUTTON_RUNTIME_ACTIVATE = "Runtime Activate"
 BUTTON_RUNTIME_DEACTIVATE = "Runtime Deactivate"
@@ -686,6 +692,12 @@ COMMAND_UI_MONITOR_DISABLE = "uiMonitorDisable"
 COMMAND_UI_MONITOR_ENABLE = "uiMonitorEnable"
 COMMAND_UI_PING = "uiPing"
 COMMAND_UI_POLL_LOG = "uiPollLog"
+SELECTED_TEST_SYNC_COMMANDS = {
+    COMMAND_PRINT_NEXT_TEST,
+    COMMAND_PRINT_SELECTED_TEST_SOURCE,
+    COMMAND_RUN_TEST,
+    COMMAND_TOGGLE_TEST,
+}
 ACTION_SECTION_LAYOUT: List[Tuple[str, List[str]]] = [
     (
         SECTION_CONFIG_RUNTIME,
@@ -1431,6 +1443,8 @@ class BringupControlUI(tk.Tk):
         self._evidence_last_probe_completed_at = 0.0
         self._evidence_last_probe_complete_seq: Optional[int] = None
         self._last_selected_test = None
+        self._robot_selected_test_name = NT_VALUE_EMPTY
+        self._pending_selected_test_command: Optional[Tuple[str, Optional[Dict[str, Any]]]] = None
         self._last_sent_seq: Optional[int] = None
         self._nt_connected = False
         self._timeout_sec = 1.5
@@ -1452,6 +1466,7 @@ class BringupControlUI(tk.Tk):
         self._last_log_poll = 0.0
         self._log_poll_inflight = False
         self._log_poll_seq: Optional[int] = None
+        self._test_log_followup_until = 0.0
         self._out_dedupe_window = 2.0
         self._recent_out_lines: Dict[str, float] = {}
         self._seq_seeded = False
@@ -4933,10 +4948,95 @@ class BringupControlUI(tk.Tk):
             return
         name = _normalize_profile_name(profile_name)
         tests = _load_tests(name) or [PROFILE_NONE]
+        current = self._test_box.get().strip()
         self._test_box["values"] = tests
-        if tests:
-            self._test_box.set(tests[0])
-            self._last_selected_test = tests[0]
+        chosen = tests[0] if tests else PROFILE_NONE
+        if current and current in tests:
+            chosen = current
+        self._test_box.set(chosen)
+        self._last_selected_test = chosen
+        if self._robot_selected_test_name and self._robot_selected_test_name not in tests:
+            self._robot_selected_test_name = NT_VALUE_EMPTY
+
+    def _current_test_choices(self) -> List[str]:
+        """
+        NAME
+            _current_test_choices - Return the current selected-test dropdown values.
+        """
+        if not hasattr(self, "_test_box"):
+            return []
+        values = self._test_box.cget("values")
+        if isinstance(values, str):
+            return current_test_choices(values.split())
+        return current_test_choices(values)
+
+    def _selected_test_name(self) -> str:
+        """
+        NAME
+            _selected_test_name - Return the current UI-selected test name or empty string.
+        """
+        if not hasattr(self, "_test_box"):
+            return NT_VALUE_EMPTY
+        name = self._test_box.get().strip()
+        if not name or name == PROFILE_NONE:
+            return NT_VALUE_EMPTY
+        return name
+
+    def _send_select_test_command(self, name: str) -> None:
+        """
+        NAME
+            _send_select_test_command - Send selectTestByName for one explicit test.
+        """
+        ts = timestamp_hms()
+        self._append_output(f'{ts} CMD {COMMAND_SELECT_TEST_BY_NAME} "{name}"')
+        self._last_cmd = (COMMAND_SELECT_TEST_BY_NAME, {"name": name})
+        seq = send_tracked_command(
+            self._session,
+            self._tracker,
+            COMMAND_SELECT_TEST_BY_NAME,
+            {"name": name},
+            sender=lambda session, _command_name, _command_args: select_test_by_name(session, name),
+            now=time.time(),
+        )
+        if seq is not None:
+            self._last_sent_seq = seq
+
+    def _selected_test_sync_required(self, command: str) -> bool:
+        """
+        NAME
+            _selected_test_sync_required - Return whether one command needs robot selected-test sync.
+        """
+        plan = plan_selected_test_command(
+            command,
+            self._selected_test_name(),
+            str(self._robot_selected_test_name or "").strip(),
+            tuple(SELECTED_TEST_SYNC_COMMANDS),
+        )
+        return plan.requires_sync
+
+    def _dispatch_pending_selected_test_command(self) -> bool:
+        """
+        NAME
+            _dispatch_pending_selected_test_command - Send one deferred selected-test command after sync.
+        """
+        if self._pending_selected_test_command is None:
+            return False
+        deferred_name, deferred_args = self._pending_selected_test_command
+        self._pending_selected_test_command = None
+        ts = timestamp_hms()
+        self._append_output(f"{ts} CMD {deferred_name}")
+        self._last_cmd = (deferred_name, deferred_args)
+        seq = send_tracked_command(
+            self._session,
+            self._tracker,
+            deferred_name,
+            deferred_args,
+            sender=lambda session, command_name, command_args: self._send_tcp_command(command_name, command_args),
+            now=time.time(),
+        )
+        if seq is not None:
+            self._last_sent_seq = seq
+        return True
 
     def _build_reports_help(self) -> str:
         """
@@ -5269,6 +5369,13 @@ class BringupControlUI(tk.Tk):
             self._log_poll_seq = seq
             self._last_log_poll = time.time()
 
+    def _arm_test_log_followup_window(self) -> None:
+        """
+        NAME
+            _arm_test_log_followup_window - Keep polling the UI log briefly after test commands finish.
+        """
+        self._test_log_followup_until = time.time() + TEST_LOG_FOLLOWUP_WINDOW_SEC
+
     def _send_handshake(self, reset: bool, force: bool = False, log: bool = True) -> None:
         """
         NAME
@@ -5457,6 +5564,15 @@ class BringupControlUI(tk.Tk):
         if self._tracker.is_pending():
             self._append_output("Busy: wait for current command to finish.")
             return
+        if self._selected_test_sync_required(command):
+            selected_name = self._selected_test_name()
+            if selected_name:
+                metadata = ACTIONS_BY_NAME.get(command, {})
+                args_json = str(metadata.get(INVENTORY_KEY_UI_ARGS_JSON, "")).strip()
+                deferred_args = json.loads(args_json) if args_json else None
+                self._pending_selected_test_command = (command, deferred_args)
+                self._send_select_test_command(selected_name)
+                return
         ts = timestamp_hms()
         self._append_output(f"{ts} CMD {command}")
         self._last_cmd = (command, args)
@@ -5490,19 +5606,7 @@ class BringupControlUI(tk.Tk):
         if name == self._last_selected_test:
             return
         self._last_selected_test = name
-        ts = timestamp_hms()
-        self._append_output(f"{ts} CMD selectTestByName \"{name}\"")
-        self._last_cmd = ("selectTestByName", {"name": name})
-        seq = send_tracked_command(
-            self._session,
-            self._tracker,
-            "selectTestByName",
-            {"name": name},
-            sender=lambda session, _command_name, _command_args: select_test_by_name(session, name),
-            now=time.time(),
-        )
-        if seq is not None:
-            self._last_sent_seq = seq
+        self._send_select_test_command(name)
 
     def _selected_real_profile(self) -> str:
         """
@@ -5951,6 +6055,7 @@ class BringupControlUI(tk.Tk):
             if not selected_name:
                 selected_name = self._resolve_selected_from_rows()
             if selected_name:
+                self._robot_selected_test_name = selected_name
                 self._sync_test_selection(selected_name)
             active_name = self._tests_table.getEntry("activeName").getString("")
             active_status = self._tests_table.getEntry("activeStatus").getString("")
@@ -6026,7 +6131,10 @@ class BringupControlUI(tk.Tk):
             self._tcp_connected
             and self._handshake_done
             and not self._log_poll_inflight
-            and (now - self._last_log_poll) >= self._log_poll_interval
+            and (
+                (now - self._last_log_poll) >= self._log_poll_interval
+                or now < self._test_log_followup_until
+            )
         ):
             seq = ui_poll_log(self._session)
             if seq is not None:
@@ -6490,6 +6598,12 @@ class BringupControlUI(tk.Tk):
         if msg_type in ("ack", "out"):
             self._tracker.handle_event(event)
             command_lower = str(event.name or "").strip().lower()
+            if (
+                msg_type == "ack"
+                and command_lower == COMMAND_SELECT_TEST_BY_NAME.lower()
+                and str(event.status or "").strip().lower() != "ok"
+            ):
+                self._pending_selected_test_command = None
             if command_lower == "activepresenceprobe":
                 self._evidence_probe_pending = False
                 seq_value = int(event.seq)
@@ -6497,6 +6611,13 @@ class BringupControlUI(tk.Tk):
                     self._evidence_last_probe_complete_seq = seq_value
                     self._evidence_probe_complete_count += 1
                     self._evidence_last_probe_completed_at = time.time()
+            if (
+                not self._tracker.is_pending()
+                and msg_type == "out"
+                and command_lower == COMMAND_SELECT_TEST_BY_NAME.lower()
+            ):
+                if self._dispatch_pending_selected_test_command():
+                    return
             if command_lower in {
                 "runtimeactivate",
                 "runtimedeactivate",
@@ -6519,6 +6640,7 @@ class BringupControlUI(tk.Tk):
                     COMMAND_RUN_ALL_TESTS.lower(),
                 }
             ):
+                self._arm_test_log_followup_window()
                 self._request_ui_log_poll_now()
 
     def _apply_live_runtime_notice_from_ack(
@@ -6682,6 +6804,9 @@ class BringupControlUI(tk.Tk):
         if not hasattr(self, "_test_box"):
             return
         if not name or name == "(none)":
+            return
+        choices = self._current_test_choices()
+        if not should_accept_robot_selected_test(name, choices):
             return
         if name == self._test_box.get():
             return

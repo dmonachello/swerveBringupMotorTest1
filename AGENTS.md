@@ -34,6 +34,10 @@ Hard rules
 - The JSON report exposes telemetry under `devices[].attachments` (e.g., `type=revMotor` / `ctreMotor`) with fields such as `cmdDuty`, `appliedDuty`, and `motorCurrentA`.
 - AI diagnosis guidance lives in `docs/AI_DIAGNOSIS.md`.
 - Enforce no string or numeric literals in executable code paths. All literals must be defined in a dedicated constants section/file and referenced symbolically. (Documentation and constant definitions are exempt.)
+- Debuggability is a project-wide design goal. Add explicit invariant checks at parser/dispatcher boundaries, shared-contract adapters, cross-surface state sync points, and other glue layers where architectural drift tends to hide.
+- When an internal invariant fails, do not misreport it as user syntax or configuration error. Surface it as a loud internal bug with enough context to localize the fault quickly (for example mode, command, handler, profile, or contract path).
+- Use `assert` for developer/test-only impossible states where crashing is acceptable. In operator-facing tools, prefer nonfatal but prominent bug reports plus explicit internal-error status codes so the session remains debuggable.
+- Treat parsed-but-unrouted commands, unexpected shared-model gaps, and cross-surface contract mismatches as architecture bugs. Report them immediately and loudly rather than silently recovering or downgrading them to generic failures.
 - Documentation rules:
   - Use short headings and clear section hierarchy.
   - Prefer short paragraphs and bullet lists.

@@ -64,6 +64,8 @@ SHOW_TARGET_INSTANTIATED = "instantiated"
 SHOW_TARGET_FAULTS = "faults"
 SHOW_TARGET_SIGNALS = "signals"
 SHOW_TARGET_SIGNAL = "signal"
+SHOW_TARGET_TESTS_SCOPE_GLOBAL = "global"
+SHOW_TARGET_TESTS_SCOPE_SETS = "sets"
 CMD_CONFIG = "config"
 CMD_SHOW = "show"
 CMD_LS = "ls"
@@ -250,6 +252,7 @@ class BridgeCliParser:
         }
         self._mode_cmds[SPEC.modes[SPEC.idx_config]].add(CMD_TOPOLOGY)
         self._mode_cmds[SPEC.modes[SPEC.idx_exec]].add(CMD_RUNTIME)
+        self._mode_cmds[SPEC.modes[SPEC.idx_exec]].add(SPEC.cmd_profiles.lower())
         self._mode_cmds[SPEC.modes[SPEC.idx_config]].add(CMD_RUNTIME)
         self._dispatch = self._build_dispatch()
         self._grammar = CliGrammarModel.from_ebnf(EBNF_PATH)
@@ -286,6 +289,8 @@ class BridgeCliParser:
                 return self._handle_instantiate_command
             if cmd == SPEC.cmd_profile.lower():
                 return self._handle_profile
+            if cmd == SPEC.cmd_profiles.lower():
+                return self._handle_profiles_command
             if cmd == SPEC.cmd_add.lower():
                 return self._handle_add_command
             if cmd == CMD_CLEAR:
@@ -557,11 +562,9 @@ class BridgeCliParser:
 
         if verb in self._common:
             kind = self._common_kind(verb)
-        elif (
-            mode == SPEC.modes[SPEC.idx_exec]
-            and verb == SPEC.cmd_profile
-            and len(tokens) > SPEC.count_one
-            and tokens[SPEC.count_one].lower() == SPEC.cmd_export
+        elif mode == SPEC.modes[SPEC.idx_exec] and verb in (
+            SPEC.cmd_profile,
+            SPEC.cmd_profiles,
         ):
             values = _pad(self._build_config_ast(tokens), 14)
             (
@@ -2311,6 +2314,14 @@ class BridgeCliParser:
             raise CliParseError(SPEC.msg_show_name % target)
         if target == "profiles" and len(core) > SPEC.count_one and self._strict:
             raise CliParseError(SPEC.msg_show_too_many)
+        if target == CMD_TESTS and len(core) > SPEC.count_one:
+            scope = core[SPEC.count_one].lower()
+            if scope == SHOW_TARGET_TESTS_SCOPE_GLOBAL and len(core) == SPEC.count_two:
+                pass
+            elif scope == SHOW_TARGET_TESTS_SCOPE_SETS and len(core) in (SPEC.count_two, SPEC.count_three):
+                pass
+            elif self._strict:
+                raise CliParseError(SPEC.msg_show_too_many)
         if target == SPEC.show_target_config and len(core) > SPEC.count_one:
             if (
                 len(core) == SPEC.count_two
@@ -2321,6 +2332,17 @@ class BridgeCliParser:
                 raise CliParseError(SPEC.msg_show_too_many)
         if self._strict:
             if (
+                target == CMD_TESTS
+                and len(core) >= SPEC.count_two
+            ):
+                scope = core[SPEC.count_one].lower()
+                if scope == SHOW_TARGET_TESTS_SCOPE_GLOBAL:
+                    max_len = SPEC.count_two
+                elif scope == SHOW_TARGET_TESTS_SCOPE_SETS:
+                    max_len = SPEC.count_three
+                else:
+                    max_len = SPEC.count_one
+            elif (
                 target == SPEC.show_target_config
                 and len(core) == SPEC.count_two
                 and core[SPEC.count_one].lower() in (SHOW_CONFIG_LOCAL_RAW, SHOW_CONFIG_DIRTY)

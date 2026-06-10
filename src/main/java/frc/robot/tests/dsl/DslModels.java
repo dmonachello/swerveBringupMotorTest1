@@ -24,6 +24,7 @@ public final class DslModels {
   }
 
   public static final class DslTestEntry {
+    public boolean enabled = true;
     public String source = "";
     public String sourceHash = "";
     public DslNormalizedTest normalized;

@@ -871,6 +871,42 @@ public final class BringupUtil {
     }
   }
 
+  /**
+   * NAME
+   *   persistCurrentProfilesJson - Persist an updated bringup_system.json payload without rebuilding runtime state.
+   *
+   * PARAMETERS
+   *   root - Mutable JSON root to hash and persist.
+   *
+   * RETURNS
+   *   Empty string on success, otherwise a human-readable error.
+   *
+   * SIDE EFFECTS
+   *   Updates on-disk bringup_system.json, cached raw JSON, and cached dslTests root.
+   */
+  public static String persistCurrentProfilesJson(JsonObject root) {
+    if (root == null) {
+      return MESSAGE_REGISTRY_ROOT_NOT_OBJECT;
+    }
+    String rawJson = GSON.toJson(root);
+    String computedHash;
+    try {
+      computedHash = computeDataHash(rawJson);
+    } catch (RuntimeException ex) {
+      return safeText(ex.getMessage());
+    }
+    root.addProperty("data_hash", computedHash);
+    rawJson = GSON.toJson(root);
+    RegistryApplyReport report = new RegistryApplyReport();
+    if (!persistRegistryJson(rawJson, report)) {
+      return safeText(report.postApplyCheck.message);
+    }
+    currentRegistryRawJson = rawJson;
+    JsonElement parsed = JsonParser.parseString(rawJson);
+    dslTestsRoot = extractDslTestsRoot(parsed);
+    return NT_LABEL_EMPTY;
+  }
+
   private static String resolveProfileNameOrActive(String profileName) {
     String name = safeText(profileName);
     if (name.isBlank()) {

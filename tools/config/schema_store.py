@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
 from tools.common.config_api.repository import ConfigRepository
+from tools.common.bridge_config_io import default_bridge_config
 from tools.common.json_io import write_json
 from tools.common.paths import repo_root as repo_root_path
 from tools.common.profile_io import compute_profiles_hash
@@ -1018,6 +1019,7 @@ class ConfigSchemaStore:
         if sanitized.get(KEY_DATA_HASH) != computed_hash:
             sanitized[KEY_DATA_HASH] = computed_hash
             changed = BOOL_TRUE
+        changed = BOOL_TRUE if sanitized != payload else BOOL_FALSE
         return sanitized, warnings, changed
 
     def sanitize_bindings_payload(
@@ -1162,11 +1164,7 @@ class ConfigSchemaStore:
 
         bridge = payload.get(KEY_BRIDGE_CONFIG)
         if not isinstance(bridge, dict):
-            bridge = {
-                KEY_BRIDGE_SCHEMA_VERSION: BRIDGE_CONFIG_SCHEMA_VERSION,
-                KEY_BRIDGE_GENERATED_AT: None,
-                KEY_BRIDGE_BY_PROFILE: dict(),
-            }
+            bridge = default_bridge_config()
             payload[KEY_BRIDGE_CONFIG] = bridge
         if KEY_BRIDGE_SCHEMA_VERSION not in bridge:
             bridge[KEY_BRIDGE_SCHEMA_VERSION] = BRIDGE_CONFIG_SCHEMA_VERSION

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -92,6 +93,42 @@ class BridgeCliRobotTestDslCliTests(unittest.TestCase):
         if include_controller:
             cli._local_root_payload["profiles"]["dsl_demo_050426"]["devices"].append("controller0")
         return cli
+
+    def test_show_tests_sets_filters_to_named_set(self) -> None:
+        cli = self._build_cli()
+        cli._local_root_payload["dslTests"] = robot_test_dsl_store_to_payload(  # type: ignore[index]
+            RobotTestDslStore(
+                default_set="default",
+                test_sets={
+                    "default": ["spark25_leftY", "falcon9_leftY"],
+                    "test_minimal_25_9": [
+                        "spark25_leftY",
+                        "falcon9_leftY",
+                        "motors_to_limit",
+                        "falcon9_move_150_rotations",
+                    ],
+                },
+                tests_by_name={
+                    "spark25_leftY": RobotTestDslEntry(name="spark25_leftY", source='test "spark25_leftY"\n'),
+                    "falcon9_leftY": RobotTestDslEntry(name="falcon9_leftY", source='test "falcon9_leftY"\n'),
+                    "motors_to_limit": RobotTestDslEntry(name="motors_to_limit", source='test "motors_to_limit"\n'),
+                    "falcon9_move_150_rotations": RobotTestDslEntry(
+                        name="falcon9_move_150_rotations",
+                        source='test "falcon9_move_150_rotations"\n',
+                    ),
+                },
+            )
+        )
+
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            result = cli._dsl_show_command(["show", "tests", "sets", "test_minimal_25_9"])
+
+        self.assertEqual(result.code, SS__NORMAL)
+        text = output.getvalue()
+        self.assertIn("selected set: test_minimal_25_9", text)
+        self.assertIn("  test_minimal_25_9: spark25_leftY, falcon9_leftY, motors_to_limit, falcon9_move_150_rotations", text)
+        self.assertNotIn("  default:", text)
 
     def test_import_validate_and_show_normalized(self) -> None:
         cli = self._build_cli(include_controller=True)
@@ -345,6 +382,66 @@ class BridgeCliRobotTestDslCliTests(unittest.TestCase):
         self.assertNotIn("bad_old_test", cli._local_root_payload["dslTests"]["testsByName"])
         self.assertIn("good_test", cli._local_root_payload["dslTests"]["testsByName"])
         self.assertEqual(cli._local_root_payload["dslTests"]["testSets"]["legacy"], ["good_test"])
+
+    def test_show_tests_defaults_to_active_profile_scope(self) -> None:
+        cli = self._build_cli(include_controller=True)
+        cli._local_root_payload["profiles"]["dsl_demo_050426"]["dslTestSet"] = "mini"
+        cli._local_root_payload["dslTests"] = {
+            "schemaVersion": 1,
+            "defaultSet": "robot_2026_swerve",
+            "testSets": {
+                "robot_2026_swerve": ["swerve_a", "swerve_b"],
+                "mini": ["spark25_leftY", "falcon9_leftY"],
+            },
+            "testsByName": {
+                "swerve_a": {"source": "", "sourceHash": "", "normalized": {}, "enabled": True},
+                "swerve_b": {"source": "", "sourceHash": "", "normalized": {}, "enabled": True},
+                "spark25_leftY": {"source": "", "sourceHash": "", "normalized": {}, "enabled": True},
+                "falcon9_leftY": {"source": "", "sourceHash": "", "normalized": {}, "enabled": False},
+            },
+        }
+        output = io.StringIO()
+
+        with contextlib.redirect_stdout(output):
+            result = cli._dsl_show_command(["show", "tests", "--json", "--pretty"])
+
+        self.assertEqual(result.code, SS__NORMAL)
+        payload = json.loads(output.getvalue())
+        self.assertEqual("profile", payload["scope"])
+        self.assertEqual("dsl_demo_050426", payload["activeProfile"])
+        self.assertEqual("mini", payload["activeSet"])
+        self.assertEqual(
+            [
+                {"name": "spark25_leftY", "enabled": True},
+                {"name": "falcon9_leftY", "enabled": False},
+            ],
+            payload["tests"],
+        )
+
+    def test_show_tests_global_requires_explicit_scope(self) -> None:
+        cli = self._build_cli(include_controller=True)
+        cli._local_root_payload["dslTests"] = {
+            "schemaVersion": 1,
+            "defaultSet": "robot_2026_swerve",
+            "testSets": {
+                "robot_2026_swerve": ["swerve_a"],
+                "mini": ["spark25_leftY"],
+            },
+            "testsByName": {
+                "swerve_a": {"source": "", "sourceHash": "", "normalized": {}, "enabled": True},
+                "spark25_leftY": {"source": "", "sourceHash": "", "normalized": {}, "enabled": True},
+            },
+        }
+        output = io.StringIO()
+
+        with contextlib.redirect_stdout(output):
+            result = cli._dsl_show_command(["show", "tests", "global", "--json", "--pretty"])
+
+        self.assertEqual(result.code, SS__NORMAL)
+        payload = json.loads(output.getvalue())
+        self.assertEqual("global", payload["scope"])
+        self.assertEqual(["spark25_leftY", "swerve_a"], payload["tests"])
+        self.assertIn("robot_2026_swerve", payload["testSets"])
 
     def test_config_mode_instantiate_all_uses_robot_path_when_not_in_group_context(self) -> None:
         cli = self._build_cli(connected=True)

@@ -136,3 +136,15 @@ class ValidateProfilesTopologyTests(unittest.TestCase):
 
         self.assertEqual(errors, [])
         self.assertTrue(any("unknown edgeType" in warning for warning in warnings))
+
+    def test_reports_exact_missing_can_fields(self) -> None:
+        payload = self._base_payload()
+        del payload["devices"][1]["manufacturer"]
+        del payload["devices"][1]["deviceType"]
+
+        errors, _warnings = self._validate(payload)
+
+        self.assertIn(
+            "Device 'motor1' missing CAN fields: manufacturer/deviceType.",
+            errors,
+        )

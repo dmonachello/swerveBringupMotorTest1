@@ -168,6 +168,12 @@ from tools.can_nt.status import (
     SS__NETWORK__ROBOT_UNAVAILABLE,
 )
 from tools.config.schema_store import ConfigSchemaStore, LOCATION_BINDINGS, LOCATION_MAPPINGS
+from tools.common.bridge_config_io import (
+    default_bridge_config,
+    normalize_bridge_config,
+    single_profile_bridge_config,
+)
+from tools.common.device_definition_rules import required_fields_for_interface
 from tools.common.json_io import read_json, write_json
 from tools.common.profile_io import compute_profiles_hash
 from tools.common.paths import (
@@ -325,6 +331,7 @@ from tools.common.robot_test_dsl import (
     device_catalog as robot_test_dsl_device_catalog,
     import_test_into_root_payload as robot_test_dsl_import_test_into_root_payload,
     issue_detail as robot_test_dsl_issue_detail,
+    resolve_profile_test_names as robot_test_dsl_resolve_profile_test_names,
     render_validation_text as robot_test_dsl_render_validation_text,
     signal_catalog as robot_test_dsl_signal_catalog,
     store_from_root_payload as robot_test_dsl_store_from_root_payload,
@@ -1444,8 +1451,8 @@ MESSAGE_PROFILE_EXPORT_WRITTEN = "Wrote profile export: {json_path} + {script_pa
 MESSAGE_PROFILES_EXPORT_WRITTEN = "Wrote profiles export: {json_path} + {script_path}."
 MESSAGE_PROFILE_EXPORT_PATH_INVALID = "Invalid export path (missing directory): {path}"
 MESSAGE_PROFILE_DEVICE_SHOW_ALL_HEADER = "Profile device entries:"
-MESSAGE_PROFILE_DEVICE_SHOW_ALL_PROFILE_HEADER = "Profile device list:"
-MESSAGE_PROFILE_DEVICE_SHOW_ALL_PROFILE_ENTRY = "  {label} x{count}"
+MESSAGE_PROFILE_DEVICE_SHOW_ALL_PROFILES_HEADER = "Profiles containing device:"
+MESSAGE_PROFILE_DEVICE_SHOW_ALL_PROFILE_ENTRY = "  {profile} x{count}"
 MESSAGE_PROFILE_DEVICE_SHOW_ALL_ENTRY = "  [{index}] label={label}"
 MESSAGE_PROFILE_DEVICE_SHOW_ALL_COUNT = "  count={count}"
 MESSAGE_PROFILE_DEVICE_SHOW_ALL_FIELD_FMT = "    {key}={value}"
@@ -1747,7 +1754,7 @@ HELP_PROFILE_DEVICE_DELETE_TEXT = (
 )
 HELP_TOPIC_PROFILE_DEVICE_SHOW_ALL = "profile device show-all"
 HELP_PROFILE_DEVICE_SHOW_ALL_TEXT = (
-    "profile device show-all <device>\n  Show all profile device entries matching a label."
+    "profile device show-all <device>\n  Show matching device entries and every profile that references the label."
 )
 HELP_TOPIC_PROFILE_DELETE = "profile delete"
 HELP_PROFILE_DELETE_TEXT = (
@@ -2023,7 +2030,15 @@ MESSAGE_ERROR_LEGACY_TEST_AUTHORING_REMOVED = (
     "Use tools/can_nt/scripts/dsl_tests_config_tool.py for DSL import/export/validate."
 )
 MESSAGE_ERROR_DSL_CLI_USAGE = "ERROR: test import|export|validate|delete|cleanup|set ..."
-MESSAGE_ERROR_DSL_SHOW_USAGE = "ERROR: show tests | show test <name> [normalized] | show test sets"
+MESSAGE_ERROR_DSL_SHOW_USAGE = (
+    "ERROR: show tests [global|sets] | show test <name> [normalized] | show test sets"
+)
+MESSAGE_ERR_ROUTING_GAP = (
+    "BUG: command parsed successfully but no {mode} handler claimed it: {command}"
+)
+MESSAGE_ERR_ROUTING_GAP_REPORT = (
+    "BUG: internal CLI routing gap. This command passed parsing but was not wired to execution."
+)
 MESSAGE_ERROR_DSL_PROFILE_REQUIRED = "ERROR: active profile required."
 MESSAGE_ERROR_DSL_CONFIG_REQUIRED = "ERROR: local bringup_system.json must be loaded first (merge/import config)."
 MESSAGE_ERROR_DSL_TEST_NOT_FOUND = "ERROR: test not found: {name}"
@@ -5065,6 +5080,21 @@ class BridgeCli:
         if run_id and run_id > COUNT_ZERO:
             self._last_test_run_id = run_id
 
+    def _report_routing_gap(self, mode: str, tokens: List[str]) -> StatusResult:
+        """
+        NAME
+            _report_routing_gap - Report a parser/executor routing mismatch.
+
+        DESCRIPTION
+            Use when a command already passed CLI parsing/normalization but no
+            execution handler claimed it. This is an internal wiring bug, not a
+            user syntax mistake.
+        """
+        command_text = " ".join(tokens)
+        print(MESSAGE_ERR_ROUTING_GAP.format(mode=mode, command=command_text))
+        print(MESSAGE_ERR_ROUTING_GAP_REPORT)
+        return StatusResult(code=SS__EXECUTOR__INTERNAL_ERROR)
+
     def _handle_tests_wait_command(self, tokens: List[str]) -> StatusResult:
         """
         NAME
@@ -6504,7 +6534,7 @@ class BridgeCli:
         if cmd == CMD_TEST and mode == MODE_CONFIG:
             return self._dsl_test_command(tokens)
         print(MESSAGE_ERROR_DSL_CLI_USAGE)
-        return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
+        return self._report_routing_gap(f"{mode} test-authoring", tokens)
 
     def _dsl_require_local_root(self) -> Optional[Dict[str, object]]:
         self._ensure_local_config()
@@ -6597,6 +6627,122 @@ class BridgeCli:
         )
         print(text)
 
+    def _dsl_profile_tests_payload(self, store: RobotTestDslStore) -> Dict[str, object]:
+        """
+        NAME
+            _dsl_profile_tests_payload - Build the active-profile DSL test view.
+        """
+        profile_name = self._active_profile_name() or EMPTY_STRING
+        names = robot_test_dsl_resolve_profile_test_names(self._local_root_payload or {}, profile_name)
+        rows: List[Dict[str, object]] = []
+        for name in names:
+            entry = store.tests_by_name.get(name)
+            if entry is None:
+                continue
+            rows.append({KEY_NAME: name, KEY_ENABLED: bool(entry.enabled)})
+        return {
+            KEY_SCOPE: "profile",
+            "activeProfile": profile_name,
+            "activeSet": self._profile_test_set_name(profile_name, store),
+            "defaultSet": store.default_set,
+            "tests": rows,
+        }
+
+    def _dsl_global_tests_payload(self, store: RobotTestDslStore) -> Dict[str, object]:
+        """
+        NAME
+            _dsl_global_tests_payload - Build the full DSL registry view.
+        """
+        return {
+            KEY_SCOPE: "global",
+            "defaultSet": store.default_set,
+            "testSets": store.test_sets,
+            "tests": sorted(store.tests_by_name.keys()),
+        }
+
+    def _dsl_test_sets_payload(
+        self,
+        store: RobotTestDslStore,
+        selected_set: str = EMPTY_STRING,
+    ) -> Dict[str, object]:
+        """
+        NAME
+            _dsl_test_sets_payload - Build the DSL test-set mapping view.
+        """
+        profile_name = self._active_profile_name() or EMPTY_STRING
+        requested_set = str(selected_set or EMPTY_STRING).strip()
+        test_sets = store.test_sets
+        if requested_set:
+            selected_names = test_sets.get(requested_set)
+            test_sets = {requested_set: list(selected_names) if isinstance(selected_names, list) else []}
+        return {
+            KEY_SCOPE: "sets",
+            "activeProfile": profile_name,
+            "activeSet": self._profile_test_set_name(profile_name, store),
+            "defaultSet": store.default_set,
+            "selectedSet": requested_set,
+            "testSets": test_sets,
+        }
+
+    def _profile_test_set_name(self, profile_name: str, store: RobotTestDslStore) -> str:
+        """
+        NAME
+            _profile_test_set_name - Resolve the effective DSL test set for one profile.
+        """
+        profiles = (
+            self._local_root_payload.get(KEY_PROFILES)
+            if isinstance(self._local_root_payload, dict)
+            else None
+        )
+        profile_entry = profiles.get(profile_name) if isinstance(profiles, dict) else None
+        if isinstance(profile_entry, dict):
+            configured = str(profile_entry.get(KEY_DSL_TEST_SET, EMPTY_STRING) or EMPTY_STRING).strip()
+            if configured:
+                return configured
+        if store.default_set:
+            return store.default_set
+        if store.test_sets:
+            return next(iter(store.test_sets.keys()))
+        return EMPTY_STRING
+
+    def _print_dsl_tests_payload(self, payload: Dict[str, object], scope: str) -> None:
+        """
+        NAME
+            _print_dsl_tests_payload - Render DSL test inventory views.
+        """
+        if scope == "profile":
+            profile_name = str(payload.get("activeProfile", EMPTY_STRING)).strip() or STRING_NONE
+            active_set = str(payload.get("activeSet", EMPTY_STRING)).strip() or STRING_NONE
+            print(f"DSL tests for profile {profile_name} (set: {active_set}):")
+            tests = payload.get("tests", [])
+            if not isinstance(tests, list) or not tests:
+                print("  (none)")
+                return
+            for row in tests:
+                if not isinstance(row, dict):
+                    continue
+                name = str(row.get(KEY_NAME, EMPTY_STRING)).strip()
+                enabled = bool(row.get(KEY_ENABLED, True))
+                print(f"  {name} [{'enabled' if enabled else 'disabled'}]")
+            return
+        if scope == "sets":
+            print(f"default set: {payload.get('defaultSet', EMPTY_STRING)}")
+            selected_set = str(payload.get("selectedSet", EMPTY_STRING)).strip()
+            if selected_set:
+                print(f"selected set: {selected_set}")
+            test_sets = payload.get("testSets", {})
+            if not isinstance(test_sets, dict):
+                return
+            for set_name, names in test_sets.items():
+                print(f"  {set_name}: {', '.join(names) if names else '-'}")
+            return
+        print("DSL tests:")
+        tests = payload.get("tests", [])
+        if not isinstance(tests, list):
+            return
+        for name in tests:
+            print(f"  {name}")
+
     def _dsl_show_command(self, tokens: List[str]) -> StatusResult:
         root = self._dsl_require_local_root()
         if root is None:
@@ -6619,33 +6765,36 @@ class BridgeCli:
         store = self._dsl_store()
         target = cleaned[COUNT_ZERO].lower()
         if target == CMD_TESTS:
-            payload = {
-                "defaultSet": store.default_set,
-                "testSets": store.test_sets,
-                "tests": sorted(store.tests_by_name.keys()),
-            }
+            scope = cleaned[COUNT_ONE].lower() if len(cleaned) >= COUNT_TWO else EMPTY_STRING
+            if scope == EMPTY_STRING:
+                payload = self._dsl_profile_tests_payload(store)
+                scope = "profile"
+            elif scope == "global":
+                if len(cleaned) > COUNT_TWO:
+                    print(MESSAGE_ERROR_DSL_SHOW_USAGE)
+                    return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
+                payload = self._dsl_global_tests_payload(store)
+            elif scope == "sets":
+                selected_set = cleaned[COUNT_TWO] if len(cleaned) >= COUNT_THREE else EMPTY_STRING
+                payload = self._dsl_test_sets_payload(store, selected_set)
+            else:
+                print(MESSAGE_ERROR_DSL_SHOW_USAGE)
+                return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
             if json_output:
                 print(self._dump_json(payload, pretty))
             else:
-                print("DSL tests:")
-                for name in sorted(store.tests_by_name.keys()):
-                    print(f"  {name}")
+                self._print_dsl_tests_payload(payload, scope)
             return StatusResult(code=SS__NORMAL)
         if target != CMD_TEST:
             print(MESSAGE_ERROR_DSL_SHOW_USAGE)
             return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
         if len(cleaned) >= COUNT_TWO and cleaned[COUNT_ONE].lower() == "sets":
-            payload = {
-                "defaultSet": store.default_set,
-                "testSets": store.test_sets,
-                "activeProfile": self._active_profile_name() or EMPTY_STRING,
-            }
+            selected_set = cleaned[COUNT_TWO] if len(cleaned) >= COUNT_THREE else EMPTY_STRING
+            payload = self._dsl_test_sets_payload(store, selected_set)
             if json_output:
                 print(self._dump_json(payload, pretty))
             else:
-                print(f"default set: {store.default_set}")
-                for set_name, names in store.test_sets.items():
-                    print(f"  {set_name}: {', '.join(names) if names else '-'}")
+                self._print_dsl_tests_payload(payload, "sets")
             return StatusResult(code=SS__NORMAL)
         if len(cleaned) < COUNT_TWO:
             print(MESSAGE_ERROR_DSL_SHOW_USAGE)
@@ -8946,10 +9095,11 @@ class BridgeCli:
             return self._config_bindings_command(tokens)
         if cmd == CMD_RUNTIME:
             return self._runtime_command(tokens)
+        if cmd in (CMD_PROFILE, CMD_PROFILES):
+            return self._coerce_status(self._config_command(tokens))
         if cmd == "show":
             return self._coerce_status(self._handle_show(tokens[1:]))
-        print(f"ERROR: Unknown command: {' '.join(tokens)}")
-        return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
+        return self._report_routing_gap("exec", tokens)
 
     def _handle_save_command(self, tokens: List[str]) -> StatusResult:
         """
@@ -9411,8 +9561,7 @@ class BridgeCli:
             return StatusResult(code=SS__NORMAL)
         if cmd == "show":
             return self._coerce_status(self._handle_show(tokens[1:]))
-        print(f"ERROR: Unknown command: {' '.join(tokens)}")
-        return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
+        return self._report_routing_gap("group", tokens)
 
     def _config_bindings_command(self, tokens: List[str]) -> StatusResult:
         """
@@ -9607,8 +9756,7 @@ class BridgeCli:
             if self._event_failed(event, "run test"):
                 return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
             return StatusResult(code=SS__NORMAL)
-        print(f"ERROR: Unknown command: {' '.join(tokens)}")
-        return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
+        return self._report_routing_gap("device", tokens)
 
     def _device_command(self, tokens: List[str]) -> StatusResult:
         """
@@ -9650,8 +9798,7 @@ class BridgeCli:
             print(f"Deleted device {device}.")
             self._pop_mode()
             return StatusResult(code=SS__NORMAL)
-        print(f"ERROR: Unknown command: {' '.join(tokens)}")
-        return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
+        return self._report_routing_gap("device", tokens)
 
     def _handle_show(self, tokens: List[str]) -> StatusResult:
         if not tokens:
@@ -11193,7 +11340,7 @@ class BridgeCli:
     def _show_profiles_device_all(self, name: str) -> StatusResult:
         """
         NAME
-            _show_profiles_device_all - Show all profile device entries for a label.
+            _show_profiles_device_all - Show matching device entries and cross-profile references for a label.
         """
 
         label = str(name).strip()
@@ -11208,21 +11355,10 @@ class BridgeCli:
         if not isinstance(devices, list):
             print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
-        profile_name = self._active_profile_name()
-        if not profile_name:
-            print(MESSAGE_ERR_PROFILE_REQUIRED)
-            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
         profiles = payload.get(KEY_PROFILES)
         if not isinstance(profiles, dict):
             print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
-        profile = profiles.get(profile_name)
-        if not isinstance(profile, dict):
-            print(MESSAGE_ERR_PROFILE_REQUIRED)
-            return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
-        labels = profile.get(KEY_PROFILE_DEVICES)
-        if not isinstance(labels, list):
-            labels = []
         matches: List[Dict[str, object]] = []
         target = label.lower()
         for entry in devices:
@@ -11232,14 +11368,25 @@ class BridgeCli:
             if entry_label.lower() == target:
                 matches.append(entry)
         profile_counts: Dict[str, int] = {}
-        for entry in labels:
-            if not isinstance(entry, str):
+        for profile_name, profile_entry in profiles.items():
+            if not isinstance(profile_name, str):
                 continue
-            key = entry.strip()
-            if not key:
+            if not isinstance(profile_entry, dict):
                 continue
-            if key.lower() == target:
-                profile_counts[key] = profile_counts.get(key, 0) + 1
+            labels = profile_entry.get(KEY_PROFILE_DEVICES)
+            if not isinstance(labels, list):
+                continue
+            match_count = COUNT_ZERO
+            for entry in labels:
+                if not isinstance(entry, str):
+                    continue
+                key = entry.strip()
+                if not key:
+                    continue
+                if key.lower() == target:
+                    match_count += COUNT_ONE
+            if match_count > COUNT_ZERO:
+                profile_counts[profile_name] = match_count
         print(MESSAGE_PROFILE_DEVICE_SHOW_ALL_HEADER)
         if not matches:
             print(MESSAGE_PROFILE_DEVICE_SHOW_ALL_NONE)
@@ -11250,14 +11397,14 @@ class BridgeCli:
                 print(MESSAGE_PROFILE_DEVICE_SHOW_ALL_ENTRY.format(index=idx, label=entry_label or label))
                 for key in sorted(entry.keys()):
                     print(MESSAGE_PROFILE_DEVICE_SHOW_ALL_FIELD_FMT.format(key=key, value=entry.get(key)))
-        print(MESSAGE_PROFILE_DEVICE_SHOW_ALL_PROFILE_HEADER)
+        print(MESSAGE_PROFILE_DEVICE_SHOW_ALL_PROFILES_HEADER)
         if not profile_counts:
             print(MESSAGE_PROFILE_DEVICE_SHOW_ALL_NONE)
             return StatusResult(code=SS__NORMAL)
-        for entry_label in sorted(profile_counts.keys(), key=lambda v: v.lower()):
+        for profile_name in sorted(profile_counts.keys(), key=lambda v: v.lower()):
             print(
                 MESSAGE_PROFILE_DEVICE_SHOW_ALL_PROFILE_ENTRY.format(
-                    label=entry_label, count=profile_counts[entry_label]
+                    profile=profile_name, count=profile_counts[profile_name]
                 )
             )
         return StatusResult(code=SS__NORMAL)
@@ -13130,8 +13277,7 @@ class BridgeCli:
         if cmd == "run" and len(tokens) >= 2 and tokens[1].lower() == "test":
             print("ERROR: Cannot run tests without robot connection.")
             return StatusResult(code=SS__NETWORK__ROBOT_UNAVAILABLE)
-        print(f"ERROR: Unknown command: {' '.join(tokens)}")
-        return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
+        return self._report_routing_gap("group-local", tokens)
 
     def _handle_group_bind_diagnostics(self, group_name: str, tokens: List[str]) -> StatusResult:
         """
@@ -13190,8 +13336,7 @@ class BridgeCli:
                 return StatusResult(code=SS__NORMAL)
             print(TEXT_BIND_TEST_FAIL)
             return StatusResult(code=SS__CONFIG__INVALID)
-        print(f"ERROR: Unknown command: {' '.join(tokens)}")
-        return StatusResult(code=SS__CLI_PARSER__UNKNOWN_COMMAND)
+        return self._report_routing_gap("test", tokens)
 
     def _known_controller_names(self) -> set[str]:
         names: set[str] = set()
@@ -15549,19 +15694,7 @@ class BridgeCli:
         interface = str(get_device_interface(entry) or "").strip()
         if not interface:
             return [FIELD_DEVICE_INTERFACE]
-        required: tuple[str, ...]
-        if interface == INTERFACE_CAN:
-            required = DEVICE_REQUIRED_CAN
-        elif interface == INTERFACE_DIO:
-            required = DEVICE_REQUIRED_DIO
-        elif interface == INTERFACE_PWM:
-            required = DEVICE_REQUIRED_PWM
-        elif interface == INTERFACE_ANALOG:
-            required = DEVICE_REQUIRED_ANALOG
-        elif interface == INTERFACE_USB:
-            required = DEVICE_REQUIRED_USB
-        else:
-            required = DEVICE_REQUIRED_INTERNAL
+        required = required_fields_for_interface(interface, include_interface=True)
         missing: List[str] = []
         for field in required:
             if field == FIELD_DEVICE_INTERFACE:
@@ -15696,7 +15829,10 @@ class BridgeCli:
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
         self._sync_store_tests()
         payload = dict(self._local_root_payload)
-        payload["bridgeConfig"] = self._ordered_bridge_config(self._local_config)
+        payload["bridgeConfig"] = self._ordered_bridge_config(
+            self._local_config,
+            stamp_generated_at=True,
+        )
         target_path = Path(path)
         payload["schema_version"] = PROFILE_SCHEMA_VERSION
         payload["data_version"] = timestamp_version()
@@ -16189,11 +16325,11 @@ class BridgeCli:
         device_entries = self._profile_export_registry_entries(profile_name)
         self._ensure_local_config()
         bridge_entry = self._local_profile_entry(profile_name, create=True)
-        bridge_config = {
-            KEY_BRIDGE_SCHEMA_VERSION: BRIDGE_CONFIG_SCHEMA_VERSION,
-            KEY_BRIDGE_GENERATED_AT: None,
-            KEY_BRIDGE_BY_PROFILE: {profile_name: deepcopy(bridge_entry)},
-        }
+        bridge_config = single_profile_bridge_config(
+            profile_name,
+            bridge_entry,
+            stamp_generated_at=True,
+        )
         export_payload: Dict[str, object] = {
             KEY_SCHEMA_VERSION: PROFILE_SCHEMA_VERSION,
             KEY_DATA_VERSION: timestamp_version(),
@@ -17457,19 +17593,19 @@ class BridgeCli:
         return None
 
     @staticmethod
-    def _ordered_bridge_config(config: Dict[str, object]) -> Dict[str, object]:
+    def _ordered_bridge_config(
+        config: Dict[str, object],
+        *,
+        stamp_generated_at: bool = False,
+    ) -> Dict[str, object]:
         """
         NAME
             _ordered_bridge_config - Normalize bridgeConfig key order for output.
         """
-        ordered: Dict[str, object] = {
-            KEY_BRIDGE_SCHEMA_VERSION: config.get(KEY_BRIDGE_SCHEMA_VERSION, BRIDGE_CONFIG_SCHEMA_VERSION),
-            KEY_BRIDGE_GENERATED_AT: config.get(KEY_BRIDGE_GENERATED_AT),
-        }
-        by_profile = config.get(KEY_BRIDGE_BY_PROFILE)
-        ordered_by_profile = dict(by_profile) if isinstance(by_profile, dict) else {}
-        ordered[KEY_BRIDGE_BY_PROFILE] = ordered_by_profile
-        return ordered
+        return normalize_bridge_config(
+            config,
+            stamp_generated_at=stamp_generated_at,
+        )
 
     def _local_device_exists(self, name: str) -> bool:
         """
@@ -17489,11 +17625,7 @@ class BridgeCli:
             _ensure_local_config - Initialize an empty local bridgeConfig if missing.
         """
         if self._local_config is None:
-            self._local_config = {
-                KEY_BRIDGE_SCHEMA_VERSION: BRIDGE_CONFIG_SCHEMA_VERSION,
-                KEY_BRIDGE_GENERATED_AT: None,
-                KEY_BRIDGE_BY_PROFILE: {},
-            }
+            self._local_config = default_bridge_config()
             self._local_devices_locked = True
             self._profiles_dirty = False
             self._groups_dirty = False
@@ -17561,7 +17693,10 @@ class BridgeCli:
             }
         payload.setdefault("default_profile", "robot")
         payload["schema_version"] = PROFILE_SCHEMA_VERSION
-        payload["bridgeConfig"] = self._ordered_bridge_config(self._local_config)
+        payload["bridgeConfig"] = self._ordered_bridge_config(
+            self._local_config,
+            stamp_generated_at=True,
+        )
         if self._profiles_dirty or "data_version" not in payload:
             payload["data_version"] = timestamp_version()
         payload["data_hash"] = compute_profiles_hash(payload)
@@ -17636,7 +17771,10 @@ class BridgeCli:
             return StatusResult(code=SS__CONFIG__NOT_LOADED)
         self._sync_store_tests()
         try:
-            config_out = self._ordered_bridge_config(self._local_config)
+            config_out = self._ordered_bridge_config(
+                self._local_config,
+                stamp_generated_at=True,
+            )
         except Exception as exc:
             print(MESSAGE_ERR_SAVE_WRITE.format(path=path, error=exc))
             return StatusResult(code=SS__CONFIG__INVALID)

@@ -207,6 +207,21 @@ class ConfigSchemaStoreProfilesTests(unittest.TestCase):
         self.assertIn("Dropped invalid device 'badCan'", joined)
         self.assertIn("Dropped missing device 'missing' from profile 'demo'.", joined)
 
+    def test_sanitize_profiles_payload_is_idempotent_for_sanitized_payload(self) -> None:
+        store = ConfigSchemaStore()
+
+        sanitized_once, _warnings_once, changed_once = store.sanitize_profiles_payload(
+            self._base_payload()
+        )
+        sanitized_twice, warnings_twice, changed_twice = store.sanitize_profiles_payload(
+            sanitized_once
+        )
+
+        self.assertTrue(changed_once)
+        self.assertEqual(sanitized_once, sanitized_twice)
+        self.assertEqual(warnings_twice, [])
+        self.assertFalse(changed_twice)
+
     def test_sanitize_bindings_payload_drops_invalid_entries(self) -> None:
         store = ConfigSchemaStore()
         payload = {

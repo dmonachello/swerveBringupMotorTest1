@@ -1,7 +1,7 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "data_version": "2026-05-08_topology_fixture",
-  "data_hash": "9bf01928f2d13ca32660fc975d2cf2dadca48101b54c503cca226f8efe37642d",
+  "data_hash": "8abc728f1e30722778bec587547f7c1291aaac645da0d673b504104d7b89b10c",
   "default_profile": "demo_topology",
   "profiles": {
     "demo_topology": {

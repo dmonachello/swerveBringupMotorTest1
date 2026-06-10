@@ -28,6 +28,11 @@ import java.util.Map;
  */
 public final class BringupTestRegistry {
   private static final String TESTS_SOURCE_REGISTRY = "dslTests";
+  private static final String KEY_TESTS_BY_NAME = "testsByName";
+  private static final String KEY_ENABLED = "enabled";
+  private static final String MESSAGE_SAVE_UNAVAILABLE = "Warning: no DSL tests payload loaded; cannot save enabled state.";
+  private static final String MESSAGE_SAVE_MISSING = "Warning: no matching DSL test entries found to save enabled state.";
+  private static final String MESSAGE_SAVE_FAILED_PREFIX = "Warning: failed to save DSL test enabled state: ";
   private static final Gson GSON = new Gson();
 
   private BringupTestRegistry() {}
@@ -47,7 +52,7 @@ public final class BringupTestRegistry {
       if (entry == null || entry.normalized == null) {
         continue;
       }
-      tests.add(new DslBringupTest(entry.normalized));
+      tests.add(new DslBringupTest(entry.normalized, entry.enabled));
     }
     return tests;
   }
@@ -81,8 +86,46 @@ public final class BringupTestRegistry {
   }
 
   public static boolean saveTests(List<BringupTest> tests) {
-    BringupPrinter.enqueue("Warning: robot-side DSL test save is not supported; use host compile/save.");
-    return false;
+    if (tests == null || tests.isEmpty()) {
+      return true;
+    }
+    JsonObject root = BringupUtil.readCurrentProfilesJson();
+    if (root == null) {
+      BringupPrinter.enqueue(MESSAGE_SAVE_UNAVAILABLE);
+      return false;
+    }
+    JsonObject dslRoot = root.has(TESTS_SOURCE_REGISTRY) && root.get(TESTS_SOURCE_REGISTRY).isJsonObject()
+        ? root.getAsJsonObject(TESTS_SOURCE_REGISTRY)
+        : null;
+    JsonObject testsByName = dslRoot != null && dslRoot.has(KEY_TESTS_BY_NAME) && dslRoot.get(KEY_TESTS_BY_NAME).isJsonObject()
+        ? dslRoot.getAsJsonObject(KEY_TESTS_BY_NAME)
+        : null;
+    if (testsByName == null) {
+      BringupPrinter.enqueue(MESSAGE_SAVE_UNAVAILABLE);
+      return false;
+    }
+    int updatedCount = 0;
+    for (BringupTest test : tests) {
+      if (test == null) {
+        continue;
+      }
+      String testName = test.getName();
+      if (testName == null || testName.isBlank() || !testsByName.has(testName) || !testsByName.get(testName).isJsonObject()) {
+        continue;
+      }
+      testsByName.getAsJsonObject(testName).addProperty(KEY_ENABLED, test.isEnabled());
+      updatedCount++;
+    }
+    if (updatedCount <= 0) {
+      BringupPrinter.enqueue(MESSAGE_SAVE_MISSING);
+      return false;
+    }
+    String persistError = BringupUtil.persistCurrentProfilesJson(root);
+    if (!persistError.isBlank()) {
+      BringupPrinter.enqueue(MESSAGE_SAVE_FAILED_PREFIX + persistError);
+      return false;
+    }
+    return true;
   }
 
   public static String getStoredSource(String testName) {

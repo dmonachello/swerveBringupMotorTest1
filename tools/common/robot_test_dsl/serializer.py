@@ -36,6 +36,7 @@ KEY_DEFAULT_SET = "defaultSet"
 KEY_SOURCE = "source"
 KEY_NORMALIZED = "normalized"
 KEY_SOURCE_HASH = "sourceHash"
+KEY_ENABLED = "enabled"
 KEY_MODE = "mode"
 KEY_OPERATOR = "operator"
 KEY_LITERAL = "literal"
@@ -73,6 +74,7 @@ def store_from_payload(payload: Dict[str, Any]) -> RobotTestDslStore:
                 source=source if isinstance(source, str) else "",
                 normalized=_normalized_from_payload(name, normalized),
                 source_hash=hash_value if isinstance(hash_value, str) else "",
+                enabled=bool(entry.get(KEY_ENABLED, True)),
             )
     if not store.test_sets:
         store.test_sets[store.default_set or DEFAULT_TEST_SET] = list(store.tests_by_name.keys())
@@ -86,6 +88,7 @@ def store_to_payload(store: RobotTestDslStore) -> Dict[str, Any]:
             KEY_SOURCE: entry.source,
             KEY_SOURCE_HASH: entry.source_hash or source_hash(entry.source),
             KEY_NORMALIZED: _normalized_to_payload(entry.normalized),
+            KEY_ENABLED: bool(entry.enabled),
         }
     return {
         KEY_SCHEMA_VERSION: DSL_SCHEMA_VERSION,

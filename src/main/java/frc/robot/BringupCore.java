@@ -75,6 +75,9 @@ public final class BringupCore {
   private static final String TEST_RUN_RESULT_INTERRUPTED = "INTERRUPTED";
   private static final String MESSAGE_TEST_ALREADY_RUNNING = "Test already running: ";
   private static final String MESSAGE_TEST_DISABLED = "Test disabled: ";
+  private static final String MESSAGE_TEST_ENABLE_SAVE_FAILED = "Failed to save selected test enabled state.";
+  private static final String MESSAGE_TEST_ENABLED_PREFIX = "Selected test enabled: ";
+  private static final String MESSAGE_TEST_DISABLED_PREFIX = "Selected test disabled: ";
   private static final String MESSAGE_TEST_NOT_SELECTED = "No bringup test selected.";
   private static final String MESSAGE_TEST_SKIPPED = "Test skipped: ";
   private static final String MESSAGE_TEST_ABORTED = "Test aborted: ";
@@ -1100,13 +1103,12 @@ public final class BringupCore {
       return null;
     }
     if (selectedTestIndex >= bringupTests.size()) {
-      selectedTestIndex = findNextSelectableTestIndex(-1, true);
+      selectedTestIndex = 0;
     }
     if (selectedTestIndex < 0 || selectedTestIndex >= bringupTests.size()) {
       return null;
     }
-    BringupTest test = bringupTests.get(selectedTestIndex);
-    return test != null && test.isEnabled() ? test : null;
+    return bringupTests.get(selectedTestIndex);
   }
 
   private int findNextSelectableTestIndex(int currentIndex, boolean forward) {
@@ -1139,8 +1141,7 @@ public final class BringupCore {
    *   Index of the selected test or -1 when none is selected.
    */
   public int getSelectedBringupTestIndex() {
-    BringupTest test = getSelectedBringupTest();
-    return test == null ? -1 : selectedTestIndex;
+    return getSelectedBringupTest() == null ? -1 : selectedTestIndex;
   }
 
   /**
@@ -1218,8 +1219,20 @@ public final class BringupCore {
    */
   public Boolean toggleSelectedBringupTestEnabled() {
     syncProfileRuntimeFromRegistry();
-    BringupPrinter.enqueue("Test enable/disable is not supported by the DSL runtime.");
-    return null;
+    BringupTest test = getSelectedBringupTest();
+    if (test == null) {
+      BringupPrinter.enqueue(MESSAGE_TEST_NOT_SELECTED);
+      return null;
+    }
+    boolean nextEnabled = !test.isEnabled();
+    test.setEnabled(nextEnabled);
+    if (!BringupTestRegistry.saveTests(bringupTests)) {
+      test.setEnabled(!nextEnabled);
+      BringupPrinter.enqueue(MESSAGE_TEST_ENABLE_SAVE_FAILED);
+      return null;
+    }
+    BringupPrinter.enqueue((nextEnabled ? MESSAGE_TEST_ENABLED_PREFIX : MESSAGE_TEST_DISABLED_PREFIX) + test.getName());
+    return nextEnabled;
   }
 
   /**

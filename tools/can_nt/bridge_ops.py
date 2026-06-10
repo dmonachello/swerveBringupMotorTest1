@@ -35,6 +35,7 @@ from tools.can_nt.status import (
 )
 from tools.common.json_io import read_json, write_json
 from tools.common.build_info import BUILD_GIT_DESCRIBE, KEY_BUILD
+from tools.common.bridge_config_io import single_profile_bridge_config
 from tools.common.profile_constants import (
     BRIDGE_CONFIG_SCHEMA_VERSION,
     KEY_ATTACHMENTS,
@@ -2115,18 +2116,14 @@ def _config_from_runtime_state(state: Dict[str, Any], profile_name: str) -> Dict
     """
     groups = state.get("groups") if isinstance(state.get("groups"), list) else []
     selected = state.get("selectedDevice") if isinstance(state.get("selectedDevice"), dict) else {}
-    stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    return {
-        KEY_BRIDGE_SCHEMA_VERSION: CONFIG_SCHEMA_VERSION,
-        KEY_BRIDGE_GENERATED_AT: stamp,
-        KEY_BRIDGE_BY_PROFILE: {
-            profile_name: {
-                KEY_BRIDGE_GROUPS: groups,
-                KEY_BRIDGE_SELECTED_DEVICE: {
-                    KEY_DEVICE: str(selected.get(KEY_DEVICE, "")).strip(),
-                    "enabled": bool(selected.get("enabled", False)),
-                },
-            }
+    return single_profile_bridge_config(
+        profile_name,
+        {
+            KEY_BRIDGE_GROUPS: groups,
+            KEY_BRIDGE_SELECTED_DEVICE: {
+                KEY_DEVICE: str(selected.get(KEY_DEVICE, "")).strip(),
+                "enabled": bool(selected.get("enabled", False)),
+            },
         },
-    }
-    KEY_NAME,
+        stamp_generated_at=True,
+    )

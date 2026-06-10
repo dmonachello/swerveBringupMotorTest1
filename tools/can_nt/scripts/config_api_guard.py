@@ -15,7 +15,9 @@ DESCRIPTION
 """
 
 import ast
+import argparse
 import sys
+import time
 from pathlib import Path
 from typing import Iterable, List, Sequence, Set
 
@@ -30,6 +32,8 @@ EXIT_FAILED = 1
 
 MSG_PASS = "PASS: no shared-config-API violations detected."
 MSG_FAIL = "FAIL: shared-config-API violations detected."
+MSG_SCAN_FMT = "[scan {index}/{total}] {path}"
+MSG_SCAN_DONE_FMT = "[done] scanned={count} violations={violations} elapsed={elapsed:.2f}s"
 
 PATH_ALLOWED_HELPER_FILES = {
     "tools/common/paths.py",
@@ -117,10 +121,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     NAME
         main - Entrypoint for config API guard enforcement.
     """
-    _ = argv
+
+    args = _parse_args(argv)
+    verbose = bool(args.verbose)
     violations: List[str] = []
-    for path in python_source_paths():
+    paths = python_source_paths()
+    started_at = time.perf_counter()
+    total = len(paths)
+    for index, path in enumerate(paths, start=1):
+        if verbose:
+            print(MSG_SCAN_FMT.format(index=index, total=total, path=_normalize_path(path)))
         violations.extend(scan_path(path))
+    if verbose:
+        elapsed = time.perf_counter() - started_at
+        print(MSG_SCAN_DONE_FMT.format(count=total, violations=len(violations), elapsed=elapsed))
     if not violations:
         print(MSG_PASS)
         return EXIT_OK
@@ -128,6 +142,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     for violation in violations:
         print(f"  - {violation}")
     return EXIT_FAILED
+
+
+def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    """
+    NAME
+        _parse_args - Parse config API guard command-line flags.
+    """
+
+    parser = argparse.ArgumentParser(
+        description="Scan tools/ for bringup_system.json shared-config-API bypasses."
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Print per-file scan progress and elapsed summary.",
+    )
+    return parser.parse_args(argv)
 
 
 def _normalize_path(path: Path) -> str:

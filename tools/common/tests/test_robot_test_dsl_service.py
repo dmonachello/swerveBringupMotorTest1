@@ -10,6 +10,7 @@ from tools.common.robot_test_dsl import (
     render_validation_text,
     resolve_profile_test_names,
     store_from_root_payload,
+    store_to_payload,
     validate_store_for_profile,
 )
 
@@ -75,8 +76,31 @@ class RobotTestDslServiceTests(unittest.TestCase):
         self.assertTrue(result.ok())
         store = store_from_root_payload(payload)
         self.assertIn("spin_up", store.tests_by_name)
+        self.assertTrue(store.tests_by_name["spin_up"].enabled)
         self.assertEqual(["spin_up"], store.test_sets["pit"])
         self.assertEqual("pit", payload["profiles"]["demo"]["dslTestSet"])
+
+    def test_store_roundtrip_preserves_enabled_flag(self) -> None:
+        payload = self._root_payload(include_controller=True)
+        payload["dslTests"] = {
+            "schemaVersion": 1,
+            "defaultSet": "pit",
+            "testSets": {"pit": ["spin_up"]},
+            "testsByName": {
+                "spin_up": {
+                    "source": "",
+                    "sourceHash": "",
+                    "normalized": {},
+                    "enabled": False,
+                }
+            },
+        }
+
+        store = store_from_root_payload(payload)
+        roundtrip = store_to_payload(store)
+
+        self.assertFalse(store.tests_by_name["spin_up"].enabled)
+        self.assertFalse(roundtrip["testsByName"]["spin_up"]["enabled"])
 
     def test_import_test_into_root_payload_blank_set_uses_profile_set(self) -> None:
         payload = self._root_payload(include_controller=True)

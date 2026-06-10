@@ -12,9 +12,15 @@ DESCRIPTION
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
+from tools.common.bridge_config_io import normalize_bridge_config
 from tools.common.json_io import read_json, write_json
 from tools.common.paths import profiles_canonical_path, profiles_deploy_path
-from tools.common.profile_constants import KEY_DATA_HASH, KEY_DATA_VERSION, KEY_SCHEMA_VERSION
+from tools.common.profile_constants import (
+    KEY_BRIDGE_CONFIG,
+    KEY_DATA_HASH,
+    KEY_DATA_VERSION,
+    KEY_SCHEMA_VERSION,
+)
 from tools.common.profile_io import compute_profiles_hash, default_profiles_schema_version
 from tools.common.time_utils import timestamp_version
 
@@ -93,6 +99,11 @@ class ConfigLifecycleService:
         """
         stamped = dict(payload)
         stamped[KEY_SCHEMA_VERSION] = default_profiles_schema_version()
+        if KEY_BRIDGE_CONFIG in stamped:
+            stamped[KEY_BRIDGE_CONFIG] = normalize_bridge_config(
+                stamped.get(KEY_BRIDGE_CONFIG),
+                stamp_generated_at=stamp,
+            )
         if stamp:
             stamped[KEY_DATA_VERSION] = timestamp_version()
             stamped[KEY_DATA_HASH] = compute_profiles_hash(stamped)

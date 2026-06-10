@@ -32,8 +32,18 @@ exec           = show_exec
                | "active" ws ("add" | "next" | ("show" [ ws "--json" ]))
                | "run" ws "test" [ ws name ]
                | "tests" ws ("select" ws name | "toggle" | tests_run_args | tests_wait_args)
+               | "profile" ws name
+               | "profile" ws "default" ws name
+               | "profile" ws "create" ws name
+               | "profile" ws "delete" ws name
                | "profile" ws "export" ws name ws path [ ws "--install-robot" ]
+               | "profile" ws "device" ws "delete" ws name
                | "profile" ws "device" ws "show-all" ws name
+               | "profiles" ws "init"
+               | "profiles" ws "reload"
+               | "profiles" ws "activate" ws name
+               | "profiles" ws "export" ws path
+               | "profiles" ws "push" ws path [ ws "--activate" ws name ]
                | "bindings" [ ws bindings_args ]
                | diagnose ;
 
@@ -67,8 +77,8 @@ show_target    = "status"
                | "config" ws "dirty"
                | "profiles"
                | "profile" [ ws name ]
-               | "tests"
-               | "test" ws "sets"
+               | "tests" [ ws "global" | ws "sets" [ ws name ] ]
+               | "test" ws "sets" [ ws name ]
                | "test" ws name [ ws "normalized" ]
                | "topology"
                | "topology" ws "neighbors"

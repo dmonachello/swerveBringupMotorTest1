@@ -69,7 +69,13 @@ from tools.can_nt.bridge_cli import (
     BRIDGE_CONFIG_SCHEMA_VERSION,
 )
 from tools.can_nt.bridge_cli_parser import BridgeCliParser
-from tools.can_nt.status import SS__CONFIG__INVALID, SS__CONFIG__SAVED, SS__NORMAL, StatusResult
+from tools.can_nt.status import (
+    SS__CONFIG__INVALID,
+    SS__CONFIG__SAVED,
+    SS__EXECUTOR__INTERNAL_ERROR,
+    SS__NORMAL,
+    StatusResult,
+)
 
 
 PROFILE_NAME = "demo"
@@ -237,6 +243,69 @@ class BridgeCliVisibilityTests(unittest.TestCase):
         cli._shutdown_session()
 
         self.assertTrue(session.disconnect_called)
+
+    def test_exec_mode_profile_device_show_all_routes_to_profile_handler(self) -> None:
+        cli = self._build_cli()
+        captured: list[str] = []
+        cli._show_profiles_device_all = lambda name: captured.append(name) or StatusResult(code=SS__NORMAL)  # type: ignore[method-assign]
+
+        result = cli._exec_command(["profile", "device", "show-all", "motor1"])
+
+        self.assertEqual(result.code, SS__NORMAL)
+        self.assertEqual(["motor1"], captured)
+
+    def test_profile_device_show_all_lists_all_matching_profiles(self) -> None:
+        cli = self._build_cli()
+        cli._local_root_payload[KEY_DEVICES] = [  # type: ignore[index]
+            {
+                "label": "motor1",
+                "deviceInterface": "CAN",
+                "deviceType": 2,
+                "id": 2,
+            }
+        ]
+        cli._local_root_payload[KEY_PROFILES] = {  # type: ignore[index]
+            "alpha": {KEY_PROFILE_DEVICES: ["motor1", "other"]},
+            "beta": {KEY_PROFILE_DEVICES: ["motor1", "motor1"]},
+            "gamma": {KEY_PROFILE_DEVICES: ["other"]},
+        }
+
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            result = cli._show_profiles_device_all("motor1")
+
+        self.assertEqual(result.code, SS__NORMAL)
+        text = output.getvalue()
+        self.assertIn("Profile device entries:", text)
+        self.assertIn("Profiles containing device:", text)
+        self.assertIn("  alpha x1", text)
+        self.assertIn("  beta x2", text)
+        self.assertNotIn("  gamma x", text)
+
+    def test_unrouted_mode_command_reports_routing_gap(self) -> None:
+        cli = self._build_cli()
+        output = io.StringIO()
+
+        with contextlib.redirect_stdout(output):
+            result = cli._device_command(["bogus"])
+
+        self.assertEqual(result.code, SS__EXECUTOR__INTERNAL_ERROR)
+        self.assertIn("BUG: command parsed successfully but no device handler claimed it: bogus", output.getvalue())
+
+    def test_parser_accepts_show_tests_global_and_sets(self) -> None:
+        parser = BridgeCliParser(strict=True)
+
+        global_line = parser.parse("show tests global", mode="config")
+        sets_line = parser.parse("show tests sets", mode="config")
+        set_name_line = parser.parse("show tests sets demo_set", mode="config")
+        exec_profile_line = parser.parse("profile demo_profile", mode="exec")
+        exec_profiles_activate_line = parser.parse("profiles activate demo_profile", mode="exec")
+
+        self.assertEqual(["show", "tests", "global"], global_line.tokens)
+        self.assertEqual(["show", "tests", "sets"], sets_line.tokens)
+        self.assertEqual(["show", "tests", "sets", "demo_set"], set_name_line.tokens)
+        self.assertEqual(["profile", "demo_profile"], exec_profile_line.tokens)
+        self.assertEqual(["profiles", "activate", "demo_profile"], exec_profiles_activate_line.tokens)
 
     def test_save_without_target_uses_save_all(self) -> None:
         cli = self._build_cli()
@@ -483,6 +552,24 @@ class BridgeCliVisibilityTests(unittest.TestCase):
         payload = json.loads(output.getvalue().splitlines()[-1])
         self.assertEqual(payload[KEY_DEVICES][0]["label"], "motor1")
         self.assertIsNone(payload[KEY_DEVICES][0]["instantiated"])
+
+    def test_show_runtime_json_does_not_crash_for_local_state(self) -> None:
+        cli = self._build_cli()
+        cli._local_root_payload[KEY_DEVICES] = [  # type: ignore[index]
+            {"label": "motor1", "type": "motor"},
+        ]
+        cli._local_root_payload[KEY_PROFILES][PROFILE_NAME][KEY_PROFILE_DEVICES] = ["motor1"]  # type: ignore[index]
+
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            result = cli._handle_show(["runtime-state", "--json", "--pretty"])
+
+        self.assertEqual(result.code, SS__NORMAL)
+        json_text = "\n".join(output.getvalue().splitlines()[1:])
+        payload = json.loads(json_text)
+        self.assertEqual(payload["profile"], PROFILE_NAME)
+        self.assertIn("generatedAtMs", payload)
+        self.assertEqual(payload["mode"], "local")
 
     def test_parser_accepts_new_show_targets(self) -> None:
         parser = BridgeCliParser()

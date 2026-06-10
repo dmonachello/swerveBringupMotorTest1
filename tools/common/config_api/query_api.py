@@ -9,10 +9,11 @@ DESCRIPTION
     not need to reimplement profile/test discovery or source precedence rules.
 """
 
+from dataclasses import dataclass
 from typing import Any, Dict, List
 
 from tools.common.profiles import list_profile_names
-from tools.common.robot_test_dsl import resolve_profile_test_names
+from tools.common.robot_test_dsl import resolve_profile_test_names, store_from_root_payload
 from tools.common.tests_domain import collect_available_tests
 from tools.common.tests_io import load_tests_payload
 from tools.common.paths import tests_deploy_path
@@ -47,6 +48,17 @@ class ProfilesQueryApi:
         return [none_label] + self.list_names()
 
 
+@dataclass(frozen=True)
+class DslTestQueryEntry:
+    """
+    NAME
+        DslTestQueryEntry - Profile-scoped DSL test query record.
+    """
+
+    name: str
+    enabled: bool
+
+
 class DslTestsQueryApi:
     """
     NAME
@@ -72,11 +84,41 @@ class DslTestsQueryApi:
             return store_names
         return self._legacy_test_names()
 
+    def list_test_entries(self, profile_name: str) -> List[DslTestQueryEntry]:
+        """
+        NAME
+            list_test_entries - Resolve ordered DSL test entries for one profile.
+        """
+        clean_profile = str(profile_name or "").strip()
+        if not clean_profile or clean_profile == PROFILE_NONE:
+            return []
+        dsl_entries = self._dsl_test_entries(clean_profile)
+        if dsl_entries is not None:
+            return dsl_entries
+        return [
+            DslTestQueryEntry(name=name, enabled=True)
+            for name in self.list_test_names(clean_profile)
+        ]
+
     def _dsl_test_names(self, profile_name: str) -> List[str] | None:
         dsl_payload = self._payload.get("dslTests")
         if not isinstance(dsl_payload, dict):
             return None
         return resolve_profile_test_names(self._payload, profile_name)
+
+    def _dsl_test_entries(self, profile_name: str) -> List[DslTestQueryEntry] | None:
+        dsl_payload = self._payload.get("dslTests")
+        if not isinstance(dsl_payload, dict):
+            return None
+        store = store_from_root_payload(self._payload)
+        names = resolve_profile_test_names(self._payload, profile_name)
+        entries: List[DslTestQueryEntry] = []
+        for name in names:
+            entry = store.tests_by_name.get(name)
+            if entry is None:
+                continue
+            entries.append(DslTestQueryEntry(name=name, enabled=bool(entry.enabled)))
+        return entries
 
     @staticmethod
     def _store_test_names(profile_name: str) -> List[str] | None:

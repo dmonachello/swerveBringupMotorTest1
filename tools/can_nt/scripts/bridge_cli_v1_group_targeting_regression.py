@@ -278,7 +278,6 @@ def _normalize_group_payload(payload: object) -> object:
     normalized_tests = tests_payload if isinstance(tests_payload, dict) else {}
     return {
         KEY_SCHEMA_VERSION: payload.get(KEY_SCHEMA_VERSION),
-        KEY_GENERATED_AT: payload.get(KEY_GENERATED_AT),
         KEY_BY_PROFILE: {
             KEY_PROFILE: {
                 KEY_GROUPS: normalized_groups,

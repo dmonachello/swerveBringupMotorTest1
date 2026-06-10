@@ -126,6 +126,19 @@ class DslBringupTestTest {
   }
 
   @Test
+  void dslTestEnabledStateCanToggle() {
+    DslBringupTest test = new DslBringupTest(buildTest(), false);
+
+    assertFalse(test.isEnabled());
+
+    test.setEnabled(true);
+    assertTrue(test.isEnabled());
+
+    test.setEnabled(false);
+    assertFalse(test.isEnabled());
+  }
+
+  @Test
   void dslTestUsesXboxControllerAxisForSignalSet() {
     seedConfiguredDeviceType(CONTROLLER_LABEL, CONTROLLER_TYPE);
     RecordingDevice motor = new RecordingDevice();

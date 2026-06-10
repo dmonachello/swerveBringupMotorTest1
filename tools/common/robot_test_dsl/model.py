@@ -104,6 +104,7 @@ class RobotTestDslEntry:
     source: str
     normalized: Optional[RobotTestDslNormalized] = None
     source_hash: str = ""
+    enabled: bool = True
 
 
 @dataclass

@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from tools.common.config_api import ConfigRepository
+from tools.common.config_api.query_api import DslTestQueryEntry
 from .service import ConfigLifecycleService
 
 
@@ -81,3 +82,10 @@ class LocalConfigQueryService:
             3. legacy tests deploy payload
         """
         return self._repository.load_canonical().dsl_tests().list_test_names(profile_name)
+
+    def test_entries_for_profile(self, profile_name: str) -> List[DslTestQueryEntry]:
+        """
+        NAME
+            test_entries_for_profile - Resolve ordered test entries for one profile.
+        """
+        return self._repository.load_canonical().dsl_tests().list_test_entries(profile_name)
