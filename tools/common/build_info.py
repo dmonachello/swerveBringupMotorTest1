@@ -3,11 +3,11 @@ NAME
     build_info.py - Build metadata captured from git.
 """
 
-BUILD_GIT_DESCRIBE = "host-config-api-refactor-2026-06-09-1-ga580839-dirty"
-BUILD_GIT_SHA = "a580839"
+BUILD_GIT_DESCRIBE = "dsl-testing-spec-2026-06-09-3-g7f0fc28-dirty"
+BUILD_GIT_SHA = "7f0fc28"
 BUILD_GIT_BRANCH = "main"
 BUILD_GIT_DIRTY = "dirty"
-BUILD_TIMESTAMP = "2026-06-09T11:17:11-04:00"
+BUILD_TIMESTAMP = "2026-06-10T11:33:44-04:00"
 
 BUILD_LABEL_GIT = "git"
 BUILD_LABEL_SHA = "git-sha"

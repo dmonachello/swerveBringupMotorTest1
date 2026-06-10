@@ -11,9 +11,15 @@ It describes the DSL-authored test surface only. It does not define every quick-
 Use this document for:
 
 - writing syntax
+- language features and semantics
+- current host-side authoring workflow
 - authoring rules
 - supported signal names
 - practical examples
+
+This is the canonical user guide for new DSL authors.
+
+Older CLI-only DSL authoring notes should be treated as compatibility references, not the primary learning path.
 
 Use the execution spec for authoritative runtime semantics:
 
@@ -100,6 +106,40 @@ Rules:
 - `init` is optional
 - `close` is optional
 - `timer` is built in and must not be declared
+
+### 3.1 Syntax Cheatsheet
+
+Use these forms when writing source:
+
+```text
+test "<name>"
+device "<configured_label>"
+unsafe-exit <device>.<signal>
+
+init:
+    set <device>.<signal> = <literal>
+    clear <device>.<signal>
+
+main:
+    set <device>.<signal> = <literal>
+    set <device>.<signal> = <source>.<signal> scaled <number> default <literal>
+    set <device>.<signal> = <source>.<signal> deadband <number> scaled <number> default <literal>
+    abort <condition>
+    success <condition>
+    until <condition>
+    require <condition>
+
+close:
+    set <device>.<signal> = <literal>
+    clear <device>.<signal>
+```
+
+Important:
+
+- the file is line-oriented
+- indentation is meaningful only for phase contents
+- there is no block nesting inside a phase
+- there is no `and`, `or`, arithmetic expression, or function-call syntax
 
 ## 4. Device References
 
@@ -520,6 +560,61 @@ Recommended flow:
 6. deploy
 7. run the saved test on the robot
 
+### 11.1 Before You Write A Test
+
+Make sure these are true first:
+
+1. the target device label already exists in `bringup_system.json`
+2. the target device label is present in the selected profile
+3. controller labels you reference also exist in the selected profile
+4. the device definition has the required interface fields
+
+Current required fields by interface:
+
+- `CAN`: `deviceInterface`, `manufacturer`, `deviceType`, `id`
+- `DIO`: `deviceInterface`, `id`, `invert`
+- `PWM`: `deviceInterface`, `pwm`
+- `ANALOG`: `deviceInterface`, `analog`
+- `USB`: `deviceInterface`, `id`
+- `INTERNAL`: `deviceInterface`
+
+If these are missing, import/validation should fail before robot execution.
+
+### 11.2 Preferred UI Flow
+
+The preferred current authoring path is:
+
+1. select the profile in the Bringup Control UI
+2. write or edit a `.dsl` file outside the UI
+3. click `Import DSL Test`
+4. click `Validate DSL Tests`
+5. inspect the selected test in the UI and, when needed, with CLI normalized output
+6. push config to the robot
+7. activate runtime
+8. run the selected test
+
+Notes:
+
+- import writes into the selected profile's DSL test set
+- import updates local config first
+- config must be pushed before the robot sees the test
+- a config push leaves runtime inactive until `Runtime Activate`
+
+### 11.3 CLI Import, Export, And Validation
+
+The CLI remains the best inspection and fallback authoring surface.
+
+Core commands:
+
+- `test import <name> <path> [set <set_name>]`
+- `test export <name> <path>`
+- `test validate [<name>] [--json] [--pretty]`
+- `show test <name>`
+- `show test <name> normalized --json --pretty`
+- `show test sets`
+
+Use normalized output when you want to confirm exactly what the robot will execute.
+
 Example CLI flow:
 
 ```text
@@ -539,6 +634,34 @@ Robot-side execution then uses the selected-test runner:
 tests select spin_up_motor1
 tests run --wait --timeout 10
 ```
+
+### 11.4 Editing An Existing Test
+
+Recommended edit loop:
+
+1. `test export <existing_name> <path>`
+2. edit the exported `.dsl` file
+3. re-import it with the same test name
+4. validate it
+5. inspect normalized output when semantics matter
+6. push config and re-run
+
+### 11.5 Validation Surfaces
+
+Validation can fail in several places, and they should broadly agree:
+
+- DSL compiler/validator: bad syntax, bad signals, bad condition forms
+- config/profile validation: unknown labels, incomplete device definitions
+- runtime execution: live hardware/runtime problems after import already succeeded
+
+Typical authoring-time failures:
+
+- undeclared device in the test
+- unknown device label for the selected profile
+- invalid signal name for the referenced device type
+- `until` without meaningful proof
+- missing required interface fields on a configured device
+- wrong value type for a device field needed by the test
 
 ## 12. Examples
 
