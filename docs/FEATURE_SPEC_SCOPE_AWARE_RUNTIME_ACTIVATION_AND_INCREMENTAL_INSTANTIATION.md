@@ -390,6 +390,20 @@ When the operator chooses `Group: active-group`, runtime activation must:
 
 This is the primary incremental bringup mode.
 
+`active-group` is a runtime-managed working set for incremental bringup.
+
+Required behavior:
+
+- `active-group` exists only at runtime and is not persisted into profile/config data
+- `active-group` state is maintained for the current host-app session
+- `active-group` membership may change while runtime is active
+- `active-group` membership may also be staged while runtime is inactive
+- membership changes do not silently instantiate or free devices on their own
+- runtime changes happen only when the operator issues an explicit runtime-scope reconciliation command
+- reconciliation must apply only the membership delta
+- reconciliation must add newly eligible devices and free devices removed from the group
+- always-instantiated infrastructure devices are unaffected by `active-group` membership edits
+
 ## Scope = `Group: <named group>`
 
 When the operator chooses another named group, runtime activation must:
@@ -408,13 +422,49 @@ Required behavior:
 
 - runtime activation still succeeds for always-instantiated infrastructure devices
 - no scope-controlled devices are instantiated
-- the operator receives a clear informational warning
+- the system reports the currently applied active set plainly, even when that set contains zero scoped devices
+- the empty scoped set is a normal runtime state, not a special-case failure
 
-Example message:
+## Group Membership Change Semantics
 
-- `Activation scope group is empty. No scoped devices were instantiated.`
+Editing group membership and changing runtime instantiation are related, but they are not the same action.
 
-This is not a fatal error by itself.
+Required rule:
+
+- group membership edits update desired scope membership
+- runtime instantiation changes only when an explicit operator command applies or reconciles that membership against the active runtime
+
+For `active-group`, this explicit command is the operator-owned point where the runtime must:
+
+- instantiate any newly added eligible devices
+- deallocate/free runtime resources for any devices removed from the group
+- leave unchanged devices running as they are
+- report per-device success, skip, and failure outcomes
+
+If deallocation is blocked because a device is still participating in a running test:
+
+- the requested removal remains queued
+- the runtime does not auto-complete the removal later on its own
+- the operator must issue `Apply Group Scope` again after blocking tests finish
+- the UI/CLI must show that the removal remains pending and blocked by running test activity
+
+Example:
+
+1. `active-group` currently contains `SPARKMAX/NEO 25`
+2. operator adds `FALCON 9` to `active-group`
+3. no runtime change happens yet
+4. operator issues the explicit reconcile/instantiate command
+5. runtime instantiates `FALCON 9` and keeps `SPARKMAX/NEO 25` active
+
+Removal example:
+
+1. `active-group` currently contains `SPARKMAX/NEO 25` and `FALCON 9`
+2. operator removes `FALCON 9` from `active-group`
+3. no runtime change happens yet
+4. operator issues the explicit reconcile/apply command
+5. runtime frees `FALCON 9` resources and leaves `SPARKMAX/NEO 25` active
+
+This separation is required so the operator can edit membership deliberately without causing surprise hardware/runtime churn on every list change.
 
 ## Eligibility Rules
 
@@ -424,6 +474,8 @@ A device is eligible for scope-based instantiation when all of these are true:
 - it belongs to the selected activation scope, or the scope is `All`
 - it is enabled in that scope membership
 - it is not part of the always-instantiated infrastructure category
+- it is not excluded by an unsupported device class rule
+- it is not blocked by a hard safety rule
 
 Instantiation eligibility is not the same as testability.
 
@@ -455,6 +507,96 @@ The UI must also provide an explicit override control for devices in eligible lo
 - explicit override button
 - immediate `manual-override-instantiate` event on click
 - explicit clear action for latched override failure
+
+When a group-scoped runtime is active, the UI must also provide an explicit action to reconcile/apply current group membership to the active runtime.
+
+This action must not be hidden behind implicit refresh behavior.
+
+If runtime is not currently in group mode:
+
+- the operator may still edit `active-group`
+- the UI must warn clearly that group mode is not currently active
+- `active-group` edits are treated as staged future group-mode membership
+
+## Group Membership Visibility And Editing
+
+The UI must plainly show current membership for:
+
+- runtime-managed `active-group`
+- any named group selected as the current activation scope
+
+Named groups are read-only in the UI.
+
+The operator may manipulate membership only for `active-group`.
+
+Minimum first-pass capabilities:
+
+- view the full member list for the currently viewed group
+- see which defined devices are not currently in `active-group`
+- add a device to `active-group`
+- remove a device from `active-group`
+- see pending membership changes before runtime reconciliation
+- issue a single explicit reconcile/apply action after editing `active-group`
+
+The UI should make these distinctions visible:
+
+- group member
+- in current activation scope
+- currently instantiated
+- pending add/remove not yet applied to runtime
+
+If the active runtime still reflects the old membership after edits, the UI must state that clearly rather than implying the runtime already matches the edited list.
+
+## Lower-Right Group Membership Panel
+
+The UI should use the lower-right panel as the primary first-pass group membership editor.
+
+Required first-pass behavior:
+
+- the panel lists all devices in the selected profile when editing `active-group`
+- named-group views may show membership, but they are read-only in the UI
+- each listed device has a checkbox representing desired membership in `active-group` for the current app run
+- checked means the device is a member of that group
+- unchecked means the device is not a member of that group
+
+For example, when the operator is working with `active-group`:
+
+- the panel shows all devices in the selected profile
+- the checkbox state indicates current `active-group` membership for each device
+- checking a device stages it for inclusion in `active-group`
+- unchecking a device stages it for removal from `active-group`
+- checkbox state is runtime/session state only and is not persisted into profile/config data
+
+The panel must also show enough adjacent state to keep membership editing understandable.
+
+Minimum required per-device columns or indicators:
+
+- device display name
+- device type or class
+- membership checkbox for the selected group
+- current instantiated state
+- current present state
+- current testable state
+- pending membership change state when edited but not yet applied
+
+Checkbox edits update desired membership immediately, but they do not directly instantiate or free runtime resources.
+
+Checkboxes must be disabled/greyed-out when the device cannot be selected into `active-group` for the current run.
+
+First-pass disabled/greyed-out reasons include:
+
+- out of selected profile
+- unsupported device class
+- always-instantiated infrastructure
+- hard safety block
+
+The panel must clearly separate:
+
+- desired membership from checkbox state
+- applied runtime scope state
+- actual instantiated state
+
+If checkbox edits are pending, the panel must show an unapplied-changes indicator and keep the explicit reconcile/apply control visible nearby.
 
 ## Diagram Requirements
 
@@ -490,6 +632,14 @@ Normal device-facing surfaces should show at minimum:
 
 - `presenceScore`
 - `testable`
+
+`testable` is a composed state that depends on both robot-side and host-side data.
+
+First-pass rule:
+
+- robot-side lifecycle/instantiation state is necessary but not sufficient
+- host-side evidence/presence/observation state is necessary but not sufficient
+- UI and CLI surfaces must consume the resulting composed `testable` state rather than reconstructing it independently
 
 A debug panel must expose the full per-device FSM contract:
 
@@ -543,6 +693,7 @@ Runtime state must expose:
 - active runtime profile
 - runtime declared active
 - current applied activation scope
+- desired active-group membership for the current app session
 - scope members
 - instantiated devices
 - present devices
@@ -560,11 +711,190 @@ Per-device required runtime-state fields:
 - `lastTransitionTimeMs`
 - `notTestableReason`
 
+When relevant, runtime state must also expose:
+
+- pending unapplied `active-group` additions
+- pending unapplied `active-group` removals
+- pending removals blocked by running tests
+
 The UI must read this back after activation and verify it matches the requested scope.
 
 `showRuntimeState` is the canonical source for this contract.
 
 Other host surfaces may mirror or cache these values, but they must not become a competing source of truth.
+
+## CLI Command Surface
+
+The CLI must support this feature through commands that cleanly separate:
+
+- desired group membership editing
+- runtime activation
+- explicit runtime scope reconciliation
+- runtime-state inspection
+
+The CLI must not overload membership-edit commands so that they silently mutate runtime instantiation state.
+
+## Existing CLI Commands That Remain Relevant
+
+The existing CLI already provides command families that remain part of the workflow:
+
+- `runtime activate [<profile>]`
+- `runtime deactivate`
+- `show runtime-state [robot|local|both] [--json] [--pretty]`
+- `show group <name>`
+- `show groups`
+- `group member assign <group> <label>`
+- `group member remove <group> <label>`
+- `copy group <src> <dst>`
+- `active show`
+- `active add`
+- `active next`
+
+These existing commands continue to matter, but they must be interpreted consistently under the scope-aware model.
+
+## Required CLI Semantics
+
+Required rule:
+
+- group membership commands edit desired membership only
+- runtime activation commands activate runtime under an explicit scope
+- explicit runtime scope apply/reconcile commands mutate instantiated runtime membership
+- runtime-state inspection commands verify applied state
+
+Under this model:
+
+- `group member assign ...` does not directly instantiate a device
+- `group member remove ...` does not directly free a device
+- `active add` does not directly instantiate a device
+- `active next` does not directly instantiate a device unless a later explicit runtime apply command says so
+- `active-group` remains a runtime/session construct even when edited from the CLI
+
+## New Scope-Aware CLI Commands
+
+The CLI should add a small explicit runtime-scope command family.
+
+Preferred command forms:
+
+- `runtime activate scope all [profile <name>]`
+- `runtime activate scope group <group> [profile <name>]`
+- `runtime scope show`
+- `runtime scope apply`
+- `runtime scope apply group <group>`
+
+Shorter compatibility forms may also be provided if they map to the same contract cleanly, for example:
+
+- `runtime activate all`
+- `runtime activate group active-group`
+- `runtime apply-scope`
+- `runtime apply-scope group active-group`
+
+The preferred direction is to keep one clear scope-oriented command family rather than proliferating multiple partial aliases.
+
+## CLI Workflow Examples
+
+### Example 1: Activate In `All` Scope
+
+```text
+runtime activate scope all profile test_minimal_25_9
+show runtime-state robot --json --pretty
+```
+
+Expected behavior:
+
+- runtime activates using the selected profile
+- all eligible scope-controlled devices are instantiated
+- always-instantiated infrastructure devices are instantiated
+- `show runtime-state` reports applied scope `all`
+
+### Example 2: Activate In `active-group` Scope
+
+```text
+runtime activate scope group active-group profile test_minimal_25_9
+show group active-group
+show runtime-state robot --json --pretty
+```
+
+Expected behavior:
+
+- runtime activates in group scope
+- only eligible `active-group` members are instantiated
+- always-instantiated infrastructure devices are instantiated
+- `show runtime-state` reports applied scope `group` with `active-group`
+
+### Example 3: Edit Membership Then Apply It
+
+```text
+group member assign active-group SPARKMAX/NEO_25
+group member assign active-group FALCON_9
+show group active-group
+runtime scope apply group active-group
+show runtime-state robot --json --pretty
+```
+
+Expected behavior:
+
+- the membership edits update desired `active-group` contents
+- no runtime mutation happens until `runtime scope apply group active-group`
+- apply instantiates newly eligible members and leaves unchanged members alone
+- runtime-state output reflects the applied membership
+
+### Example 4: Remove A Member Then Apply It
+
+```text
+group member remove active-group FALCON_9
+show group active-group
+runtime scope apply group active-group
+show runtime-state robot --json --pretty
+```
+
+Expected behavior:
+
+- the membership edit stages removal only
+- no runtime mutation happens until explicit apply
+- apply deallocates/frees the removed member if it is currently instantiated under the active group scope
+- unchanged members remain active
+
+## `active-group` Helper Command Semantics
+
+`active show`, `active add`, and `active next` remain useful for incremental bringup workflows.
+
+Under this feature, their semantics must be explicit:
+
+- `active show` reports current desired `active-group` membership
+- `active add` grows desired `active-group` membership using the next eligible device
+- `active next` advances the guided active-device workflow or selection logic without implicitly widening instantiated runtime scope
+
+If these commands are used while runtime is active in group mode:
+
+- the UI and CLI must show that desired membership has changed
+- runtime instantiated membership remains unchanged until explicit apply/reconcile
+
+## Runtime Inspection Commands
+
+`show runtime-state` remains the canonical CLI inspection command for this feature.
+
+The CLI should also support a focused scope-inspection view through:
+
+- `runtime scope show`
+
+That view should report at minimum:
+
+- requested activation scope
+- applied activation scope
+- active group name when scope mode is `group`
+- desired group membership
+- applied scoped membership
+- pending unapplied membership changes when present
+
+## Grammar And Help Synchronization
+
+If these CLI commands are implemented:
+
+- `tools/can_nt/bridge_cli_ebnf.txt` must be updated in the same change
+- parser/help text must be updated in the same change
+- regression coverage must include scope activation and scope apply flows
+
+This CLI contract is operator-facing behavior and must not drift between grammar, help, parser, and runtime implementation.
 
 ## Error Handling
 
@@ -629,6 +959,13 @@ This applies to:
 - right-click group runs
 - active-group runs
 - DSL/device-group execution paths that act on multiple devices
+
+If group membership has pending unapplied edits, group-run surfaces must show that fact clearly.
+
+First-pass rule:
+
+- group-run eligibility uses the applied runtime scope, not merely the edited-but-unapplied desired membership list
+- the operator must be able to tell whether a skipped device is out of runtime scope versus merely absent/not testable
 
 ## Runtime Deactivation And Config Change Behavior
 
@@ -716,6 +1053,166 @@ Expected outcome:
 - It reduces accidental hardware activation but requires clearer UI messaging.
 - It avoids conflating “defined in config” with “currently instantiated.”
 - It requires a stronger runtime-state contract between UI and robot.
+
+## System Impact
+
+## Runtime Behavior Impact
+
+Implementing this feature changes the meaning of runtime activation.
+
+`Runtime Activate` can no longer mean only:
+
+- load the selected profile
+- rebuild runtime
+- instantiate every configured device
+
+It must instead mean:
+
+- activate the selected profile under an explicit activation scope
+- instantiate always-instantiated infrastructure devices
+- instantiate only devices eligible under the applied scope
+- preserve explicit distinction between desired scope membership and actual instantiated runtime state
+
+This means the robot runtime must own and keep synchronized:
+
+- selected activation scope
+- desired scope membership
+- applied runtime scope
+- instantiated device set
+- always-instantiated infrastructure devices
+- per-device lifecycle state
+
+Existing full-activation and incremental bringup paths must converge on one lifecycle model rather than remaining as partially independent flows.
+
+## UI And Operator Workflow Impact
+
+This feature makes the operator workflow more explicit.
+
+The UI must now surface and keep synchronized:
+
+- full defined topology
+- selected activation scope
+- group membership
+- pending unapplied membership edits
+- applied runtime scope
+- instantiated state
+- present state
+- testable state
+
+This increases UI state complexity, but it removes ambiguity that currently exists between:
+
+- defined in config
+- intended for current bringup
+- instantiated now
+- physically present now
+
+The host UI must treat robot runtime state as the authoritative applied-state source.
+
+Host-side surfaces may stage edits and cache views, but they must not invent competing interpretations of:
+
+- scope membership
+- instantiated state
+- testability
+
+## Group Editing And Reconciliation Impact
+
+Group membership editing becomes an explicit desired-state workflow.
+
+Operationally, this means:
+
+- changing a group membership checkbox does not immediately instantiate or free runtime resources
+- membership edits stage desired changes
+- an explicit reconcile/apply command is required to mutate active runtime instantiation
+
+This affects system behavior in an intentional way:
+
+- the operator can safely edit group membership without causing surprise runtime churn
+- adding a device requires an explicit apply step before that device becomes instantiated
+- removing a device requires an explicit apply step before that device is deallocated/freed
+
+This model is required for predictable incremental bringup, especially when the operator is assembling or revising the next working set device-by-device.
+
+## Test Execution And Command Gating Impact
+
+Tests and group runs must stop assuming that runtime-active implies all profile devices are available.
+
+Execution paths must distinguish between at least these cases:
+
+- defined but out of scope
+- in scope but not instantiated
+- instantiated but not present
+- instantiated and present
+
+This affects:
+
+- selected-test execution
+- group runs
+- skip-reason reporting
+- testability gating
+- operator-facing summaries
+
+The system must report these distinctions plainly so operators understand whether a device is unavailable because it:
+
+- was not selected into the active scope
+- has not yet been applied to runtime
+- failed instantiation
+- is instantiated but lacks current presence evidence
+
+## Config And Lifecycle Impact
+
+This feature does not require a profile schema redesign, but it does tighten config and lifecycle semantics.
+
+In practice:
+
+- group membership becomes a stronger part of runtime behavior
+- `active-group` editing becomes a staged desired-state workflow
+- runtime deactivation must clear instantiation state cleanly
+- profile/config changes must invalidate and rebuild runtime state
+
+After config changes:
+
+- existing applied runtime scope may no longer be valid
+- current instantiation state may no longer match the edited config
+- runtime must be torn down and explicitly reactivated
+
+This is stricter than an implicitly self-healing model, but it is less ambiguous and easier to reason about.
+
+## Command And Contract Impact
+
+This feature requires stronger robot/host command contracts.
+
+At minimum, the system must define explicit contract fields for:
+
+- requested activation scope
+- applied activation scope
+- scope membership
+- pending versus applied group state where relevant
+- instantiated device set
+- per-device lifecycle state
+- per-device testability and not-testable reason
+
+Without this stronger contract, the robot, UI, CLI, and reports will tend to drift into separate interpretations of the same runtime state.
+
+## Partial-Implementation Risk
+
+The main operational risk is partial implementation.
+
+If only runtime activation changes, but the rest of the system does not change with it, the result will be operator confusion and state drift.
+
+Examples of incomplete implementation risk:
+
+- scope-aware activation exists, but runtime-state reporting does not expose applied scope clearly
+- group membership can be edited, but the UI does not show whether edits are pending or applied
+- test execution still assumes all runtime-active profile devices are available
+- diagram and side panels display different interpretations of instantiation or scope
+
+Therefore this feature should be implemented as one coordinated behavior change across:
+
+- robot runtime activation/reconciliation
+- runtime-state reporting
+- UI scope selection and group editing
+- command gating and test eligibility
+- operator-facing summaries and mismatch reporting
 
 ## Future Extensions
 
