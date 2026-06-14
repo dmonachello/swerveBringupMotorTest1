@@ -38,6 +38,13 @@ Hard rules
 - When an internal invariant fails, do not misreport it as user syntax or configuration error. Surface it as a loud internal bug with enough context to localize the fault quickly (for example mode, command, handler, profile, or contract path).
 - Use `assert` for developer/test-only impossible states where crashing is acceptable. In operator-facing tools, prefer nonfatal but prominent bug reports plus explicit internal-error status codes so the session remains debuggable.
 - Treat parsed-but-unrouted commands, unexpected shared-model gaps, and cross-surface contract mismatches as architecture bugs. Report them immediately and loudly rather than silently recovering or downgrading them to generic failures.
+- Shared-contract rule:
+  - When behavior or data is exposed through multiple surfaces, common code must own the complete semantic contract: parsing, normalization, validation, lookup, and projection.
+  - Surface code may collect inputs, dispatch commands, and format outputs, but it must not re-implement shared semantics locally.
+  - If two surfaces read the same artifact, they must consume the same shared query/model builder or an explicitly documented compatibility adapter.
+  - If two surfaces validate the same artifact, they must call the same shared validation core.
+  - Any new cross-surface behavior must add shared-contract regression coverage proving the surfaces agree on the same structured result.
+  - Re-implementing shared semantics in CLI, UI, editor, validator, store, or report layers is architectural drift and should be treated as a bug.
 - Documentation rules:
   - Use short headings and clear section hierarchy.
   - Prefer short paragraphs and bullet lists.

@@ -46,6 +46,8 @@ from tools.common.profile_constants import (
     KEY_LINK_NEIGHBOR_PORT,
     KEY_LINK_NODE,
     KEY_LINK_PORT,
+    KEY_NEIGHBOR_LINKS,
+    KEY_NEIGHBOR_PORTS,
     KEY_MODEL,
     KEY_NODE_CLASS,
     KEY_NODE_KEY,
@@ -189,7 +191,22 @@ def topology_neighbor_ports(
     NAME
         topology_neighbor_ports - Derive directed neighbor entries from edges.
     """
-    neighbors: List[Dict[str, object]] = []
+    explicit = topology_profile.get(KEY_NEIGHBOR_PORTS)
+    if isinstance(explicit, list):
+        neighbors: List[Dict[str, object]] = []
+        for entry in explicit:
+            if not isinstance(entry, dict):
+                continue
+            if entry.get(KEY_LINK_NODE) != node_key:
+                continue
+            port = entry.get(KEY_LINK_PORT)
+            neighbor = entry.get(KEY_LINK_NEIGHBOR)
+            neighbor_port = entry.get(KEY_LINK_NEIGHBOR_PORT)
+            if not isinstance(port, str) or not isinstance(neighbor, int) or not isinstance(neighbor_port, str):
+                continue
+            neighbors.append(dict(entry))
+        return neighbors
+    neighbors = []
     for edge in topology_edges(topology_profile):
         from_node = edge.get(KEY_FROM_NODE)
         to_node = edge.get(KEY_TO_NODE)
@@ -229,7 +246,26 @@ def topology_neighbor_links(topology_profile: Dict[str, object], node_key: int) 
     NAME
         topology_neighbor_links - Derive undirected neighbor links from edges.
     """
-    pairs: List[Tuple[int, int]] = []
+    explicit = topology_profile.get(KEY_NEIGHBOR_LINKS)
+    if isinstance(explicit, list):
+        pairs: List[Tuple[int, int]] = []
+        seen: set[Tuple[int, int]] = set()
+        for entry in explicit:
+            if not isinstance(entry, dict):
+                continue
+            a = entry.get(KEY_LINK_A)
+            b = entry.get(KEY_LINK_B)
+            if not isinstance(a, int) or not isinstance(b, int):
+                continue
+            if node_key not in (a, b) or a == b:
+                continue
+            pair = (min(a, b), max(a, b))
+            if pair in seen:
+                continue
+            seen.add(pair)
+            pairs.append(pair)
+        return pairs
+    pairs = []
     seen: set[Tuple[int, int]] = set()
     for edge in topology_edges(topology_profile):
         from_node = edge.get(KEY_FROM_NODE)

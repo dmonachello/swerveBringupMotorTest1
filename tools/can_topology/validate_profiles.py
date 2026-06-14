@@ -76,6 +76,10 @@ from tools.common.profile_constants import (
     get_device_interface,
     get_object_type,
 )
+from tools.common.topology_validate import (
+    SEVERITY_ERROR as TOPOLOGY_SEVERITY_ERROR,
+    validate_topology_payload,
+)
 from tools.common.profile_io import compute_profiles_hash
 
 DEFAULT_PATH = str(Path("src") / "main" / "deploy" / "bringup_system.json")
@@ -404,92 +408,11 @@ def validate_topology(
     RETURNS
         (errors, warnings) lists.
     """
-    errors: List[str] = []
-    warnings: List[str] = []
-    topology = payload.get(KEY_TOPOLOGY)
-    if not isinstance(topology, dict):
-        return errors, warnings
-    topology_profiles = topology.get(KEY_TOPOLOGY_PROFILES)
-    if not isinstance(topology_profiles, dict):
-        return errors, warnings
-    registry_keys = {label.strip().lower() for label in registry.keys()}
-    for profile_name, topology_profile in topology_profiles.items():
-        if not isinstance(topology_profile, dict):
-            continue
-        nodes = topology_profile.get(KEY_TOPOLOGY_NODES)
-        if not isinstance(nodes, list):
-            continue
-        node_keys: set[int] = set()
-        for node in nodes:
-            if not isinstance(node, dict):
-                continue
-            node_key = node.get(KEY_NODE_KEY)
-            if isinstance(node_key, int):
-                if node_key in node_keys:
-                    msg = MSG_ERR_TOPOLOGY_NODE_KEY_DUP.format(
-                        profile=profile_name,
-                        key=node_key,
-                    )
-                    errors.append(msg)
-                    reporter.fail(msg)
-                node_keys.add(node_key)
-            object_type = get_object_type(node)
-            if KEY_OBJECT_TYPE not in node and object_type:
-                node[KEY_OBJECT_TYPE] = object_type
-            if KEY_NODE_TYPE not in node and object_type:
-                node[KEY_NODE_TYPE] = object_type
-            if object_type != NODE_TYPE_DEVICE:
-                continue
-            device_ref = node.get(KEY_DEVICE_REF)
-            if not isinstance(device_ref, str) or not device_ref.strip():
-                msg = MSG_ERR_TOPOLOGY_DEVICE_REF.format(
-                    profile=profile_name,
-                    key=node_key if isinstance(node_key, int) else "?",
-                )
-                errors.append(msg)
-                reporter.fail(msg)
-                continue
-            if device_ref.strip().lower() not in registry_keys:
-                msg = MSG_ERR_TOPOLOGY_DEVICE_UNKNOWN.format(
-                    profile=profile_name,
-                    key=node_key if isinstance(node_key, int) else "?",
-                    label=device_ref,
-                )
-                errors.append(msg)
-                reporter.fail(msg)
-        edges = topology_profile.get(KEY_TOPOLOGY_EDGES)
-        if not isinstance(edges, list):
-            continue
-        for edge in edges:
-            if not isinstance(edge, dict):
-                continue
-            edge_id = edge.get(KEY_EDGE_ID, "?")
-            from_node = edge.get(KEY_FROM_NODE)
-            to_node = edge.get(KEY_TO_NODE)
-            if not isinstance(from_node, int) or not isinstance(to_node, int):
-                msg = MSG_ERR_TOPOLOGY_EDGE_ENDPOINT.format(
-                    profile=profile_name,
-                    edge=edge_id,
-                )
-                errors.append(msg)
-                reporter.fail(msg)
-                continue
-            if from_node not in node_keys or to_node not in node_keys:
-                msg = MSG_ERR_TOPOLOGY_EDGE_ENDPOINT.format(
-                    profile=profile_name,
-                    edge=edge_id,
-                )
-                errors.append(msg)
-                reporter.fail(msg)
-            edge_type = edge.get(KEY_EDGE_TYPE)
-            if isinstance(edge_type, str) and edge_type not in KNOWN_EDGE_TYPES:
-                msg = MSG_WARN_TOPOLOGY_EDGE_TYPE.format(
-                    profile=profile_name,
-                    edge=edge_id,
-                    edge_type=edge_type,
-                )
-                warnings.append(msg)
-                reporter.warn(msg)
+    errors, warnings = validate_topology_payload(payload, registry, normalize_nodes=True)
+    for message in errors:
+        reporter.fail(message)
+    for message in warnings:
+        reporter.warn(message)
     return errors, warnings
 
 class Reporter:

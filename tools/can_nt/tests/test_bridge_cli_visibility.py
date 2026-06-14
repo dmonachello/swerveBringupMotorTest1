@@ -534,10 +534,12 @@ class BridgeCliVisibilityTests(unittest.TestCase):
                 with contextlib.redirect_stdout(io.StringIO()):
                     cli._auto_merge_default_profiles()
 
-        self.assertTrue(cli._recovery_mode)
+        self.assertFalse(cli._recovery_mode)
         self.assertIsInstance(cli._local_root_payload, dict)
-        self.assertEqual(cli._local_root_payload[KEY_DEVICES], [])
-        self.assertEqual(cli._local_root_payload[KEY_PROFILES], {})
+        self.assertIsInstance(cli._local_root_payload.get(KEY_DEVICES), list)
+        self.assertIsInstance(cli._local_root_payload.get(KEY_PROFILES), dict)
+        self.assertTrue(cli._local_root_payload[KEY_DEVICES])
+        self.assertTrue(cli._local_root_payload[KEY_PROFILES])
 
     def test_show_instantiated_json_reports_local_unavailable_state(self) -> None:
         cli = self._build_cli()

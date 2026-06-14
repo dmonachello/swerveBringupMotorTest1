@@ -4,7 +4,9 @@ import contextlib
 import io
 import unittest
 
-from tools.can_nt.can_nt_bridge import _sync_cli_profile_context
+from unittest.mock import patch
+
+from tools.can_nt.can_nt_bridge import _resolve_startup_profile_name, _sync_cli_profile_context
 
 
 class _FakeStatus:
@@ -53,6 +55,20 @@ class CanNtBridgeProfileContextTests(unittest.TestCase):
 
         self.assertFalse(synced)
         self.assertIn("BUG: host profile context switched to 'test_minimal_25_9'", output.getvalue())
+
+    def test_resolve_startup_profile_name_falls_back_to_current_default_when_requested_is_stale(self) -> None:
+        output = io.StringIO()
+
+        with (
+            patch("tools.can_nt.can_nt_bridge.reload_profiles", return_value=(True, "")),
+            patch("tools.can_nt.can_nt_bridge.list_profiles", return_value=["test_minimal_25_9", "robot"]),
+            patch("tools.can_nt.can_nt_bridge.get_default_profile", return_value="test_minimal_25_9"),
+            contextlib.redirect_stdout(output),
+        ):
+            resolved = _resolve_startup_profile_name("2026_no_swyfts")
+
+        self.assertEqual("test_minimal_25_9", resolved)
+        self.assertIn("WARNING: startup profile '2026_no_swyfts' is unavailable; using 'test_minimal_25_9'.", output.getvalue())
 
 
 if __name__ == "__main__":

@@ -30,6 +30,126 @@ SELECTION_BOX_WIDTH = 2
 SELECTION_BOX_DASH = (6, 4)
 
 
+def backbone_stub_xs(
+    *,
+    node,
+    node_x: float,
+    x0: float,
+    x1: float,
+    scale: float,
+    can_connection_capacity_fn=None,
+) -> Tuple[float, ...]:
+    """
+    NAME
+        backbone_stub_xs - Return trunk-stub X positions for one topology node.
+
+    DESCRIPTION
+        Single-port backbone endpoints render one centered stem. Inline
+        two-port backbone devices render two separated stems so their bus role
+        is visible across editor, live view, and export surfaces.
+    """
+    capacity = int(can_connection_capacity_fn(node)) if can_connection_capacity_fn is not None else 1
+    if capacity >= 2:
+        inset = max(6.0, min((x1 - x0) * 0.22, 18.0 * scale))
+        return (x0 + inset, x1 - inset)
+    return (node_x,)
+
+
+def inline_backbone_gap_ranges(
+    *,
+    nodes,
+    x_shift: float,
+    scale: float,
+    box_w_base: float,
+    eff_lefts,
+    eff_rights,
+    min_x: float,
+    max_x: float,
+    should_clamp_node_to_bus_fn,
+    is_dio_node_fn,
+    is_callout_fn,
+    is_direct_can_backbone_node_fn,
+    can_connection_capacity_fn,
+    linked_devices,
+) -> Dict[int, List[Tuple[float, float]]]:
+    """
+    NAME
+        inline_backbone_gap_ranges - Compute per-bus trunk gaps for inline devices.
+
+    DESCRIPTION
+        True inline two-port backbone devices should split the visible CAN trunk
+        into left and right segments with a gap under the device body. This
+        helper centralizes that geometry for all surfaces.
+    """
+    gaps_by_bus: Dict[int, List[Tuple[float, float]]] = {}
+    bus_count = max(len(eff_lefts), len(eff_rights), 1)
+    linked_device_keys = set(linked_devices or set())
+    for node in nodes:
+        if is_callout_fn(node):
+            continue
+        if getattr(node, "key", None) in linked_device_keys:
+            continue
+        if is_dio_node_fn(node):
+            continue
+        if not bool(is_direct_can_backbone_node_fn(node)):
+            continue
+        if int(can_connection_capacity_fn(node)) < 2:
+            continue
+        bus_index = min(max(int(getattr(node, "bus_index", 0)), 0), max(bus_count - 1, 0))
+        seg_left = eff_lefts[bus_index] * scale if bus_index < len(eff_lefts) else min_x * scale
+        seg_right = eff_rights[bus_index] * scale if bus_index < len(eff_rights) else max_x * scale
+        node_x = (float(getattr(node, "x", 0.0)) - x_shift) * scale
+        node_scale = max(0.6, min(2.0, float(getattr(node, "scale", 1.0))))
+        node_box_w = box_w_base * scale * node_scale
+        if should_clamp_node_to_bus_fn(node):
+            node_x = min(max(node_x, seg_left + 20), seg_right - 20)
+        x0 = node_x - node_box_w / 2.0
+        x1 = node_x + node_box_w / 2.0
+        stem_xs = backbone_stub_xs(
+            node=node,
+            node_x=node_x,
+            x0=x0,
+            x1=x1,
+            scale=scale,
+            can_connection_capacity_fn=can_connection_capacity_fn,
+        )
+        if len(stem_xs) < 2:
+            continue
+        gap_start = max(min(seg_left, seg_right), min(stem_xs))
+        gap_end = min(max(seg_left, seg_right), max(stem_xs))
+        if gap_end > gap_start:
+            gaps_by_bus.setdefault(bus_index, []).append((gap_start, gap_end))
+    for bus_index, gaps in list(gaps_by_bus.items()):
+        merged: List[Tuple[float, float]] = []
+        for start, end in sorted(gaps):
+            if not merged or start > merged[-1][1]:
+                merged.append((start, end))
+            else:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        gaps_by_bus[bus_index] = merged
+    return gaps_by_bus
+
+
+def bus_segments_with_gaps(start_x: float, end_x: float, gaps: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
+    """
+    NAME
+        bus_segments_with_gaps - Split one trunk segment around inline-device gaps.
+    """
+    low = min(start_x, end_x)
+    high = max(start_x, end_x)
+    cursor = low
+    segments: List[Tuple[float, float]] = []
+    for gap_start, gap_end in gaps:
+        gap_start = max(low, gap_start)
+        gap_end = min(high, gap_end)
+        if gap_start > cursor:
+            segments.append((cursor, gap_start))
+        cursor = max(cursor, gap_end)
+    if cursor < high:
+        segments.append((cursor, high))
+    return segments
+
+
 def draw_canvas_shape_for_kind(
     canvas,
     x0: float,
@@ -504,6 +624,9 @@ def render_topology_canvas_common(
     wrap_label_lines_fn,
     node_tag_name_fn=None,
     is_callout_fn=None,
+    is_direct_can_backbone_node_fn=None,
+    is_main_can_tap_node_fn=None,
+    can_connection_capacity_fn=None,
     selected_outline_color: str = "#1f6feb",
     default_outline_width: int = 2,
     show_selection_box: bool = False,
@@ -533,6 +656,26 @@ def render_topology_canvas_common(
     import tkinter.font as tkfont
 
     is_callout_fn = is_callout_fn or (lambda node: getattr(node, "node_type", "") == "callout")
+
+    def _draw_backbone_stubs(
+        node,
+        node_x: float,
+        x0: float,
+        x1: float,
+        bus_y: float,
+        node_edge_y: float,
+    ) -> None:
+        stem_xs = backbone_stub_xs(
+            node=node,
+            node_x=node_x,
+            x0=x0,
+            x1=x1,
+            scale=scale,
+            can_connection_capacity_fn=can_connection_capacity_fn,
+        )
+        for stem_x in stem_xs:
+            canvas.create_line(stem_x, bus_y, stem_x, node_edge_y, width=2, fill="#444444")
+
     bus_ys_list = list(bus_ys)
     selected_node_keys = set(selected_node_keys or set())
     selected_bus_indices = set(selected_bus_indices or set())
@@ -540,6 +683,26 @@ def render_topology_canvas_common(
     drag_free_y = dict(drag_free_y or {})
     bus_connector_regions: List[Dict[str, object]] = []
     if show_can:
+        backbone_gaps_by_bus = inline_backbone_gap_ranges(
+            nodes=nodes,
+            x_shift=x_shift,
+            scale=scale,
+            box_w_base=box_w_base,
+            eff_lefts=eff_lefts,
+            eff_rights=eff_rights,
+            min_x=min_x,
+            max_x=max_x,
+            should_clamp_node_to_bus_fn=should_clamp_node_to_bus_fn,
+            is_dio_node_fn=is_dio_node_fn,
+            is_callout_fn=is_callout_fn,
+            is_direct_can_backbone_node_fn=(
+                is_direct_can_backbone_node_fn
+                if is_direct_can_backbone_node_fn is not None
+                else lambda node: (not is_swyft_node_fn(node)) or (getattr(node, "category", "") == "cannect_inject")
+            ),
+            can_connection_capacity_fn=can_connection_capacity_fn or (lambda _node: 1),
+            linked_devices=linked_devices,
+        )
         turn_radius = max(8.0, 18 * scale)
         for idx, bus_y in enumerate(bus_ys_list):
             bus_color = "#444444"
@@ -550,7 +713,9 @@ def render_topology_canvas_common(
                 start_x, end_x = seg_left, seg_right
             else:
                 start_x, end_x = seg_right, seg_left
-            canvas.create_line(start_x, bus_y, end_x, bus_y, width=bus_width, fill=bus_color)
+            bus_segments = bus_segments_with_gaps(start_x, end_x, backbone_gaps_by_bus.get(idx, []))
+            for seg_start, seg_end in bus_segments:
+                canvas.create_line(seg_start, bus_y, seg_end, bus_y, width=bus_width, fill=bus_color)
             if idx + 1 < len(bus_ys_list):
                 if bus_connectors and idx < len(bus_connectors) and not bus_connectors[idx]:
                     continue
@@ -631,10 +796,23 @@ def render_topology_canvas_common(
                 center_y += 30.0 * scale
             y0 = center_y - node_box_h / 2.0
             y1 = center_y + node_box_h / 2.0
-            allow_trunk = (not is_swyft_node_fn(node)) or (getattr(node, "category", "") == "cannect_inject")
-            if getattr(node, "key", None) not in linked_devices and allow_trunk and not is_dio_node_fn(node) and show_can:
+            allow_trunk = (
+                bool(is_direct_can_backbone_node_fn(node))
+                if is_direct_can_backbone_node_fn is not None
+                else ((not is_swyft_node_fn(node)) or (getattr(node, "category", "") == "cannect_inject"))
+            )
+            allow_main_tap = bool(is_main_can_tap_node_fn(node)) if is_main_can_tap_node_fn is not None else False
+            if (
+                getattr(node, "key", None) not in linked_devices
+                and (allow_trunk or allow_main_tap)
+                and not is_dio_node_fn(node)
+                and show_can
+            ):
                 line_y = y0 if center_y > bus_y else y1
-                canvas.create_line(node_x, bus_y, node_x, line_y, width=2, fill="#444444")
+                if allow_trunk:
+                    _draw_backbone_stubs(node, node_x, x0, x1, bus_y, line_y)
+                else:
+                    canvas.create_line(node_x, bus_y, node_x, line_y, width=2, fill="#444444")
         else:
             free_y = getattr(node, "free_y", None)
             if free_y is not None:
@@ -643,23 +821,62 @@ def render_topology_canvas_common(
                     center_y += 30.0 * scale
                 y0 = center_y - node_box_h / 2.0
                 y1 = center_y + node_box_h / 2.0
-                allow_trunk = (not is_swyft_node_fn(node)) or (getattr(node, "category", "") == "cannect_inject")
-                if getattr(node, "key", None) not in linked_devices and allow_trunk and not is_dio_node_fn(node) and show_can:
+                allow_trunk = (
+                    bool(is_direct_can_backbone_node_fn(node))
+                    if is_direct_can_backbone_node_fn is not None
+                    else ((not is_swyft_node_fn(node)) or (getattr(node, "category", "") == "cannect_inject"))
+                )
+                allow_main_tap = bool(is_main_can_tap_node_fn(node)) if is_main_can_tap_node_fn is not None else False
+                if (
+                    getattr(node, "key", None) not in linked_devices
+                    and (allow_trunk or allow_main_tap)
+                    and not is_dio_node_fn(node)
+                    and show_can
+                ):
                     line_y = y0 if center_y > bus_y else y1
-                    canvas.create_line(node_x, bus_y, node_x, line_y, width=2, fill="#444444")
+                    if allow_trunk:
+                        _draw_backbone_stubs(node, node_x, x0, x1, bus_y, line_y)
+                    else:
+                        canvas.create_line(node_x, bus_y, node_x, line_y, width=2, fill="#444444")
             else:
                 if int(getattr(node, "row", 0)) == 1:
                     y0 = node_bus_y + 30 * scale
                     y1 = y0 + node_box_h
-                    allow_trunk = (not is_swyft_node_fn(node)) or (getattr(node, "category", "") == "cannect_inject")
-                    if getattr(node, "key", None) not in linked_devices and allow_trunk and not is_dio_node_fn(node) and show_can:
-                        canvas.create_line(node_x, bus_y, node_x, y0, width=2, fill="#444444")
+                    allow_trunk = (
+                        bool(is_direct_can_backbone_node_fn(node))
+                        if is_direct_can_backbone_node_fn is not None
+                        else ((not is_swyft_node_fn(node)) or (getattr(node, "category", "") == "cannect_inject"))
+                    )
+                    allow_main_tap = bool(is_main_can_tap_node_fn(node)) if is_main_can_tap_node_fn is not None else False
+                    if (
+                        getattr(node, "key", None) not in linked_devices
+                        and (allow_trunk or allow_main_tap)
+                        and not is_dio_node_fn(node)
+                        and show_can
+                    ):
+                        if allow_trunk:
+                            _draw_backbone_stubs(node, node_x, x0, x1, bus_y, y0)
+                        else:
+                            canvas.create_line(node_x, bus_y, node_x, y0, width=2, fill="#444444")
                 else:
                     y1 = node_bus_y - 30 * scale
                     y0 = y1 - node_box_h
-                    allow_trunk = (not is_swyft_node_fn(node)) or (getattr(node, "category", "") == "cannect_inject")
-                    if getattr(node, "key", None) not in linked_devices and allow_trunk and not is_dio_node_fn(node) and show_can:
-                        canvas.create_line(node_x, y1, node_x, bus_y, width=2, fill="#444444")
+                    allow_trunk = (
+                        bool(is_direct_can_backbone_node_fn(node))
+                        if is_direct_can_backbone_node_fn is not None
+                        else ((not is_swyft_node_fn(node)) or (getattr(node, "category", "") == "cannect_inject"))
+                    )
+                    allow_main_tap = bool(is_main_can_tap_node_fn(node)) if is_main_can_tap_node_fn is not None else False
+                    if (
+                        getattr(node, "key", None) not in linked_devices
+                        and (allow_trunk or allow_main_tap)
+                        and not is_dio_node_fn(node)
+                        and show_can
+                    ):
+                        if allow_trunk:
+                            _draw_backbone_stubs(node, node_x, x0, x1, bus_y, y1)
+                        else:
+                            canvas.create_line(node_x, y1, node_x, bus_y, width=2, fill="#444444")
         fill = fill_color_fn(node)
         outline = outline_color_fn(node)
         shape_ids = draw_canvas_shape_for_kind(
@@ -787,16 +1004,17 @@ def render_topology_canvas_common(
         for node in nodes
         if is_swyft_node_fn(node)
     ]
+    filtered_ethernet_links = ethernet_links if show_can else []
     filtered_can_links = can_bus_links if show_can else []
     filtered_device_links = device_links if show_can else []
     filtered_cannect_nodes = cannect_nodes if show_can else []
-    if ethernet_links or filtered_can_links or filtered_device_links or filtered_cannect_nodes:
+    if filtered_ethernet_links or filtered_can_links or filtered_device_links or filtered_cannect_nodes:
         draw_links(
             canvas,
             node_centers,
             node_bounds,
             bus_ys_list,
-            ethernet_links,
+            filtered_ethernet_links,
             filtered_can_links,
             filtered_device_links,
             filtered_cannect_nodes,
@@ -832,25 +1050,6 @@ def render_topology_canvas_common(
                 fill=attach_line_color,
                 dash=attach_link_dash,
             )
-        for a, b in ethernet_links:
-            if a not in ethernet_ports or b not in ethernet_ports or a not in node_centers or b not in node_centers:
-                continue
-            ax, _ = node_centers[a]
-            bx, _ = node_centers[b]
-            ports_a = ethernet_ports[a]
-            ports_b = ethernet_ports[b]
-            pa = ports_a["in"] if ("in" in ports_a and "out" in ports_a and bx < ax) else (ports_a.get("out") or ports_a.get("in"))
-            pb = ports_b["in"] if ("in" in ports_b and "out" in ports_b and ax < bx) else (ports_b.get("out") or ports_b.get("in"))
-            if pa and pb:
-                canvas.create_line(
-                    pa[0],
-                    pa[1],
-                    pb[0],
-                    pb[1],
-                    width=2,
-                    fill="#1c6ba8",
-                    dash=ethernet_virtual_dash,
-                )
     if show_dio:
         for robo_key, dev_key in dio_links:
             if robo_key not in node_centers or dev_key not in node_centers:

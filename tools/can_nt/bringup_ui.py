@@ -87,6 +87,12 @@ from tools.common.motor_runtime_verdict import (
     RESULT_ELECTRICAL,
     RESULT_STALLED,
 )
+from tools.common.runtime_state import (
+    runtime_active_probe_attachment as shared_runtime_active_probe_attachment,
+    runtime_attachment_age_seconds,
+    runtime_device_field as shared_runtime_device_field,
+    runtime_presence_check_attachment as shared_runtime_presence_check_attachment,
+)
 from tools.common.app_versions import (
     APP_BRINGUP_UI_NAME,
     VERSIONS,
@@ -1175,18 +1181,7 @@ def _runtime_active_probe_attachment(device: Dict[str, Any]) -> Optional[Dict[st
     NAME
         _runtime_active_probe_attachment - Return the active probe attachment from one runtime-state device.
     """
-    if not isinstance(device, dict):
-        return None
-    attachments = device.get("attachments")
-    if not isinstance(attachments, list):
-        return None
-    for attachment in attachments:
-        if not isinstance(attachment, dict):
-            continue
-        attachment_type = str(attachment.get(ATTACHMENT_KEY_TYPE, "")).strip()
-        if attachment_type == ATTACHMENT_TYPE_ACTIVE_PRESENCE_PROBE:
-            return attachment
-    return None
+    return shared_runtime_active_probe_attachment(device)
 
 
 def _runtime_presence_check_attachment(device: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -1194,18 +1189,7 @@ def _runtime_presence_check_attachment(device: Dict[str, Any]) -> Optional[Dict[
     NAME
         _runtime_presence_check_attachment - Return the live presence-check attachment from one runtime-state device.
     """
-    if not isinstance(device, dict):
-        return None
-    attachments = device.get("attachments")
-    if not isinstance(attachments, list):
-        return None
-    for attachment in attachments:
-        if not isinstance(attachment, dict):
-            continue
-        attachment_type = str(attachment.get(ATTACHMENT_KEY_TYPE, "")).strip()
-        if attachment_type == ATTACHMENT_TYPE_PRESENCE_CHECK:
-            return attachment
-    return None
+    return shared_runtime_presence_check_attachment(device)
 
 
 def _runtime_device_field(device: Dict[str, Any], key: str) -> object:
@@ -1213,24 +1197,7 @@ def _runtime_device_field(device: Dict[str, Any], key: str) -> object:
     NAME
         _runtime_device_field - Read one runtime-state field from top-level or motor attachments.
     """
-    if not isinstance(device, dict) or not key:
-        return None
-    value = device.get(key)
-    if value is not None:
-        return value
-    attachments = device.get("attachments")
-    if not isinstance(attachments, list):
-        return None
-    for attachment in attachments:
-        if not isinstance(attachment, dict):
-            continue
-        attachment_type = str(attachment.get(ATTACHMENT_KEY_TYPE, "")).strip()
-        if attachment_type not in (ATTACHMENT_TYPE_REV_MOTOR, ATTACHMENT_TYPE_CTRE_MOTOR):
-            continue
-        value = attachment.get(key)
-        if value is not None:
-            return value
-    return None
+    return shared_runtime_device_field(device, key)
 
 
 def _format_runtime_probe_bucket(device: Optional[Dict[str, Any]]) -> str:
@@ -1267,13 +1234,11 @@ def _runtime_probe_age_seconds(device: Optional[Dict[str, Any]]) -> Optional[flo
     NAME
         _runtime_probe_age_seconds - Return the age in seconds of one cached active probe result.
     """
-    attachment = _runtime_active_probe_attachment(device or {})
-    if not isinstance(attachment, dict):
-        return None
-    updated_at_ms = attachment.get(RUNTIME_PROBE_KEY_UPDATED_AT_MS)
-    if not isinstance(updated_at_ms, (int, float)) or float(updated_at_ms) <= 0.0:
-        return None
-    return max(0.0, time.time() - (float(updated_at_ms) / 1000.0))
+    return runtime_attachment_age_seconds(
+        device or {},
+        ATTACHMENT_TYPE_ACTIVE_PRESENCE_PROBE,
+        updated_key=RUNTIME_PROBE_KEY_UPDATED_AT_MS,
+    )
 
 
 def _runtime_probe_age_bucket(device: Optional[Dict[str, Any]]) -> str:
@@ -1307,13 +1272,11 @@ def _runtime_presence_age_seconds(device: Optional[Dict[str, Any]]) -> Optional[
     NAME
         _runtime_presence_age_seconds - Return the age in seconds of one live presence-check result.
     """
-    attachment = _runtime_presence_check_attachment(device or {})
-    if not isinstance(attachment, dict):
-        return None
-    updated_at_ms = attachment.get(RUNTIME_PRESENCE_KEY_UPDATED_AT_MS)
-    if not isinstance(updated_at_ms, (int, float)) or float(updated_at_ms) <= 0.0:
-        return None
-    return max(0.0, time.time() - (float(updated_at_ms) / 1000.0))
+    return runtime_attachment_age_seconds(
+        device or {},
+        ATTACHMENT_TYPE_PRESENCE_CHECK,
+        updated_key=RUNTIME_PRESENCE_KEY_UPDATED_AT_MS,
+    )
 
 
 def _runtime_presence_age_text(device: Optional[Dict[str, Any]]) -> str:

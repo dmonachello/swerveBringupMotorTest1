@@ -215,6 +215,21 @@ class _ComboStub:
         self.values = list(value) if isinstance(value, list) else list(value or [])
 
 
+class _FontStub:
+    """Minimal tk font stub for headless render tests."""
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        self.size = int(kwargs.get("size", 10))
+
+    def metrics(self, key: str) -> int:
+        if key == "linespace":
+            return max(8, self.size + 2)
+        return self.size
+
+    def measure(self, text: str) -> int:
+        return max(1, int(len(text) * max(4, self.size * 0.6)))
+
+
 class _ConfigSchemaStoreBlankStub:
     """
     NAME
@@ -310,6 +325,32 @@ class _MessageBoxStub:
     @staticmethod
     def showinfo(*_args: object, **_kwargs: object) -> None:
         pass
+
+    @staticmethod
+    def showerror(*args: object, **_kwargs: object) -> None:
+        message = args[1] if len(args) > 1 else "messagebox error"
+        raise RuntimeError(str(message))
+
+    @staticmethod
+    def askyesno(*_args: object, **_kwargs: object) -> bool:
+        return True
+
+
+class _MessageCaptureStub:
+    """
+    NAME
+        _MessageCaptureStub - Messagebox stub that records showinfo calls.
+    """
+
+    infos: list[tuple[object, ...]] = []
+
+    @classmethod
+    def reset(cls) -> None:
+        cls.infos = []
+
+    @classmethod
+    def showinfo(cls, *args: object, **_kwargs: object) -> None:
+        cls.infos.append(args)
 
     @staticmethod
     def showerror(*args: object, **_kwargs: object) -> None:
@@ -2985,6 +3026,493 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
         ]
         self.assertEqual(ethernet_lines, [])
 
+    def test_virtual_filter_does_not_hide_ethernet_links_when_can_is_enabled(self) -> None:
+        editor = TopologyEditor.__new__(TopologyEditor)
+        editor.canvas = _CanvasStub(width=1200, height=700)
+        editor._nodes = [
+            Node(
+                key=1,
+                category="cannect_inject",
+                label="inject",
+                can_id=-1,
+                node_type="diagram",
+                interface=INTERFACE_CAN,
+                vendor="SWYFT",
+                motor="Wiring",
+                x=150.0,
+                row=1,
+                bus_index=0,
+                profile_visible=False,
+            ),
+            Node(
+                key=2,
+                category="cannect_direct",
+                label="cannect 4",
+                can_id=-1,
+                node_type="diagram",
+                interface=INTERFACE_CAN,
+                vendor="SWYFT",
+                motor="Wiring",
+                x=450.0,
+                row=1,
+                bus_index=0,
+                profile_visible=False,
+            ),
+        ]
+        editor._box_w = 90
+        editor._box_h = 34
+        editor._layout_width = 600.0
+        editor._bus_offsets = [0.0]
+        editor._bus_lefts = [40.0]
+        editor._bus_rights = [520.0]
+        editor._bus_connectors = []
+        editor._details_layout_shift = False
+        editor._last_base_y = None
+        editor._last_canvas_height = None
+        editor._pan_y = 0.0
+        editor._zoom = 1.0
+        editor._draw_state = {}
+        editor._drag_free_y = {}
+        editor._selected_nodes = set()
+        editor._selected_buses = set()
+        editor._node_bounds = {}
+        editor._guide_x = None
+        editor._show_group_overlays_var = _BoolVarStub(False)
+        editor._smart_guides_var = _BoolVarStub(False)
+        editor._show_warn_badges_var = _BoolVarStub(False)
+        editor._connection_filter_vars = {
+            "can": _BoolVarStub(True),
+            "power": _BoolVarStub(False),
+            "dio": _BoolVarStub(False),
+            "pwm": _BoolVarStub(False),
+            "analog": _BoolVarStub(False),
+            "virtual": _BoolVarStub(False),
+        }
+        editor._ethernet_links = [(1, 2)]
+        editor._can_bus_links = []
+        editor._cannect_device_links = []
+        editor._attachment_links = []
+        editor._dio_wiring_links = []
+        editor._power_links = []
+        editor._neighbor_links = []
+        editor._neighbor_ports = []
+        editor._show_group_overlays = lambda: None
+        editor._draw_group_overlays = lambda: None
+        editor._node_bounds = {}
+        editor._bus_ys = []
+        editor._device_nodes = TopologyEditor._device_nodes.__get__(editor, TopologyEditor)
+        editor._callout_nodes = TopologyEditor._callout_nodes.__get__(editor, TopologyEditor)
+        editor._connection_filter_allows = TopologyEditor._connection_filter_allows.__get__(
+            editor, TopologyEditor
+        )
+        editor._should_clamp_node_to_bus = TopologyEditor._should_clamp_node_to_bus.__get__(
+            editor, TopologyEditor
+        )
+        editor._node_box_dims = TopologyEditor._node_box_dims.__get__(editor, TopologyEditor)
+        editor._node_bus_y = TopologyEditor._node_bus_y.__get__(editor, TopologyEditor)
+        editor._node_box_y = TopologyEditor._node_box_y.__get__(editor, TopologyEditor)
+        editor._is_dio_node = TopologyEditor._is_dio_node.__get__(editor, TopologyEditor)
+        editor._is_swyft_node = TopologyEditor._is_swyft_node
+        editor._fill_color_for_node = TopologyEditor._fill_color_for_node.__get__(editor, TopologyEditor)
+        editor._text_color_for_fill = TopologyEditor._text_color_for_fill
+        editor._shape_kind_for_node = TopologyEditor._shape_kind_for_node.__get__(editor, TopologyEditor)
+        editor._draw_device_shape_on = TopologyEditor._draw_device_shape_on.__get__(editor, TopologyEditor)
+        editor._dup_key_for_node = TopologyEditor._dup_key_for_node.__get__(editor, TopologyEditor)
+        editor._node_center_y_unscaled = TopologyEditor._node_center_y_unscaled.__get__(editor, TopologyEditor)
+        editor._fit_font_size = lambda _text, _max_w, _max_h, base_size: base_size
+
+        with patch("tkinter.font.Font", _FontStub):
+            editor._redraw_canvas()
+
+        ethernet_lines = [
+            line for line in editor.canvas.lines if line["kwargs"].get("fill") == "#2563eb"
+        ]
+        virtual_ethernet_lines = [
+            line for line in editor.canvas.lines if line["kwargs"].get("fill") == "#1c6ba8"
+        ]
+        self.assertTrue(ethernet_lines)
+        self.assertEqual(virtual_ethernet_lines, [])
+
+    def test_single_port_terminator_device_counts_as_direct_backbone_node(self) -> None:
+        editor = TopologyEditor.__new__(TopologyEditor)
+        editor._cannect_device_links = []
+        editor._is_dio_node = TopologyEditor._is_dio_node.__get__(editor, TopologyEditor)
+        editor._is_cannect_linked_device = TopologyEditor._is_cannect_linked_device.__get__(editor, TopologyEditor)
+        editor._can_connection_capacity = TopologyEditor._can_connection_capacity.__get__(editor, TopologyEditor)
+        editor._is_direct_can_backbone_node = TopologyEditor._is_direct_can_backbone_node.__get__(editor, TopologyEditor)
+
+        self.assertTrue(
+            editor._is_direct_can_backbone_node(
+                Node(key=1, category="pdh", label="pdh", can_id=1, interface=INTERFACE_CAN, terminator=True)
+            )
+        )
+        self.assertFalse(
+            editor._is_direct_can_backbone_node(
+                Node(key=2, category="pdh", label="pdh", can_id=1, interface=INTERFACE_CAN, terminator=False)
+            )
+        )
+
+    def test_cannect_linked_device_is_not_direct_backbone_node(self) -> None:
+        editor = TopologyEditor.__new__(TopologyEditor)
+        editor._cannect_device_links = [{"node": 100, "device": 2, "port": 1}]
+        editor._is_dio_node = TopologyEditor._is_dio_node.__get__(editor, TopologyEditor)
+        editor._is_cannect_linked_device = TopologyEditor._is_cannect_linked_device.__get__(editor, TopologyEditor)
+        editor._can_connection_capacity = TopologyEditor._can_connection_capacity.__get__(editor, TopologyEditor)
+        editor._is_direct_can_backbone_node = TopologyEditor._is_direct_can_backbone_node.__get__(editor, TopologyEditor)
+
+        self.assertFalse(
+            editor._is_direct_can_backbone_node(
+                Node(key=2, category="krakens", label="motor", can_id=2, interface=INTERFACE_CAN, terminator=True)
+            )
+        )
+
+    def test_single_port_non_terminator_can_device_counts_as_main_can_tap(self) -> None:
+        editor = TopologyEditor.__new__(TopologyEditor)
+        editor._cannect_device_links = []
+        editor._is_dio_node = TopologyEditor._is_dio_node.__get__(editor, TopologyEditor)
+        editor._is_cannect_linked_device = TopologyEditor._is_cannect_linked_device.__get__(editor, TopologyEditor)
+        editor._can_connection_capacity = TopologyEditor._can_connection_capacity.__get__(editor, TopologyEditor)
+        editor._is_direct_can_backbone_node = TopologyEditor._is_direct_can_backbone_node.__get__(editor, TopologyEditor)
+        editor._is_main_can_tap_node = TopologyEditor._is_main_can_tap_node.__get__(editor, TopologyEditor)
+
+        self.assertTrue(
+            editor._is_main_can_tap_node(
+                Node(key=7, category="analyzer", label="can analyzer 1", can_id=0, interface=INTERFACE_CAN, terminator=False)
+            )
+        )
+
+    def test_build_layout_neighbor_metadata_uses_wiring_rules(self) -> None:
+        editor = TopologyEditor.__new__(TopologyEditor)
+        editor._nodes = [
+            Node(key=1, category="roborio", label="roborio", can_id=0, interface=INTERFACE_CAN, terminator=True, x=10.0, bus_index=0),
+            Node(key=2, category="cannect_inject", label="inject", can_id=-1, interface=INTERFACE_CAN, x=20.0, bus_index=0),
+            Node(key=3, category="pdh", label="pdh", can_id=1, interface=INTERFACE_CAN, terminator=True, x=30.0, bus_index=0),
+            Node(key=4, category="cannect_direct", label="cannect 4", can_id=-1, interface=INTERFACE_CAN, x=40.0, bus_index=0),
+            Node(key=5, category="krakens", label="motorA", can_id=2, interface=INTERFACE_CAN, x=50.0, bus_index=0),
+            Node(key=6, category="devices", label="limit0", can_id=-1, interface=INTERFACE_DIO, x=60.0, bus_index=0),
+        ]
+        editor._ethernet_links = [(2, 4)]
+        editor._cannect_device_links = [{"node": 4, "device": 5, "port": 1}]
+        editor._dio_wiring_links = [{"roborio": 1, "device": 6}]
+        editor._power_links = [{"a": 3, "b": 2}]
+        editor._attachment_links = [{"device": 5, "attachment": 6}]
+        editor._is_dio_node = TopologyEditor._is_dio_node.__get__(editor, TopologyEditor)
+        editor._is_cannect_linked_device = TopologyEditor._is_cannect_linked_device.__get__(editor, TopologyEditor)
+        editor._can_connection_capacity = TopologyEditor._can_connection_capacity.__get__(editor, TopologyEditor)
+        editor._is_direct_can_backbone_node = TopologyEditor._is_direct_can_backbone_node.__get__(editor, TopologyEditor)
+        editor._normalize_power_link = TopologyEditor._normalize_power_link.__get__(editor, TopologyEditor)
+        editor._build_layout_neighbor_metadata = TopologyEditor._build_layout_neighbor_metadata.__get__(editor, TopologyEditor)
+
+        neighbor_links, neighbor_ports = editor._build_layout_neighbor_metadata()
+
+        self.assertIn({"a": 1, "b": 2}, neighbor_links)
+        self.assertIn({"a": 2, "b": 3}, neighbor_links)
+        self.assertIn({"a": 2, "b": 4}, neighbor_links)
+        self.assertIn({"a": 4, "b": 5}, neighbor_links)
+        self.assertIn(
+            {"node": 2, "port": "backbone", "neighbor": 4, "neighborPort": "backbone", "edgeType": "ethernet"},
+            neighbor_ports,
+        )
+        self.assertIn(
+            {"node": 4, "port": "can1", "neighbor": 5, "neighborPort": "can", "edgeType": "can_drop"},
+            neighbor_ports,
+        )
+
+    def test_redraw_canvas_draws_two_backbone_stubs_for_inline_two_port_device(self) -> None:
+        editor = TopologyEditor.__new__(TopologyEditor)
+        editor.canvas = _CanvasStub(width=1200, height=700)
+        editor._nodes = [
+            Node(
+                key=1,
+                category="krakens",
+                label="FALCON 9",
+                can_id=9,
+                interface=INTERFACE_CAN,
+                node_type="diagram",
+                x=300.0,
+                row=0,
+                bus_index=0,
+                terminator=False,
+            )
+        ]
+        editor._box_w = 90
+        editor._box_h = 34
+        editor._layout_width = 600.0
+        editor._bus_offsets = [0.0]
+        editor._bus_lefts = [40.0]
+        editor._bus_rights = [520.0]
+        editor._bus_connectors = []
+        editor._details_layout_shift = False
+        editor._last_base_y = None
+        editor._last_canvas_height = None
+        editor._pan_y = 0.0
+        editor._zoom = 1.0
+        editor._draw_state = {}
+        editor._drag_free_y = {}
+        editor._selected_nodes = set()
+        editor._selected_buses = set()
+        editor._node_bounds = {}
+        editor._guide_x = None
+        editor._show_group_overlays_var = _BoolVarStub(False)
+        editor._smart_guides_var = _BoolVarStub(False)
+        editor._show_warn_badges_var = _BoolVarStub(False)
+        editor._connection_filter_vars = {
+            "can": _BoolVarStub(True),
+            "power": _BoolVarStub(False),
+            "dio": _BoolVarStub(False),
+            "pwm": _BoolVarStub(False),
+            "analog": _BoolVarStub(False),
+            "virtual": _BoolVarStub(False),
+        }
+        editor._ethernet_links = []
+        editor._can_bus_links = []
+        editor._cannect_device_links = []
+        editor._attachment_links = []
+        editor._dio_wiring_links = []
+        editor._power_links = []
+        editor._neighbor_links = []
+        editor._neighbor_ports = []
+        editor._show_group_overlays = lambda: None
+        editor._draw_group_overlays = lambda: None
+        editor._bus_ys = []
+        editor._device_nodes = TopologyEditor._device_nodes.__get__(editor, TopologyEditor)
+        editor._callout_nodes = TopologyEditor._callout_nodes.__get__(editor, TopologyEditor)
+        editor._connection_filter_allows = TopologyEditor._connection_filter_allows.__get__(editor, TopologyEditor)
+        editor._should_clamp_node_to_bus = TopologyEditor._should_clamp_node_to_bus.__get__(editor, TopologyEditor)
+        editor._node_box_dims = TopologyEditor._node_box_dims.__get__(editor, TopologyEditor)
+        editor._node_bus_y = TopologyEditor._node_bus_y.__get__(editor, TopologyEditor)
+        editor._node_box_y = TopologyEditor._node_box_y.__get__(editor, TopologyEditor)
+        editor._is_dio_node = TopologyEditor._is_dio_node.__get__(editor, TopologyEditor)
+        editor._is_swyft_node = TopologyEditor._is_swyft_node
+        editor._is_cannect_linked_device = TopologyEditor._is_cannect_linked_device.__get__(editor, TopologyEditor)
+        editor._can_connection_capacity = TopologyEditor._can_connection_capacity.__get__(editor, TopologyEditor)
+        editor._is_direct_can_backbone_node = TopologyEditor._is_direct_can_backbone_node.__get__(editor, TopologyEditor)
+        editor._fill_color_for_node = TopologyEditor._fill_color_for_node.__get__(editor, TopologyEditor)
+        editor._text_color_for_fill = TopologyEditor._text_color_for_fill
+        editor._shape_kind_for_node = TopologyEditor._shape_kind_for_node.__get__(editor, TopologyEditor)
+        editor._draw_device_shape_on = TopologyEditor._draw_device_shape_on.__get__(editor, TopologyEditor)
+        editor._dup_key_for_node = TopologyEditor._dup_key_for_node.__get__(editor, TopologyEditor)
+        editor._node_center_y_unscaled = TopologyEditor._node_center_y_unscaled.__get__(editor, TopologyEditor)
+        editor._fit_font_size = lambda _text, _max_w, _max_h, base_size: base_size
+        editor._redraw_canvas = TopologyEditor._redraw_canvas.__get__(editor, TopologyEditor)
+
+        with patch("tkinter.font.Font", _FontStub):
+            editor._redraw_canvas()
+
+        vertical_trunk_lines = [
+            line
+            for line in editor.canvas.lines
+            if line["kwargs"].get("fill") == "#444444"
+            and len(line["args"]) == 4
+            and line["args"][0] == line["args"][2]
+        ]
+        horizontal_bus_lines = [
+            line
+            for line in editor.canvas.lines
+            if line["kwargs"].get("fill") == "#444444"
+            and len(line["args"]) == 4
+            and line["args"][1] == line["args"][3]
+        ]
+        self.assertEqual(2, len(vertical_trunk_lines))
+        self.assertEqual(2, len(horizontal_bus_lines))
+
+    def test_redraw_canvas_draws_one_backbone_stub_for_single_port_endpoint(self) -> None:
+        editor = TopologyEditor.__new__(TopologyEditor)
+        editor.canvas = _CanvasStub(width=1200, height=700)
+        editor._nodes = [
+            Node(
+                key=1,
+                category="pdh",
+                label="pdh",
+                can_id=1,
+                interface=INTERFACE_CAN,
+                node_type="diagram",
+                x=300.0,
+                row=0,
+                bus_index=0,
+                terminator=True,
+            )
+        ]
+        editor._box_w = 90
+        editor._box_h = 34
+        editor._layout_width = 600.0
+        editor._bus_offsets = [0.0]
+        editor._bus_lefts = [40.0]
+        editor._bus_rights = [520.0]
+        editor._bus_connectors = []
+        editor._details_layout_shift = False
+        editor._last_base_y = None
+        editor._last_canvas_height = None
+        editor._pan_y = 0.0
+        editor._zoom = 1.0
+        editor._draw_state = {}
+        editor._drag_free_y = {}
+        editor._selected_nodes = set()
+        editor._selected_buses = set()
+        editor._node_bounds = {}
+        editor._guide_x = None
+        editor._show_group_overlays_var = _BoolVarStub(False)
+        editor._smart_guides_var = _BoolVarStub(False)
+        editor._show_warn_badges_var = _BoolVarStub(False)
+        editor._connection_filter_vars = {
+            "can": _BoolVarStub(True),
+            "power": _BoolVarStub(False),
+            "dio": _BoolVarStub(False),
+            "pwm": _BoolVarStub(False),
+            "analog": _BoolVarStub(False),
+            "virtual": _BoolVarStub(False),
+        }
+        editor._ethernet_links = []
+        editor._can_bus_links = []
+        editor._cannect_device_links = []
+        editor._attachment_links = []
+        editor._dio_wiring_links = []
+        editor._power_links = []
+        editor._neighbor_links = []
+        editor._neighbor_ports = []
+        editor._show_group_overlays = lambda: None
+        editor._draw_group_overlays = lambda: None
+        editor._bus_ys = []
+        editor._device_nodes = TopologyEditor._device_nodes.__get__(editor, TopologyEditor)
+        editor._callout_nodes = TopologyEditor._callout_nodes.__get__(editor, TopologyEditor)
+        editor._connection_filter_allows = TopologyEditor._connection_filter_allows.__get__(editor, TopologyEditor)
+        editor._should_clamp_node_to_bus = TopologyEditor._should_clamp_node_to_bus.__get__(editor, TopologyEditor)
+        editor._node_box_dims = TopologyEditor._node_box_dims.__get__(editor, TopologyEditor)
+        editor._node_bus_y = TopologyEditor._node_bus_y.__get__(editor, TopologyEditor)
+        editor._node_box_y = TopologyEditor._node_box_y.__get__(editor, TopologyEditor)
+        editor._is_dio_node = TopologyEditor._is_dio_node.__get__(editor, TopologyEditor)
+        editor._is_swyft_node = TopologyEditor._is_swyft_node
+        editor._is_cannect_linked_device = TopologyEditor._is_cannect_linked_device.__get__(editor, TopologyEditor)
+        editor._can_connection_capacity = TopologyEditor._can_connection_capacity.__get__(editor, TopologyEditor)
+        editor._is_direct_can_backbone_node = TopologyEditor._is_direct_can_backbone_node.__get__(editor, TopologyEditor)
+        editor._fill_color_for_node = TopologyEditor._fill_color_for_node.__get__(editor, TopologyEditor)
+        editor._text_color_for_fill = TopologyEditor._text_color_for_fill
+        editor._shape_kind_for_node = TopologyEditor._shape_kind_for_node.__get__(editor, TopologyEditor)
+        editor._draw_device_shape_on = TopologyEditor._draw_device_shape_on.__get__(editor, TopologyEditor)
+        editor._dup_key_for_node = TopologyEditor._dup_key_for_node.__get__(editor, TopologyEditor)
+        editor._node_center_y_unscaled = TopologyEditor._node_center_y_unscaled.__get__(editor, TopologyEditor)
+        editor._fit_font_size = lambda _text, _max_w, _max_h, base_size: base_size
+        editor._redraw_canvas = TopologyEditor._redraw_canvas.__get__(editor, TopologyEditor)
+
+        with patch("tkinter.font.Font", _FontStub):
+            editor._redraw_canvas()
+
+        vertical_trunk_lines = [
+            line
+            for line in editor.canvas.lines
+            if line["kwargs"].get("fill") == "#444444"
+            and len(line["args"]) == 4
+            and line["args"][0] == line["args"][2]
+        ]
+        horizontal_bus_lines = [
+            line
+            for line in editor.canvas.lines
+            if line["kwargs"].get("fill") == "#444444"
+            and len(line["args"]) == 4
+            and line["args"][1] == line["args"][3]
+        ]
+        self.assertEqual(1, len(vertical_trunk_lines))
+        self.assertEqual(1, len(horizontal_bus_lines))
+
+    def test_redraw_canvas_draws_one_trunk_tap_for_single_port_main_bus_tap(self) -> None:
+        editor = TopologyEditor.__new__(TopologyEditor)
+        editor.canvas = _CanvasStub(width=1200, height=700)
+        editor._nodes = [
+            Node(
+                key=1,
+                category="analyzer",
+                label="can analyzer 1",
+                can_id=0,
+                interface=INTERFACE_CAN,
+                node_type="diagram",
+                x=300.0,
+                row=0,
+                bus_index=0,
+                terminator=False,
+            )
+        ]
+        editor._box_w = 90
+        editor._box_h = 34
+        editor._layout_width = 600.0
+        editor._bus_offsets = [0.0]
+        editor._bus_lefts = [40.0]
+        editor._bus_rights = [520.0]
+        editor._bus_connectors = []
+        editor._details_layout_shift = False
+        editor._last_base_y = None
+        editor._last_canvas_height = None
+        editor._pan_y = 0.0
+        editor._zoom = 1.0
+        editor._draw_state = {}
+        editor._drag_free_y = {}
+        editor._selected_nodes = set()
+        editor._selected_buses = set()
+        editor._node_bounds = {}
+        editor._guide_x = None
+        editor._show_group_overlays_var = _BoolVarStub(False)
+        editor._smart_guides_var = _BoolVarStub(False)
+        editor._show_warn_badges_var = _BoolVarStub(False)
+        editor._connection_filter_vars = {
+            "can": _BoolVarStub(True),
+            "power": _BoolVarStub(False),
+            "dio": _BoolVarStub(False),
+            "pwm": _BoolVarStub(False),
+            "analog": _BoolVarStub(False),
+            "virtual": _BoolVarStub(False),
+        }
+        editor._ethernet_links = []
+        editor._can_bus_links = []
+        editor._cannect_device_links = []
+        editor._attachment_links = []
+        editor._dio_wiring_links = []
+        editor._power_links = []
+        editor._neighbor_links = []
+        editor._neighbor_ports = []
+        editor._show_group_overlays = lambda: None
+        editor._draw_group_overlays = lambda: None
+        editor._bus_ys = []
+        editor._device_nodes = TopologyEditor._device_nodes.__get__(editor, TopologyEditor)
+        editor._callout_nodes = TopologyEditor._callout_nodes.__get__(editor, TopologyEditor)
+        editor._connection_filter_allows = TopologyEditor._connection_filter_allows.__get__(editor, TopologyEditor)
+        editor._should_clamp_node_to_bus = TopologyEditor._should_clamp_node_to_bus.__get__(editor, TopologyEditor)
+        editor._node_box_dims = TopologyEditor._node_box_dims.__get__(editor, TopologyEditor)
+        editor._node_bus_y = TopologyEditor._node_bus_y.__get__(editor, TopologyEditor)
+        editor._node_box_y = TopologyEditor._node_box_y.__get__(editor, TopologyEditor)
+        editor._is_dio_node = TopologyEditor._is_dio_node.__get__(editor, TopologyEditor)
+        editor._is_swyft_node = TopologyEditor._is_swyft_node
+        editor._is_cannect_linked_device = TopologyEditor._is_cannect_linked_device.__get__(editor, TopologyEditor)
+        editor._can_connection_capacity = TopologyEditor._can_connection_capacity.__get__(editor, TopologyEditor)
+        editor._is_direct_can_backbone_node = TopologyEditor._is_direct_can_backbone_node.__get__(editor, TopologyEditor)
+        editor._is_main_can_tap_node = TopologyEditor._is_main_can_tap_node.__get__(editor, TopologyEditor)
+        editor._fill_color_for_node = TopologyEditor._fill_color_for_node.__get__(editor, TopologyEditor)
+        editor._text_color_for_fill = TopologyEditor._text_color_for_fill
+        editor._shape_kind_for_node = TopologyEditor._shape_kind_for_node.__get__(editor, TopologyEditor)
+        editor._draw_device_shape_on = TopologyEditor._draw_device_shape_on.__get__(editor, TopologyEditor)
+        editor._dup_key_for_node = TopologyEditor._dup_key_for_node.__get__(editor, TopologyEditor)
+        editor._node_center_y_unscaled = TopologyEditor._node_center_y_unscaled.__get__(editor, TopologyEditor)
+        editor._fit_font_size = lambda _text, _max_w, _max_h, base_size: base_size
+        editor._redraw_canvas = TopologyEditor._redraw_canvas.__get__(editor, TopologyEditor)
+
+        with patch("tkinter.font.Font", _FontStub):
+            editor._redraw_canvas()
+
+        vertical_trunk_lines = [
+            line
+            for line in editor.canvas.lines
+            if line["kwargs"].get("fill") == "#444444"
+            and len(line["args"]) == 4
+            and line["args"][0] == line["args"][2]
+        ]
+        horizontal_bus_lines = [
+            line
+            for line in editor.canvas.lines
+            if line["kwargs"].get("fill") == "#444444"
+            and len(line["args"]) == 4
+            and line["args"][1] == line["args"][3]
+        ]
+        self.assertEqual(1, len(vertical_trunk_lines))
+        self.assertEqual(1, len(horizontal_bus_lines))
+
     def test_mouse_wheel_zooms_without_ctrl_modifier(self) -> None:
         editor = TopologyEditor.__new__(TopologyEditor)
         calls: list[tuple[float, float, float]] = []
@@ -3299,6 +3827,62 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
 
         self.assertEqual(editor._attachment_links, [{"device": 2, "attachment": 3}])
         self.assertEqual(editor._power_links, [{"a": 1, "b": 2}])
+
+    def test_remove_power_link_two_selected_nodes_removes_only_between_selected_nodes(self) -> None:
+        editor = TopologyEditor.__new__(TopologyEditor)
+        editor._nodes = [
+            Node(key=1, category="pdh", label="pdh", can_id=1, interface=INTERFACE_CAN, x=0.0, bus_index=0),
+            Node(key=2, category="cannect_inject", label="inject", can_id=-1, interface=INTERFACE_CAN, x=20.0, bus_index=0),
+            Node(key=3, category="krakens", label="motorA", can_id=2, interface=INTERFACE_CAN, x=40.0, bus_index=0),
+            Node(key=4, category="krakens", label="motorB", can_id=3, interface=INTERFACE_CAN, x=60.0, bus_index=0),
+        ]
+        editor._selected_nodes = {1, 2}
+        editor._power_links = [
+            {"a": 1, "b": 2},
+            {"a": 1, "b": 3},
+            {"a": 1, "b": 4},
+        ]
+        editor._device_nodes = TopologyEditor._device_nodes.__get__(editor, TopologyEditor)
+        editor._push_undo = lambda: None
+        editor._redraw_canvas = lambda: None
+
+        original_messagebox = can_top_editor.messagebox
+        _MessageCaptureStub.reset()
+        can_top_editor.messagebox = _MessageCaptureStub
+        try:
+            editor._remove_power_link()
+        finally:
+            can_top_editor.messagebox = original_messagebox
+
+        self.assertEqual(editor._power_links, [{"a": 1, "b": 3}, {"a": 1, "b": 4}])
+        self.assertEqual(_MessageCaptureStub.infos, [])
+
+    def test_remove_power_link_one_selected_node_removes_all_touching_selected_node(self) -> None:
+        editor = TopologyEditor.__new__(TopologyEditor)
+        editor._nodes = [
+            Node(key=1, category="pdh", label="pdh", can_id=1, interface=INTERFACE_CAN, x=0.0, bus_index=0),
+            Node(key=2, category="cannect_inject", label="inject", can_id=-1, interface=INTERFACE_CAN, x=20.0, bus_index=0),
+            Node(key=3, category="krakens", label="motorA", can_id=2, interface=INTERFACE_CAN, x=40.0, bus_index=0),
+        ]
+        editor._selected_nodes = {1}
+        editor._power_links = [
+            {"a": 1, "b": 2},
+            {"a": 1, "b": 3},
+        ]
+        editor._device_nodes = TopologyEditor._device_nodes.__get__(editor, TopologyEditor)
+        editor._push_undo = lambda: None
+        editor._redraw_canvas = lambda: None
+
+        original_messagebox = can_top_editor.messagebox
+        _MessageCaptureStub.reset()
+        can_top_editor.messagebox = _MessageCaptureStub
+        try:
+            editor._remove_power_link()
+        finally:
+            can_top_editor.messagebox = original_messagebox
+
+        self.assertEqual(editor._power_links, [])
+        self.assertEqual(_MessageCaptureStub.infos, [])
 
     def test_print_or_open_pdf_opens_when_pdf_print_handler_missing(self) -> None:
         editor = TopologyEditor.__new__(TopologyEditor)

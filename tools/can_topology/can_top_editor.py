@@ -281,6 +281,7 @@ TOPOLOGY_NODE_CLASS_INFRASTRUCTURE = "infrastructure"
 TOPOLOGY_EDGE_CAN_TRUNK = "can_trunk"
 TOPOLOGY_EDGE_CAN_DROP = "can_drop"
 TOPOLOGY_EDGE_CAN_TAP = "can_tap"
+TOPOLOGY_EDGE_ETHERNET = "ethernet"
 TOPOLOGY_EDGE_DIO = "dio"
 TOPOLOGY_EDGE_POWER = "power"
 TOPOLOGY_EDGE_VIRTUAL = "virtual"
@@ -355,6 +356,13 @@ ATTACH_LINK_DASH = (10, 4)
 DIO_WIRE_DASH = (2, 3)
 ETHERNET_BACKBONE_DASH = (8, 4)
 ETHERNET_DEVICE_DASH = (6, 2, 1, 2)
+LOCAL_CAN_DROP_COLOR = "#0f766e"
+ETHERNET_BACKBONE_COLOR = "#2563eb"
+LEGEND_LABEL_ATTACHMENT = "Attachment (logical)"
+LEGEND_LABEL_DIO = "DIO wire (roboRIO)"
+LEGEND_LABEL_LOCAL_CAN_DROP = "Local CAN drop"
+LEGEND_LABEL_ETHERNET = "Ethernet / backbone"
+LEGEND_LABEL_CAN_BUS = "CAN bus (physical trunk)"
 DIO_RAIL_OFFSET = 120.0
 COUNT_ZERO = 0
 COUNT_ONE = 1
@@ -466,7 +474,13 @@ try:
         truncate_to_width as truncate_to_width_shared,
         wrap_label_lines as wrap_label_lines_shared,
     )
-    from tools.common.topology_draw import draw_group_overlays, render_topology_canvas_common
+    from tools.common.topology_draw import (
+        backbone_stub_xs,
+        bus_segments_with_gaps,
+        draw_group_overlays,
+        inline_backbone_gap_ranges,
+        render_topology_canvas_common,
+    )
 except ImportError:  # Allow running as a script from this folder.
     import sys
     from pathlib import Path as _Path
@@ -492,7 +506,13 @@ except ImportError:  # Allow running as a script from this folder.
         truncate_to_width as truncate_to_width_shared,
         wrap_label_lines as wrap_label_lines_shared,
     )
-    from common.topology_draw import draw_group_overlays, render_topology_canvas_common  # type: ignore
+    from common.topology_draw import (  # type: ignore
+        backbone_stub_xs,
+        bus_segments_with_gaps,
+        draw_group_overlays,
+        inline_backbone_gap_ranges,
+        render_topology_canvas_common,
+    )
 try:
     from tools.common.paths import profiles_canonical_path, profiles_deploy_path, repo_root
     from tools.common.bridge_config_io import default_bridge_config, normalize_bridge_config
@@ -3996,7 +4016,7 @@ class TopologyEditor(tk.Tk):
         normalized: List[Dict[str, int]] = []
         seen: set[Tuple[int, int]] = set()
         for entry in self._power_links:
-            link = self._normalize_power_link(entry)
+            link = TopologyEditor._normalize_power_link(entry)
             if link is None:
                 continue
             a = link[KEY_LINK_A]
@@ -4413,6 +4433,9 @@ class TopologyEditor(tk.Tk):
             if current_key in seen or reverse_key in seen:
                 continue
             seen.add(current_key)
+            edge_type = str(entry.get(KEY_TOPOLOGY_EDGE_TYPE, EMPTY_STRING)).strip()
+            if edge_type == TOPOLOGY_EDGE_ETHERNET:
+                continue
             edges.append(
                 {
                     KEY_TOPOLOGY_EDGE_ID: f"edge_{edge_index}",
@@ -4420,7 +4443,8 @@ class TopologyEditor(tk.Tk):
                     KEY_TOPOLOGY_FROM_PORT: from_port,
                     KEY_TOPOLOGY_TO_NODE: to_node,
                     KEY_TOPOLOGY_TO_PORT: to_port,
-                    KEY_TOPOLOGY_EDGE_TYPE: self._topology_edge_type_for_ports(
+                    KEY_TOPOLOGY_EDGE_TYPE: edge_type
+                    or self._topology_edge_type_for_ports(
                         node_by_key.get(from_node),
                         node_by_key.get(to_node),
                         from_port,
@@ -4448,7 +4472,7 @@ class TopologyEditor(tk.Tk):
             )
             edge_index += 1
         for entry in self._power_links:
-            link = self._normalize_power_link(entry)
+            link = TopologyEditor._normalize_power_link(entry)
             if link is None:
                 continue
             edges.append(
@@ -5705,6 +5729,12 @@ class TopologyEditor(tk.Tk):
                     KEY_LINK_NEIGHBOR_PORT: neighbor_port,
                 }
             )
+            edge_type = entry.get(KEY_TOPOLOGY_EDGE_TYPE)
+            if isinstance(edge_type, str) and edge_type.strip():
+                normalized[-1][KEY_TOPOLOGY_EDGE_TYPE] = edge_type.strip()
+            edge_id = entry.get(KEY_TOPOLOGY_EDGE_ID)
+            if isinstance(edge_id, str) and edge_id.strip():
+                normalized[-1][KEY_TOPOLOGY_EDGE_ID] = edge_id.strip()
         return normalized
 
     def _confirm_discard(self) -> bool:
@@ -6583,6 +6613,71 @@ class TopologyEditor(tk.Tk):
             link.get("device") == node.key for link in self._cannect_device_links if isinstance(node.key, int)
         )
 
+    def _can_connection_capacity(self, node: Node) -> int:
+        """
+        NAME
+            _can_connection_capacity - Return the modeled CAN connection count for one node.
+
+        DESCRIPTION
+            This is a capability default used to derive backbone-vs-drop semantics.
+            Single-port devices can still be true backbone endpoints when they are
+            terminated and directly attached to the CAN bus.
+        """
+        if node.node_type == NODE_TYPE_CALLOUT or node.interface != INTERFACE_CAN:
+            return 0
+        category = (node.category or EMPTY_STRING).strip().lower()
+        if category in {CATEGORY_ROBORIO, "pdh", "pdp", "pigeon", DIAGRAM_CATEGORY_ANALYZER, DIAGRAM_CATEGORY_CANNECT_INJECT}:
+            return 1
+        if category == DIAGRAM_CATEGORY_CANNECT_DIRECT:
+            return 0
+        return 2
+
+    def _is_direct_can_backbone_node(self, node: Node) -> bool:
+        """
+        NAME
+            _is_direct_can_backbone_node - Return True when a node is directly on the CAN backbone.
+
+        DESCRIPTION
+            A node cannot be a backbone participant when it is attached to a
+            CANnect device link. Single-port devices require terminator=true to
+            count as direct backbone endpoints. Multi-port devices default to
+            backbone participants when they are not linked off a CANnect.
+        """
+        if node.node_type == NODE_TYPE_CALLOUT or node.interface != INTERFACE_CAN:
+            return False
+        if self._is_dio_node(node) or self._is_cannect_linked_device(node):
+            return False
+        category = (node.category or EMPTY_STRING).strip().lower()
+        if category == DIAGRAM_CATEGORY_CANNECT_DIRECT:
+            return False
+        if category == DIAGRAM_CATEGORY_CANNECT_INJECT:
+            return True
+        capacity = self._can_connection_capacity(node)
+        if capacity <= 1:
+            return node.terminator is True
+        return True
+
+    def _is_main_can_tap_node(self, node: Node) -> bool:
+        """
+        NAME
+            _is_main_can_tap_node - Return True for single-port taps on the main CAN backbone.
+
+        DESCRIPTION
+            These nodes are directly attached to the physical CAN trunk but are
+            not themselves backbone endpoints or inline backbone participants.
+            They are also not CANnect-linked drops.
+        """
+        if node.node_type == NODE_TYPE_CALLOUT or node.interface != INTERFACE_CAN:
+            return False
+        if self._is_dio_node(node) or self._is_cannect_linked_device(node):
+            return False
+        if self._is_direct_can_backbone_node(node):
+            return False
+        category = (node.category or EMPTY_STRING).strip().lower()
+        if category == DIAGRAM_CATEGORY_CANNECT_DIRECT:
+            return False
+        return self._can_connection_capacity(node) == 1
+
     def _is_cannect_cluster_member(self, node: Node) -> bool:
         """
         NAME
@@ -7016,11 +7111,21 @@ class TopologyEditor(tk.Tk):
             return
         before = len(self._power_links)
         self._push_undo()
-        self._power_links = [
-            link
-            for link in self._power_links
-            if link.get(KEY_LINK_A) not in selected_keys and link.get(KEY_LINK_B) not in selected_keys
-        ]
+        if len(selected_keys) == COUNT_ONE:
+            self._power_links = [
+                link
+                for link in self._power_links
+                if link.get(KEY_LINK_A) not in selected_keys and link.get(KEY_LINK_B) not in selected_keys
+            ]
+        else:
+            self._power_links = [
+                link
+                for link in self._power_links
+                if not (
+                    link.get(KEY_LINK_A) in selected_keys
+                    and link.get(KEY_LINK_B) in selected_keys
+                )
+            ]
         if len(self._power_links) == before:
             messagebox.showinfo(TITLE_REMOVE_POWER_LINK, MSG_POWER_NONE)
         self._redraw_canvas()
@@ -7092,7 +7197,7 @@ class TopologyEditor(tk.Tk):
         RETURNS
             True when neighbor data was rebuilt or cleared.
         """
-        neighbor_links, neighbor_ports = self._build_layout_neighbor_metadata(self._nodes)
+        neighbor_links, neighbor_ports = self._build_layout_neighbor_metadata()
         if not neighbor_links:
             if notify:
                 messagebox.showinfo(TITLE_POPULATE_NEIGHBORS, MSG_POPULATE_NEIGHBORS_EMPTY)
@@ -7132,51 +7237,151 @@ class TopologyEditor(tk.Tk):
             self._rebuild_neighbors_from_layout(push_undo=False, notify=False)
         return True
 
-    @staticmethod
-    def _build_layout_neighbor_metadata(
-        nodes: List[Node],
-    ) -> Tuple[List[Dict[str, int]], List[Dict[str, object]]]:
+    def _build_layout_neighbor_metadata(self, nodes: Optional[List[Node]] = None) -> Tuple[List[Dict[str, int]], List[Dict[str, object]]]:
         """
         NAME
-            _build_layout_neighbor_metadata - Infer adjacency from drawn order.
+            _build_layout_neighbor_metadata - Infer adjacency from explicit wiring plus bus order.
 
         DESCRIPTION
-            Groups CAN-capable non-callout nodes by bus, sorts each group by
-            x coordinate, and connects adjacent nodes with both undirected
-            links and directed left/right port links.
+            Builds the shared neighbor graph from three sources:
+            direct CAN backbone participants ordered along each bus,
+            Ethernet/CANnect infrastructure links, and local attachment/drop
+            links (CAN drops, DIO, power, virtual attachments).
         """
+        if not hasattr(self, "_nodes"):
+            legacy_nodes = list(self) if isinstance(self, list) else list(nodes or [])
+            grouped: Dict[int, List[Node]] = {}
+            for node in legacy_nodes:
+                if node.node_type == NODE_TYPE_CALLOUT:
+                    continue
+                if getattr(node, "interface", INTERFACE_CAN) != INTERFACE_CAN:
+                    continue
+                grouped.setdefault(int(node.bus_index), []).append(node)
+            neighbor_links: List[Dict[str, int]] = []
+            neighbor_ports: List[Dict[str, object]] = []
+            for _bus, bus_nodes in sorted(grouped.items()):
+                ordered = sorted(bus_nodes, key=lambda item: (float(item.x), int(item.key)))
+                for left, right in zip(ordered, ordered[1:]):
+                    a = min(int(left.key), int(right.key))
+                    b = max(int(left.key), int(right.key))
+                    neighbor_links.append({KEY_LINK_A: a, KEY_LINK_B: b})
+                    neighbor_ports.append(
+                        {
+                            KEY_LINK_NODE: int(left.key),
+                            KEY_LINK_PORT: NEIGHBOR_PORT_RIGHT,
+                            KEY_LINK_NEIGHBOR: int(right.key),
+                            KEY_LINK_NEIGHBOR_PORT: NEIGHBOR_PORT_LEFT,
+                        }
+                    )
+                    neighbor_ports.append(
+                        {
+                            KEY_LINK_NODE: int(right.key),
+                            KEY_LINK_PORT: NEIGHBOR_PORT_LEFT,
+                            KEY_LINK_NEIGHBOR: int(left.key),
+                            KEY_LINK_NEIGHBOR_PORT: NEIGHBOR_PORT_RIGHT,
+                        }
+                    )
+            return neighbor_links, neighbor_ports
+
+        nodes = list(nodes or self._nodes)
+        node_by_key = {int(node.key): node for node in nodes if isinstance(node.key, int)}
         grouped: Dict[int, List[Node]] = {}
         for node in nodes:
-            if node.node_type == NODE_TYPE_CALLOUT:
-                continue
-            if getattr(node, "interface", INTERFACE_CAN) != INTERFACE_CAN:
+            if not self._is_direct_can_backbone_node(node):
                 continue
             grouped.setdefault(int(node.bus_index), []).append(node)
 
         neighbor_links: List[Dict[str, int]] = []
         neighbor_ports: List[Dict[str, object]] = []
+        link_seen: set[Tuple[int, int]] = set()
+        port_seen: set[Tuple[int, str, int, str]] = set()
+
+        def _add_pair(a: int, b: int) -> None:
+            if a == b:
+                return
+            pair = (min(a, b), max(a, b))
+            if pair in link_seen:
+                return
+            link_seen.add(pair)
+            neighbor_links.append({KEY_LINK_A: pair[0], KEY_LINK_B: pair[1]})
+
+        def _add_port(node_key: int, port: str, neighbor_key: int, neighbor_port: str, edge_type: str) -> None:
+            key = (node_key, port, neighbor_key, neighbor_port)
+            if key in port_seen:
+                return
+            port_seen.add(key)
+            neighbor_ports.append(
+                {
+                    KEY_LINK_NODE: node_key,
+                    KEY_LINK_PORT: port,
+                    KEY_LINK_NEIGHBOR: neighbor_key,
+                    KEY_LINK_NEIGHBOR_PORT: neighbor_port,
+                    KEY_TOPOLOGY_EDGE_TYPE: edge_type,
+                }
+            )
+
         for _bus, bus_nodes in sorted(grouped.items()):
             ordered = sorted(bus_nodes, key=lambda item: (float(item.x), int(item.key)))
             for left, right in zip(ordered, ordered[1:]):
-                a = min(int(left.key), int(right.key))
-                b = max(int(left.key), int(right.key))
-                neighbor_links.append({KEY_LINK_A: a, KEY_LINK_B: b})
-                neighbor_ports.append(
-                    {
-                        KEY_LINK_NODE: int(left.key),
-                        KEY_LINK_PORT: NEIGHBOR_PORT_RIGHT,
-                        KEY_LINK_NEIGHBOR: int(right.key),
-                        KEY_LINK_NEIGHBOR_PORT: NEIGHBOR_PORT_LEFT,
-                    }
-                )
-                neighbor_ports.append(
-                    {
-                        KEY_LINK_NODE: int(right.key),
-                        KEY_LINK_PORT: NEIGHBOR_PORT_LEFT,
-                        KEY_LINK_NEIGHBOR: int(left.key),
-                        KEY_LINK_NEIGHBOR_PORT: NEIGHBOR_PORT_RIGHT,
-                    }
-                )
+                _add_pair(int(left.key), int(right.key))
+                _add_port(int(left.key), NEIGHBOR_PORT_RIGHT, int(right.key), NEIGHBOR_PORT_LEFT, TOPOLOGY_EDGE_CAN_TRUNK)
+                _add_port(int(right.key), NEIGHBOR_PORT_LEFT, int(left.key), NEIGHBOR_PORT_RIGHT, TOPOLOGY_EDGE_CAN_TRUNK)
+
+        for a, b in self._ethernet_links:
+            if not isinstance(a, int) or not isinstance(b, int):
+                continue
+            if a not in node_by_key or b not in node_by_key:
+                continue
+            _add_pair(a, b)
+            _add_port(a, "backbone", b, "backbone", TOPOLOGY_EDGE_ETHERNET)
+            _add_port(b, "backbone", a, "backbone", TOPOLOGY_EDGE_ETHERNET)
+
+        for link in self._cannect_device_links:
+            node_key = link.get("node")
+            device_key = link.get("device")
+            port = link.get("port", CANNECT_PORT_MIN)
+            if not isinstance(node_key, int) or not isinstance(device_key, int) or not isinstance(port, int):
+                continue
+            if node_key not in node_by_key or device_key not in node_by_key:
+                continue
+            _add_pair(node_key, device_key)
+            _add_port(node_key, f"can{port}", device_key, "can", TOPOLOGY_EDGE_CAN_DROP)
+            _add_port(device_key, "can", node_key, f"can{port}", TOPOLOGY_EDGE_CAN_DROP)
+
+        for link in self._dio_wiring_links:
+            robo_key = link.get(KEY_LINK_ROBORIO)
+            dev_key = link.get(KEY_LINK_DEVICE)
+            if not isinstance(robo_key, int) or not isinstance(dev_key, int):
+                continue
+            if robo_key not in node_by_key or dev_key not in node_by_key:
+                continue
+            _add_pair(robo_key, dev_key)
+            _add_port(robo_key, KEY_DIO.lower(), dev_key, KEY_DIO.lower(), TOPOLOGY_EDGE_DIO)
+            _add_port(dev_key, KEY_DIO.lower(), robo_key, KEY_DIO.lower(), TOPOLOGY_EDGE_DIO)
+
+        for entry in self._power_links:
+            link = TopologyEditor._normalize_power_link(entry)
+            if link is None:
+                continue
+            a = link[KEY_LINK_A]
+            b = link[KEY_LINK_B]
+            if a not in node_by_key or b not in node_by_key:
+                continue
+            _add_pair(a, b)
+            _add_port(a, KEY_POWER, b, KEY_POWER, TOPOLOGY_EDGE_POWER)
+            _add_port(b, KEY_POWER, a, KEY_POWER, TOPOLOGY_EDGE_POWER)
+
+        for entry in self._attachment_links:
+            host_key = entry.get(KEY_LINK_DEVICE)
+            attach_key = entry.get(KEY_LINK_ATTACHMENT)
+            if not isinstance(host_key, int) or not isinstance(attach_key, int):
+                continue
+            if host_key not in node_by_key or attach_key not in node_by_key:
+                continue
+            _add_pair(host_key, attach_key)
+            _add_port(host_key, KEY_LINK_ATTACHMENT, attach_key, KEY_LINK_ATTACHMENT, TOPOLOGY_EDGE_VIRTUAL)
+            _add_port(attach_key, KEY_LINK_ATTACHMENT, host_key, KEY_LINK_ATTACHMENT, TOPOLOGY_EDGE_VIRTUAL)
+
         return neighbor_links, neighbor_ports
 
     def _is_dio_node(self, node: Node) -> bool:
@@ -10644,7 +10849,7 @@ class TopologyEditor(tk.Tk):
             power_links=[(link.get(KEY_LINK_A), link.get(KEY_LINK_B)) for link in self._power_links],
             attachment_links=[(link.get(KEY_LINK_DEVICE), link.get(KEY_LINK_ATTACHMENT)) for link in self._attachment_links],
             dio_links=[(link.get(KEY_LINK_ROBORIO), link.get(KEY_LINK_DEVICE)) for link in self._dio_wiring_links],
-            ethernet_links=self._ethernet_links if show_virtual else [],
+            ethernet_links=self._ethernet_links,
             show_groups=self._show_group_overlays_var.get(),
             node_box_dims_fn=self._node_box_dims,
             node_bus_y_fn=self._node_bus_y,
@@ -10662,6 +10867,9 @@ class TopologyEditor(tk.Tk):
             wrap_label_lines_fn=self._wrap_label_lines,
             node_tag_name_fn=lambda key: f"node_{key}",
             is_callout_fn=lambda node: node.node_type == "callout",
+            is_direct_can_backbone_node_fn=self._is_direct_can_backbone_node,
+            is_main_can_tap_node_fn=self._is_main_can_tap_node,
+            can_connection_capacity_fn=self._can_connection_capacity,
         )
         self._node_bounds = rendered["node_bounds"]
         node_centers = rendered["node_centers"]
@@ -11031,17 +11239,18 @@ class TopologyEditor(tk.Tk):
             ("NI", "NI"),
         ]
         link_items = [
-            ("Attachment (logical)", ATTACH_LINE_COLOR, ATTACH_LINK_DASH),
-            ("DIO wire (roboRIO)", WIRE_LINE_COLOR, DIO_WIRE_DASH),
-            ("Ethernet device link", "#1c6ba8", ETHERNET_DEVICE_DASH),
-            ("CAN bus (physical)", BUS_LINE_COLOR, None),
+            (LEGEND_LABEL_ATTACHMENT, ATTACH_LINE_COLOR, ATTACH_LINK_DASH),
+            (LEGEND_LABEL_DIO, WIRE_LINE_COLOR, DIO_WIRE_DASH),
+            (LEGEND_LABEL_LOCAL_CAN_DROP, LOCAL_CAN_DROP_COLOR, ETHERNET_DEVICE_DASH),
+            (LEGEND_LABEL_ETHERNET, ETHERNET_BACKBONE_COLOR, ETHERNET_BACKBONE_DASH),
+            (LEGEND_LABEL_CAN_BUS, BUS_LINE_COLOR, None),
         ]
         height = (
             padding * 2
             + line_h * (len(legend_items) + len(color_items) + 2)
             + link_line_h * (len(link_items) + 1)
         )
-        width = 240
+        width = 260
         self.canvas.create_rectangle(
             x,
             y,
@@ -11200,7 +11409,7 @@ class TopologyEditor(tk.Tk):
         dialog.resizable(False, False)
         dialog.transient(self)
 
-        canvas = tk.Canvas(dialog, width=260, height=320, background="#ffffff")
+        canvas = tk.Canvas(dialog, width=280, height=340, background="#ffffff")
         canvas.pack(padx=8, pady=8)
 
         def _draw_on(canvas_obj: tk.Canvas) -> None:
@@ -11274,10 +11483,11 @@ class TopologyEditor(tk.Tk):
                 cy += line_h
             cy += 6
             link_items = [
-                ("Attachment (logical)", ATTACH_LINE_COLOR, ATTACH_LINK_DASH),
-                ("DIO wire (roboRIO)", WIRE_LINE_COLOR, DIO_WIRE_DASH),
-                ("Ethernet device link", "#1c6ba8", ETHERNET_DEVICE_DASH),
-                ("CAN bus (physical)", BUS_LINE_COLOR, None),
+                (LEGEND_LABEL_ATTACHMENT, ATTACH_LINE_COLOR, ATTACH_LINK_DASH),
+                (LEGEND_LABEL_DIO, WIRE_LINE_COLOR, DIO_WIRE_DASH),
+                (LEGEND_LABEL_LOCAL_CAN_DROP, LOCAL_CAN_DROP_COLOR, ETHERNET_DEVICE_DASH),
+                (LEGEND_LABEL_ETHERNET, ETHERNET_BACKBONE_COLOR, ETHERNET_BACKBONE_DASH),
+                (LEGEND_LABEL_CAN_BUS, BUS_LINE_COLOR, None),
             ]
             for label, color, dash in link_items:
                 lx0 = padding
@@ -12703,6 +12913,7 @@ class TopologyEditor(tk.Tk):
         width = max(self.canvas.winfo_width(), 1)
         height = max(self.canvas.winfo_height(), 1)
         scale = self._zoom
+        x_shift = 0.0
         render_scene = self.__dict__.get("_render_scene", {})
         draw_state = self.__dict__.get("_draw_state", {})
         show_can = self._connection_filter_allows(TOPOLOGY_FILTER_CAN)
@@ -12721,6 +12932,8 @@ class TopologyEditor(tk.Tk):
         max_node_x = max((n.x for n in self._nodes), default=0.0)
         min_left = min(eff_lefts, default=40.0)
         max_right = max(eff_rights, default=max_node_x + 200.0)
+        min_x = min_left
+        max_x = max_right
         total_width = max(
             width,
             int(max_right * scale),
@@ -13036,6 +13249,22 @@ class TopologyEditor(tk.Tk):
         gray = Color(0.27, 0.27, 0.27)
 
         if show_can:
+            backbone_gaps_by_bus = inline_backbone_gap_ranges(
+                nodes=self._nodes,
+                x_shift=x_shift,
+                scale=scale,
+                box_w_base=self._box_w,
+                eff_lefts=eff_lefts,
+                eff_rights=eff_rights,
+                min_x=min_x,
+                max_x=max_x,
+                should_clamp_node_to_bus_fn=self._should_clamp_node_to_bus,
+                is_dio_node_fn=self._is_dio_node,
+                is_callout_fn=lambda node: node.node_type == "callout",
+                is_direct_can_backbone_node_fn=self._is_direct_can_backbone_node,
+                can_connection_capacity_fn=self._can_connection_capacity,
+                linked_devices={link.get("device") for link in self._cannect_device_links},
+            )
             turn_radius = max(8.0, 18 * scale)
             c.setStrokeColor(gray)
             c.setLineWidth(4 * fit_scale)
@@ -13046,9 +13275,11 @@ class TopologyEditor(tk.Tk):
                     start_x, end_x = seg_left, seg_right
                 else:
                     start_x, end_x = seg_right, seg_left
-                x0, y0 = _to_pdf(start_x, bus_y)
-                x1, y1 = _to_pdf(end_x, bus_y)
-                c.line(x0, y0, x1, y1)
+                bus_segments = bus_segments_with_gaps(start_x, end_x, backbone_gaps_by_bus.get(idx, []))
+                for seg_start, seg_end in bus_segments:
+                    x0, y0 = _to_pdf(seg_start, bus_y)
+                    x1, y1 = _to_pdf(seg_end, bus_y)
+                    c.line(x0, y0, x1, y1)
                 if idx + 1 < len(bus_ys):
                     next_y = bus_ys[idx + 1]
                     side = self._bus_connector_side(idx)
@@ -13090,16 +13321,26 @@ class TopologyEditor(tk.Tk):
             x0, y0, x1, y1 = bounds
             node_x = (x0 + x1) / 2.0
             node_box_w = x1 - x0
-            allow_trunk = (not self._is_swyft_node(node)) or (node.category == "cannect_inject")
-            if node.key not in linked_devices and allow_trunk and not self._is_dio_node(node):
+            allow_trunk = self._is_direct_can_backbone_node(node)
+            allow_main_tap = self._is_main_can_tap_node(node)
+            if node.key not in linked_devices and (allow_trunk or allow_main_tap) and not self._is_dio_node(node):
+                stem_xs = backbone_stub_xs(
+                    node=node,
+                    node_x=node_x,
+                    x0=x0,
+                    x1=x1,
+                    scale=scale,
+                    can_connection_capacity_fn=self._can_connection_capacity,
+                )
                 if node_bus_y >= bus_y:
-                    x0l, y0l = _to_pdf(node_x, bus_y)
-                    x1l, y1l = _to_pdf(node_x, y0)
+                    node_edge_y = y0
                 else:
-                    x0l, y0l = _to_pdf(node_x, y1)
-                    x1l, y1l = _to_pdf(node_x, bus_y)
+                    node_edge_y = y1
                 c.setLineWidth(2 * fit_scale)
-                c.line(x0l, y0l, x1l, y1l)
+                for stem_x in (stem_xs if allow_trunk else (node_x,)):
+                    x0l, y0l = _to_pdf(stem_x, bus_y)
+                    x1l, y1l = _to_pdf(stem_x, node_edge_y)
+                    c.line(x0l, y0l, x1l, y1l)
 
             shape_kind = self._shape_kind_for_node(node)
             fill = self._fill_color_for_node(node)

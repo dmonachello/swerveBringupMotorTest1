@@ -93,6 +93,12 @@ from tools.common.motor_runtime_verdict import (
     RESULT_ROTATING,
     RESULT_STALLED,
 )
+from tools.common.runtime_state import (
+    runtime_active_probe_attachment as shared_runtime_active_probe_attachment,
+    runtime_attachment_age_seconds,
+    runtime_device_field as shared_runtime_device_field,
+    runtime_presence_check_attachment as shared_runtime_presence_check_attachment,
+)
 from tools.can_nt.visibility_constants import (
     VIS_KEY_AVAILABLE,
     VIS_KEY_DEVICES,
@@ -394,24 +400,7 @@ def _runtime_device_field(device: Dict[str, object], key: str) -> object:
     NAME
         _runtime_device_field - Read a runtime-state field from top-level or motor attachments.
     """
-    if not isinstance(device, dict) or not key:
-        return None
-    value = device.get(key)
-    if value is not None:
-        return value
-    attachments = device.get("attachments")
-    if not isinstance(attachments, list):
-        return None
-    for attachment in attachments:
-        if not isinstance(attachment, dict):
-            continue
-        attachment_type = str(attachment.get(ATTACHMENT_KEY_TYPE, "")).strip()
-        if attachment_type not in (ATTACHMENT_TYPE_REV_MOTOR, ATTACHMENT_TYPE_CTRE_MOTOR):
-            continue
-        value = attachment.get(key)
-        if value is not None:
-            return value
-    return None
+    return shared_runtime_device_field(device, key)
 
 
 def _runtime_active_probe_attachment(device: Dict[str, object]) -> Optional[Dict[str, object]]:
@@ -419,18 +408,7 @@ def _runtime_active_probe_attachment(device: Dict[str, object]) -> Optional[Dict
     NAME
         _runtime_active_probe_attachment - Return the active-presence attachment when present.
     """
-    if not isinstance(device, dict):
-        return None
-    attachments = device.get("attachments")
-    if not isinstance(attachments, list):
-        return None
-    for attachment in attachments:
-        if not isinstance(attachment, dict):
-            continue
-        attachment_type = str(attachment.get(ATTACHMENT_KEY_TYPE, "")).strip()
-        if attachment_type == ATTACHMENT_TYPE_ACTIVE_PRESENCE_PROBE:
-            return attachment
-    return None
+    return shared_runtime_active_probe_attachment(device)
 
 
 def _runtime_presence_check_attachment(device: Dict[str, object]) -> Optional[Dict[str, object]]:
@@ -438,18 +416,7 @@ def _runtime_presence_check_attachment(device: Dict[str, object]) -> Optional[Di
     NAME
         _runtime_presence_check_attachment - Return the live presence-check attachment when present.
     """
-    if not isinstance(device, dict):
-        return None
-    attachments = device.get("attachments")
-    if not isinstance(attachments, list):
-        return None
-    for attachment in attachments:
-        if not isinstance(attachment, dict):
-            continue
-        attachment_type = str(attachment.get(ATTACHMENT_KEY_TYPE, "")).strip()
-        if attachment_type == ATTACHMENT_TYPE_PRESENCE_CHECK:
-            return attachment
-    return None
+    return shared_runtime_presence_check_attachment(device)
 
 
 def _format_elapsed_age(elapsed_sec: float) -> str:
@@ -467,13 +434,11 @@ def _runtime_probe_age_seconds(device: Dict[str, object]) -> Optional[float]:
     NAME
         _runtime_probe_age_seconds - Return the age in seconds of one cached active probe result.
     """
-    attachment = _runtime_active_probe_attachment(device)
-    if not isinstance(attachment, dict):
-        return None
-    updated_at_ms = attachment.get(RUNTIME_KEY_ACTIVE_PROBE_UPDATED_AT_MS)
-    if not isinstance(updated_at_ms, (int, float)) or float(updated_at_ms) <= 0.0:
-        return None
-    return max(0.0, (time.time() * 1000.0 - float(updated_at_ms)) / 1000.0)
+    return runtime_attachment_age_seconds(
+        device,
+        ATTACHMENT_TYPE_ACTIVE_PRESENCE_PROBE,
+        updated_key=RUNTIME_KEY_ACTIVE_PROBE_UPDATED_AT_MS,
+    )
 
 
 def _runtime_probe_age_bucket(device: Dict[str, object]) -> str:
@@ -509,13 +474,11 @@ def _runtime_presence_age_seconds(device: Dict[str, object]) -> Optional[float]:
     NAME
         _runtime_presence_age_seconds - Return the age in seconds of one live presence check.
     """
-    attachment = _runtime_presence_check_attachment(device)
-    if not isinstance(attachment, dict):
-        return None
-    updated_at_ms = attachment.get(RUNTIME_KEY_PRESENCE_CHECK_UPDATED_AT_MS)
-    if not isinstance(updated_at_ms, (int, float)) or float(updated_at_ms) <= 0.0:
-        return None
-    return max(0.0, (time.time() * 1000.0 - float(updated_at_ms)) / 1000.0)
+    return runtime_attachment_age_seconds(
+        device,
+        ATTACHMENT_TYPE_PRESENCE_CHECK,
+        updated_key=RUNTIME_KEY_PRESENCE_CHECK_UPDATED_AT_MS,
+    )
 
 
 def _runtime_presence_age_text(device: Dict[str, object]) -> str:
@@ -2889,6 +2852,34 @@ class LiveTopologyView(ttk.Frame):
             fit_font_size_fn=fit_font_size,
             wrap_label_lines_fn=wrap_label_lines,
             is_callout_fn=lambda node: node.node_type == LEGACY_NODE_TYPE_CALLOUT,
+            is_direct_can_backbone_node_fn=lambda node: (
+                getattr(node, "interface", INTERFACE_CAN) == INTERFACE_CAN
+                and getattr(node, "node_type", EMPTY_STRING) != LEGACY_NODE_TYPE_CALLOUT
+                and (
+                    (node.category in {"roborio", "pdh", "pdp", "pigeon", "cannect_inject"} and getattr(node, "terminator", None) is True)
+                    or (node.category not in {"cannect_direct"} and node.category not in {"roborio", "pdh", "pdp", "pigeon"} and int(getattr(node, "can_id", -1)) >= 0)
+                    or node.category == "cannect_inject"
+                )
+            ),
+            is_main_can_tap_node_fn=lambda node: (
+                getattr(node, "interface", INTERFACE_CAN) == INTERFACE_CAN
+                and getattr(node, "node_type", EMPTY_STRING) != LEGACY_NODE_TYPE_CALLOUT
+                and node.category not in {"cannect_direct", "cannect_inject"}
+                and node.category not in {"roborio", "pdh", "pdp", "pigeon"}
+                and int(getattr(node, "can_id", -1)) >= 0
+                and not bool(getattr(node, "terminator", False))
+            ),
+            can_connection_capacity_fn=lambda node: (
+                0
+                if (
+                    getattr(node, "interface", INTERFACE_CAN) != INTERFACE_CAN
+                    or getattr(node, "node_type", EMPTY_STRING) == LEGACY_NODE_TYPE_CALLOUT
+                    or node.category == "cannect_direct"
+                )
+                else 1
+                if node.category in {"roborio", "pdh", "pdp", "pigeon", "cannect_inject"}
+                else 2
+            ),
             show_selection_box=True,
         )
         self._node_bounds = rendered["node_bounds"]

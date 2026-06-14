@@ -199,6 +199,12 @@ from tools.common.topology_parse import (
     topology_node_lookup,
     topology_profile_from_payload,
 )
+from tools.common.topology_query import (
+    resolve_topology_node_key as shared_resolve_topology_node_key,
+    topology_device_summary,
+    topology_node_label as shared_topology_node_label,
+)
+from tools.common.runtime_state import runtime_device_index as shared_runtime_device_index
 from tools.common.profile_constants import (
     BRIDGE_CONFIG_SCHEMA_VERSION,
     EDGE_TYPE_CAN_DROP,
@@ -11925,17 +11931,7 @@ class BridgeCli:
         NAME
             _device_runtime_index - Index runtime-state devices by normalized label.
         """
-        devices = runtime_payload.get(KEY_DEVICES)
-        if not isinstance(devices, list):
-            return {}
-        indexed: Dict[str, Dict[str, object]] = {}
-        for entry in devices:
-            if not isinstance(entry, dict):
-                continue
-            label = str(entry.get(KEY_LABEL, EMPTY_STRING)).strip().lower()
-            if label:
-                indexed[label] = entry
-        return indexed
+        return shared_runtime_device_index(runtime_payload)
 
     @staticmethod
     def _fault_flag_count(attachment: Dict[str, object], key: str) -> int:
@@ -15413,11 +15409,7 @@ class BridgeCli:
         NAME
             _resolve_topology_node_key - Resolve a node label to topology key.
         """
-        label_key = str(label).strip().lower()
-        for key, node in node_map.items():
-            if self._topology_node_label(node).strip().lower() == label_key:
-                return key
-        return None
+        return shared_resolve_topology_node_key(label, node_map)
 
     @staticmethod
     def _next_topology_edge_id(edges: List[Dict[str, object]]) -> str:
@@ -15484,42 +15476,12 @@ class BridgeCli:
         profile = self._active_profile_name()
         if not profile:
             return {}
-        topology_profile = topology_profile_from_payload(self._local_root_payload, profile)
-        if not topology_profile:
-            return {}
-        registry = self._local_registry_by_label()
-        node_by_key = topology_node_lookup(topology_profile, registry)
-        target_node: Optional[Dict[str, object]] = None
-        label_key = label.strip().lower()
-        for raw in node_by_key.values():
-            node_label = self._topology_node_label(raw)
-            if node_label.lower() == label_key:
-                target_node = raw
-                break
-        if target_node is None:
-            return {}
-        node_key = target_node.get(KEY_NODE_KEY)
-        if not isinstance(node_key, int):
-            return {}
-        layout = target_node.get(KEY_LAYOUT)
-        layout_dict = layout if isinstance(layout, dict) else {}
-        topology: Dict[str, object] = {
-            KEY_NODE_KEY: node_key,
-            KEY_LABEL: self._topology_node_label(target_node),
-            KEY_BUS: layout_dict.get(KEY_BUS),
-            "row": layout_dict.get("row"),
-            "x": layout_dict.get("x"),
-            KEY_OBJECT_TYPE: target_node.get(KEY_OBJECT_TYPE, get_object_type(target_node)),
-            KEY_NODE_TYPE: target_node.get(KEY_NODE_TYPE),
-            KEY_NODE_CLASS: target_node.get(KEY_NODE_CLASS, get_node_class(target_node)),
-        }
-        neighbor_links = self._device_neighbor_links(topology_profile, node_key, node_by_key)
-        neighbor_ports = self._device_neighbor_ports(topology_profile, node_key, node_by_key)
-        if neighbor_links:
-            topology[KEY_NEIGHBOR_LINKS] = neighbor_links
-        if neighbor_ports:
-            topology[KEY_NEIGHBOR_PORTS] = neighbor_ports
-        return topology
+        return topology_device_summary(
+            self._local_root_payload,
+            profile,
+            label,
+            self._local_registry_by_label(),
+        )
 
     def _local_registry_by_label(self) -> Dict[str, Dict[str, object]]:
         """
@@ -15608,9 +15570,7 @@ class BridgeCli:
         NAME
             _topology_node_label - Resolve the display label for one topology node.
         """
-        if str(node.get(KEY_NODE_TYPE, EMPTY_STRING)).strip() == NODE_TYPE_DEVICE:
-            return str(node.get(KEY_DEVICE_REF, EMPTY_STRING)).strip()
-        return str(node.get(KEY_LABEL, EMPTY_STRING)).strip()
+        return shared_topology_node_label(node)
 
     def _format_device_topology_lines(self, topology: Dict[str, object]) -> List[str]:
         """

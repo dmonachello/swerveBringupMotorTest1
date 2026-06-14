@@ -2,6 +2,27 @@
 
 All notable user-facing changes are documented in this file.
 
+## 2026-06-13
+
+### Added - 2026-06-13
+
+- Added shared topology validation, topology query, and runtime-state helper
+  modules so validator, schema store, CLI, Bringup Control UI, and Live
+  Topology surfaces can consume the same host-side contract logic instead of
+  maintaining separate attachment lookup, node-neighbor projection, or
+  topology graph validation rules.
+
+### Improved - 2026-06-13
+
+- Consolidated topology graph validation behind one shared authority while
+  preserving existing surface-specific reporting, and extended schema-store
+  validation so duplicate topology node keys and missing edge endpoints are now
+  caught through the same shared rule set used by the standalone topology
+  validator.
+- Tightened host-side runtime-state normalization by routing shared device
+  indexing, attachment resolution, motor field fallback, and probe age math
+  through common code used by CLI/UI/live-topology consumers.
+
 ## 2026-06-10
 
 ### Added - 2026-06-10

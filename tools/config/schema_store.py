@@ -95,6 +95,12 @@ from tools.common.test_authoring import (
     validate_model,
 )
 from tools.common.test_authoring.validator import AXIS_INPUTS, BUTTON_INPUTS
+from tools.common.topology_validate import (
+    ISSUE_DEVICE_REF_REQUIRED,
+    ISSUE_DEVICE_REF_UNKNOWN,
+    SEVERITY_ERROR as TOPOLOGY_SEVERITY_ERROR,
+    validate_topology_profile,
+)
 from tools.config.json_store import JsonStore
 
 
@@ -2154,42 +2160,30 @@ class ConfigSchemaStore:
         NAME
             _validate_topology_profile - Validate device-node topology references.
         """
-
-        catalog_keys = {str(label).strip().lower() for label in catalog.keys()}
-        nodes = topology_profile.get(KEY_TOPOLOGY_NODES)
-        if not isinstance(nodes, list):
-            return
-        for node in nodes:
-            if not isinstance(node, dict):
-                continue
-            node_type = get_object_type(node)
-            if node_type != NODE_TYPE_DEVICE:
-                continue
-            node_key = node.get(KEY_NODE_KEY, "?")
-            device_ref = node.get(KEY_DEVICE_REF)
-            if not isinstance(device_ref, str) or not device_ref.strip():
-                self._append_issue(
-                    issues,
-                    LOCATION_PROFILES,
-                    MESSAGE_TOPOLOGY_NODE_DEVICE_REF_REQUIRED.format(
-                        profile=profile_name,
-                        key=node_key,
-                    ),
-                    SEVERITY_ERROR,
+        for issue in validate_topology_profile(
+            topology_profile,
+            profile_name=profile_name,
+            registry_keys={str(label).strip().lower() for label in catalog.keys()},
+            normalize_nodes=True,
+        ):
+            message = issue.message
+            if issue.code == ISSUE_DEVICE_REF_REQUIRED:
+                message = MESSAGE_TOPOLOGY_NODE_DEVICE_REF_REQUIRED.format(
+                    profile=profile_name,
+                    key=issue.details.get("key", "?"),
                 )
-                continue
-            label_text = device_ref.strip()
-            if label_text.lower() not in catalog_keys:
-                self._append_issue(
-                    issues,
-                    LOCATION_PROFILES,
-                    MESSAGE_TOPOLOGY_NODE_DEVICE_UNKNOWN.format(
-                        profile=profile_name,
-                        key=node_key,
-                        label=label_text,
-                    ),
-                    SEVERITY_ERROR,
+            elif issue.code == ISSUE_DEVICE_REF_UNKNOWN:
+                message = MESSAGE_TOPOLOGY_NODE_DEVICE_UNKNOWN.format(
+                    profile=profile_name,
+                    key=issue.details.get("key", "?"),
+                    label=issue.details.get("label", ""),
                 )
+            self._append_issue(
+                issues,
+                LOCATION_PROFILES,
+                message,
+                SEVERITY_ERROR if issue.severity == TOPOLOGY_SEVERITY_ERROR else SEVERITY_WARN,
+            )
 
     def _validate_device_entry(self, entry: Dict[str, object], issues: List[ValidationIssue]) -> None:
         """

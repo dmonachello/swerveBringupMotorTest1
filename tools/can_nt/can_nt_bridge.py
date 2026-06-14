@@ -42,10 +42,12 @@ try:
     from tools.can_nt.can_pcap import build_pcap_comment, setup_pcap, handle_marker_keys
     from tools.can_nt.can_ports import list_ports, maybe_auto_channel
     from tools.can_nt.can_profiles import (
+        get_default_profile,
         get_profile,
         get_profiles_load_error,
         get_profiles_data_version,
         get_profiles_data_hash,
+        list_profiles,
         reload_profiles,
     )
     from tools.can_nt.can_profiles_dump import dump_seen_ids, dump_profile, dump_can_config
@@ -126,10 +128,12 @@ except ModuleNotFoundError:
     from tools.can_nt.can_pcap import build_pcap_comment, setup_pcap, handle_marker_keys
     from tools.can_nt.can_ports import list_ports, maybe_auto_channel
     from tools.can_nt.can_profiles import (
+        get_default_profile,
         get_profile,
         get_profiles_load_error,
         get_profiles_data_version,
         get_profiles_data_hash,
+        list_profiles,
         reload_profiles,
     )
     from tools.can_nt.can_profiles_dump import dump_seen_ids, dump_profile, dump_can_config
@@ -249,6 +253,12 @@ BUG_ERR_CLI_PROFILE_SYNC_SET = (
 )
 BUG_ERR_CLI_PROFILE_SYNC_MISMATCH = (
     "BUG: host profile context is '{profile}', but CLI prompt/profile state is '{actual}'."
+)
+WARN_STARTUP_PROFILE_FALLBACK = (
+    "WARNING: startup profile '{requested}' is unavailable; using '{resolved}'."
+)
+WARN_STARTUP_PROFILE_UNAVAILABLE = (
+    "WARNING: startup profile '{requested}' is unavailable and no valid profile fallback was found."
 )
 PCAP_LOGGER_STOPPED = "PCAP logger stopped."
 THREAD_NAME_SNIFFER = "sniffer"
@@ -389,6 +399,38 @@ def _resolve_profile_context_name(ui_table, fallback: str) -> str:
     if selected_name:
         return selected_name
     return fallback_name
+
+
+def _resolve_startup_profile_name(requested: str) -> str:
+    """
+    NAME
+        _resolve_startup_profile_name - Resolve startup profile against the current profile cache.
+
+    DESCRIPTION
+        Refreshes cached profile data and falls back to the current default or
+        first available profile when the requested startup profile is stale.
+    """
+    requested_name = _normalize_profile_name(requested)
+    try:
+        reload_profiles()
+    except Exception:
+        return requested_name
+    available = [name for name in list_profiles() if isinstance(name, str) and name.strip()]
+    if requested_name and requested_name in available:
+        return requested_name
+    fallback = _normalize_profile_name(get_default_profile())
+    if fallback and fallback in available:
+        if requested_name and requested_name != fallback:
+            print(WARN_STARTUP_PROFILE_FALLBACK.format(requested=requested_name, resolved=fallback))
+        return fallback
+    if available:
+        resolved = available[INT_ZERO]
+        if requested_name and requested_name != resolved:
+            print(WARN_STARTUP_PROFILE_FALLBACK.format(requested=requested_name, resolved=resolved))
+        return resolved
+    if requested_name:
+        print(WARN_STARTUP_PROFILE_UNAVAILABLE.format(requested=requested_name))
+    return requested_name
 
 
 @dataclass
@@ -642,7 +684,8 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     if data_hash:
         print(f"Profiles data_hash: {data_hash}")
 
-    devices, expected_ids = get_profile(args.profile)
+    startup_profile_name = _resolve_startup_profile_name(args.profile)
+    devices, expected_ids = get_profile(startup_profile_name)
     can_to_label, id_to_labels = _build_device_maps(devices)
     seen_can_keys: set[Tuple[int, int, int]] = set()
     seen_labels: set[str] = set()
@@ -780,7 +823,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         tests_table = root_table.getSubTable(NT_TABLE_TESTS)
         diag_table = root_table.getSubTable(NT_TABLE_DIAG)
 
-    profile_context_name = _normalize_profile_name(args.profile)
+    profile_context_name = _normalize_profile_name(startup_profile_name)
 
     profile_context_error_name = EMPTY_STRING
     cli_context_target: Optional[BridgeCli] = None
@@ -1463,6 +1506,9 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             visibility_provider=visibility_provider,
             runtime_details_provider=_runtime_details_snapshot,
         )
+        preload_profiles = getattr(cli, "_auto_merge_default_profiles", None)
+        if callable(preload_profiles):
+            preload_profiles()
         cli_context_target = cli
         _sync_cli_profile_context(cli_context_target, profile_context_name)
         stop_event = None
