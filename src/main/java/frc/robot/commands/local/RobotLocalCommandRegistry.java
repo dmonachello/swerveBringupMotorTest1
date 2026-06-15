@@ -36,6 +36,7 @@ public final class RobotLocalCommandRegistry {
   private static final String UI_SECTION_SESSION = "Session";
   private static final String UI_SECTION_GROUPS = "Groups";
   private static final String UI_ARG_RESET_TRUE = "{\"reset\":true}";
+  private static final String UI_ARGS_RUNTIME_ACTIVATE = "{\"scopeMode\":\"all\"}";
 
   public static final String COMMAND_ADD_MOTOR = "addMotor";
   public static final String COMMAND_ADD_ALL = "addAll";
@@ -284,7 +285,14 @@ public final class RobotLocalCommandRegistry {
 
     register(rows, profileDefinition(COMMAND_SELECT_PROFILE, "Select Profile", "Select a profile by name.", legacyUiGroup));
     register(rows, profileDefinition(COMMAND_PROFILE_ACTIVATE, "Activate Profile", "Activate the selected profile.", legacyUiGroup));
-    register(rows, profileDefinition(COMMAND_RUNTIME_ACTIVATE, "Runtime Activate", "Activate the selected profile runtime.", legacyUiGroup));
+    register(
+        rows,
+        profileDefinition(
+            COMMAND_RUNTIME_ACTIVATE,
+            "Runtime Activate",
+            "Activate the selected profile runtime using the chosen scope.",
+            UI_ARGS_RUNTIME_ACTIVATE,
+            legacyUiGroup));
     register(rows, profileDefinition(COMMAND_RUNTIME_DEACTIVATE, "Runtime Deactivate", "Deactivate the active runtime profile.", legacyUiGroup));
     register(rows, profileDefinition(COMMAND_PROFILES_RELOAD, "Reload Profiles", "Reload bringup_system.json on the robot.", legacyUiGroup));
     register(rows, profileDefinition(COMMAND_PROFILES_APPLY, "Apply Profiles", "Apply uploaded registry JSON on the robot.", legacyUiGroup));
@@ -420,6 +428,15 @@ public final class RobotLocalCommandRegistry {
       String label,
       String description,
       RobotLocalCommand command) {
+    return profileDefinition(wireName, label, description, "", command);
+  }
+
+  private static RobotLocalCommandDefinition profileDefinition(
+      String wireName,
+      String label,
+      String description,
+      String argsJson,
+      RobotLocalCommand command) {
     return new RobotLocalCommandDefinition(
         wireName,
         RobotLocalCommandGroup.PROFILE,
@@ -431,7 +448,7 @@ public final class RobotLocalCommandRegistry {
         UI_SECTION_PROFILES,
         label,
         description,
-        "",
+        argsJson,
         command);
   }
 

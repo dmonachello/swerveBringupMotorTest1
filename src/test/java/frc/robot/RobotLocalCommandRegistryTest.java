@@ -1,6 +1,7 @@
 package frc.robot;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -14,6 +15,8 @@ class RobotLocalCommandRegistryTest {
   private static final String JSON_KEY_COMMANDS = "commands";
   private static final String JSON_KEY_NAME = "name";
   private static final String JSON_KEY_SHOW_IN_HOST_UI = "showInHostUi";
+  private static final String JSON_KEY_UI_ARGS_JSON = "uiArgsJson";
+  private static final String JSON_KEY_UI_DESCRIPTION = "uiDescription";
 
   @Test
   void registryResolvesEveryDeclaredCommand() {
@@ -47,5 +50,24 @@ class RobotLocalCommandRegistryTest {
     assertTrue(foundAddAll);
     assertTrue(foundStop);
     assertFalse(commands.isEmpty());
+  }
+
+  @Test
+  void runtimeActivateInventoryDescribesScopeArgs() {
+    JsonObject inventory = RobotLocalCommandRegistry.buildInventoryJson();
+    JsonArray commands = inventory.getAsJsonArray(JSON_KEY_COMMANDS);
+    assertNotNull(commands);
+    for (int i = 0; i < commands.size(); i++) {
+      JsonObject row = commands.get(i).getAsJsonObject();
+      if (!"runtimeActivate".equals(row.get(JSON_KEY_NAME).getAsString())) {
+        continue;
+      }
+      assertEquals("{\"scopeMode\":\"all\"}", row.get(JSON_KEY_UI_ARGS_JSON).getAsString());
+      assertEquals(
+          "Activate the selected profile runtime using the chosen scope.",
+          row.get(JSON_KEY_UI_DESCRIPTION).getAsString());
+      return;
+    }
+    throw new AssertionError("runtimeActivate inventory row missing");
   }
 }

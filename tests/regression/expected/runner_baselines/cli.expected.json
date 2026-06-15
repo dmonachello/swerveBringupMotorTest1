@@ -33,6 +33,16 @@
         "C:\\Users\\dmona\\swerveBringupMotorTest\\swerveBringupMotorTest1/tools/can_nt/scripts/bridge_cli_group_targeting_4m2g3t_regression.py"
       ],
       "expectedExitCode": 0
+    },
+    {
+      "commandId": "runtime-scope-cli",
+      "label": "runtime-scope-cli",
+      "mode": "local",
+      "argv": [
+        "C:\\Users\\dmona\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "C:\\Users\\dmona\\swerveBringupMotorTest\\swerveBringupMotorTest1/tools/can_nt/scripts/bridge_cli_runtime_scope_regression.py"
+      ],
+      "expectedExitCode": 0
     }
   ]
 }

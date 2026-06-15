@@ -116,6 +116,7 @@ PRESENCE_CONF_NONE = "NONE"
 PRESENCE_COLOR_HIGH = "#2f7a2f"
 PRESENCE_COLOR_LOW = "#f59e0b"
 PRESENCE_COLOR_NONE = "#dc2626"
+PRESENCE_COLOR_OUT_OF_SCOPE = "#94a3b8"
 NOTICE_COLOR_INFO_BG = "#eff6ff"
 NOTICE_COLOR_INFO_FG = "#1d4ed8"
 NOTICE_COLOR_WARN_BG = "#fff7ed"
@@ -2708,6 +2709,9 @@ class LiveTopologyView(ttk.Frame):
         live = self._runtime_state.get(node.label.lower())
         if not live:
             return None
+        in_scope = live.get("inScope")
+        if isinstance(in_scope, bool) and not in_scope:
+            return PRESENCE_COLOR_OUT_OF_SCOPE
         presence = live.get("presenceConfidence")
         last_seen = live.get("lastSeenMs")
         if isinstance(presence, (int, float)) and presence <= PRESENCE_MIN_CONF:

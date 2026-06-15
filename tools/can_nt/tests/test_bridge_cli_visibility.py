@@ -592,6 +592,22 @@ class BridgeCliVisibilityTests(unittest.TestCase):
             ["runtime", "activate", "demo"],
         )
         self.assertEqual(
+            parser.parse("runtime activate scope all", mode="exec").tokens,
+            ["runtime", "activate", "scope", "all"],
+        )
+        self.assertEqual(
+            parser.parse("runtime activate demo scope all", mode="exec").tokens,
+            ["runtime", "activate", "demo", "scope", "all"],
+        )
+        self.assertEqual(
+            parser.parse("runtime activate scope group active-group", mode="config").tokens,
+            ["runtime", "activate", "scope", "group", "active-group"],
+        )
+        self.assertEqual(
+            parser.parse("runtime activate demo scope group motors", mode="config").tokens,
+            ["runtime", "activate", "demo", "scope", "group", "motors"],
+        )
+        self.assertEqual(
             parser.parse("runtime deactivate", mode="exec").tokens,
             ["runtime", "deactivate"],
         )
@@ -601,10 +617,22 @@ class BridgeCliVisibilityTests(unittest.TestCase):
         cli._wait_for_seq = lambda seq, timeout_sec=None: object()  # type: ignore[method-assign]
         cli._event_failed = lambda event, command_name: False  # type: ignore[method-assign]
 
-        with patch("tools.can_nt.bridge_cli.runtime_activate", return_value=7):
-            result = cli._runtime_activate("demo")
+        with patch("tools.can_nt.bridge_cli.runtime_activate", return_value=7) as runtime_activate_mock:
+            result = cli._runtime_activate("demo", "group", "motors")
 
         self.assertEqual(result.code, SS__NORMAL)
+        runtime_activate_mock.assert_called_once_with(cli._session, "demo", "group", "motors")
+
+    def test_runtime_command_parses_scope_and_group(self) -> None:
+        cli = self._build_cli(connected=True)
+        cli._wait_for_seq = lambda seq, timeout_sec=None: object()  # type: ignore[method-assign]
+        cli._event_failed = lambda event, command_name: False  # type: ignore[method-assign]
+
+        with patch("tools.can_nt.bridge_cli.runtime_activate", return_value=7) as runtime_activate_mock:
+            result = cli._runtime_command(["runtime", "activate", "scope", "group", "active-group"])
+
+        self.assertEqual(result.code, SS__NORMAL)
+        runtime_activate_mock.assert_called_once_with(cli._session, "", "group", "active-group")
 
     def test_runtime_deactivate_uses_runtime_command_path(self) -> None:
         cli = self._build_cli(connected=True)

@@ -1973,15 +1973,64 @@ class BridgeCliParser:
 
     def _handle_runtime_command(self, tokens: List[str]) -> None:
         if len(tokens) < SPEC.count_two:
-            raise CliParseError("runtime requires activate [<profile>] or deactivate")
+            raise CliParseError(
+                "runtime requires activate [<profile>] [scope all|scope group <group>] or deactivate"
+            )
         action = tokens[SPEC.count_one].lower()
         if action == SPEC.cmd_activate_profile:
-            self._reject_extra(tokens, SPEC.count_three if len(tokens) >= SPEC.count_three else SPEC.count_two, CMD_RUNTIME)
+            if len(tokens) == SPEC.count_two:
+                return
+            index = SPEC.count_two
+            if tokens[index].lower() == "scope":
+                self._require(
+                    tokens,
+                    SPEC.count_four,
+                    "runtime activate scope requires all or group <group>",
+                )
+                scope_mode = tokens[SPEC.count_three].lower()
+                if scope_mode == "all":
+                    self._reject_extra(tokens, SPEC.count_four, CMD_RUNTIME)
+                    return
+                if scope_mode == CMD_GROUP:
+                    self._require(
+                        tokens,
+                        SPEC.count_five,
+                        "runtime activate scope group requires <group>",
+                    )
+                    self._reject_extra(tokens, SPEC.count_five, CMD_RUNTIME)
+                    return
+                raise CliParseError("runtime activate scope requires all or group <group>")
+            index = SPEC.count_three
+            if len(tokens) == index:
+                return
+            if tokens[index].lower() != "scope":
+                self._reject_extra(tokens, index, CMD_RUNTIME)
+                return
+            self._require(
+                tokens,
+                SPEC.count_five,
+                "runtime activate scope requires all or group <group>",
+            )
+            scope_mode = tokens[SPEC.count_four].lower()
+            if scope_mode == "all":
+                self._reject_extra(tokens, SPEC.count_five, CMD_RUNTIME)
+                return
+            if scope_mode == CMD_GROUP:
+                self._require(
+                    tokens,
+                    6,
+                    "runtime activate scope group requires <group>",
+                )
+                self._reject_extra(tokens, 6, CMD_RUNTIME)
+                return
+            raise CliParseError("runtime activate scope requires all or group <group>")
             return
         if action == "deactivate":
             self._reject_extra(tokens, SPEC.count_two, CMD_RUNTIME)
             return
-        raise CliParseError("runtime requires activate [<profile>] or deactivate")
+        raise CliParseError(
+            "runtime requires activate [<profile>] [scope all|scope group <group>] or deactivate"
+        )
 
     def _handle_config_command(self, tokens: List[str]) -> None:
         if len(tokens) < SPEC.count_three or tokens[SPEC.count_one].lower() != SPEC.cmd_push:

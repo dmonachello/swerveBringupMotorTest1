@@ -93,6 +93,7 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_DEVICE = "device";
   private static final String JSON_KEY_SKIPPED_MEMBERS = "skippedMembers";
   private static final String JSON_KEY_ENABLED = "enabled";
+  private static final String JSON_KEY_IN_SCOPE = "inScope";
   private static final String JSON_KEY_INSTANTIATED = "instantiated";
   private static final String JSON_KEY_PRESENCE_CONF = "presenceConfidence";
   private static final String JSON_KEY_LIFECYCLE_STATE = "lifecycleState";
@@ -108,6 +109,12 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_ATTACHMENTS = "attachments";
   private static final String MESSAGE_RUNTIME_INACTIVE_ACTIVATE =
       "Runtime inactive. Click Runtime Activate.";
+  private static final String MESSAGE_GROUP_TEST_NO_SELECTED =
+      "Group test blocked: no selected test.";
+  private static final String MESSAGE_GROUP_TEST_OUTSIDE_GROUP_PREFIX =
+      "Group test blocked: selected test requires device(s) outside group: ";
+  private static final String MESSAGE_GROUP_TEST_NOT_TESTABLE_PREFIX =
+      "Group test blocked: selected test requires non-testable device(s): ";
   private static final String MESSAGE_ACTIVE_PRESENCE_PROBE_UNAVAILABLE =
       "Active presence probe unavailable.";
   private static final String JSON_KEY_MOTOR_CURRENT_A = "motorCurrentA";
@@ -206,6 +213,17 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_SELECTED_PROFILE = "selectedProfile";
   private static final String JSON_KEY_ACTIVE_RUNTIME_PROFILE = "activeRuntimeProfile";
   private static final String JSON_KEY_RUNTIME_ACTIVE = "runtimeActive";
+  private static final String JSON_KEY_REQUESTED_SCOPE_MODE = "requestedScopeMode";
+  private static final String JSON_KEY_REQUESTED_SCOPE_GROUP = "requestedScopeGroup";
+  private static final String JSON_KEY_APPLIED_SCOPE_MODE = "appliedScopeMode";
+  private static final String JSON_KEY_APPLIED_SCOPE_GROUP = "appliedScopeGroup";
+  private static final String JSON_KEY_REQUESTED_SCOPE = "requestedScope";
+  private static final String JSON_KEY_APPLIED_SCOPE = "appliedScope";
+  private static final String JSON_KEY_SCOPE_LOCKED = "scopeLocked";
+  private static final String JSON_KEY_ACTIVE_GROUP_EDIT_LOCKED = "activeGroupEditLocked";
+  private static final String JSON_KEY_SCOPE_MEMBERS = "scopeMembers";
+  private static final String JSON_KEY_PENDING_SCOPE_ADDITIONS = "pendingScopeAdditions";
+  private static final String JSON_KEY_PENDING_SCOPE_REMOVALS = "pendingScopeRemovals";
   private static final String JSON_KEY_DISCOVER_THRESHOLD = "discoverThreshold";
   private static final String JSON_KEY_LOST_PRESENCE_THRESHOLD =
       "lostPresenceThreshold";
@@ -515,8 +533,8 @@ public class BridgeUiCommandHandler {
           }
 
           @Override
-          public void activateSelectedProfile() {
-            runtime.activateSelectedProfile(TEXT_PROFILE_ACTIVATE_RESET_REASON);
+          public void activateSelectedProfile(String scopeMode, String groupName) {
+            runtime.activateSelectedProfile(TEXT_PROFILE_ACTIVATE_RESET_REASON, scopeMode, groupName);
           }
 
           @Override
@@ -552,6 +570,16 @@ public class BridgeUiCommandHandler {
           @Override
           public String getActiveRuntimeProfileLabel() {
             return BringupUtil.getActiveRuntimeProfileLabel();
+          }
+
+          @Override
+          public String getRequestedScopeMode() {
+            return runtime.getRequestedScopeMode();
+          }
+
+          @Override
+          public String getRequestedScopeGroup() {
+            return runtime.getRequestedScopeGroup();
           }
 
           @Override
@@ -834,8 +862,8 @@ public class BridgeUiCommandHandler {
       }
 
       @Override
-      public void runSelectedBringupTest() {
-        runtime.runSelectedTest();
+      public void runGroupBringupTest(String groupName, String testName, BridgeUiCommandResult result) {
+        BridgeUiCommandHandler.this.runGroupBringupTest(groupName, testName, result);
       }
 
       @Override
@@ -1958,10 +1986,12 @@ public class BridgeUiCommandHandler {
 
   /**
    * NAME
-   *   selectNextReadyActiveCandidate - Select next ready device by active profile order.
+   *   selectNextReadyActiveCandidate - Select next eligible device by profile order.
    */
   private ActiveNextCandidate selectNextReadyActiveCandidate(List<String> warnings) {
-    List<BringupUtil.DeviceEntry> entries = BringupUtil.getActiveDevices();
+    List<BringupUtil.DeviceEntry> entries = BringupUtil.isProfileActive()
+        ? BringupUtil.getActiveDevices()
+        : BringupUtil.getSelectedDevicesSorted();
     if (entries == null || entries.isEmpty()) {
       return null;
     }
@@ -1981,7 +2011,7 @@ public class BridgeUiCommandHandler {
       if (!PROFILE_DEVICE_TYPE_MOTOR.equalsIgnoreCase(profileType)) {
         continue;
       }
-      if (!isDeviceTotallyReady(label)) {
+      if (!isDeviceEligibleForActiveGroup(label)) {
         warnings.add(WARNING_SKIPPED_PREFIX + label);
         continue;
       }
@@ -1993,16 +2023,14 @@ public class BridgeUiCommandHandler {
 
   /**
    * NAME
-   *   isDeviceTotallyReady - Check readiness for active-group operations.
+   *   isDeviceEligibleForActiveGroup - Check whether a profile device may be staged into active-group.
    */
-  private boolean isDeviceTotallyReady(String label) {
+  private boolean isDeviceEligibleForActiveGroup(String label) {
     if (label == null || label.isBlank()) {
       return false;
     }
-    runtime.refreshDeviceLifecycle(System.currentTimeMillis());
-    DeviceLifecycleRegistry.DeviceLifecycleView lifecycle =
-        runtime.getDeviceLifecycle().viewForLabel(label);
-    return lifecycle != null && lifecycle.testable;
+    String configuredType = BringupUtil.getConfiguredDeviceTypeByLabel(label);
+    return PROFILE_DEVICE_TYPE_MOTOR.equalsIgnoreCase(configuredType);
   }
 
   /**
@@ -2793,6 +2821,105 @@ public class BridgeUiCommandHandler {
 
   /**
    * NAME
+   *   runGroupBringupTest - Execute the selected test under an explicit group context.
+   *
+   * PARAMETERS
+   *   groupName - Target runtime group name.
+   *   testName - Optional test name to select before running.
+   *   result - Mutable command result payload.
+   */
+  private void runGroupBringupTest(
+      String groupName,
+      String testName,
+      BridgeUiCommandResult result) {
+    if (result == null) {
+      return;
+    }
+    if (!runtime.isRuntimeReady()) {
+      result.ok = false;
+      result.message = MESSAGE_RUNTIME_INACTIVE_ACTIVATE;
+      result.outText = result.message;
+      return;
+    }
+    BridgeGroupManager.Group group = bridgeGroups().getGroup(groupName);
+    if (group == null) {
+      result.ok = false;
+      result.message = "Group not found: " + groupName;
+      result.outText = result.message;
+      return;
+    }
+    if (testName != null && !testName.isBlank() && !runtime.selectTestByName(testName)) {
+      result.ok = false;
+      result.message = "Test not found: " + testName;
+      result.outText = result.message;
+      return;
+    }
+    List<String> requiredDevices = core().getSelectedBringupTestRequiredDevices();
+    String selectedTestName = core().getSelectedBringupTestName();
+    if ((selectedTestName == null || selectedTestName.isBlank()) && requiredDevices.isEmpty()) {
+      result.ok = false;
+      result.message = MESSAGE_GROUP_TEST_NO_SELECTED;
+      result.outText = result.message;
+      return;
+    }
+    java.util.Set<String> enabledMembers = new java.util.LinkedHashSet<>();
+    for (BridgeGroupManager.MemberState member : group.members.values()) {
+      if (member == null || member.label == null || member.label.isBlank() || !member.enabled) {
+        continue;
+      }
+      enabledMembers.add(member.label.trim().toLowerCase(java.util.Locale.ROOT));
+    }
+    List<String> outsideGroup = new ArrayList<>();
+    List<String> notTestable = new ArrayList<>();
+    for (String label : requiredDevices) {
+      if (label == null || label.isBlank()) {
+        continue;
+      }
+      String normalized = label.trim().toLowerCase(java.util.Locale.ROOT);
+      if (!enabledMembers.contains(normalized)) {
+        outsideGroup.add(label);
+        continue;
+      }
+      DeviceLifecycleRegistry.DeviceLifecycleView lifecycle =
+          runtime.getDeviceLifecycle().viewForLabel(label);
+      if (lifecycle == null || !lifecycle.testable) {
+        String reason =
+            lifecycle != null && lifecycle.notTestableReason != null && !lifecycle.notTestableReason.isBlank()
+                ? lifecycle.notTestableReason
+                : "not testable";
+        notTestable.add(label + " (" + reason + ")");
+      }
+    }
+    if (!outsideGroup.isEmpty()) {
+      result.ok = false;
+      result.message = MESSAGE_GROUP_TEST_OUTSIDE_GROUP_PREFIX + String.join(", ", outsideGroup);
+      result.outText = result.message;
+      return;
+    }
+    if (!notTestable.isEmpty()) {
+      result.ok = false;
+      result.message = MESSAGE_GROUP_TEST_NOT_TESTABLE_PREFIX + String.join(", ", notTestable);
+      result.outText = result.message;
+      return;
+    }
+    BringupCore.TestRunSnapshot snapshot = runtime.runSelectedTest();
+    if ("running".equals(snapshot.state)) {
+      result.ok = true;
+      result.message = "Test started.";
+      result.outText = result.message;
+      result.outJson = buildTestRunJson(snapshot).toString();
+      return;
+    }
+    result.ok = false;
+    result.message = snapshot.message != null && !snapshot.message.isBlank()
+        ? snapshot.message
+        : "Group test blocked.";
+    result.outText = result.message;
+    result.outJson = buildTestRunJson(snapshot).toString();
+  }
+
+  /**
+   * NAME
    *   buildStatusText - Build the show status text output.
    */
   private String buildStatusText() {
@@ -2804,6 +2931,13 @@ public class BridgeUiCommandHandler {
     sb.append("  activeRuntimeProfile=")
         .append(formatProfileValue(BringupUtil.getActiveRuntimeProfileLabel())).append('\n');
     sb.append("  runtimeActive=").append(runtime.isRuntimeReady()).append('\n');
+    sb.append("  requestedScope=")
+        .append(formatScopeLabel(runtime.getRequestedScopeMode(), runtime.getRequestedScopeGroup()))
+        .append('\n');
+    sb.append("  appliedScope=")
+        .append(formatScopeLabel(runtime.getAppliedScopeMode(), runtime.getAppliedScopeGroup()))
+        .append('\n');
+    sb.append("  scopeLocked=").append(runtime.isRuntimeReady()).append('\n');
     sb.append("  enabled=").append(DriverStation.isEnabled()).append('\n');
     sb.append("  estopped=").append(DriverStation.isEStopped()).append('\n');
     sb.append("  mode=").append(DriverStation.isAutonomous() ? "auto"
@@ -2834,6 +2968,18 @@ public class BridgeUiCommandHandler {
     root.addProperty(JSON_KEY_SELECTED_PROFILE, BringupUtil.getSelectedCanProfileLabel());
     root.addProperty(JSON_KEY_ACTIVE_RUNTIME_PROFILE, BringupUtil.getActiveRuntimeProfileLabel());
     root.addProperty(JSON_KEY_RUNTIME_ACTIVE, runtime.isRuntimeReady());
+    root.addProperty(JSON_KEY_REQUESTED_SCOPE_MODE, runtime.getRequestedScopeMode());
+    root.addProperty(JSON_KEY_REQUESTED_SCOPE_GROUP, runtime.getRequestedScopeGroup());
+    root.addProperty(JSON_KEY_APPLIED_SCOPE_MODE, runtime.getAppliedScopeMode());
+    root.addProperty(JSON_KEY_APPLIED_SCOPE_GROUP, runtime.getAppliedScopeGroup());
+    root.addProperty(
+        JSON_KEY_REQUESTED_SCOPE,
+        formatScopeLabel(runtime.getRequestedScopeMode(), runtime.getRequestedScopeGroup()));
+    root.addProperty(
+        JSON_KEY_APPLIED_SCOPE,
+        formatScopeLabel(runtime.getAppliedScopeMode(), runtime.getAppliedScopeGroup()));
+    root.addProperty(JSON_KEY_SCOPE_LOCKED, runtime.isRuntimeReady());
+    root.addProperty(JSON_KEY_ACTIVE_GROUP_EDIT_LOCKED, runtime.isRuntimeReady());
     root.addProperty("enabled", DriverStation.isEnabled());
     root.addProperty("estopped", DriverStation.isEStopped());
     root.addProperty("mode", DriverStation.isAutonomous() ? "auto"
@@ -3226,6 +3372,10 @@ public class BridgeUiCommandHandler {
     root.addProperty(JSON_KEY_SELECTED_PROFILE, BringupUtil.getSelectedCanProfileLabel());
     root.addProperty(JSON_KEY_ACTIVE_RUNTIME_PROFILE, BringupUtil.getActiveRuntimeProfileLabel());
     root.addProperty(JSON_KEY_RUNTIME_ACTIVE, runtime.isRuntimeReady());
+    root.addProperty(JSON_KEY_REQUESTED_SCOPE_MODE, runtime.getRequestedScopeMode());
+    root.addProperty(JSON_KEY_REQUESTED_SCOPE_GROUP, runtime.getRequestedScopeGroup());
+    root.addProperty(JSON_KEY_APPLIED_SCOPE_MODE, runtime.getAppliedScopeMode());
+    root.addProperty(JSON_KEY_APPLIED_SCOPE_GROUP, runtime.getAppliedScopeGroup());
     root.addProperty(
         JSON_KEY_DISCOVER_THRESHOLD,
         BringupUtil.getProfileDiscoverThreshold(
@@ -3244,6 +3394,9 @@ public class BridgeUiCommandHandler {
         : DriverStation.isTeleop() ? "teleop"
         : DriverStation.isTest() ? "test" : "disabled");
     root.add(JSON_KEY_SAFETY_LATCH, buildSafetyLatchJson());
+    root.add(JSON_KEY_SCOPE_MEMBERS, buildStringArray(runtime.getAppliedScopeMembers()));
+    root.add(JSON_KEY_PENDING_SCOPE_ADDITIONS, buildStringArray(runtime.getPendingScopeAdditions()));
+    root.add(JSON_KEY_PENDING_SCOPE_REMOVALS, buildStringArray(runtime.getPendingScopeRemovals()));
     JsonArray groups = new JsonArray();
     for (BridgeGroupManager.Group group : bridgeGroups().getGroups()) {
       JsonObject g = buildGroupJson(group);
@@ -3503,6 +3656,8 @@ public class BridgeUiCommandHandler {
           JSON_KEY_INSTANTIATED,
           lifecycle != null ? lifecycle.lifecycleState.startsWith("instantiated") : snap != null);
       if (lifecycle != null) {
+        obj.addProperty(JSON_KEY_IN_SCOPE, lifecycle.lifecycleState.contains("scope")
+            || lifecycle.lifecycleState.startsWith("instantiated"));
         obj.addProperty(JSON_KEY_PRESENCE_CONF, lifecycle.presenceScore);
         obj.addProperty(JSON_KEY_LIFECYCLE_STATE, lifecycle.lifecycleState);
         obj.addProperty(JSON_KEY_TESTABLE, lifecycle.testable);
@@ -3512,6 +3667,9 @@ public class BridgeUiCommandHandler {
         obj.addProperty(JSON_KEY_LAST_EVENT, lifecycle.lastEvent);
         obj.addProperty(JSON_KEY_LAST_TRANSITION_TIME_MS, lifecycle.lastTransitionTimeMs);
         obj.addProperty(JSON_KEY_NOT_TESTABLE_REASON, lifecycle.notTestableReason);
+      }
+      if (lifecycle == null) {
+        obj.addProperty(JSON_KEY_IN_SCOPE, false);
       }
       if (snap != null) {
         if (lifecycle == null) {
@@ -3778,6 +3936,28 @@ public class BridgeUiCommandHandler {
     }
     for (int idx = INDEX_START; idx < values.length; idx++) {
       array.add(values[idx]);
+    }
+    return array;
+  }
+
+  private String formatScopeLabel(String scopeMode, String scopeGroup) {
+    if ("group".equalsIgnoreCase(scopeMode)
+        && scopeGroup != null
+        && !scopeGroup.isBlank()) {
+      return "group:" + scopeGroup.trim();
+    }
+    return "all";
+  }
+
+  private JsonArray buildStringArray(List<String> values) {
+    JsonArray array = new JsonArray();
+    if (values == null) {
+      return array;
+    }
+    for (String value : values) {
+      if (value != null && !value.isBlank()) {
+        array.add(value);
+      }
     }
     return array;
   }

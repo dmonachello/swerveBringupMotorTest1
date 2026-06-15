@@ -97,6 +97,70 @@ class BridgeUiProfileCommandsTest {
   }
 
   @Test
+  void runtimeActivatePassesScopeAllWithoutGroup() {
+    ProfileDeps deps = new ProfileDeps();
+    deps.profileActive = true;
+    deps.runtimeActivationAllowed = true;
+    deps.activeRuntimeProfile = "beta";
+    deps.selectedProfileLabel = "beta";
+    deps.scopeArg = "all";
+    BridgeUiProfileCommands commands = new BridgeUiProfileCommands(deps);
+    JsonObject args = new JsonObject();
+    args.addProperty("scope", "all");
+    BridgeUiIngressPolicy.Ingress ingress = new BridgeUiIngressPolicy.Ingress(
+        CMD_RUNTIME_ACTIVATE,
+        args,
+        "clientA",
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        false);
+
+    BridgeUiCommandResult result = commands.execute(ingress, 0.0, false);
+
+    assertTrue(result.ok);
+    assertEquals("all", deps.requestedScopeMode);
+    assertEquals("", deps.requestedScopeGroup);
+  }
+
+  @Test
+  void runtimeActivatePassesGroupScopeAndGroupName() {
+    ProfileDeps deps = new ProfileDeps();
+    deps.profileActive = true;
+    deps.runtimeActivationAllowed = true;
+    deps.activeRuntimeProfile = "beta";
+    deps.selectedProfileLabel = "beta";
+    deps.scopeModeArg = "group";
+    deps.groupArg = "motors";
+    BridgeUiProfileCommands commands = new BridgeUiProfileCommands(deps);
+    JsonObject args = new JsonObject();
+    args.addProperty("scopeMode", "group");
+    args.addProperty("group", "motors");
+    BridgeUiIngressPolicy.Ingress ingress = new BridgeUiIngressPolicy.Ingress(
+        CMD_RUNTIME_ACTIVATE,
+        args,
+        "clientA",
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        false);
+
+    BridgeUiCommandResult result = commands.execute(ingress, 0.0, false);
+
+    assertTrue(result.ok);
+    assertEquals("group", deps.requestedScopeMode);
+    assertEquals("motors", deps.requestedScopeGroup);
+  }
+
+  @Test
   void runtimeActivateFailsClearlyWhenNoProfileIsSelected() {
     ProfileDeps deps = new ProfileDeps();
     deps.runtimeActivationAllowed = true;
@@ -259,10 +323,27 @@ class BridgeUiProfileCommandsTest {
     private String activeRuntimeProfile = "";
     private String selectedProfileLabel = "alpha";
     private String activeProfileLabel = "alpha";
+    private String requestedScopeMode = "all";
+    private String requestedScopeGroup = "";
+    private String scopeArg;
+    private String scopeModeArg;
+    private String groupArg;
 
     @Override
     public String parseUiArgString(JsonObject args, String key) {
-      return nextName;
+      if ("name".equals(key)) {
+        return nextName;
+      }
+      if ("scope".equals(key)) {
+        return scopeArg;
+      }
+      if ("scopeMode".equals(key)) {
+        return scopeModeArg;
+      }
+      if ("group".equals(key)) {
+        return groupArg;
+      }
+      return null;
     }
 
     @Override
@@ -272,7 +353,12 @@ class BridgeUiProfileCommandsTest {
     public void prepareActivationForSelectedProfile() {}
 
     @Override
-    public void activateSelectedProfile() {}
+    public void activateSelectedProfile(String scopeMode, String groupName) {
+      if (scopeMode != null && !scopeMode.isBlank()) {
+        requestedScopeMode = scopeMode;
+      }
+      requestedScopeGroup = groupName != null ? groupName : "";
+    }
 
     @Override
     public void deactivateActiveProfile() {
@@ -307,6 +393,16 @@ class BridgeUiProfileCommandsTest {
     @Override
     public String getActiveRuntimeProfileLabel() {
       return activeRuntimeProfile;
+    }
+
+    @Override
+    public String getRequestedScopeMode() {
+      return requestedScopeMode;
+    }
+
+    @Override
+    public String getRequestedScopeGroup() {
+      return requestedScopeGroup;
     }
 
     @Override
@@ -378,4 +474,3 @@ class BridgeUiProfileCommandsTest {
     }
   }
 }
-

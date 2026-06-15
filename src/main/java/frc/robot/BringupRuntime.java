@@ -17,6 +17,12 @@ import frc.robot.devices.DeviceUnit;
  */
 public final class BringupRuntime {
   private static final String COMMAND_RUN_TEST = "runTest";
+  private static final String SCOPE_MODE_ALL = "all";
+  private static final String SCOPE_MODE_GROUP = "group";
+  private static final String GROUP_ACTIVE = "active-group";
+  private static final String DEVICE_TYPE_PDH = "pdh";
+  private static final String DEVICE_TYPE_PDP = "pdp";
+  private static final String DEVICE_TYPE_ROBORIO = "roborio";
   private static final String TEXT_EMPTY = "";
 
   private final CanBusHealth canHealth;
@@ -27,6 +33,12 @@ public final class BringupRuntime {
       new BridgeGroupManager.SelectedState();
   private final SampledTelemetrySampler sampledTelemetry = new SampledTelemetrySampler();
   private final DeviceLifecycleRegistry deviceLifecycle = new DeviceLifecycleRegistry();
+  private String requestedScopeMode = SCOPE_MODE_ALL;
+  private String requestedScopeGroup = TEXT_EMPTY;
+  private String appliedScopeMode = SCOPE_MODE_ALL;
+  private String appliedScopeGroup = TEXT_EMPTY;
+  private List<String> appliedScopeMembers = new java.util.ArrayList<>();
+  private List<String> appliedInstantiationLabels = new java.util.ArrayList<>();
 
   private BringupCore core;
   private DiagnosticsReporter diagnostics;
@@ -136,10 +148,10 @@ public final class BringupRuntime {
     if (!BringupUtil.isProfileActive()) {
       return false;
     }
-    if (BringupUtil.getActiveDevicesSorted().isEmpty()) {
+    if (appliedInstantiationLabels.isEmpty()) {
       return true;
     }
-    return core != null && core.hasAllActiveDevicesCreated();
+    return core != null && core.hasAllScopedDevicesCreated(appliedInstantiationLabels);
   }
 
   /**
@@ -306,6 +318,14 @@ public final class BringupRuntime {
 
   /**
    * NAME
+   *   isTestRunning - Return whether a bringup test currently owns actuation.
+   */
+  public boolean isTestRunning() {
+    return core != null && core.isTestRunning();
+  }
+
+  /**
+   * NAME
    *   printNextTestReport - Queue the selected test report.
    */
   public void printNextTestReport() {
@@ -464,7 +484,7 @@ public final class BringupRuntime {
   public void resetAndInstantiateForProfile(String reason) {
     resetForProfile(reason);
     if (core != null) {
-      core.reloadActiveProfileRuntime(reason);
+      core.reloadActiveProfileRuntime(reason, appliedInstantiationLabels);
     }
   }
 
@@ -531,14 +551,51 @@ public final class BringupRuntime {
    *   reason - Reset reason label.
    */
   public void activateSelectedProfile(String reason) {
+    activateSelectedProfile(reason, requestedScopeMode, requestedScopeGroup);
+  }
+
+  /**
+   * NAME
+   *   activateSelectedProfile - Activate selected profile and rebuild runtime under an explicit scope.
+   *
+   * PARAMETERS
+   *   reason - Reset reason label.
+   *   scopeMode - Requested scope mode (`all` or `group`).
+   *   scopeGroup - Requested group name when scope mode is `group`.
+   */
+  public void activateSelectedProfile(String reason, String scopeMode, String scopeGroup) {
+    requestedScopeMode = normalizeScopeMode(scopeMode);
+    requestedScopeGroup = normalizeScopeGroup(requestedScopeMode, scopeGroup);
     if (isSelectedProfileRuntimeReady()) {
-      return;
+      if (scopeMatchesRequested()) {
+        return;
+      }
     }
     BringupUtil.prepareActivationForSelectedProfile();
     BringupUtil.activateSelectedProfile();
     if (BringupUtil.isProfileActive()) {
+      applyRequestedScopeState(true);
       resetAndInstantiateForProfile(reason);
     }
+  }
+
+  /**
+   * NAME
+   *   applyCurrentScope - Reconcile the current runtime to the requested scope.
+   *
+   * PARAMETERS
+   *   reason - Reset reason label.
+   *
+   * RETURNS
+   *   True when the runtime ends in a ready state for the requested scope.
+   */
+  public boolean applyCurrentScope(String reason) {
+    if (!BringupUtil.isProfileActive()) {
+      return false;
+    }
+    applyRequestedScopeState(false);
+    resetAndInstantiateForProfile(reason);
+    return isRuntimeReady();
   }
 
   /**
@@ -577,6 +634,8 @@ public final class BringupRuntime {
     if (diagnostics != null) {
       diagnostics.resetState();
     }
+    appliedScopeMembers = new java.util.ArrayList<>();
+    appliedInstantiationLabels = new java.util.ArrayList<>();
     BringupUtil.validateCanIds(BringupUtil.getSelectedDevicesSorted());
   }
 
@@ -607,11 +666,19 @@ public final class BringupRuntime {
     java.util.Map<String, Boolean> instantiatedByLabel = new java.util.LinkedHashMap<>();
     java.util.Map<String, Boolean> inScopeByLabel = new java.util.LinkedHashMap<>();
     boolean runtimeActive = BringupUtil.isProfileActive();
+    java.util.Set<String> scopedLabels = new java.util.LinkedHashSet<>();
+    for (String label : currentInstantiationLabels()) {
+      String normalized = normalizeLabel(label);
+      if (!normalized.isBlank()) {
+        scopedLabels.add(normalized);
+      }
+    }
     for (BringupUtil.DeviceEntry entry : entries) {
       if (entry == null || entry.label == null || entry.label.isBlank()) {
         continue;
       }
-      inScopeByLabel.put(entry.label.trim().toLowerCase(), runtimeActive);
+      String normalized = normalizeLabel(entry.label);
+      inScopeByLabel.put(normalized, runtimeActive && scopedLabels.contains(normalized));
     }
     if (core != null) {
       for (BringupUtil.DeviceEntry entry : entries) {
@@ -658,5 +725,194 @@ public final class BringupRuntime {
       diagnostics.setCore(core);
     }
     initializeDeviceLifecycle(System.currentTimeMillis());
+  }
+
+  public String getRequestedScopeMode() {
+    return requestedScopeMode;
+  }
+
+  public String getRequestedScopeGroup() {
+    return requestedScopeGroup;
+  }
+
+  public String getAppliedScopeMode() {
+    return appliedScopeMode;
+  }
+
+  public String getAppliedScopeGroup() {
+    return appliedScopeGroup;
+  }
+
+  public List<String> getAppliedScopeMembers() {
+    return new java.util.ArrayList<>(appliedScopeMembers);
+  }
+
+  public List<String> getAppliedInstantiationLabels() {
+    return new java.util.ArrayList<>(appliedInstantiationLabels);
+  }
+
+  public List<String> getDesiredScopeMembers() {
+    return resolveRequestedScopeMembers(BringupUtil.isProfileActive());
+  }
+
+  public List<String> getPendingScopeAdditions() {
+    java.util.List<String> pending = new java.util.ArrayList<>();
+    java.util.Set<String> applied = normalizeSet(appliedScopeMembers);
+    for (String label : getDesiredScopeMembers()) {
+      if (!applied.contains(normalizeLabel(label))) {
+        pending.add(label);
+      }
+    }
+    return pending;
+  }
+
+  public List<String> getPendingScopeRemovals() {
+    java.util.List<String> pending = new java.util.ArrayList<>();
+    java.util.Set<String> desired = normalizeSet(getDesiredScopeMembers());
+    for (String label : appliedScopeMembers) {
+      if (!desired.contains(normalizeLabel(label))) {
+        pending.add(label);
+      }
+    }
+    return pending;
+  }
+
+  private boolean scopeMatchesRequested() {
+    return requestedScopeMode.equals(appliedScopeMode)
+        && requestedScopeGroup.equals(appliedScopeGroup)
+        && normalizeSet(resolveRequestedScopeMembers(true)).equals(normalizeSet(appliedScopeMembers));
+  }
+
+  private void applyRequestedScopeState(boolean useActiveProfile) {
+    java.util.List<String> scopeMembers = resolveRequestedScopeMembers(useActiveProfile);
+    java.util.LinkedHashSet<String> instantiationLabels = new java.util.LinkedHashSet<>();
+    for (String label : scopeMembers) {
+      if (label != null && !label.isBlank()) {
+        instantiationLabels.add(label);
+      }
+    }
+    for (String label : resolveInfrastructureLabels(useActiveProfile)) {
+      if (label != null && !label.isBlank()) {
+        instantiationLabels.add(label);
+      }
+    }
+    appliedScopeMode = requestedScopeMode;
+    appliedScopeGroup = requestedScopeGroup;
+    appliedScopeMembers = new java.util.ArrayList<>(scopeMembers);
+    appliedInstantiationLabels = new java.util.ArrayList<>(instantiationLabels);
+  }
+
+  private java.util.List<String> resolveRequestedScopeMembers(boolean useActiveProfile) {
+    java.util.List<BringupUtil.DeviceEntry> entries =
+        useActiveProfile && BringupUtil.isProfileActive()
+            ? BringupUtil.getActiveDevicesSorted()
+            : BringupUtil.getSelectedDevicesSorted();
+    java.util.List<String> labels = new java.util.ArrayList<>();
+    if (SCOPE_MODE_ALL.equals(requestedScopeMode)) {
+      for (BringupUtil.DeviceEntry entry : entries) {
+        if (entry == null || entry.label == null || entry.label.isBlank()) {
+          continue;
+        }
+        labels.add(entry.label);
+      }
+      return labels;
+    }
+    BridgeGroupManager.Group group = bridgeGroups.getGroup(requestedScopeGroup);
+    if (group == null) {
+      return labels;
+    }
+    java.util.Set<String> available = new java.util.LinkedHashSet<>();
+    java.util.Map<String, String> labelByNormalized = new java.util.LinkedHashMap<>();
+    for (BringupUtil.DeviceEntry entry : entries) {
+      if (entry == null || entry.label == null || entry.label.isBlank()) {
+        continue;
+      }
+      String normalized = normalizeLabel(entry.label);
+      available.add(normalized);
+      labelByNormalized.put(normalized, entry.label);
+    }
+    for (BridgeGroupManager.MemberState member : group.members.values()) {
+      if (member == null || member.label == null || member.label.isBlank() || !member.enabled) {
+        continue;
+      }
+      String normalized = normalizeLabel(member.label);
+      if (available.contains(normalized)) {
+        labels.add(labelByNormalized.getOrDefault(normalized, member.label));
+      }
+    }
+    return labels;
+  }
+
+  private java.util.List<String> resolveInfrastructureLabels(boolean useActiveProfile) {
+    java.util.List<BringupUtil.DeviceEntry> entries =
+        useActiveProfile && BringupUtil.isProfileActive()
+            ? BringupUtil.getActiveDevicesSorted()
+            : BringupUtil.getSelectedDevicesSorted();
+    java.util.List<String> labels = new java.util.ArrayList<>();
+    for (BringupUtil.DeviceEntry entry : entries) {
+      if (entry == null || entry.label == null || entry.label.isBlank()) {
+        continue;
+      }
+      String configuredType = BringupUtil.getConfiguredDeviceTypeByLabel(entry.label);
+      if (configuredType == null) {
+        continue;
+      }
+      if (DEVICE_TYPE_PDH.equalsIgnoreCase(configuredType)
+          || DEVICE_TYPE_PDP.equalsIgnoreCase(configuredType)
+          || DEVICE_TYPE_ROBORIO.equalsIgnoreCase(configuredType)) {
+        labels.add(entry.label);
+      }
+    }
+    return labels;
+  }
+
+  private java.util.List<String> currentInstantiationLabels() {
+    return runtimeActiveScopeKnown() ? appliedInstantiationLabels : java.util.Collections.emptyList();
+  }
+
+  private boolean runtimeActiveScopeKnown() {
+    return BringupUtil.isProfileActive() && appliedInstantiationLabels != null;
+  }
+
+  private String normalizeScopeMode(String scopeMode) {
+    if (scopeMode == null || scopeMode.isBlank()) {
+      return SCOPE_MODE_ALL;
+    }
+    String normalized = scopeMode.trim().toLowerCase();
+    if ("active-group".equals(normalized)) {
+      return SCOPE_MODE_GROUP;
+    }
+    if ("group".equals(normalized)) {
+      return SCOPE_MODE_GROUP;
+    }
+    return SCOPE_MODE_ALL;
+  }
+
+  private String normalizeScopeGroup(String scopeMode, String scopeGroup) {
+    if (!SCOPE_MODE_GROUP.equals(scopeMode)) {
+      return TEXT_EMPTY;
+    }
+    if (scopeGroup == null || scopeGroup.isBlank()) {
+      return GROUP_ACTIVE;
+    }
+    return scopeGroup.trim();
+  }
+
+  private String normalizeLabel(String label) {
+    return label != null ? label.trim().toLowerCase() : TEXT_EMPTY;
+  }
+
+  private java.util.Set<String> normalizeSet(List<String> labels) {
+    java.util.LinkedHashSet<String> normalized = new java.util.LinkedHashSet<>();
+    if (labels == null) {
+      return normalized;
+    }
+    for (String label : labels) {
+      String key = normalizeLabel(label);
+      if (!key.isBlank()) {
+        normalized.add(key);
+      }
+    }
+    return normalized;
   }
 }

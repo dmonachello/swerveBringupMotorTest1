@@ -1493,9 +1493,13 @@ MESSAGE_HINT_PROFILE = (
 MESSAGE_HINT_PROFILES = (
     "profiles init | profiles push <path> [--activate <profile>] | profiles reload | profiles activate <profile>"
 )
-MESSAGE_HINT_RUNTIME = "runtime activate [<profile>] | runtime deactivate"
+MESSAGE_HINT_RUNTIME = (
+    "runtime activate [<profile>] [scope all|scope group <group>] | runtime deactivate"
+)
 MESSAGE_ERR_PROFILES_ACTIVATE = "ERROR: profiles activate requires a profile name."
-MESSAGE_ERR_RUNTIME_ACTION = "ERROR: runtime requires activate [<profile>] or deactivate."
+MESSAGE_ERR_RUNTIME_ACTION = (
+    "ERROR: runtime requires activate [<profile>] [scope all|scope group <group>] or deactivate."
+)
 MESSAGE_ERR_RUNTIME_ACTIVATE_SEND = "ERROR: Failed to send runtime activate."
 MESSAGE_ERR_RUNTIME_DEACTIVATE_SEND = "ERROR: Failed to send runtime deactivate."
 MESSAGE_ERR_PROFILES_ACTIVATE_SEND = "ERROR: Failed to send profile activate command."
@@ -1794,6 +1798,10 @@ HELP_TOPIC_RUNTIME = "runtime"
 HELP_RUNTIME_TEXT = (
     "runtime activate [<profile>]\n"
     "  Activate the selected profile runtime, or select and activate <profile>.\n"
+    "runtime activate [<profile>] scope all\n"
+    "  Activate using the full profile scope.\n"
+    "runtime activate [<profile>] scope group <group>\n"
+    "  Activate using one named group, including active-group.\n"
     "runtime deactivate\n"
     "  Deactivate the active runtime without changing the selected profile."
 )
@@ -10452,8 +10460,32 @@ class BridgeCli:
             return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
         action = tokens[COUNT_ONE].lower()
         if action == CMD_ACTIVATE_PROFILE:
-            profile_name = tokens[COUNT_TWO] if len(tokens) >= COUNT_THREE else EMPTY_STRING
-            return self._runtime_activate(profile_name)
+            profile_name = EMPTY_STRING
+            scope_mode = EMPTY_STRING
+            group_name = EMPTY_STRING
+            if len(tokens) >= COUNT_THREE:
+                if tokens[COUNT_TWO].lower() == KEY_SCOPE:
+                    scope_index = COUNT_TWO
+                else:
+                    profile_name = tokens[COUNT_TWO]
+                    scope_index = COUNT_THREE
+                if len(tokens) > scope_index:
+                    if tokens[scope_index].lower() != KEY_SCOPE:
+                        print(MESSAGE_ERR_RUNTIME_ACTION)
+                        return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
+                    if len(tokens) <= scope_index + COUNT_ONE:
+                        print(MESSAGE_ERR_RUNTIME_ACTION)
+                        return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+                    scope_mode = tokens[scope_index + COUNT_ONE].lower()
+                    if scope_mode == CMD_GROUP:
+                        if len(tokens) <= scope_index + COUNT_TWO:
+                            print(MESSAGE_ERR_RUNTIME_ACTION)
+                            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+                        group_name = tokens[scope_index + COUNT_TWO]
+                    elif scope_mode != CMD_ALL:
+                        print(MESSAGE_ERR_RUNTIME_ACTION)
+                        return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
+            return self._runtime_activate(profile_name, scope_mode, group_name)
         if action == CMD_DISABLE:
             return self._runtime_deactivate()
         if action == "deactivate":
@@ -10461,16 +10493,25 @@ class BridgeCli:
         print(MESSAGE_ERR_RUNTIME_ACTION)
         return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
 
-    def _runtime_activate(self, profile_name: str = EMPTY_STRING) -> StatusResult:
+    def _runtime_activate(
+        self,
+        profile_name: str = EMPTY_STRING,
+        scope_mode: str = EMPTY_STRING,
+        group_name: str = EMPTY_STRING,
+    ) -> StatusResult:
         """
         NAME
             _runtime_activate - Activate the selected or named runtime profile on the robot.
         """
         if not profile_name:
             profile_name = EMPTY_STRING
+        if not scope_mode:
+            scope_mode = EMPTY_STRING
+        if not group_name:
+            group_name = EMPTY_STRING
         if not self._session.is_connected():
             return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
-        seq = runtime_activate(self._session, profile_name)
+        seq = runtime_activate(self._session, profile_name, scope_mode, group_name)
         if seq is None:
             print(MESSAGE_ERR_RUNTIME_ACTIVATE_SEND)
             return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)

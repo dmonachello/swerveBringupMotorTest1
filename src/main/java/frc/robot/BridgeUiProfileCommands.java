@@ -22,6 +22,9 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
   private static final String CMD_SHOW_PROFILE = "showProfile";
 
   private static final String ARG_NAME = "name";
+  private static final String ARG_SCOPE = "scope";
+  private static final String ARG_SCOPE_MODE = "scopeMode";
+  private static final String ARG_GROUP = "group";
   private static final String ARG_JSON = "json";
   private static final String JSON_KEY_PROFILE = "profile";
   private static final String JSON_KEY_ACTIVE = "active";
@@ -80,7 +83,7 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
 
     void prepareActivationForSelectedProfile();
 
-    void activateSelectedProfile();
+    void activateSelectedProfile(String scopeMode, String groupName);
 
     void deactivateActiveProfile();
 
@@ -95,6 +98,10 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
     String getSelectedCanProfileLabel();
 
     String getActiveRuntimeProfileLabel();
+
+    String getRequestedScopeMode();
+
+    String getRequestedScopeGroup();
 
     String reloadProfilesFromJson();
 
@@ -199,6 +206,16 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
       return;
     }
     String profileName = dependencies.parseUiArgString(args, ARG_NAME);
+    String scopeMode = dependencies.parseUiArgString(args, ARG_SCOPE_MODE);
+    if (scopeMode == null || scopeMode.isBlank()) {
+      scopeMode = dependencies.parseUiArgString(args, ARG_SCOPE);
+    }
+    String groupName = dependencies.parseUiArgString(args, ARG_GROUP);
+    if (scopeMode != null
+        && scopeMode.equalsIgnoreCase("active-group")
+        && (groupName == null || groupName.isBlank())) {
+      groupName = "active-group";
+    }
     if (profileName != null && !profileName.isBlank()) {
       dependencies.selectCanProfile(profileName.trim());
     }
@@ -209,7 +226,7 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
       return;
     }
     dependencies.prepareActivationForSelectedProfile();
-    dependencies.activateSelectedProfile();
+    dependencies.activateSelectedProfile(scopeMode, groupName);
     if (dependencies.isRuntimeDeclaredActive()) {
       dependencies.runProfileActivateAction();
       result.message = String.format(TEXT_PROFILE_ACTIVATE_OK, dependencies.getActiveCanProfileLabel());
@@ -287,6 +304,14 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
     sb.append(String.format(
         TEXT_PROFILE_RUNTIME_ACTIVE_FMT,
         dependencies.isProfileActive())).append('\n');
+    sb.append("  requestedScope=")
+        .append(dependencies.getRequestedScopeMode());
+    if ("group".equalsIgnoreCase(dependencies.getRequestedScopeMode())
+        && dependencies.getRequestedScopeGroup() != null
+        && !dependencies.getRequestedScopeGroup().isBlank()) {
+      sb.append(":").append(dependencies.getRequestedScopeGroup());
+    }
+    sb.append('\n');
     sb.append(String.format(
         TEXT_PROFILE_DEFAULT_FMT,
         dependencies.getDefaultCanProfile())).append('\n');
@@ -300,6 +325,8 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
     info.addProperty(JSON_KEY_SELECTED, dependencies.getSelectedCanProfileLabel());
     info.addProperty(JSON_KEY_ACTIVE_RUNTIME, dependencies.getActiveRuntimeProfileLabel());
     info.addProperty(JSON_KEY_RUNTIME_ACTIVE, dependencies.isProfileActive());
+    info.addProperty("requestedScopeMode", dependencies.getRequestedScopeMode());
+    info.addProperty("requestedScopeGroup", dependencies.getRequestedScopeGroup());
     info.addProperty(JSON_KEY_DEFAULT, dependencies.getDefaultCanProfile());
     JsonArray available = new JsonArray();
     for (String name : names) {
@@ -337,4 +364,3 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
     return root;
   }
 }
-

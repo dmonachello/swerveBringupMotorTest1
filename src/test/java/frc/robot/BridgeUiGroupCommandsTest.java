@@ -24,6 +24,7 @@ class BridgeUiGroupCommandsTest {
   private static final String CMD_MANUAL_DEVICE_DUTY_CLEAR = "manualDeviceDutyClear";
   private static final String CMD_MANUAL_GROUP_DUTY_SET = "manualGroupDutySet";
   private static final String CMD_MANUAL_GROUP_DUTY_CLEAR = "manualGroupDutyClear";
+  private static final String CMD_GROUP_RUN_TEST = "groupRunTest";
   private static final String KEY_GROUP = "group";
   private static final String KEY_DEVICE = "device";
 
@@ -240,6 +241,7 @@ class BridgeUiGroupCommandsTest {
   @Test
   void groupAddDeviceAllowsMembershipAlongsideExistingGroup() {
     TestDeps deps = new TestDeps();
+    deps.runtimeActive = false;
     deps.bridgeGroups.createGroup(GROUP_MOTORS);
     deps.bridgeGroups.createGroup(GROUP_ACTIVE);
     deps.bridgeGroups.addDevice(GROUP_MOTORS, DEVICE_MOTOR_1, false);
@@ -273,6 +275,7 @@ class BridgeUiGroupCommandsTest {
   @Test
   void groupRemoveDeviceRemovesOnlyTargetGroupMembership() {
     TestDeps deps = new TestDeps();
+    deps.runtimeActive = false;
     deps.bridgeGroups.createGroup(GROUP_MOTORS);
     deps.bridgeGroups.createGroup(GROUP_ACTIVE);
     deps.bridgeGroups.addDevice(GROUP_MOTORS, DEVICE_MOTOR_1, false);
@@ -304,6 +307,126 @@ class BridgeUiGroupCommandsTest {
     assertFalse(deps.bridgeGroups.hasDevice(GROUP_ACTIVE, DEVICE_MOTOR_1));
   }
 
+  @Test
+  void groupRunTestUsesGroupScopedDependencyPath() {
+    TestDeps deps = new TestDeps();
+    deps.bridgeGroups.createGroup(GROUP_MOTORS);
+    BridgeUiGroupCommands commands = new BridgeUiGroupCommands(deps);
+    JsonObject args = new JsonObject();
+    args.addProperty(KEY_GROUP, GROUP_MOTORS);
+    args.addProperty(KEY_NAME, "twoMotorDsl");
+
+    BridgeUiCommandResult result =
+        commands.execute(ingress(CMD_GROUP_RUN_TEST, args), 0.0, false);
+
+    assertTrue(result.ok);
+    assertEquals(GROUP_MOTORS, deps.lastGroupRunName);
+    assertEquals("twoMotorDsl", deps.lastGroupRunTestName);
+  }
+
+  @Test
+  void activeAddRejectsWhileRuntimeIsActive() {
+    TestDeps deps = new TestDeps();
+    BridgeUiGroupCommands commands = new BridgeUiGroupCommands(deps);
+
+    BridgeUiCommandResult result =
+        commands.execute(ingress("activeAdd", new JsonObject()), 0.0, false);
+
+    assertFalse(result.ok);
+    assertEquals("Deactivate runtime to edit active-group membership.", result.message);
+  }
+
+  @Test
+  void groupAddDeviceRejectsActiveGroupEditWhileRuntimeIsActive() {
+    TestDeps deps = new TestDeps();
+    deps.bridgeGroups.createGroup(GROUP_ACTIVE);
+    deps.deviceByLabel.put(
+        DEVICE_MOTOR_1,
+        new BringupUtil.DeviceEntry(
+            DUTY_TEST_ID,
+            DUTY_TEST_MFG,
+            DUTY_TEST_DEVICE_TYPE,
+            "CAN",
+            DUTY_TEST_VENDOR,
+            DUTY_TEST_TYPE,
+            DEVICE_MOTOR_1,
+            DUTY_TEST_MOTOR,
+            null,
+            null,
+            null));
+    BridgeUiGroupCommands commands = new BridgeUiGroupCommands(deps);
+    JsonObject args = new JsonObject();
+    args.addProperty(KEY_GROUP, GROUP_ACTIVE);
+    args.addProperty(KEY_DEVICE, DEVICE_MOTOR_1);
+
+    BridgeUiCommandResult result =
+        commands.execute(ingress(CMD_GROUP_ADD_DEVICE, args), 0.0, false);
+
+    assertFalse(result.ok);
+    assertEquals("Deactivate runtime to edit active-group membership.", result.message);
+  }
+
+  @Test
+  void groupRemoveDeviceRejectsActiveGroupEditWhileRuntimeIsActive() {
+    TestDeps deps = new TestDeps();
+    deps.bridgeGroups.createGroup(GROUP_ACTIVE);
+    deps.bridgeGroups.addDevice(GROUP_ACTIVE, DEVICE_MOTOR_1, false);
+    deps.deviceByLabel.put(
+        DEVICE_MOTOR_1,
+        new BringupUtil.DeviceEntry(
+            DUTY_TEST_ID,
+            DUTY_TEST_MFG,
+            DUTY_TEST_DEVICE_TYPE,
+            "CAN",
+            DUTY_TEST_VENDOR,
+            DUTY_TEST_TYPE,
+            DEVICE_MOTOR_1,
+            DUTY_TEST_MOTOR,
+            null,
+            null,
+            null));
+    BridgeUiGroupCommands commands = new BridgeUiGroupCommands(deps);
+    JsonObject args = new JsonObject();
+    args.addProperty(KEY_GROUP, GROUP_ACTIVE);
+    args.addProperty(KEY_DEVICE, DEVICE_MOTOR_1);
+
+    BridgeUiCommandResult result =
+        commands.execute(ingress(CMD_GROUP_REMOVE_DEVICE, args), 0.0, false);
+
+    assertFalse(result.ok);
+    assertEquals("Deactivate runtime to edit active-group membership.", result.message);
+  }
+
+  @Test
+  void namedGroupEditsRemainAllowedWhileRuntimeIsActive() {
+    TestDeps deps = new TestDeps();
+    deps.bridgeGroups.createGroup(GROUP_MOTORS);
+    deps.deviceByLabel.put(
+        DEVICE_MOTOR_1,
+        new BringupUtil.DeviceEntry(
+            DUTY_TEST_ID,
+            DUTY_TEST_MFG,
+            DUTY_TEST_DEVICE_TYPE,
+            "CAN",
+            DUTY_TEST_VENDOR,
+            DUTY_TEST_TYPE,
+            DEVICE_MOTOR_1,
+            DUTY_TEST_MOTOR,
+            null,
+            null,
+            null));
+    BridgeUiGroupCommands commands = new BridgeUiGroupCommands(deps);
+    JsonObject args = new JsonObject();
+    args.addProperty(KEY_GROUP, GROUP_MOTORS);
+    args.addProperty(KEY_DEVICE, DEVICE_MOTOR_1);
+
+    BridgeUiCommandResult result =
+        commands.execute(ingress(CMD_GROUP_ADD_DEVICE, args), 0.0, false);
+
+    assertTrue(result.ok);
+    assertTrue(deps.bridgeGroups.hasDevice(GROUP_MOTORS, DEVICE_MOTOR_1));
+  }
+
   private static BridgeUiIngressPolicy.Ingress ingress(String name, JsonObject args) {
     return new BridgeUiIngressPolicy.Ingress(
         name,
@@ -331,6 +454,9 @@ class BridgeUiGroupCommandsTest {
     private String lastManualGroupName = EMPTY;
     private double lastManualGroupDuty = 0.0;
     private String lastManualGroupCleared = EMPTY;
+    private String lastGroupRunName = EMPTY;
+    private String lastGroupRunTestName = EMPTY;
+    private boolean runtimeActive = true;
 
     @Override
     public Boolean parseUiArgBoolean(JsonObject args, String key) {
@@ -466,7 +592,13 @@ class BridgeUiGroupCommandsTest {
     }
 
     @Override
-    public void runSelectedBringupTest() {}
+    public void runGroupBringupTest(String groupName, String testName, BridgeUiCommandResult result) {
+      lastGroupRunName = groupName;
+      lastGroupRunTestName = testName != null ? testName : EMPTY;
+      result.ok = true;
+      result.message = "Test started.";
+      result.outText = result.message;
+    }
 
     @Override
     public BridgeGroupManager.SelectedState getBridgeSelected() {
@@ -475,7 +607,7 @@ class BridgeUiGroupCommandsTest {
 
     @Override
     public boolean isRuntimeActive() {
-      return true;
+      return runtimeActive;
     }
 
     @Override

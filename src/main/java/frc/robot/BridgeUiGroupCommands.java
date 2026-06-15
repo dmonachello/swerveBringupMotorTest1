@@ -39,10 +39,13 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
   private static final String CMD_DEVICE_OVERRIDE_INSTANTIATE =
       "deviceOverrideInstantiate";
   private static final String CMD_DEVICE_OVERRIDE_CLEAR = "deviceOverrideClear";
+  private static final String GROUP_ACTIVE = "active-group";
 
   private static final String JSON_KEY_JSON = "json";
   private static final String MESSAGE_RUNTIME_ACTIVATE_REQUIRED =
       "Runtime inactive. Click Runtime Activate.";
+  private static final String MESSAGE_ACTIVE_GROUP_EDIT_LOCKED =
+      "Deactivate runtime to edit active-group membership.";
   private static final String MESSAGE_MANUAL_DUTY_DISABLED =
       "Manual duty blocked: robot disabled.";
   private static final String MESSAGE_MANUAL_DUTY_DISABLED_ESTOP =
@@ -136,7 +139,7 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
 
     boolean selectBringupTestByName(String name);
 
-    void runSelectedBringupTest();
+    void runGroupBringupTest(String groupName, String testName, BridgeUiCommandResult result);
 
     BridgeGroupManager.SelectedState getBridgeSelected();
 
@@ -204,9 +207,19 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
         break;
       }
       case CMD_ACTIVE_ADD:
+        if (dependencies.isRuntimeActive()) {
+          result.ok = false;
+          result.message = MESSAGE_ACTIVE_GROUP_EDIT_LOCKED;
+          break;
+        }
         dependencies.applyActiveAdd(result);
         break;
       case CMD_ACTIVE_NEXT:
+        if (dependencies.isRuntimeActive()) {
+          result.ok = false;
+          result.message = MESSAGE_ACTIVE_GROUP_EDIT_LOCKED;
+          break;
+        }
         dependencies.applyActiveNext(result);
         break;
       case CMD_SHOW_DEVICES: {
@@ -503,6 +516,11 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
       result.message = "groupAddDevice requires args.group and args.device.";
       return;
     }
+    if (isActiveGroupLocked(groupName)) {
+      result.ok = false;
+      result.message = MESSAGE_ACTIVE_GROUP_EDIT_LOCKED;
+      return;
+    }
     if (bridgeGroups.getGroup(groupName) == null) {
       result.ok = false;
       result.message = "Group not found: " + groupName;
@@ -548,6 +566,11 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
       result.message = "groupRemoveDevice requires args.group and args.device.";
       return;
     }
+    if (isActiveGroupLocked(groupName)) {
+      result.ok = false;
+      result.message = MESSAGE_ACTIVE_GROUP_EDIT_LOCKED;
+      return;
+    }
     BridgeGroupManager.Group group = bridgeGroups.getGroup(groupName);
     if (group == null) {
       result.ok = false;
@@ -576,6 +599,11 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
       result.message = commandName + " requires args.group and args.device.";
       return;
     }
+    if (isActiveGroupLocked(groupName)) {
+      result.ok = false;
+      result.message = MESSAGE_ACTIVE_GROUP_EDIT_LOCKED;
+      return;
+    }
     BridgeGroupManager.Group group = bridgeGroups.getGroup(groupName);
     if (group == null) {
       result.ok = false;
@@ -602,6 +630,10 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
     }
     result.message = "Member updated: " + deviceName;
     result.outText = result.message;
+  }
+
+  private boolean isActiveGroupLocked(String groupName) {
+    return dependencies.isRuntimeActive() && GROUP_ACTIVE.equalsIgnoreCase(groupName);
   }
 
   private void executeGroupBind(
@@ -708,17 +740,6 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
       return;
     }
     String groupTestName = dependencies.parseUiArgString(args, "name");
-    if (groupTestName != null && !groupTestName.isBlank()) {
-      boolean selected = dependencies.selectBringupTestByName(groupTestName);
-      if (!selected) {
-        result.ok = false;
-        result.message = "Test not found: " + groupTestName;
-        return;
-      }
-    }
-    dependencies.runSelectedBringupTest();
-    result.message = "Test started.";
-    result.outText = result.message;
+    dependencies.runGroupBringupTest(groupName, groupTestName, result);
   }
 }
-

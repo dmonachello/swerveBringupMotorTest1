@@ -61,7 +61,14 @@ from tools.common.json_io import read_json, write_json
 from tools.common.config_api import ConfigEditSession, ConfigRepository
 from tools.common.nt_labels import decode_label_from_nt, encode_label_for_nt
 from tools.common.paths import repo_root, tests_deploy_path
-from tools.common.profile_constants import KEY_DEFAULT_PROFILE, KEY_DSL_TESTS
+from tools.common.profile_constants import (
+    KEY_BRIDGE_BY_PROFILE,
+    KEY_BRIDGE_CONFIG,
+    KEY_DEFAULT_PROFILE,
+    KEY_DSL_TESTS,
+    KEY_GROUPS,
+    KEY_NAME,
+)
 from tools.common.tests_domain import collect_available_tests
 from tools.common.config_lifecycle import LocalConfigQueryService
 from tools.common.profiles import list_profile_names
@@ -176,6 +183,7 @@ TEST_LOG_FOLLOWUP_WINDOW_SEC = 4.0
 DEFAULT_RUNTIME_STATE_RATE_TEXT = "2"
 BUTTON_RUNTIME_ACTIVATE = "Runtime Activate"
 BUTTON_RUNTIME_DEACTIVATE = "Runtime Deactivate"
+LABEL_RUNTIME_SCOPE = "Runtime Scope"
 BUTTON_PUSH_CONFIG = "Push Config"
 BUTTON_DOWNLOAD_CONFIG = "Download Current Config"
 BUTTON_SHOW_RUNTIME_STATE = "Show Runtime State"
@@ -186,7 +194,7 @@ OUTPUT_PUSH_CANCELLED = "Config push cancelled."
 OUTPUT_DOWNLOAD_CANCELLED = "Config download cancelled."
 OUTPUT_PUSH_START_FMT = "PUSH {path} profile={profile}"
 OUTPUT_DOWNLOAD_START_FMT = "DOWNLOAD {path}"
-OUTPUT_RUNTIME_ACTIVATE_FMT = "CMD runtimeActivate \"{profile}\""
+OUTPUT_RUNTIME_ACTIVATE_FMT = "CMD runtimeActivate \"{profile}\" scope={scope}"
 OUTPUT_RUNTIME_DEACTIVATE = "CMD runtimeDeactivate"
 OUTPUT_GROUP_RUN_FMT = "CMD groupRunTest \"{group}\""
 OUTPUT_OWNER_REQUIRED = "Owning control client required. Use Reconnect UI Session to reclaim control."
@@ -203,6 +211,15 @@ GROUP_KEY_GROUP = "group"
 GROUP_KEY_MEMBERS = "members"
 GROUP_MEMBER_KEY_LABEL = "label"
 ACTIVE_GROUP_RESULT_COMMANDS = {"activeadd", "activenext"}
+RUNTIME_SCOPE_ALL_LABEL = "All"
+RUNTIME_SCOPE_GROUP_PREFIX = "Group: "
+RUNTIME_SCOPE_MODE_ALL = "all"
+RUNTIME_SCOPE_MODE_GROUP = "group"
+RUNTIME_SCOPE_LOCKED_TEXT = "Scope locked while runtime is active. Deactivate runtime to change scope."
+RUNTIME_ACTIVE_GROUP_LOCKED_TEXT = "Deactivate runtime to edit active-group membership."
+RUNTIME_SCOPE_STATUS_FMT = "Requested: {requested} | Applied: {applied} | {lock_state}"
+RUNTIME_SCOPE_LOCK_STATE_LOCKED = "locked"
+RUNTIME_SCOPE_LOCK_STATE_EDITABLE = "editable"
 MANUAL_DUTY_CMD_SET = "manualDeviceDutySet"
 MANUAL_DUTY_CMD_CLEAR = "manualDeviceDutyClear"
 MANUAL_GROUP_DUTY_CMD_SET = "manualGroupDutySet"
@@ -340,6 +357,7 @@ COLOR_KEY_SECTION_ANALYZER = "Analyzer Node"
 COLOR_KEY_PRESENCE_HIGH = "#2f7a2f"
 COLOR_KEY_PRESENCE_LOW = "#f59e0b"
 COLOR_KEY_PRESENCE_NONE = "#dc2626"
+COLOR_KEY_PRESENCE_OUT_OF_SCOPE = "#94a3b8"
 COLOR_KEY_VIS_ALL = "#16a34a"
 COLOR_KEY_VIS_SOME = "#f59e0b"
 COLOR_KEY_VIS_NONE = "#dc2626"
@@ -349,6 +367,7 @@ COLOR_KEY_ANALYZER_UNKNOWN = "#9ca3af"
 COLOR_KEY_TEXT_PRESENCE_HIGH = "Green: high confidence or recently seen."
 COLOR_KEY_TEXT_PRESENCE_LOW = "Amber: low confidence or stale (> 2s since last seen / last update)."
 COLOR_KEY_TEXT_PRESENCE_NONE = "Red: explicit missing / none."
+COLOR_KEY_TEXT_PRESENCE_OUT_OF_SCOPE = "Gray-blue: defined device is currently out of the applied runtime scope."
 COLOR_KEY_TEXT_VIS_ALL = "Green: visible on all available sources."
 COLOR_KEY_TEXT_VIS_SOME = "Amber: visible on some but not all sources."
 COLOR_KEY_TEXT_VIS_NONE = "Red: visible on no available sources."
@@ -945,6 +964,92 @@ def _load_tests(profile_name: str) -> List[str]:
     return []
 
 
+def _load_runtime_scope_choices(profile_name: str) -> List[str]:
+    """
+    NAME
+        _load_runtime_scope_choices - Build selectable runtime scope choices for one profile.
+    """
+    choices = [RUNTIME_SCOPE_ALL_LABEL, f"{RUNTIME_SCOPE_GROUP_PREFIX}{GROUP_ACTIVE_NAME}"]
+    if not profile_name or profile_name == PROFILE_NONE:
+        return choices
+    try:
+        payload = LocalConfigQueryService().load_canonical_payload()
+    except Exception:
+        return choices
+    bridge_config = payload.get(KEY_BRIDGE_CONFIG)
+    if not isinstance(bridge_config, dict):
+        return choices
+    by_profile = bridge_config.get(KEY_BRIDGE_BY_PROFILE)
+    if not isinstance(by_profile, dict):
+        return choices
+    profile_entry = by_profile.get(profile_name)
+    if not isinstance(profile_entry, dict):
+        return choices
+    groups = profile_entry.get(KEY_GROUPS)
+    if not isinstance(groups, list):
+        return choices
+    names: List[str] = []
+    for group in groups:
+        if not isinstance(group, dict):
+            continue
+        name = str(group.get(KEY_NAME, "")).strip()
+        if not name or name.lower() == GROUP_ACTIVE_NAME.lower():
+            continue
+        names.append(name)
+    for name in sorted(set(names), key=str.lower):
+        choices.append(f"{RUNTIME_SCOPE_GROUP_PREFIX}{name}")
+    return choices
+
+
+def _runtime_scope_choice_for(mode: object, group_name: object) -> str:
+    """
+    NAME
+        _runtime_scope_choice_for - Convert scope mode/group into one UI choice label.
+    """
+    mode_text = str(mode or "").strip().lower()
+    group_text = str(group_name or "").strip()
+    if mode_text == RUNTIME_SCOPE_MODE_GROUP and group_text:
+        return f"{RUNTIME_SCOPE_GROUP_PREFIX}{group_text}"
+    return RUNTIME_SCOPE_ALL_LABEL
+
+
+def _runtime_scope_args_from_choice(choice: object) -> Tuple[str, str]:
+    """
+    NAME
+        _runtime_scope_args_from_choice - Convert one UI scope choice label into command args.
+    """
+    selected = str(choice or "").strip()
+    if not selected or selected == RUNTIME_SCOPE_ALL_LABEL:
+        return (RUNTIME_SCOPE_MODE_ALL, "")
+    prefix = RUNTIME_SCOPE_GROUP_PREFIX
+    if selected.startswith(prefix):
+        group_name = selected[len(prefix) :].strip()
+        if group_name:
+            return (RUNTIME_SCOPE_MODE_GROUP, group_name)
+    return (RUNTIME_SCOPE_MODE_ALL, "")
+
+
+def _runtime_scope_status_text(
+    requested_label: object,
+    applied_label: object,
+    locked: bool,
+) -> str:
+    """
+    NAME
+        _runtime_scope_status_text - Build one compact operator-facing scope status string.
+    """
+    requested = str(requested_label or RUNTIME_SCOPE_ALL_LABEL).strip() or RUNTIME_SCOPE_ALL_LABEL
+    applied = str(applied_label or RUNTIME_SCOPE_ALL_LABEL).strip() or RUNTIME_SCOPE_ALL_LABEL
+    lock_state = (
+        RUNTIME_SCOPE_LOCK_STATE_LOCKED if locked else RUNTIME_SCOPE_LOCK_STATE_EDITABLE
+    )
+    return RUNTIME_SCOPE_STATUS_FMT.format(
+        requested=requested,
+        applied=applied,
+        lock_state=lock_state,
+    )
+
+
 def _normalize_profile_name(profile_name: object) -> str:
     """
     NAME
@@ -1453,6 +1558,9 @@ class BringupControlUI(tk.Tk):
         self._runtime_state_pending_at = 0.0
         self._runtime_state_timeout_sec = 0.6
         self._runtime_active_known: Optional[bool] = None
+        self._runtime_scope_choice = RUNTIME_SCOPE_ALL_LABEL
+        self._runtime_scope_requested_label = RUNTIME_SCOPE_ALL_LABEL
+        self._runtime_scope_applied_label = RUNTIME_SCOPE_ALL_LABEL
         self._robot_enabled_known = True
         self._robot_estopped_known = False
         self._runtime_state_notice_text = NT_VALUE_EMPTY
@@ -1499,6 +1607,13 @@ class BringupControlUI(tk.Tk):
         self._ui_show_visibility_tab = _load_ui_show_visibility_tab_pref()
         self._ui_show_wall_clock = _load_ui_show_wall_clock_pref()
         self._ui_pref_vars: Dict[str, tk.BooleanVar] = {}
+        self._runtime_scope_status_var = tk.StringVar(
+            value=RUNTIME_SCOPE_STATUS_FMT.format(
+                requested=RUNTIME_SCOPE_ALL_LABEL,
+                applied=RUNTIME_SCOPE_ALL_LABEL,
+                lock_state=RUNTIME_SCOPE_LOCK_STATE_EDITABLE,
+            )
+        )
         self._build_menu()
         self._build_ui()
         self._apply_profile_selection(self._profile_box.get(), reload_views=True)
@@ -1594,6 +1709,17 @@ class BringupControlUI(tk.Tk):
         profile_box.bind("<<ComboboxSelected>>", self._on_profile_selected)
         ttk.Label(header, text="Profile").pack(side="left", padx=(16, 4))
         profile_box.pack(side="left")
+        runtime_scope_choices = _load_runtime_scope_choices(active_profile)
+        runtime_scope_box = ttk.Combobox(
+            header,
+            values=runtime_scope_choices,
+            state="readonly",
+            width=22,
+        )
+        runtime_scope_box.set(self._runtime_scope_choice)
+        self._runtime_scope_box = runtime_scope_box
+        ttk.Label(header, text=LABEL_RUNTIME_SCOPE).pack(side="left", padx=(12, 4))
+        runtime_scope_box.pack(side="left")
         ttk.Button(header, text="Refresh", command=self._refresh_profiles).pack(
             side="left", padx=(6, 0)
         )
@@ -1603,15 +1729,24 @@ class BringupControlUI(tk.Tk):
         ttk.Button(
             header, text=BUTTON_DOWNLOAD_CONFIG, command=self._download_current_config_from_ui
         ).pack(side="left", padx=(6, 0))
-        ttk.Button(
+        runtime_activate_button = ttk.Button(
             header, text=BUTTON_RUNTIME_ACTIVATE, command=self._runtime_activate_from_ui
-        ).pack(side="left", padx=(10, 0))
-        ttk.Button(
+        )
+        runtime_activate_button.pack(side="left", padx=(10, 0))
+        self._runtime_activate_button = runtime_activate_button
+        runtime_deactivate_button = ttk.Button(
             header, text=BUTTON_RUNTIME_DEACTIVATE, command=self._runtime_deactivate_from_ui
-        ).pack(side="left", padx=(6, 0))
+        )
+        runtime_deactivate_button.pack(side="left", padx=(6, 0))
+        self._runtime_deactivate_button = runtime_deactivate_button
         ttk.Button(
             header, text=BUTTON_SHOW_RUNTIME_STATE, command=self._show_runtime_state_from_ui
         ).pack(side="left", padx=(6, 0))
+        ttk.Label(
+            header,
+            textvariable=self._runtime_scope_status_var,
+            foreground="#475569",
+        ).pack(side="left", padx=(12, 0))
 
         test_box = ttk.Combobox(header, values=tests, state="readonly", width=26)
         test_box.set(tests[0])
@@ -1632,6 +1767,7 @@ class BringupControlUI(tk.Tk):
             textvariable=self._live_clock_var,
             foreground="#374151",
         ).pack(side="left")
+        self._update_runtime_scope_controls()
         self._wall_clock_frame = wall_clock_frame
         self._pending_label = ttk.Label(header, text="", foreground="#b45309")
         self._pending_label.pack(side="left", padx=(16, 4))
@@ -2247,8 +2383,28 @@ class BringupControlUI(tk.Tk):
             across startup, refresh, and selection callbacks.
         """
         name = _normalize_profile_name(profile_name)
+        self._refresh_runtime_scope_choices(name)
         self._refresh_tests_for_profile(name)
         self._sync_diagnostic_profile_context(reload_views=reload_views)
+
+    def _refresh_runtime_scope_choices(self, profile_name: object) -> None:
+        """
+        NAME
+            _refresh_runtime_scope_choices - Refresh the runtime scope selector for one profile.
+        """
+        if not hasattr(self, "_runtime_scope_box"):
+            return
+        name = _normalize_profile_name(profile_name)
+        choices = _load_runtime_scope_choices(name)
+        current = str(self._runtime_scope_box.get() or "").strip()
+        if current not in choices:
+            current = self._runtime_scope_choice
+        if current not in choices:
+            current = choices[0] if choices else RUNTIME_SCOPE_ALL_LABEL
+        self._runtime_scope_box["values"] = choices
+        self._runtime_scope_box.set(current)
+        self._runtime_scope_choice = current
+        self._update_runtime_scope_controls()
 
     def _refresh_profile_devices(self, profile_name: object) -> None:
         """
@@ -2370,6 +2526,9 @@ class BringupControlUI(tk.Tk):
         """
         clean_label = str(label or NT_VALUE_EMPTY).strip()
         if not clean_label:
+            return
+        if self._runtime_active_known is True:
+            self._append_output(RUNTIME_ACTIVE_GROUP_LOCKED_TEXT)
             return
         if not self._tcp_connected:
             self._append_output(OUTPUT_NOT_CONNECTED)
@@ -4712,6 +4871,7 @@ class BringupControlUI(tk.Tk):
                 (COLOR_KEY_PRESENCE_HIGH, COLOR_KEY_TEXT_PRESENCE_HIGH),
                 (COLOR_KEY_PRESENCE_LOW, COLOR_KEY_TEXT_PRESENCE_LOW),
                 (COLOR_KEY_PRESENCE_NONE, COLOR_KEY_TEXT_PRESENCE_NONE),
+                (COLOR_KEY_PRESENCE_OUT_OF_SCOPE, COLOR_KEY_TEXT_PRESENCE_OUT_OF_SCOPE),
             ],
         )
         self._add_color_key_section(
@@ -4852,8 +5012,13 @@ class BringupControlUI(tk.Tk):
             "  Use this to re-anchor the host UI to the robot's current config.",
             "",
             "Runtime Activate:",
-            "  Explicitly activates the selected profile runtime on the robot.",
+            "  Explicitly activates the selected profile runtime on the robot using the chosen scope.",
             "  This is the only UI action that should activate runtime.",
+            "",
+            "Runtime Scope:",
+            "  Choose All, Group: active-group, or one named group before Runtime Activate.",
+            "  Scope is locked while runtime is active.",
+            "  Deactivate runtime before changing scope or editing active-group membership.",
             "",
             "Runtime Deactivate:",
             "  Explicitly deactivates the active runtime on the robot.",
@@ -4893,6 +5058,45 @@ class BringupControlUI(tk.Tk):
             )
         self._last_selected_profile = self._selected_profile_name()
         self._apply_profile_selection(self._selected_profile_name(), reload_views=True)
+
+    def _update_runtime_scope_controls(self) -> None:
+        """
+        NAME
+            _update_runtime_scope_controls - Apply runtime scope and activate/deactivate control locking.
+        """
+        if hasattr(self, "_runtime_scope_box"):
+            scope_state = "disabled" if self._runtime_active_known is True else "readonly"
+            self._runtime_scope_box.configure(state=scope_state)
+            self._runtime_scope_choice = str(self._runtime_scope_box.get() or "").strip() or self._runtime_scope_choice
+        if hasattr(self, "_runtime_activate_button"):
+            activate_disabled = (
+                not self._tcp_connected
+                or self._tracker.is_pending()
+                or self._state_stale
+                or self._runtime_active_known is True
+            )
+            self._runtime_activate_button.state(
+                ["disabled"] if activate_disabled else ["!disabled"]
+            )
+        if hasattr(self, "_runtime_deactivate_button"):
+            deactivate_disabled = (
+                not self._tcp_connected
+                or self._tracker.is_pending()
+                or self._state_stale
+                or self._runtime_active_known is not True
+            )
+            self._runtime_deactivate_button.state(
+                ["disabled"] if deactivate_disabled else ["!disabled"]
+            )
+        requested_label = self._runtime_scope_requested_label or self._runtime_scope_choice
+        applied_label = self._runtime_scope_applied_label or RUNTIME_SCOPE_ALL_LABEL
+        self._runtime_scope_status_var.set(
+            _runtime_scope_status_text(
+                requested_label,
+                applied_label,
+                self._runtime_active_known is True,
+            )
+        )
 
     def _set_auto_select_default_profile_pref(self) -> None:
         """
@@ -5821,9 +6025,19 @@ class BringupControlUI(tk.Tk):
         if not profile_name:
             self._append_output(OUTPUT_NO_PROFILE)
             return
-        args = {KEY_NAME: profile_name}
+        if self._runtime_active_known is True:
+            self._append_output(RUNTIME_SCOPE_LOCKED_TEXT)
+            return
+        scope_mode, group_name = _runtime_scope_args_from_choice(
+            self._runtime_scope_box.get() if hasattr(self, "_runtime_scope_box") else RUNTIME_SCOPE_ALL_LABEL
+        )
+        scope_label = _runtime_scope_choice_for(scope_mode, group_name)
+        self._runtime_scope_requested_label = scope_label
+        args = {KEY_NAME: profile_name, "scopeMode": scope_mode}
+        if group_name:
+            args["group"] = group_name
         self._append_output(
-            f"{timestamp_hms()} {OUTPUT_RUNTIME_ACTIVATE_FMT.format(profile=profile_name)}"
+            f"{timestamp_hms()} {OUTPUT_RUNTIME_ACTIVATE_FMT.format(profile=profile_name, scope=scope_label)}"
         )
         self._last_cmd = ("runtimeActivate", args)
         seq = send_tracked_command(
@@ -5831,7 +6045,12 @@ class BringupControlUI(tk.Tk):
             self._tracker,
             "runtimeActivate",
             args,
-            sender=lambda session, _command_name, _command_args: runtime_activate(session, profile_name),
+            sender=lambda session, _command_name, _command_args: runtime_activate(
+                session,
+                profile_name,
+                scope_mode,
+                group_name,
+            ),
             now=time.time(),
         )
         if seq is not None:
@@ -6266,6 +6485,23 @@ class BringupControlUI(tk.Tk):
         runtime_active = payload.get("runtimeActive")
         if isinstance(runtime_active, bool):
             self._runtime_active_known = runtime_active
+        requested_scope_mode = payload.get("requestedScopeMode")
+        requested_scope_group = payload.get("requestedScopeGroup")
+        self._runtime_scope_requested_label = _runtime_scope_choice_for(
+            requested_scope_mode,
+            requested_scope_group,
+        )
+        self._runtime_scope_choice = self._runtime_scope_requested_label
+        applied_scope_mode = payload.get("appliedScopeMode")
+        applied_scope_group = payload.get("appliedScopeGroup")
+        self._runtime_scope_applied_label = _runtime_scope_choice_for(
+            applied_scope_mode,
+            applied_scope_group,
+        )
+        if hasattr(self, "_runtime_scope_box"):
+            if self._runtime_scope_choice not in tuple(self._runtime_scope_box.cget("values")):
+                self._refresh_runtime_scope_choices(self._selected_profile_name())
+            self._runtime_scope_box.set(self._runtime_scope_choice)
         selected_profile = _normalize_profile_name(payload.get("selectedProfile"))
         active_runtime_profile = _normalize_profile_name(
             payload.get("activeRuntimeProfile")
@@ -6282,6 +6518,7 @@ class BringupControlUI(tk.Tk):
             self._config_push_requires_activation = False
             self._config_push_profile = PROFILE_NONE
         self._sync_diagnostic_profile_context(reload_views=True)
+        self._update_runtime_scope_controls()
         devices = payload.get("devices")
         if isinstance(devices, list):
             for device in devices:
@@ -6641,6 +6878,7 @@ class BringupControlUI(tk.Tk):
         elif command == "runtimedeactivate" and state == "ok":
             self._runtime_active_known = False
             self._clear_runtime_event_notice()
+        self._update_runtime_scope_controls()
 
     def _update_action_enabled(self) -> None:
         """
@@ -6668,6 +6906,7 @@ class BringupControlUI(tk.Tk):
             self._test_box.configure(state=state)
         if self._reset_button is not None:
             self._reset_button.state(["!disabled"] if self._tcp_connected else ["disabled"])
+        self._update_runtime_scope_controls()
 
     def _is_handshake_required(self, event: BridgeEvent) -> bool:
         """

@@ -65,7 +65,7 @@ Each feature entry includes:
 - **Surface:** robot runtime, Bringup UI, Bridge CLI, REST.
 - **How to access:**
   - UI: `Runtime Activate`
-  - CLI: `runtime activate [<profile>]`
+  - CLI: `runtime activate [<profile>] [scope all|scope group <group>]`
   - REST: `POST /commands` with `name: "runtimeActivate"`
 - **When to use it:** after selecting the intended profile and before runtime-dependent operations such as manual motor control or scripted test execution.
 - **Do not confuse with:** `Add Motor`, `Add All Motors`, or profile selection.
@@ -537,4 +537,3 @@ Any new user-visible capability should update:
 - `docs/FEATURE_MATRIX.md`
 - `docs/WORKFLOWS.md` when the capability changes how a task is performed
 - `docs/FEATURE_SPEC_GUI_INTERACTION_AND_VIEWPORT_STABILITY.md` when the capability changes GUI screen behavior
-

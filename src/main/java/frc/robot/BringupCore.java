@@ -61,7 +61,6 @@ public final class BringupCore {
   private static final long PROFILE_GENERATION_UNLOADED = Long.MIN_VALUE;
   private static final long TEST_RUN_ID_NONE = 0L;
   private static final double TEST_START_SEC_NONE = 0.0;
-  private static final boolean INSTANTIATE_ALL_DEVICES = true;
   private static final String BUCKET_UNKNOWN = "unknown";
   private static final String TEST_RUN_STATE_IDLE = "idle";
   private static final String TEST_RUN_STATE_RUNNING = "running";
@@ -963,12 +962,27 @@ public final class BringupCore {
    *   device/test runtime state, and instantiates every active profile device.
    */
   public void reloadActiveProfileRuntime(String reason) {
+    reloadActiveProfileRuntime(reason, null);
+  }
+
+  /**
+   * NAME
+   *   reloadActiveProfileRuntime - Fully replace runtime state from active profile using a scoped instantiation set.
+   *
+   * PARAMETERS
+   *   reason - Reset reason label for operator output.
+   *   labelsToInstantiate - Device labels that should be instantiated for the current runtime scope.
+   *
+   * SIDE EFFECTS
+   *   Stops and closes current devices, clears instance claims, rebuilds
+   *   device/test runtime state, and instantiates only the labels permitted by
+   *   the applied runtime scope.
+   */
+  public void reloadActiveProfileRuntime(String reason, List<String> labelsToInstantiate) {
     resetState(reason);
     loadedProfileGeneration = PROFILE_GENERATION_UNLOADED;
     syncProfileRuntimeFromRegistry();
-    if (INSTANTIATE_ALL_DEVICES) {
-      addAllDevices();
-    }
+    instantiateScopedDevices(labelsToInstantiate);
   }
 
   /**
@@ -1158,6 +1172,23 @@ public final class BringupCore {
     }
     String display = test.getDisplayName();
     return display != null ? display : "";
+  }
+
+  /**
+   * NAME
+   *   getSelectedBringupTestRequiredDevices - Return selected-test required device labels.
+   *
+   * RETURNS
+   *   Copy of the selected test's required device labels, or an empty list when
+   *   no test is selected.
+   */
+  public List<String> getSelectedBringupTestRequiredDevices() {
+    BringupTest test = getSelectedBringupTest();
+    if (test == null) {
+      return new ArrayList<>();
+    }
+    List<String> required = test.getRequiredDeviceKeys();
+    return required != null ? new ArrayList<>(required) : new ArrayList<>();
   }
 
   /**
@@ -3165,21 +3196,47 @@ public final class BringupCore {
    *   True when each configured active device can be resolved in the current
    *   core and reports an instantiated vendor/app wrapper.
    */
-  public boolean hasAllActiveDevicesCreated() {
-    List<BringupUtil.DeviceEntry> activeDevices = BringupUtil.getActiveDevicesSorted();
-    if (activeDevices.isEmpty()) {
+  public boolean hasAllScopedDevicesCreated(List<String> scopedLabels) {
+    if (scopedLabels == null || scopedLabels.isEmpty()) {
       return true;
     }
-    for (BringupUtil.DeviceEntry entry : activeDevices) {
-      if (entry == null || entry.label == null || entry.label.isBlank()) {
+    for (String label : scopedLabels) {
+      if (label == null || label.isBlank()) {
         return false;
       }
-      DeviceUnit device = findDeviceByLabel(entry.label);
-      if (device == null || !isLifecycleOperationAllowed(entry.label) || !device.isCreated()) {
+      DeviceUnit device = findDeviceByLabel(label);
+      if (device == null || !isLifecycleSnapshotAllowed(label) || !device.isCreated()) {
         return false;
       }
     }
     return true;
+  }
+
+  public boolean hasAllActiveDevicesCreated() {
+    List<BringupUtil.DeviceEntry> activeDevices = BringupUtil.getActiveDevicesSorted();
+    List<String> labels = new ArrayList<>();
+    for (BringupUtil.DeviceEntry entry : activeDevices) {
+      if (entry != null && entry.label != null && !entry.label.isBlank()) {
+        labels.add(entry.label);
+      }
+    }
+    return hasAllScopedDevicesCreated(labels);
+  }
+
+  private void instantiateScopedDevices(List<String> labelsToInstantiate) {
+    if (labelsToInstantiate == null) {
+      addAllDevices();
+      return;
+    }
+    java.util.LinkedHashSet<String> uniqueLabels = new java.util.LinkedHashSet<>();
+    for (String label : labelsToInstantiate) {
+      if (label != null && !label.isBlank()) {
+        uniqueLabels.add(label);
+      }
+    }
+    for (String label : uniqueLabels) {
+      instantiateDeviceByLabel(label);
+    }
   }
 
   private void attachSampledTelemetry(List<DeviceSnapshot> snapshots) {

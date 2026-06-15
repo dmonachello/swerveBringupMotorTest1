@@ -86,6 +86,19 @@
         "{repo}/tools/can_nt/scripts/bridge_cli_group_targeting_4m2g3t_regression.py"
       ]
     },
+    "runtime-scope-cli": {
+      "label": "runtime-scope-cli",
+      "mode": "local",
+      "features": [
+        "runtime scoped activation syntax",
+        "runtime activate scope forwarding",
+        "cli runtime scope contract"
+      ],
+      "argv": [
+        "{python}",
+        "{repo}/tools/can_nt/scripts/bridge_cli_runtime_scope_regression.py"
+      ]
+    },
     "topology-editor": {
       "label": "topology-editor",
       "mode": "local",
@@ -164,7 +177,8 @@
     "cli": [
       "cli-unit",
       "group-targeting-v1",
-      "group-targeting-4m2g3t"
+      "group-targeting-4m2g3t",
+      "runtime-scope-cli"
     ],
     "java": [
       "java-unit"
@@ -185,6 +199,7 @@
       "java-unit",
       "group-targeting-v1",
       "group-targeting-4m2g3t",
+      "runtime-scope-cli",
       "topology-editor",
       "cross-surface",
       "changelog-guard",

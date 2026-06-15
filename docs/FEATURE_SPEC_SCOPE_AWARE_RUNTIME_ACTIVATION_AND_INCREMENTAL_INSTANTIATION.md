@@ -146,6 +146,12 @@ Allowed values:
 
 The selected value is the requested activation scope for the next `Runtime Activate` action.
 
+First-pass operational rule:
+
+- the scope selector is enabled only while runtime is inactive
+- the scope selector is disabled while runtime is active
+- changing runtime scope requires `Runtime Deactivate` first, then a new `Runtime Activate`
+
 ## UI Ownership And Robot Synchronization
 
 The UI is authoritative for the requested activation scope.
@@ -159,6 +165,12 @@ Required behavior:
 5. if robot state does not match requested scope, UI must surface an error condition
 
 The system must not silently allow UI and robot runtime scope state to diverge.
+
+Under the first-pass operational model:
+
+- requested scope and applied scope should normally be identical while runtime is active
+- the operator does not edit scope live on an active runtime
+- if the operator wants a different scope, they must deactivate runtime first
 
 ## State Model
 
@@ -396,12 +408,10 @@ Required behavior:
 
 - `active-group` exists only at runtime and is not persisted into profile/config data
 - `active-group` state is maintained for the current host-app session
-- `active-group` membership may change while runtime is active
-- `active-group` membership may also be staged while runtime is inactive
+- `active-group` membership may be edited only while runtime is inactive
+- `active-group` membership editor is disabled while runtime is active
 - membership changes do not silently instantiate or free devices on their own
-- runtime changes happen only when the operator issues an explicit runtime-scope reconciliation command
-- reconciliation must apply only the membership delta
-- reconciliation must add newly eligible devices and free devices removed from the group
+- membership changes take effect only on the next `Runtime Activate`
 - always-instantiated infrastructure devices are unaffected by `active-group` membership edits
 
 ## Scope = `Group: <named group>`
@@ -431,40 +441,30 @@ Editing group membership and changing runtime instantiation are related, but the
 
 Required rule:
 
-- group membership edits update desired scope membership
-- runtime instantiation changes only when an explicit operator command applies or reconciles that membership against the active runtime
-
-For `active-group`, this explicit command is the operator-owned point where the runtime must:
-
-- instantiate any newly added eligible devices
-- deallocate/free runtime resources for any devices removed from the group
-- leave unchanged devices running as they are
-- report per-device success, skip, and failure outcomes
-
-If deallocation is blocked because a device is still participating in a running test:
-
-- the requested removal remains queued
-- the runtime does not auto-complete the removal later on its own
-- the operator must issue `Apply Group Scope` again after blocking tests finish
-- the UI/CLI must show that the removal remains pending and blocked by running test activity
+- group membership edits update the future activation scope membership only
+- runtime instantiation does not change while runtime is active
+- changing membership that should affect runtime requires deactivation first
+- the next `Runtime Activate` uses the current membership as part of scope selection
 
 Example:
 
 1. `active-group` currently contains `SPARKMAX/NEO 25`
-2. operator adds `FALCON 9` to `active-group`
-3. no runtime change happens yet
-4. operator issues the explicit reconcile/instantiate command
-5. runtime instantiates `FALCON 9` and keeps `SPARKMAX/NEO 25` active
+2. runtime is inactive
+3. operator adds `FALCON 9` to `active-group`
+4. operator activates runtime in `Group: active-group`
+5. runtime instantiates `SPARKMAX/NEO 25` and `FALCON 9`
 
 Removal example:
 
 1. `active-group` currently contains `SPARKMAX/NEO 25` and `FALCON 9`
-2. operator removes `FALCON 9` from `active-group`
-3. no runtime change happens yet
-4. operator issues the explicit reconcile/apply command
-5. runtime frees `FALCON 9` resources and leaves `SPARKMAX/NEO 25` active
+2. runtime is active in `Group: active-group`
+3. operator wants to remove `FALCON 9`
+4. operator must deactivate runtime first
+5. operator removes `FALCON 9` from `active-group`
+6. operator activates runtime again in `Group: active-group`
+7. runtime instantiates only `SPARKMAX/NEO 25`
 
-This separation is required so the operator can edit membership deliberately without causing surprise hardware/runtime churn on every list change.
+This separation is required so the operator can edit membership deliberately without causing surprise hardware/runtime churn on every list change, and so the runtime shape remains stable for the full active session.
 
 ## Eligibility Rules
 
@@ -508,15 +508,23 @@ The UI must also provide an explicit override control for devices in eligible lo
 - immediate `manual-override-instantiate` event on click
 - explicit clear action for latched override failure
 
-When a group-scoped runtime is active, the UI must also provide an explicit action to reconcile/apply current group membership to the active runtime.
+Control enable/disable rules:
 
-This action must not be hidden behind implicit refresh behavior.
+- when runtime is inactive:
+  - `Runtime Activate` enabled
+  - scope dropdown enabled
+  - `Runtime Deactivate` disabled
+- when runtime is active:
+  - `Runtime Activate` disabled
+  - scope dropdown disabled
+  - `Runtime Deactivate` enabled
 
-If runtime is not currently in group mode:
+If runtime is active, the UI must make the lock explicit rather than only greying out controls.
 
-- the operator may still edit `active-group`
-- the UI must warn clearly that group mode is not currently active
-- `active-group` edits are treated as staged future group-mode membership
+Required operator messaging examples:
+
+- `Scope locked while runtime is active. Deactivate runtime to change scope.`
+- `Deactivate runtime to edit active-group membership.`
 
 ## Group Membership Visibility And Editing
 
@@ -535,17 +543,16 @@ Minimum first-pass capabilities:
 - see which defined devices are not currently in `active-group`
 - add a device to `active-group`
 - remove a device from `active-group`
-- see pending membership changes before runtime reconciliation
-- issue a single explicit reconcile/apply action after editing `active-group`
+- understand whether the panel is editable or locked for the current runtime state
 
 The UI should make these distinctions visible:
 
 - group member
 - in current activation scope
 - currently instantiated
-- pending add/remove not yet applied to runtime
+- currently present
 
-If the active runtime still reflects the old membership after edits, the UI must state that clearly rather than implying the runtime already matches the edited list.
+If runtime is active, the UI must state clearly that membership editing is locked until deactivation.
 
 ## Lower-Right Group Membership Panel
 
@@ -563,8 +570,8 @@ For example, when the operator is working with `active-group`:
 
 - the panel shows all devices in the selected profile
 - the checkbox state indicates current `active-group` membership for each device
-- checking a device stages it for inclusion in `active-group`
-- unchecking a device stages it for removal from `active-group`
+- checking a device changes the next activation's membership
+- unchecking a device changes the next activation's membership
 - checkbox state is runtime/session state only and is not persisted into profile/config data
 
 The panel must also show enough adjacent state to keep membership editing understandable.
@@ -577,13 +584,12 @@ Minimum required per-device columns or indicators:
 - current instantiated state
 - current present state
 - current testable state
-- pending membership change state when edited but not yet applied
 
-Checkbox edits update desired membership immediately, but they do not directly instantiate or free runtime resources.
+Checkbox edits update future activation membership only, and they do not directly instantiate or free runtime resources.
 
-Checkboxes must be disabled/greyed-out when the device cannot be selected into `active-group` for the current run.
+Checkboxes must be disabled/greyed-out when runtime is active.
 
-First-pass disabled/greyed-out reasons include:
+Additional first-pass disabled/greyed-out reasons include:
 
 - out of selected profile
 - unsupported device class
@@ -592,11 +598,13 @@ First-pass disabled/greyed-out reasons include:
 
 The panel must clearly separate:
 
-- desired membership from checkbox state
+- `active-group` membership
 - applied runtime scope state
 - actual instantiated state
 
-If checkbox edits are pending, the panel must show an unapplied-changes indicator and keep the explicit reconcile/apply control visible nearby.
+The panel should show a lock reason while runtime is active, for example:
+
+- `Deactivate runtime to edit active-group membership.`
 
 ## Diagram Requirements
 
@@ -692,8 +700,8 @@ Runtime state must expose:
 - selected profile
 - active runtime profile
 - runtime declared active
+- requested activation scope
 - current applied activation scope
-- desired active-group membership for the current app session
 - scope members
 - instantiated devices
 - present devices
@@ -711,12 +719,6 @@ Per-device required runtime-state fields:
 - `lastTransitionTimeMs`
 - `notTestableReason`
 
-When relevant, runtime state must also expose:
-
-- pending unapplied `active-group` additions
-- pending unapplied `active-group` removals
-- pending removals blocked by running tests
-
 The UI must read this back after activation and verify it matches the requested scope.
 
 `showRuntimeState` is the canonical source for this contract.
@@ -727,9 +729,9 @@ Other host surfaces may mirror or cache these values, but they must not become a
 
 The CLI must support this feature through commands that cleanly separate:
 
-- desired group membership editing
+- inactive-session group membership editing
 - runtime activation
-- explicit runtime scope reconciliation
+- runtime deactivation
 - runtime-state inspection
 
 The CLI must not overload membership-edit commands so that they silently mutate runtime instantiation state.
@@ -758,7 +760,8 @@ Required rule:
 
 - group membership commands edit desired membership only
 - runtime activation commands activate runtime under an explicit scope
-- explicit runtime scope apply/reconcile commands mutate instantiated runtime membership
+- runtime scope may not change while runtime is active
+- changing scope requires deactivation first
 - runtime-state inspection commands verify applied state
 
 Under this model:
@@ -766,36 +769,32 @@ Under this model:
 - `group member assign ...` does not directly instantiate a device
 - `group member remove ...` does not directly free a device
 - `active add` does not directly instantiate a device
-- `active next` does not directly instantiate a device unless a later explicit runtime apply command says so
+- `active next` does not directly instantiate a device
 - `active-group` remains a runtime/session construct even when edited from the CLI
+- editing `active-group` while runtime is active must be rejected clearly
 
 ## New Scope-Aware CLI Commands
 
-The CLI should add a small explicit runtime-scope command family.
+The CLI should add a small explicit runtime-scope activation form without introducing a separate live scope-apply workflow.
 
-Preferred command forms:
+Implemented command forms:
 
-- `runtime activate scope all [profile <name>]`
-- `runtime activate scope group <group> [profile <name>]`
-- `runtime scope show`
-- `runtime scope apply`
-- `runtime scope apply group <group>`
+- `runtime activate`
+- `runtime activate <profile>`
+- `runtime activate scope all`
+- `runtime activate scope group <group>`
+- `runtime activate <profile> scope all`
+- `runtime activate <profile> scope group <group>`
+- `runtime deactivate`
 
-Shorter compatibility forms may also be provided if they map to the same contract cleanly, for example:
-
-- `runtime activate all`
-- `runtime activate group active-group`
-- `runtime apply-scope`
-- `runtime apply-scope group active-group`
-
-The preferred direction is to keep one clear scope-oriented command family rather than proliferating multiple partial aliases.
+This keeps one runtime activation family while preserving the operational rule that scope changes require `runtime deactivate` first.
 
 ## CLI Workflow Examples
 
 ### Example 1: Activate In `All` Scope
 
 ```text
-runtime activate scope all profile test_minimal_25_9
+runtime activate test_minimal_25_9 scope all
 show runtime-state robot --json --pretty
 ```
 
@@ -809,7 +808,7 @@ Expected behavior:
 ### Example 2: Activate In `active-group` Scope
 
 ```text
-runtime activate scope group active-group profile test_minimal_25_9
+runtime activate test_minimal_25_9 scope group active-group
 show group active-group
 show runtime-state robot --json --pretty
 ```
@@ -821,38 +820,38 @@ Expected behavior:
 - always-instantiated infrastructure devices are instantiated
 - `show runtime-state` reports applied scope `group` with `active-group`
 
-### Example 3: Edit Membership Then Apply It
+### Example 3: Edit Membership Then Activate
 
 ```text
 group member assign active-group SPARKMAX/NEO_25
 group member assign active-group FALCON_9
 show group active-group
-runtime scope apply group active-group
+runtime activate test_minimal_25_9 scope group active-group
 show runtime-state robot --json --pretty
 ```
 
 Expected behavior:
 
 - the membership edits update desired `active-group` contents
-- no runtime mutation happens until `runtime scope apply group active-group`
-- apply instantiates newly eligible members and leaves unchanged members alone
+- no runtime mutation happens before activation
+- activation instantiates the current `active-group` members
 - runtime-state output reflects the applied membership
 
-### Example 4: Remove A Member Then Apply It
+### Example 4: Change Membership After A Prior Active Session
 
 ```text
+runtime deactivate
 group member remove active-group FALCON_9
 show group active-group
-runtime scope apply group active-group
+runtime activate test_minimal_25_9 scope group active-group
 show runtime-state robot --json --pretty
 ```
 
 Expected behavior:
 
-- the membership edit stages removal only
-- no runtime mutation happens until explicit apply
-- apply deallocates/frees the removed member if it is currently instantiated under the active group scope
-- unchanged members remain active
+- the operator must deactivate runtime first
+- the membership edit changes the next activation membership
+- the next activation instantiates only the remaining scoped members
 
 ## `active-group` Helper Command Semantics
 
@@ -864,27 +863,22 @@ Under this feature, their semantics must be explicit:
 - `active add` grows desired `active-group` membership using the next eligible device
 - `active next` advances the guided active-device workflow or selection logic without implicitly widening instantiated runtime scope
 
-If these commands are used while runtime is active in group mode:
+If these commands are attempted while runtime is active:
 
-- the UI and CLI must show that desired membership has changed
-- runtime instantiated membership remains unchanged until explicit apply/reconcile
+- the UI and CLI should reject the mutation clearly
+- the runtime shape must remain unchanged
 
 ## Runtime Inspection Commands
 
 `show runtime-state` remains the canonical CLI inspection command for this feature.
-
-The CLI should also support a focused scope-inspection view through:
-
-- `runtime scope show`
 
 That view should report at minimum:
 
 - requested activation scope
 - applied activation scope
 - active group name when scope mode is `group`
-- desired group membership
 - applied scoped membership
-- pending unapplied membership changes when present
+- runtime active or inactive
 
 ## Grammar And Help Synchronization
 
@@ -892,7 +886,7 @@ If these CLI commands are implemented:
 
 - `tools/can_nt/bridge_cli_ebnf.txt` must be updated in the same change
 - parser/help text must be updated in the same change
-- regression coverage must include scope activation and scope apply flows
+- regression coverage must include scope activation and deactivate-before-change flows
 
 This CLI contract is operator-facing behavior and must not drift between grammar, help, parser, and runtime implementation.
 
@@ -958,14 +952,22 @@ This applies to:
 
 - right-click group runs
 - active-group runs
-- DSL/device-group execution paths that act on multiple devices
-
-If group membership has pending unapplied edits, group-run surfaces must show that fact clearly.
+- ad hoc device-group execution paths that enumerate members one by one
 
 First-pass rule:
 
-- group-run eligibility uses the applied runtime scope, not merely the edited-but-unapplied desired membership list
-- the operator must be able to tell whether a skipped device is out of runtime scope versus merely absent/not testable
+- group-run eligibility uses the applied runtime scope
+- the operator must be able to tell whether a skipped or blocked device is out of runtime scope versus merely absent/not testable
+
+Out of scope for this feature:
+
+- introducing a new member-wise partial executor for multi-device DSL tests
+- changing a multi-device DSL test so it silently runs only a subset of its required devices
+
+Current contract:
+
+- ad hoc group runs may run eligible members and skip ineligible members with explicit reasons
+- multi-device DSL tests remain all-required unless a later spec explicitly introduces partial-execution semantics
 
 ## Runtime Deactivation And Config Change Behavior
 
@@ -1071,16 +1073,16 @@ It must instead mean:
 - activate the selected profile under an explicit activation scope
 - instantiate always-instantiated infrastructure devices
 - instantiate only devices eligible under the applied scope
-- preserve explicit distinction between desired scope membership and actual instantiated runtime state
+- preserve explicit distinction between full defined topology and current runtime scope
 
 This means the robot runtime must own and keep synchronized:
 
 - selected activation scope
-- desired scope membership
 - applied runtime scope
 - instantiated device set
 - always-instantiated infrastructure devices
 - per-device lifecycle state
+- locked/unlocked control state while runtime is active or inactive
 
 Existing full-activation and incremental bringup paths must converge on one lifecycle model rather than remaining as partially independent flows.
 
@@ -1093,7 +1095,6 @@ The UI must now surface and keep synchronized:
 - full defined topology
 - selected activation scope
 - group membership
-- pending unapplied membership edits
 - applied runtime scope
 - instantiated state
 - present state
@@ -1114,23 +1115,23 @@ Host-side surfaces may stage edits and cache views, but they must not invent com
 - instantiated state
 - testability
 
-## Group Editing And Reconciliation Impact
+## Group Editing And Runtime Locking Impact
 
 Group membership editing becomes an explicit desired-state workflow.
 
 Operationally, this means:
 
 - changing a group membership checkbox does not immediately instantiate or free runtime resources
-- membership edits stage desired changes
-- an explicit reconcile/apply command is required to mutate active runtime instantiation
+- membership edits are allowed only while runtime is inactive
+- changing runtime scope or `active-group` membership requires deactivation first
 
 This affects system behavior in an intentional way:
 
 - the operator can safely edit group membership without causing surprise runtime churn
-- adding a device requires an explicit apply step before that device becomes instantiated
-- removing a device requires an explicit apply step before that device is deallocated/freed
+- the active runtime shape remains stable for the duration of the session
+- logs and operator reasoning stay simpler because there is only one committed runtime shape at a time
 
-This model is required for predictable incremental bringup, especially when the operator is assembling or revising the next working set device-by-device.
+This model is required for predictable incremental bringup, especially when the operator is assembling or revising the next working set device-by-device and needs strong confidence that the runtime shape is not drifting live.
 
 ## Test Execution And Command Gating Impact
 
@@ -1154,7 +1155,6 @@ This affects:
 The system must report these distinctions plainly so operators understand whether a device is unavailable because it:
 
 - was not selected into the active scope
-- has not yet been applied to runtime
 - failed instantiation
 - is instantiated but lacks current presence evidence
 
@@ -1165,7 +1165,7 @@ This feature does not require a profile schema redesign, but it does tighten con
 In practice:
 
 - group membership becomes a stronger part of runtime behavior
-- `active-group` editing becomes a staged desired-state workflow
+- `active-group` editing becomes an inactive-session workflow
 - runtime deactivation must clear instantiation state cleanly
 - profile/config changes must invalidate and rebuild runtime state
 
@@ -1186,10 +1186,10 @@ At minimum, the system must define explicit contract fields for:
 - requested activation scope
 - applied activation scope
 - scope membership
-- pending versus applied group state where relevant
 - instantiated device set
 - per-device lifecycle state
 - per-device testability and not-testable reason
+- whether scope/membership controls are currently locked
 
 Without this stronger contract, the robot, UI, CLI, and reports will tend to drift into separate interpretations of the same runtime state.
 
@@ -1202,13 +1202,13 @@ If only runtime activation changes, but the rest of the system does not change w
 Examples of incomplete implementation risk:
 
 - scope-aware activation exists, but runtime-state reporting does not expose applied scope clearly
-- group membership can be edited, but the UI does not show whether edits are pending or applied
+- group membership can still be edited while runtime is active
 - test execution still assumes all runtime-active profile devices are available
 - diagram and side panels display different interpretations of instantiation or scope
 
 Therefore this feature should be implemented as one coordinated behavior change across:
 
-- robot runtime activation/reconciliation
+- robot runtime activation/deactivation
 - runtime-state reporting
 - UI scope selection and group editing
 - command gating and test eligibility
@@ -1228,6 +1228,9 @@ This feature is done when:
 
 - `Runtime Activate` accepts explicit scope choice from the UI
 - `All`, `Group: active-group`, and `Group: <named group>` are supported
+- the scope dropdown is disabled while runtime is active
+- `active-group` membership editing is disabled while runtime is active
+- the UI tells the operator to deactivate runtime before changing scope or membership
 - `roborio` and `pdp/pdh` always instantiate/deactivate with runtime
 - empty selected groups no-op cleanly with a clear message
 - the diagram still shows all defined devices
