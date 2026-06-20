@@ -517,10 +517,14 @@ public final class BringupUtil {
       return "";
     }
     DeviceDefinition def = DEVICE_REGISTRY.get(normalizeKey(label));
-    if (def == null || def.type == null) {
+    if (def == null) {
       return "";
     }
-    return def.type;
+    if (def.type != null && !def.type.isBlank()) {
+      return def.type;
+    }
+    String inferred = resolveDeviceTypeLabel(def);
+    return inferred != null && !LABEL_UNKNOWN.equalsIgnoreCase(inferred) ? inferred : "";
   }
 
   /**

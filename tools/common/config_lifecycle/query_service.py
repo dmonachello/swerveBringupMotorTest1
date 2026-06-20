@@ -72,7 +72,7 @@ class LocalConfigQueryService:
     def test_names_for_profile(self, profile_name: str) -> List[str]:
         """
         NAME
-            test_names_for_profile - Resolve local test names for one profile using shared source precedence.
+            test_names_for_profile - Resolve local runnable test names for one profile using shared source precedence.
 
         DESCRIPTION
             Precedence is:
@@ -81,3 +81,52 @@ class LocalConfigQueryService:
             3. legacy tests deploy payload
         """
         return self._repository.load_canonical().dsl_tests().list_test_names(profile_name)
+
+    def profile_test_names(self, profile_name: str) -> List[str]:
+        """
+        NAME
+            profile_test_names - Resolve all saved profile-owned DSL test names.
+        """
+        return self._repository.load_canonical().dsl_tests().list_profile_test_names(profile_name)
+
+    def profile_test_runnable_map(self, profile_name: str) -> Dict[str, bool]:
+        """
+        NAME
+            profile_test_runnable_map - Resolve per-test runnable status for one profile.
+        """
+        return self._repository.load_canonical().dsl_tests().profile_test_runnable_map(profile_name)
+
+    def config_library_test_runnable_map(self, profile_name: str) -> Dict[str, bool]:
+        """
+        NAME
+            config_library_test_runnable_map - Resolve per-test runnable status for the config-scoped shared library.
+        """
+        return self._repository.load_canonical().dsl_tests().config_library_test_runnable_map(profile_name)
+
+    def external_library_test_runnable_map(self, profile_name: str) -> Dict[str, bool]:
+        """
+        NAME
+            external_library_test_runnable_map - Resolve per-test runnable status for the external shared library.
+        """
+        return self._repository.load_canonical().dsl_tests().external_library_test_runnable_map(profile_name)
+
+    def global_test_names(self) -> List[str]:
+        """
+        NAME
+            global_test_names - Resolve shared global-library DSL test names from canonical local config.
+        """
+        return self._repository.load_canonical().dsl_tests().list_global_test_names()
+
+    def profile_test_set_name(self, profile_name: str) -> str:
+        """
+        NAME
+            profile_test_set_name - Resolve the explicitly bound runnable DSL set for one profile.
+        """
+        return self._repository.load_canonical().dsl_tests().profile_test_set_name(profile_name)
+
+    def profile_device_catalog(self, profile_name: str) -> Dict[str, Dict[str, Any]]:
+        """
+        NAME
+            profile_device_catalog - Resolve the full DSL-usable device catalog for one selected profile.
+        """
+        return self._repository.load_canonical().dsl_tests().profile_device_catalog(profile_name)

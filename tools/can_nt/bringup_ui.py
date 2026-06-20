@@ -20,6 +20,7 @@ import json
 import time
 import tkinter as tk
 import uuid
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
@@ -32,6 +33,7 @@ from .command_catalog_service import (
 )
 from .command_workflow_service import send_tracked_command
 from .bridge_ops import (
+    _resolve_device_type_label,
     connect,
     download_current_config,
     disconnect,
@@ -67,13 +69,30 @@ from tools.common.config_lifecycle import LocalConfigQueryService
 from tools.common.profiles import list_profile_names
 from tools.common.profile_constants import KEY_DEVICE_TYPE, KEY_ID, KEY_LABEL as PROFILE_KEY_LABEL, KEY_MANUFACTURER
 from tools.common.profile_constants import KEY_ENABLED
+from tools.common.profile_constants import KEY_TYPE
 from tools.common.robot_test_dsl import (
+    copy_external_library_test_into_root_payload,
+    create_blank_test_in_root_payload,
+    copy_test_into_root_payload,
+    delete_external_library_test,
+    delete_test_from_root_payload,
     DslServiceError,
+    import_test_into_config_library,
+    import_test_into_external_library,
     import_test_into_root_payload,
+    list_external_library_test_names,
+    read_external_library_test_source,
+    rename_external_library_test,
+    rename_test_in_root_payload,
     render_validation_text,
     resolve_profile_test_names,
+    resolve_profile_device_dsl_type,
+    resolve_runnable_profile_test_names,
+    signal_catalog as robot_test_dsl_signal_catalog,
     store_from_root_payload as robot_test_dsl_store_from_root_payload,
+    update_test_source_in_root_payload,
     validate_store_for_profile,
+    write_test_source_into_config_library,
 )
 from tools.common.time_utils import timestamp_hms
 from tools.common.motor_runtime_verdict import (
@@ -572,15 +591,158 @@ DSL_FILE_TYPES = (("DSL files", "*.dsl"), ("Text files", "*.txt"), ("All files",
 DSL_IMPORT_CANCELLED = "DSL import cancelled."
 DSL_VALIDATE_CANCELLED = "DSL validation cancelled."
 DSL_IMPORT_PATH_FMT = "IMPORT DSL {path}"
+DSL_CREATE_START_FMT = "CREATE DSL profile={profile} target={target}"
+DSL_COPY_START_FMT = "COPY DSL test={source} profile={profile} target={target}"
 DSL_VALIDATE_START_FMT = "VALIDATE DSL profile={profile}"
+DSL_IMPORT_GLOBAL_PATH_FMT = "IMPORT GLOBAL DSL {path}"
+DSL_IMPORT_CONFIG_PATH_FMT = "IMPORT CONFIG DSL {path} profile={profile}"
+DSL_COPY_GLOBAL_CONFIG_FMT = "COPY GLOBAL DSL test={source} profile={profile} target={target}"
+DSL_COPY_TO_PROFILE_FMT = "COPY DSL TO PROFILE test={source} profile={profile} target={target}"
+DSL_CREATE_SAVED_FMT = "Local DSL test created. Push config to the robot to use the updated test."
 DSL_IMPORT_SAVED_FMT = "Local DSL import saved. Push config to the robot to use the updated test."
+DSL_COPY_SAVED_FMT = "Local DSL copy saved. Push config to the robot to use the updated test."
+DSL_IMPORT_GLOBAL_SAVED_FMT = "External global DSL library updated."
+DSL_IMPORT_CONFIG_SAVED_FMT = "Config library DSL import saved. Push config to the robot to use the updated test."
+DSL_COPY_CONFIG_SAVED_FMT = "Config library DSL copy saved. Push config to the robot to use the updated test."
+DSL_COPY_DUPLICATE_PREFIX = "ERROR: target DSL test already exists:"
+DSL_COPY_DUPLICATE_REVEAL_FMT = "Profile test already exists and was selected: {name}"
 DSL_VALIDATE_OK_FMT = "DSL validation OK for profile {profile}."
 DSL_VALIDATE_FAIL_FMT = "DSL validation failed for profile {profile}."
+DSL_DIALOG_CREATE_NAME_TITLE = "Create New DSL Test"
+DSL_DIALOG_CREATE_NAME_PROMPT = "Profile test name:"
 DSL_DIALOG_IMPORT_NAME_TITLE = "Import DSL Test"
 DSL_DIALOG_IMPORT_NAME_PROMPT = "Test name:"
-DSL_DIALOG_IMPORT_SET_TITLE = "Import DSL Test"
-DSL_DIALOG_IMPORT_SET_PROMPT = "Set name (blank uses current default set):"
+DSL_DIALOG_COPY_NAME_TITLE = "Copy Global Test To Profile"
+DSL_DIALOG_COPY_NAME_PROMPT = "Profile test name:"
 DSL_OUTPUT_NO_PROFILE = "No profile selected for DSL action."
+DSL_OUTPUT_NO_GLOBAL_TEST = "No global library test selected for DSL copy."
+DSL_OUTPUT_NO_CONFIG_TEST = "No config library test selected for DSL copy."
+DSL_CREATE_CANCELLED = "DSL test creation cancelled."
+DSL_COPY_CANCELLED = "DSL copy cancelled."
+DSL_RENAME_CANCELLED = "DSL rename cancelled."
+DSL_CREATE_NAME_REQUIRED = "DSL test creation blocked: test name is required."
+DSL_COPY_NAME_REQUIRED = "DSL copy blocked: test name is required."
+DSL_RENAME_NAME_REQUIRED = "DSL rename blocked: test name is required."
+DSL_OUTPUT_NO_TEST = "No test selected for DSL action."
+DSL_RENAME_START_FMT = "RENAME DSL test={source} target={target}"
+DSL_DELETE_START_FMT = "DELETE DSL test={name}"
+DSL_RENAME_SAVED_FMT = "DSL test renamed."
+DSL_DELETE_SAVED_FMT = "DSL test deleted and archived: {path}"
+DSL_DIALOG_RENAME_NAME_TITLE = "Rename DSL Test"
+DSL_DIALOG_RENAME_NAME_PROMPT = "New test name:"
+TEST_LIBRARY_TAB_LABEL = "Tests"
+TEST_LIBRARY_TITLE = "Test Library"
+TEST_LIBRARY_GLOBAL_TITLE = "Global Library"
+TEST_LIBRARY_CONFIG_TITLE = "Config Library"
+TEST_LIBRARY_PROFILE_TITLE = "Profile Tests"
+TEST_LIBRARY_DEVICES_TITLE = "Available Devices"
+TEST_LIBRARY_DEVICES_COL_LABEL = "Label"
+TEST_LIBRARY_DEVICES_COL_TYPE = "Type"
+TEST_LIBRARY_DEVICES_COL_ID = "ID"
+TEST_LIBRARY_BUTTON_REFRESH = "Refresh Lists"
+TEST_LIBRARY_BUTTON_NEW = "New Test..."
+TEST_LIBRARY_BUTTON_RENAME = "Rename Test..."
+TEST_LIBRARY_BUTTON_DELETE = "Delete Test"
+TEST_LIBRARY_BUTTON_IMPORT_GLOBAL = "Import To Global..."
+TEST_LIBRARY_BUTTON_IMPORT_CONFIG = "Import To Config..."
+TEST_LIBRARY_BUTTON_IMPORT_PROFILE = "Import To Profile..."
+TEST_LIBRARY_BUTTON_COPY_CONFIG = "Copy To Config"
+TEST_LIBRARY_BUTTON_COPY_PROFILE = "Copy To Profile"
+TEST_LIBRARY_BUTTON_VALIDATE = "Validate Profile Tests"
+TEST_LIBRARY_BUTTON_INFO = "Tests Info"
+TEST_LIBRARY_BUTTON_OVERVIEW = "Tests Overview"
+TEST_LIBRARY_BUTTON_RUN_SELECTED = "Run Selected"
+TEST_LIBRARY_BUTTON_RUN_ALL = "Run All"
+TEST_LIBRARY_BUTTON_NEXT = "Test Next"
+TEST_LIBRARY_BUTTON_PREV = "Test Prev"
+TEST_LIBRARY_BUTTON_TOGGLE = "Toggle Enabled"
+TEST_LIBRARY_STATUS_EMPTY = "Profile: (none) | Select a profile to manage runnable tests."
+TEST_LIBRARY_STATUS_FMT = (
+    "Profile: {profile} | Runnable set: {set_name} | "
+    "Profile tests: {profile_count} | Runnable: {runnable_count} | "
+    "Config library: {config_count} | Global library: {global_count}"
+)
+TEST_LIBRARY_SELECTION_LABEL = "Selected Test"
+TEST_LIBRARY_RUNNING_DEFAULT = "Running: (none)"
+TEST_LIBRARY_NOTE_TEXT = (
+    "The Tests tab has three scopes: external Global Library, config-shared Config Library, "
+    "and selected-profile Profile Tests. Use Push Config to make config/profile changes available on the robot."
+)
+TEST_LIBRARY_SET_NONE = "(none)"
+TEST_LIBRARY_NAME_NEW_FMT = "{profile}_new_test"
+TEST_LIBRARY_NAME_COPY_FMT = "{profile}_{name}"
+TEST_LIBRARY_INVALID_SUFFIX = " [not runnable]"
+TEST_LIBRARY_LISTBOX_HEIGHT = 18
+TEST_LIBRARY_STATUS_COLOR = "#374151"
+TEST_LIBRARY_RESULTS_TITLE = "Test Activity"
+TEST_LIBRARY_DEVICES_EMPTY = "(none)"
+TEST_LIBRARY_RESULTS_HEIGHT = 8
+TEST_SOURCE_TAB_LABEL = "Source Editor"
+TEST_SOURCE_REFERENCE_TITLE = "DSL Reference"
+TEST_SOURCE_REFERENCE_TEXT = (
+    'Top level: test "name", device "label"\n'
+    "Phases: init:, main:, closed:\n"
+    "Statements: set, clear, until, abort, success, require, unsafe-exit"
+)
+TEST_SOURCE_COMPLETION_POPUP_TITLE = "Signal Completion"
+TEST_SOURCE_COMPLETION_DEVICE_PATTERN = r'(?:\"([^\"]+)\"|([A-Za-z_][A-Za-z0-9_]*))\.$'
+TEST_SOURCE_COMPLETION_EMPTY = "(no signals)"
+TEST_SOURCE_COMPLETION_MODE_NONE = ""
+TEST_SOURCE_COMPLETION_MODE_READ = "read"
+TEST_SOURCE_COMPLETION_MODE_WRITE = "write"
+TEST_SOURCE_COMPLETION_MODE_CLEAR = "clear"
+TEST_SOURCE_COMPLETION_READ_PREFIXES = ("require ", "until ", "abort ", "success ")
+TEST_SOURCE_COMPLETION_WRITE_PREFIXES = ("set ", "unsafe-exit ")
+TEST_SOURCE_COMPLETION_CLEAR_PREFIXES = ("clear ",)
+TEST_SOURCE_SWITCH_TITLE = "Unsaved Test Source"
+TEST_SOURCE_SWITCH_PROMPT_FMT = "Save changes to {name} before switching tests?"
+TEST_ACTIVITY_TAB_LABEL = "Test Activity"
+TEST_SOURCE_BUTTON_SAVE = "Save Source"
+TEST_SOURCE_BUTTON_REVERT = "Revert Source"
+TEST_SOURCE_BUTTON_VALIDATE = "Validate Source"
+TEST_SOURCE_STATUS_NONE = "Select a test to view source."
+TEST_SOURCE_STATUS_GLOBAL_FMT = "Global library test: {name} (read-only)"
+TEST_SOURCE_STATUS_CONFIG_FMT = "Config library test: {name} (editable)"
+TEST_SOURCE_STATUS_PROFILE_FMT = "Profile test: {name} (editable)"
+TEST_SOURCE_STATUS_CONFIG_SAVED_FMT = "Saved source for config library test {name}. Push Config to update the robot."
+TEST_SOURCE_STATUS_CONFIG_SAVED_INVALID_FMT = (
+    "Saved source for config library test {name}. The current profile cannot run it until validation errors are fixed."
+)
+TEST_SOURCE_STATUS_SAVED_FMT = "Saved source for profile test {name}. Push Config to update the robot."
+TEST_SOURCE_STATUS_VALID_FMT = "Source validation OK for profile test {name}."
+TEST_SOURCE_STATUS_INVALID_FMT = "Source validation failed for profile test {name}."
+TEST_SOURCE_STATUS_SAVED_INVALID_FMT = (
+    "Saved source for profile test {name}. Test is not runnable until validation errors are fixed."
+)
+TEST_SOURCE_STATUS_DIRTY_SUFFIX = " [modified]"
+TEST_SOURCE_EDIT_BLOCKED = "Source editing is only available for profile-owned tests."
+TEST_SOURCE_EMPTY = ""
+TEST_SOURCE_START_VALIDATE_FMT = "VALIDATE SOURCE test={name} profile={profile}"
+TEST_SOURCE_START_SAVE_FMT = "SAVE SOURCE test={name} profile={profile}"
+TEST_SOURCE_RESULTS_TITLE = "Source Validation Results"
+TEST_SOURCE_RESULTS_HEIGHT = 12
+TEST_SOURCE_RESULTS_GEOMETRY = "720x280"
+TEST_SOURCE_RESULTS_CLOSE = "Close"
+TEST_SOURCE_LINE_NUMBER_WIDTH = 5
+HIDDEN_LEFT_RAIL_COMMANDS = {
+    "printTestsInfo",
+    "printTestsOverview",
+    "runAll",
+    "runTest",
+    "testNext",
+    "testPrev",
+    "toggleEnabled",
+}
+TEST_ACTIVITY_COMMANDS = {
+    "printtestsinfo",
+    "printtestsoverview",
+    "selecttestbyname",
+    "runall",
+    "runtest",
+    "testnext",
+    "testprev",
+    "toggleenabled",
+}
 
 
 def _normalize_host_action_row(row: Dict[str, Any], default_source: str, default_kind: str) -> Dict[str, Any]:
@@ -741,7 +903,7 @@ def _load_tests_from_dsl_store(profile_name: str) -> Optional[List[str]]:
         return None
     if not isinstance(payload.get(KEY_DSL_TESTS), dict):
         return None
-    return resolve_profile_test_names(payload, profile_name)
+    return resolve_runnable_profile_test_names(payload, profile_name)
 
 
 def _ui_prefs_path() -> Path:
@@ -834,6 +996,8 @@ def _action_sections() -> List[Tuple[str, List[Tuple[str, Optional[str]]]]]:
             label = str(row.get("uiLabel", row.get("name", ""))).strip()
             command = str(row.get("name", "")).strip()
             if not label or not command:
+                continue
+            if command in HIDDEN_LEFT_RAIL_COMMANDS:
                 continue
             items.append((label, command))
         if items:
@@ -1223,6 +1387,7 @@ class BringupControlUI(tk.Tk):
         self._manual_motion_checks: Dict[str, Dict[str, Any]] = {}
         self._manual_test_observations: Dict[str, Dict[str, Any]] = {}
         self._profile_devices: Dict[str, Dict[str, Any]] = {}
+        self._test_profile_devices: Dict[str, Dict[str, Any]] = {}
         self._robot_selected_profile = PROFILE_NONE
         self._robot_active_runtime_profile = PROFILE_NONE
         self._last_profile_context = PROFILE_NONE
@@ -1345,15 +1510,31 @@ class BringupControlUI(tk.Tk):
             header, text=BUTTON_SHOW_RUNTIME_STATE, command=self._show_runtime_state_from_ui
         ).pack(side="left", padx=(6, 0))
 
-        test_box = ttk.Combobox(header, values=tests, state="readonly", width=26)
-        test_box.set(tests[0])
+        self._selected_test_var = tk.StringVar(value=tests[0])
+        self._running_text_var = tk.StringVar(value=TEST_LIBRARY_RUNNING_DEFAULT)
+        test_header_frame = ttk.Frame(header)
+        test_header_frame.pack(side="left", padx=(16, 0))
+        self._test_header_frame = test_header_frame
+        ttk.Label(test_header_frame, text=TEST_LIBRARY_SELECTION_LABEL).pack(
+            side="left", padx=(0, 4)
+        )
+        test_box = ttk.Combobox(
+            test_header_frame,
+            values=tests,
+            state="readonly",
+            width=26,
+            textvariable=self._selected_test_var,
+        )
         test_box.bind("<<ComboboxSelected>>", self._on_test_selected)
         self._test_box = test_box
         self._last_selected_test = test_box.get()
-        ttk.Label(header, text="Selected Test").pack(side="left", padx=(16, 4))
         test_box.pack(side="left")
 
-        running = ttk.Label(header, text="Running: (none)", foreground="#374151")
+        running = ttk.Label(
+            test_header_frame,
+            textvariable=self._running_text_var,
+            foreground="#374151",
+        )
         running.pack(side="left", padx=(16, 4))
         self._running_label = running
         wall_clock_frame = ttk.Frame(header)
@@ -1444,8 +1625,13 @@ class BringupControlUI(tk.Tk):
         self._evidence_panel = evidence_panel
         notebook.add(evidence_panel, text=EVIDENCE_TAB_LABEL)
         self._build_evidence_panel(evidence_panel)
+        tests_panel = ttk.Frame(notebook)
+        self._tests_panel = tests_panel
+        notebook.add(tests_panel, text=TEST_LIBRARY_TAB_LABEL)
+        self._build_test_library_panel(tests_panel)
         notebook.bind("<<NotebookTabChanged>>", self._on_right_notebook_changed)
         self._apply_visibility_tab_pref()
+        self._sync_test_selection_visibility()
 
     def _build_live_panel(self, parent: tk.Widget) -> None:
         """
@@ -1520,6 +1706,287 @@ class BringupControlUI(tk.Tk):
         self._live_view.set_show_groups(self._live_groups_var.get())
         self._live_view.set_visibility_enabled(self._visibility_enabled_var.get())
         self._live_view.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+
+    def _build_test_library_panel(self, parent: tk.Widget) -> None:
+        """
+        NAME
+            _build_test_library_panel - Build the dedicated test-library authoring tab.
+        """
+        container = ttk.Frame(parent, padding=10)
+        container.pack(fill="both", expand=True)
+        ttk.Label(container, text=TEST_LIBRARY_TITLE).pack(anchor="w")
+        toolbar = ttk.Frame(container)
+        toolbar.pack(fill="x", pady=(8, 8))
+        ttk.Button(
+            toolbar,
+            text=TEST_LIBRARY_BUTTON_REFRESH,
+            command=self._refresh_test_library_view,
+        ).pack(side="left")
+        ttk.Button(
+            toolbar,
+            text=TEST_LIBRARY_BUTTON_NEW,
+            command=self._create_new_test_from_ui,
+        ).pack(side="left", padx=(8, 0))
+        ttk.Button(
+            toolbar,
+            text=TEST_LIBRARY_BUTTON_RENAME,
+            command=self._rename_selected_test_from_ui,
+        ).pack(side="left", padx=(8, 0))
+        ttk.Button(
+            toolbar,
+            text=TEST_LIBRARY_BUTTON_DELETE,
+            command=self._delete_selected_test_from_ui,
+        ).pack(side="left", padx=(8, 0))
+        ttk.Button(
+            toolbar,
+            text=TEST_LIBRARY_BUTTON_IMPORT_GLOBAL,
+            command=self._dsl_import_global_from_ui,
+        ).pack(side="left", padx=(8, 0))
+        ttk.Button(
+            toolbar,
+            text=TEST_LIBRARY_BUTTON_IMPORT_CONFIG,
+            command=self._dsl_import_to_config_from_ui,
+        ).pack(side="left", padx=(8, 0))
+        ttk.Button(
+            toolbar,
+            text=TEST_LIBRARY_BUTTON_IMPORT_PROFILE,
+            command=self._dsl_import_from_ui,
+        ).pack(side="left", padx=(8, 0))
+        ttk.Button(
+            toolbar,
+            text=TEST_LIBRARY_BUTTON_COPY_CONFIG,
+            command=self._copy_selected_test_to_config_from_ui,
+        ).pack(side="left", padx=(8, 0))
+        ttk.Button(
+            toolbar,
+            text=TEST_LIBRARY_BUTTON_COPY_PROFILE,
+            command=self._copy_selected_test_to_profile_from_ui,
+        ).pack(side="left", padx=(8, 0))
+        ttk.Button(
+            toolbar,
+            text=TEST_LIBRARY_BUTTON_VALIDATE,
+            command=self._dsl_validate_from_ui,
+        ).pack(side="left", padx=(8, 0))
+        execution_toolbar = ttk.Frame(container)
+        execution_toolbar.pack(fill="x", pady=(0, 8))
+        for label, command in [
+            (TEST_LIBRARY_BUTTON_INFO, "printTestsInfo"),
+            (TEST_LIBRARY_BUTTON_OVERVIEW, "printTestsOverview"),
+            (TEST_LIBRARY_BUTTON_RUN_SELECTED, "runTest"),
+            (TEST_LIBRARY_BUTTON_RUN_ALL, "runAll"),
+            (TEST_LIBRARY_BUTTON_NEXT, "testNext"),
+            (TEST_LIBRARY_BUTTON_PREV, "testPrev"),
+            (TEST_LIBRARY_BUTTON_TOGGLE, "toggleEnabled"),
+        ]:
+            ttk.Button(
+                execution_toolbar,
+                text=label,
+                command=(lambda c=command: self._on_action(c)),
+            ).pack(side="left", padx=(0, 8))
+        selection_toolbar = ttk.Frame(container)
+        selection_toolbar.pack(fill="x", pady=(0, 8))
+        ttk.Label(selection_toolbar, text=TEST_LIBRARY_SELECTION_LABEL).pack(
+            side="left", padx=(0, 4)
+        )
+        current_test_values = list(self._test_box.cget("values")) if hasattr(self, "_test_box") else []
+        tests_tab_test_box = ttk.Combobox(
+            selection_toolbar,
+            values=current_test_values,
+            state="readonly",
+            width=26,
+            textvariable=self._selected_test_var,
+        )
+        tests_tab_test_box.bind("<<ComboboxSelected>>", self._on_test_selected)
+        tests_tab_test_box.pack(side="left")
+        self._tests_tab_test_box = tests_tab_test_box
+        ttk.Label(
+            selection_toolbar,
+            textvariable=self._running_text_var,
+            foreground=TEST_LIBRARY_STATUS_COLOR,
+        ).pack(side="left", padx=(16, 4))
+        self._test_library_status_var = tk.StringVar(value=TEST_LIBRARY_STATUS_EMPTY)
+        ttk.Label(
+            container,
+            textvariable=self._test_library_status_var,
+            foreground=TEST_LIBRARY_STATUS_COLOR,
+        ).pack(anchor="w", pady=(0, 8))
+        ttk.Label(
+            container,
+            text=TEST_LIBRARY_NOTE_TEXT,
+            foreground=TEST_LIBRARY_STATUS_COLOR,
+            wraplength=900,
+            justify="left",
+        ).pack(anchor="w", pady=(0, 8))
+        layout = ttk.Panedwindow(container, orient="vertical")
+        layout.pack(fill="both", expand=True)
+        library_area = ttk.Frame(layout)
+        activity_area = ttk.Frame(layout)
+        layout.add(library_area, weight=3)
+        layout.add(activity_area, weight=1)
+        self._tests_layout_pane = layout
+        columns = ttk.Panedwindow(library_area, orient="horizontal")
+        columns.pack(fill="both", expand=True)
+        global_frame = ttk.LabelFrame(columns, text=TEST_LIBRARY_GLOBAL_TITLE, padding=8)
+        config_frame = ttk.LabelFrame(columns, text=TEST_LIBRARY_CONFIG_TITLE, padding=8)
+        profile_frame = ttk.LabelFrame(columns, text=TEST_LIBRARY_PROFILE_TITLE, padding=8)
+        devices_frame = ttk.LabelFrame(columns, text=TEST_LIBRARY_DEVICES_TITLE, padding=8)
+        columns.add(global_frame, weight=1)
+        columns.add(config_frame, weight=1)
+        columns.add(profile_frame, weight=1)
+        columns.add(devices_frame, weight=1)
+
+        global_body = ttk.Frame(global_frame)
+        global_body.pack(fill="both", expand=True)
+        global_list = tk.Listbox(
+            global_body,
+            exportselection=False,
+            height=TEST_LIBRARY_LISTBOX_HEIGHT,
+        )
+        global_list.pack(side="left", fill="both", expand=True)
+        global_scroll = ttk.Scrollbar(global_body, command=global_list.yview)
+        global_scroll.pack(side="right", fill="y")
+        global_list.configure(yscrollcommand=global_scroll.set)
+        self._test_library_global_list = global_list
+        global_list.bind("<<ListboxSelect>>", self._on_test_library_global_selected)
+
+        config_body = ttk.Frame(config_frame)
+        config_body.pack(fill="both", expand=True)
+        config_list = tk.Listbox(
+            config_body,
+            exportselection=False,
+            height=TEST_LIBRARY_LISTBOX_HEIGHT,
+        )
+        config_list.pack(side="left", fill="both", expand=True)
+        config_scroll = ttk.Scrollbar(config_body, command=config_list.yview)
+        config_scroll.pack(side="right", fill="y")
+        config_list.configure(yscrollcommand=config_scroll.set)
+        self._test_library_config_list = config_list
+        config_list.bind("<<ListboxSelect>>", self._on_test_library_config_selected)
+
+        profile_body = ttk.Frame(profile_frame)
+        profile_body.pack(fill="both", expand=True)
+        profile_list = tk.Listbox(
+            profile_body,
+            exportselection=False,
+            height=TEST_LIBRARY_LISTBOX_HEIGHT,
+        )
+        profile_list.pack(side="left", fill="both", expand=True)
+        profile_scroll = ttk.Scrollbar(profile_body, command=profile_list.yview)
+        profile_scroll.pack(side="right", fill="y")
+        profile_list.configure(yscrollcommand=profile_scroll.set)
+        self._test_library_profile_list = profile_list
+        profile_list.bind("<<ListboxSelect>>", self._on_test_library_profile_selected)
+
+        devices_body = ttk.Frame(devices_frame)
+        devices_body.pack(fill="both", expand=True)
+        devices_table = ttk.Treeview(
+            devices_body,
+            columns=(
+                TEST_LIBRARY_DEVICES_COL_LABEL,
+                TEST_LIBRARY_DEVICES_COL_TYPE,
+                TEST_LIBRARY_DEVICES_COL_ID,
+            ),
+            show="headings",
+        )
+        devices_table.heading(TEST_LIBRARY_DEVICES_COL_LABEL, text=TEST_LIBRARY_DEVICES_COL_LABEL)
+        devices_table.heading(TEST_LIBRARY_DEVICES_COL_TYPE, text=TEST_LIBRARY_DEVICES_COL_TYPE)
+        devices_table.heading(TEST_LIBRARY_DEVICES_COL_ID, text=TEST_LIBRARY_DEVICES_COL_ID)
+        devices_table.column(TEST_LIBRARY_DEVICES_COL_LABEL, width=180, anchor="w")
+        devices_table.column(TEST_LIBRARY_DEVICES_COL_TYPE, width=90, anchor="w")
+        devices_table.column(TEST_LIBRARY_DEVICES_COL_ID, width=60, anchor="center")
+        devices_table.pack(side="left", fill="both", expand=True)
+        devices_scroll = ttk.Scrollbar(devices_body, command=devices_table.yview)
+        devices_scroll.pack(side="right", fill="y")
+        devices_table.configure(yscrollcommand=devices_scroll.set)
+        self._test_library_devices_table = devices_table
+        devices_table.bind("<Double-1>", self._on_test_library_device_double_click)
+        lower_notebook = ttk.Notebook(activity_area)
+        lower_notebook.pack(fill="both", expand=True, pady=(8, 0))
+        results_frame = ttk.Frame(lower_notebook, padding=8)
+        lower_notebook.add(results_frame, text=TEST_ACTIVITY_TAB_LABEL)
+        results_body = ttk.Frame(results_frame)
+        results_body.pack(fill="both", expand=True)
+        self._test_output = tk.Text(
+            results_body,
+            height=TEST_LIBRARY_RESULTS_HEIGHT,
+            wrap="word",
+            state="disabled",
+        )
+        self._test_output.pack(side="left", fill="both", expand=True)
+        results_scroll = ttk.Scrollbar(results_body, command=self._test_output.yview)
+        results_scroll.pack(side="right", fill="y")
+        self._test_output.configure(yscrollcommand=results_scroll.set)
+        source_frame = ttk.Frame(lower_notebook, padding=8)
+        lower_notebook.add(source_frame, text=TEST_SOURCE_TAB_LABEL)
+        source_toolbar = ttk.Frame(source_frame)
+        source_toolbar.pack(fill="x", pady=(0, 8))
+        save_button = ttk.Button(
+            source_toolbar,
+            text=TEST_SOURCE_BUTTON_SAVE,
+            command=self._save_selected_test_source,
+        )
+        save_button.pack(side="left")
+        self._test_source_save_button = save_button
+        revert_button = ttk.Button(
+            source_toolbar,
+            text=TEST_SOURCE_BUTTON_REVERT,
+            command=self._reload_selected_test_source,
+        )
+        revert_button.pack(side="left", padx=(8, 0))
+        self._test_source_revert_button = revert_button
+        validate_button = ttk.Button(
+            source_toolbar,
+            text=TEST_SOURCE_BUTTON_VALIDATE,
+            command=self._validate_selected_test_source,
+        )
+        validate_button.pack(side="left", padx=(8, 0))
+        self._test_source_validate_button = validate_button
+        self._test_source_status_var = tk.StringVar(value=TEST_SOURCE_STATUS_NONE)
+        ttk.Label(
+            source_frame,
+            textvariable=self._test_source_status_var,
+            foreground=TEST_LIBRARY_STATUS_COLOR,
+        ).pack(anchor="w", pady=(0, 8))
+        reference_frame = ttk.LabelFrame(source_frame, text=TEST_SOURCE_REFERENCE_TITLE, padding=8)
+        reference_frame.pack(fill="x", pady=(0, 8))
+        ttk.Label(
+            reference_frame,
+            text=TEST_SOURCE_REFERENCE_TEXT,
+            justify="left",
+        ).pack(anchor="w")
+        source_body = ttk.Frame(source_frame)
+        source_body.pack(fill="both", expand=True)
+        self._test_source_line_numbers = tk.Text(
+            source_body,
+            width=TEST_SOURCE_LINE_NUMBER_WIDTH,
+            wrap="none",
+            state="disabled",
+            takefocus=0,
+            background="#f3f4f6",
+            foreground="#6b7280",
+        )
+        self._test_source_line_numbers.pack(side="left", fill="y")
+        self._test_source_text = tk.Text(
+            source_body,
+            wrap="word",
+            state="disabled",
+            undo=True,
+            maxundo=-1,
+            autoseparators=True,
+        )
+        self._test_source_text.pack(side="left", fill="both", expand=True)
+        source_scroll = ttk.Scrollbar(source_body, command=self._on_test_source_scrollbar)
+        source_scroll.pack(side="right", fill="y")
+        self._test_source_scrollbar = source_scroll
+        self._test_source_text.configure(yscrollcommand=self._on_test_source_yscroll)
+        self._test_source_text.bind("<<Modified>>", self._on_test_source_modified)
+        self._test_source_text.bind("<KeyRelease>", self._on_test_source_key_release)
+        self._test_source_text.bind("<MouseWheel>", self._refresh_test_source_line_numbers)
+        self._test_source_text.bind("<ButtonRelease-1>", self._on_test_source_click_release)
+        self._test_source_text.bind("<Configure>", self._on_test_source_configure)
+        self._test_source_text.bind("<Control-z>", self._on_test_source_undo)
+        self._test_source_text.bind("<Control-y>", self._on_test_source_redo)
+        self._refresh_test_library_view()
 
     def _build_visibility_panel(self, parent: tk.Widget) -> None:
         """
@@ -1857,8 +2324,25 @@ class BringupControlUI(tk.Tk):
         NAME
             _on_right_notebook_changed - React to right-side tab changes.
         """
+        self._sync_test_selection_visibility()
         if self._evidence_tab_active():
             self._refresh_evidence_view()
+
+    def _sync_test_selection_visibility(self) -> None:
+        """
+        NAME
+            _sync_test_selection_visibility - Show selected-test controls in the active context only.
+        """
+        frame = getattr(self, "_test_header_frame", None)
+        if frame is None:
+            return
+        tests_tab_active = self._current_right_tab_text() == TEST_LIBRARY_TAB_LABEL
+        if tests_tab_active:
+            if frame.winfo_manager():
+                frame.pack_forget()
+            return
+        if not frame.winfo_manager():
+            frame.pack(side="left", padx=(16, 0), before=self._wall_clock_frame)
 
     def _build_visibility_ctre_raw_table_widget(self, parent: tk.Widget) -> ttk.Treeview:
         """
@@ -1980,6 +2464,7 @@ class BringupControlUI(tk.Tk):
         """
         name = _normalize_profile_name(profile_name)
         self._refresh_tests_for_profile(name)
+        self._refresh_test_library_view(name)
         self._sync_diagnostic_profile_context(reload_views=reload_views)
 
     def _refresh_profile_devices(self, profile_name: object) -> None:
@@ -2014,6 +2499,89 @@ class BringupControlUI(tk.Tk):
                 _build_visibility_expected_devices(devices)
             )
             self._visibility_last_update = 0.0
+
+    def _refresh_test_library_available_devices(self) -> None:
+        """
+        NAME
+            _refresh_test_library_available_devices - Refresh the Tests-tab available-device list from the selected profile.
+        """
+        table = getattr(self, "_test_library_devices_table", None)
+        if table is None:
+            return
+        for item in table.get_children():
+            table.delete(item)
+        rows: List[Tuple[str, str, str]] = []
+        for device in sorted(
+            self._test_profile_devices.values(),
+            key=lambda entry: str(entry.get(PROFILE_KEY_LABEL, "") or "").lower(),
+        ):
+            label = str(device.get(PROFILE_KEY_LABEL, NT_VALUE_EMPTY)).strip()
+            if not label:
+                continue
+            device_type = self._profile_device_type_display(device)
+            device_id = str(device.get(KEY_ID, NT_VALUE_EMPTY)).strip()
+            rows.append((label, device_type, device_id))
+        if not rows:
+            rows.append((TEST_LIBRARY_DEVICES_EMPTY, "", ""))
+        for row in rows:
+            table.insert("", "end", values=row)
+
+    def _profile_device_type_display(self, device: Dict[str, Any]) -> str:
+        """
+        NAME
+            _profile_device_type_display - Resolve one Available Devices type label with both readable and numeric forms when useful.
+        """
+        if not isinstance(device, dict):
+            return NT_VALUE_EMPTY
+        raw_value = str(device.get(KEY_DEVICE_TYPE, NT_VALUE_EMPTY) or "").strip()
+        type_name = str(device.get(KEY_TYPE, NT_VALUE_EMPTY) or "").strip()
+        if not type_name:
+            try:
+                type_name = str(_resolve_device_type_label(device, None) or "").strip()
+            except Exception:
+                type_name = NT_VALUE_EMPTY
+        if type_name and raw_value and type_name != raw_value and type_name.lower() != "unknown":
+            return f"{type_name} ({raw_value})"
+        if type_name and type_name.lower() != "unknown":
+            return type_name
+        return raw_value
+
+    def _selected_test_library_available_device_label(self) -> str:
+        """
+        NAME
+            _selected_test_library_available_device_label - Return the selected available-device label from the Tests tab.
+        """
+        table = getattr(self, "_test_library_devices_table", None)
+        if table is None:
+            return ""
+        selection = table.selection()
+        if not selection:
+            return ""
+        values = table.item(selection[0], "values")
+        if not values:
+            return ""
+        label = str(values[0] or "").strip()
+        if not label or label == TEST_LIBRARY_DEVICES_EMPTY:
+            return ""
+        return label
+
+    def _on_test_library_device_double_click(self, _event=None) -> None:
+        """
+        NAME
+            _on_test_library_device_double_click - Insert the selected available-device label at the source-editor cursor.
+        """
+        label = self._selected_test_library_available_device_label()
+        if not label:
+            return
+        widget = getattr(self, "_test_source_text", None)
+        if widget is None or str(widget.cget("state")) == "disabled":
+            return
+        insert_text = label
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", label):
+            insert_text = f'"{label}"'
+        widget.insert("insert", insert_text)
+        widget.focus_set()
+        self._refresh_test_source_line_numbers()
 
     def _iter_live_views(self) -> List[LiveTopologyView]:
         """
@@ -4639,14 +5207,975 @@ class BringupControlUI(tk.Tk):
         NAME
             _refresh_tests_for_profile - Refresh tests dropdown for a profile.
         """
-        if not hasattr(self, "_test_box"):
+        test_boxes = self._test_selection_boxes()
+        if not test_boxes:
             return
         name = _normalize_profile_name(profile_name)
         tests = _load_tests(name) or [PROFILE_NONE]
-        self._test_box["values"] = tests
+        for box in test_boxes:
+            box["values"] = tests
         if tests:
-            self._test_box.set(tests[0])
+            self._selected_test_var.set(tests[0])
             self._last_selected_test = tests[0]
+
+    def _test_selection_boxes(self) -> List[ttk.Combobox]:
+        """
+        NAME
+            _test_selection_boxes - Return all visible/invisible test-selection combobox widgets.
+        """
+        boxes: List[ttk.Combobox] = []
+        for attr_name in ("_test_box", "_tests_tab_test_box"):
+            box = getattr(self, attr_name, None)
+            if box is not None:
+                boxes.append(box)
+        return boxes
+
+    def _refresh_test_library_view(self, profile_name: object = None) -> None:
+        """
+        NAME
+            _refresh_test_library_view - Refresh the dedicated Tests tab from local config.
+        """
+        if not hasattr(self, "_test_library_status_var"):
+            return
+        selected_profile = (
+            self._selected_profile_name() if profile_name is None else _normalize_profile_name(profile_name)
+        )
+        try:
+            query = LocalConfigQueryService()
+            global_names = list_external_library_test_names()
+            global_runnable_map = (
+                query.external_library_test_runnable_map(selected_profile)
+                if selected_profile != PROFILE_NONE
+                else {}
+            )
+            config_names = query.global_test_names()
+            profile_names = (
+                query.profile_test_names(selected_profile)
+                if selected_profile != PROFILE_NONE
+                else []
+            )
+            config_runnable_map = (
+                query.config_library_test_runnable_map(selected_profile)
+                if selected_profile != PROFILE_NONE
+                else {}
+            )
+            runnable_map = (
+                query.profile_test_runnable_map(selected_profile)
+                if selected_profile != PROFILE_NONE
+                else {}
+            )
+            test_profile_devices = (
+                query.profile_device_catalog(selected_profile)
+                if selected_profile != PROFILE_NONE
+                else {}
+            )
+            profile_set_name = (
+                query.profile_test_set_name(selected_profile)
+                if selected_profile != PROFILE_NONE
+                else ""
+            )
+        except Exception as exc:
+            self._test_profile_devices = {}
+            self._replace_test_library_list(self._test_library_global_list, [], "")
+            self._replace_test_library_list(self._test_library_config_list, [], "")
+            self._replace_test_library_list(self._test_library_profile_list, [], "")
+            self._refresh_test_library_available_devices()
+            self._test_library_status_var.set(str(exc))
+            return
+        self._test_profile_devices = {
+            str(label).strip().lower(): entry
+            for label, entry in test_profile_devices.items()
+            if isinstance(label, str) and label.strip() and isinstance(entry, dict)
+        }
+        current_global = self._selected_test_library_global_name()
+        current_config = self._selected_test_library_config_name()
+        current_profile = self._selected_test_library_profile_name()
+        self._replace_test_library_list(
+            self._test_library_global_list,
+            [
+                name if global_runnable_map.get(name, False) else name + TEST_LIBRARY_INVALID_SUFFIX
+                for name in global_names
+            ],
+            current_global,
+        )
+        self._replace_test_library_list(
+            self._test_library_config_list,
+            [
+                name if config_runnable_map.get(name, False) else name + TEST_LIBRARY_INVALID_SUFFIX
+                for name in config_names
+            ],
+            current_config,
+        )
+        self._replace_test_library_list(
+            self._test_library_profile_list,
+            [
+                name if runnable_map.get(name, False) else name + TEST_LIBRARY_INVALID_SUFFIX
+                for name in profile_names
+            ],
+            current_profile,
+        )
+        self._refresh_test_library_available_devices()
+        if selected_profile == PROFILE_NONE:
+            self._test_library_status_var.set(TEST_LIBRARY_STATUS_EMPTY)
+            self._load_selected_test_source()
+            return
+        self._test_library_status_var.set(
+            TEST_LIBRARY_STATUS_FMT.format(
+                profile=selected_profile,
+                set_name=profile_set_name or TEST_LIBRARY_SET_NONE,
+                profile_count=len(profile_names),
+                runnable_count=sum(1 for value in runnable_map.values() if value),
+                config_count=len(config_names),
+                global_count=len(global_names),
+            )
+        )
+        self._load_selected_test_source()
+
+    def _replace_test_library_list(
+        self,
+        listbox: tk.Listbox,
+        names: List[str],
+        preferred_name: str,
+    ) -> None:
+        """
+        NAME
+            _replace_test_library_list - Replace one Tests-tab listbox while preserving selection when possible.
+        """
+        listbox.delete(0, tk.END)
+        for entry in names:
+            listbox.insert(tk.END, entry)
+        selected_name = str(preferred_name or "").strip()
+        if not selected_name:
+            return
+        for index, entry in enumerate(names):
+            entry_name = str(entry or "").strip()
+            if entry_name.endswith(TEST_LIBRARY_INVALID_SUFFIX):
+                entry_name = entry_name[: -len(TEST_LIBRARY_INVALID_SUFFIX)].rstrip()
+            if entry_name != selected_name:
+                continue
+            listbox.selection_clear(0, tk.END)
+            listbox.selection_set(index)
+            listbox.see(index)
+            return
+
+    def _select_test_library_profile_name(self, test_name: str) -> bool:
+        """
+        NAME
+            _select_test_library_profile_name - Select one saved profile test by name in the Tests tab.
+        """
+        listbox = getattr(self, "_test_library_profile_list", None)
+        if listbox is None:
+            return False
+        target = str(test_name or "").strip()
+        if not target:
+            return False
+        count = int(listbox.size())
+        for index in range(count):
+            entry = str(listbox.get(index) or "").strip()
+            if entry.endswith(TEST_LIBRARY_INVALID_SUFFIX):
+                entry = entry[: -len(TEST_LIBRARY_INVALID_SUFFIX)].rstrip()
+            if entry != target:
+                continue
+            listbox.selection_clear(0, tk.END)
+            if hasattr(self, "_test_library_global_list"):
+                self._test_library_global_list.selection_clear(0, tk.END)
+            listbox.selection_set(index)
+            listbox.see(index)
+            self._load_selected_test_source()
+            return True
+        return False
+
+    def _select_test_library_config_name(self, test_name: str) -> bool:
+        """
+        NAME
+            _select_test_library_config_name - Select one config-library test by name in the Tests tab.
+        """
+        listbox = getattr(self, "_test_library_config_list", None)
+        if listbox is None:
+            return False
+        target = str(test_name or "").strip()
+        if not target:
+            return False
+        count = int(listbox.size())
+        for index in range(count):
+            entry = str(listbox.get(index) or "").strip()
+            if entry.endswith(TEST_LIBRARY_INVALID_SUFFIX):
+                entry = entry[: -len(TEST_LIBRARY_INVALID_SUFFIX)].rstrip()
+            if entry != target:
+                continue
+            listbox.selection_clear(0, tk.END)
+            if hasattr(self, "_test_library_global_list"):
+                self._test_library_global_list.selection_clear(0, tk.END)
+            if hasattr(self, "_test_library_profile_list"):
+                self._test_library_profile_list.selection_clear(0, tk.END)
+            listbox.selection_set(index)
+            listbox.see(index)
+            self._load_selected_test_source()
+            return True
+        return False
+
+    def _selected_test_library_global_name(self) -> str:
+        """
+        NAME
+            _selected_test_library_global_name - Return the selected global-library DSL test name.
+        """
+        if not hasattr(self, "_test_library_global_list"):
+            return ""
+        selection = self._test_library_global_list.curselection()
+        if not selection:
+            return ""
+        value = str(self._test_library_global_list.get(selection[0]) or "").strip()
+        if value.endswith(TEST_LIBRARY_INVALID_SUFFIX):
+            return value[: -len(TEST_LIBRARY_INVALID_SUFFIX)].rstrip()
+        return value
+
+    def _selected_test_library_config_name(self) -> str:
+        """
+        NAME
+            _selected_test_library_config_name - Return the selected config-library DSL test name.
+        """
+        if not hasattr(self, "_test_library_config_list"):
+            return ""
+        selection = self._test_library_config_list.curselection()
+        if not selection:
+            return ""
+        value = str(self._test_library_config_list.get(selection[0]) or "").strip()
+        if value.endswith(TEST_LIBRARY_INVALID_SUFFIX):
+            return value[: -len(TEST_LIBRARY_INVALID_SUFFIX)].rstrip()
+        return value
+
+    def _selected_test_library_profile_name(self) -> str:
+        """
+        NAME
+            _selected_test_library_profile_name - Return the selected profile-runnable DSL test name.
+        """
+        if not hasattr(self, "_test_library_profile_list"):
+            return ""
+        selection = self._test_library_profile_list.curselection()
+        if not selection:
+            return ""
+        value = str(self._test_library_profile_list.get(selection[0]) or "").strip()
+        if value.endswith(TEST_LIBRARY_INVALID_SUFFIX):
+            return value[: -len(TEST_LIBRARY_INVALID_SUFFIX)].rstrip()
+        return value
+
+    def _selected_test_library_entry(self) -> Tuple[str, str]:
+        """
+        NAME
+            _selected_test_library_entry - Return the selected test name plus source scope.
+        """
+        profile_name = self._selected_test_library_profile_name()
+        if profile_name:
+            return (profile_name, "profile")
+        config_name = self._selected_test_library_config_name()
+        if config_name:
+            return (config_name, "config")
+        global_name = self._selected_test_library_global_name()
+        if global_name:
+            return (global_name, "global")
+        return ("", "")
+
+    def _test_source_has_unsaved_changes(self) -> bool:
+        """
+        NAME
+            _test_source_has_unsaved_changes - Return whether the current editable source buffer differs from the saved source.
+        """
+        scope = str(getattr(self, "_selected_test_source_scope", "") or "").strip()
+        if scope not in ("config", "profile"):
+            return False
+        original = str(getattr(self, "_selected_test_source_original", "") or "")
+        return self._current_test_source_text() != original
+
+    def _restore_selected_test_library_entry(self) -> None:
+        """
+        NAME
+            _restore_selected_test_library_entry - Restore the prior test selection after a canceled switch.
+        """
+        name = str(getattr(self, "_selected_test_source_name", "") or "").strip()
+        scope = str(getattr(self, "_selected_test_source_scope", "") or "").strip()
+        if not name or not scope:
+            return
+        self._suppress_test_library_selection_change = True
+        try:
+            if hasattr(self, "_test_library_global_list"):
+                self._test_library_global_list.selection_clear(0, tk.END)
+            if hasattr(self, "_test_library_config_list"):
+                self._test_library_config_list.selection_clear(0, tk.END)
+            if hasattr(self, "_test_library_profile_list"):
+                self._test_library_profile_list.selection_clear(0, tk.END)
+            if scope == "profile":
+                self._restore_test_library_listbox_selection(
+                    getattr(self, "_test_library_profile_list", None),
+                    name,
+                )
+            elif scope == "config":
+                self._restore_test_library_listbox_selection(
+                    getattr(self, "_test_library_config_list", None),
+                    name,
+                )
+            elif scope == "global":
+                self._restore_test_library_listbox_selection(
+                    getattr(self, "_test_library_global_list", None),
+                    name,
+                )
+        finally:
+            self._suppress_test_library_selection_change = False
+
+    def _restore_test_library_listbox_selection(self, listbox: object, target_name: str) -> None:
+        """
+        NAME
+            _restore_test_library_listbox_selection - Restore a listbox selection by test name without reloading the editor.
+        """
+        if listbox is None:
+            return
+        target = str(target_name or "").strip()
+        if not target:
+            return
+        count = int(listbox.size())
+        for index in range(count):
+            entry = str(listbox.get(index) or "").strip()
+            if entry.endswith(TEST_LIBRARY_INVALID_SUFFIX):
+                entry = entry[: -len(TEST_LIBRARY_INVALID_SUFFIX)].rstrip()
+            if entry != target:
+                continue
+            listbox.selection_set(index)
+            listbox.see(index)
+            return
+
+    def _confirm_test_source_switch(self) -> bool:
+        """
+        NAME
+            _confirm_test_source_switch - Prompt to save, discard, or cancel when leaving a dirty test source buffer.
+        """
+        if not self._test_source_has_unsaved_changes():
+            return True
+        current_name = str(getattr(self, "_selected_test_source_name", "") or "").strip() or "test"
+        answer = messagebox.askyesnocancel(
+            TEST_SOURCE_SWITCH_TITLE,
+            TEST_SOURCE_SWITCH_PROMPT_FMT.format(name=current_name),
+            parent=self,
+        )
+        if answer is None:
+            return False
+        if answer:
+            self._save_selected_test_source()
+            return not self._test_source_has_unsaved_changes()
+        return True
+
+    def _on_test_library_global_selected(self, _event=None) -> None:
+        """
+        NAME
+            _on_test_library_global_selected - Load selected global-library test source into the editor.
+        """
+        if getattr(self, "_suppress_test_library_selection_change", False):
+            return
+        if not self._confirm_test_source_switch():
+            self._restore_selected_test_library_entry()
+            return
+        if hasattr(self, "_test_library_profile_list"):
+            self._test_library_profile_list.selection_clear(0, tk.END)
+        if hasattr(self, "_test_library_config_list"):
+            self._test_library_config_list.selection_clear(0, tk.END)
+        self._load_selected_test_source()
+
+    def _on_test_library_config_selected(self, _event=None) -> None:
+        """
+        NAME
+            _on_test_library_config_selected - Load selected config-library test source into the editor.
+        """
+        if getattr(self, "_suppress_test_library_selection_change", False):
+            return
+        if not self._confirm_test_source_switch():
+            self._restore_selected_test_library_entry()
+            return
+        if hasattr(self, "_test_library_global_list"):
+            self._test_library_global_list.selection_clear(0, tk.END)
+        if hasattr(self, "_test_library_profile_list"):
+            self._test_library_profile_list.selection_clear(0, tk.END)
+        self._load_selected_test_source()
+
+    def _on_test_library_profile_selected(self, _event=None) -> None:
+        """
+        NAME
+            _on_test_library_profile_selected - Load selected profile test source into the editor.
+        """
+        if getattr(self, "_suppress_test_library_selection_change", False):
+            return
+        if not self._confirm_test_source_switch():
+            self._restore_selected_test_library_entry()
+            return
+        if hasattr(self, "_test_library_global_list"):
+            self._test_library_global_list.selection_clear(0, tk.END)
+        if hasattr(self, "_test_library_config_list"):
+            self._test_library_config_list.selection_clear(0, tk.END)
+        self._load_selected_test_source()
+
+    def _load_selected_test_source(self) -> None:
+        """
+        NAME
+            _load_selected_test_source - Refresh the Tests-tab source editor from the current list selection.
+        """
+        if not hasattr(self, "_test_source_text"):
+            return
+        test_name, scope = self._selected_test_library_entry()
+        if not test_name:
+            self._set_test_source_editor(TEST_SOURCE_EMPTY, editable=False)
+            self._selected_test_source_name = ""
+            self._selected_test_source_scope = ""
+            self._selected_test_source_original = TEST_SOURCE_EMPTY
+            self._set_test_source_status(TEST_SOURCE_STATUS_NONE)
+            self._set_test_source_buttons_enabled(False)
+            self._clear_test_source_results()
+            return
+        try:
+            payload = self._load_local_profiles_payload()
+            store = robot_test_dsl_store_from_root_payload(payload)
+        except Exception as exc:
+            self._set_test_source_editor(TEST_SOURCE_EMPTY, editable=False)
+            self._set_test_source_status(str(exc))
+            self._set_test_source_buttons_enabled(False)
+            self._set_test_source_results([str(exc)])
+            return
+        source_text = TEST_SOURCE_EMPTY
+        editable = scope in ("config", "profile")
+        if scope == "global":
+            try:
+                source_text = read_external_library_test_source(test_name)
+            except Exception as exc:
+                self._set_test_source_editor(TEST_SOURCE_EMPTY, editable=False)
+                self._set_test_source_status(str(exc))
+                self._set_test_source_buttons_enabled(False)
+                self._set_test_source_results([str(exc)])
+                return
+        else:
+            entry = store.tests_by_name.get(test_name)
+            source_text = entry.source if isinstance(entry, object) and hasattr(entry, "source") else TEST_SOURCE_EMPTY
+        self._set_test_source_editor(str(source_text or ""), editable=editable)
+        self._selected_test_source_name = test_name
+        self._selected_test_source_scope = scope
+        self._selected_test_source_original = str(source_text or "")
+        self._set_test_source_buttons_enabled(editable)
+        self._clear_test_source_results()
+        if editable:
+            if scope == "config":
+                self._set_test_source_status(TEST_SOURCE_STATUS_CONFIG_FMT.format(name=test_name))
+            else:
+                self._set_test_source_status(TEST_SOURCE_STATUS_PROFILE_FMT.format(name=test_name))
+            return
+        self._set_test_source_status(TEST_SOURCE_STATUS_GLOBAL_FMT.format(name=test_name))
+
+    def _set_test_source_editor(self, text: str, *, editable: bool) -> None:
+        """
+        NAME
+            _set_test_source_editor - Replace the DSL source editor contents and editability state.
+        """
+        widget = getattr(self, "_test_source_text", None)
+        if widget is None:
+            return
+        widget.configure(state="normal")
+        widget.delete("1.0", "end")
+        widget.insert("1.0", str(text or ""))
+        widget.edit_modified(False)
+        widget.configure(state="normal" if editable else "disabled")
+        self._refresh_test_source_line_numbers()
+
+    def _refresh_test_source_line_numbers(self, _event=None) -> None:
+        """
+        NAME
+            _refresh_test_source_line_numbers - Redraw the source-editor line-number gutter.
+        """
+        text_widget = getattr(self, "_test_source_text", None)
+        gutter = getattr(self, "_test_source_line_numbers", None)
+        if text_widget is None or gutter is None:
+            return
+        try:
+            line_count = int(text_widget.index("end-1c").split(".")[0])
+        except Exception:
+            line_count = 1
+        gutter.configure(state="normal")
+        gutter.delete("1.0", "end")
+        gutter.insert("1.0", "\n".join(str(index) for index in range(1, line_count + 1)))
+        gutter.configure(state="disabled")
+        gutter.yview_moveto(text_widget.yview()[0])
+
+    def _on_test_source_yscroll(self, first: str, last: str) -> None:
+        """
+        NAME
+            _on_test_source_yscroll - Keep the source-editor scrollbar and line-number gutter in sync.
+        """
+        scrollbar = getattr(self, "_test_source_scrollbar", None)
+        if scrollbar is not None:
+            scrollbar.set(first, last)
+        gutter = getattr(self, "_test_source_line_numbers", None)
+        if gutter is not None:
+            gutter.yview_moveto(float(first))
+
+    def _on_test_source_scrollbar(self, *args) -> None:
+        """
+        NAME
+            _on_test_source_scrollbar - Scroll the source editor and line-number gutter together.
+        """
+        text_widget = getattr(self, "_test_source_text", None)
+        gutter = getattr(self, "_test_source_line_numbers", None)
+        if text_widget is not None:
+            text_widget.yview(*args)
+        if gutter is not None:
+            gutter.yview(*args)
+
+    def _on_test_source_key_release(self, event=None) -> None:
+        """
+        NAME
+            _on_test_source_key_release - Refresh source-editor line numbers and show/hide signal completion.
+        """
+        self._refresh_test_source_line_numbers()
+        self._show_test_source_completion_popup()
+
+    def _on_test_source_click_release(self, _event=None) -> None:
+        """
+        NAME
+            _on_test_source_click_release - Refresh source-editor state and dismiss signal completion on cursor clicks.
+        """
+        self._refresh_test_source_line_numbers()
+        self._hide_test_source_completion_popup()
+
+    def _on_test_source_configure(self, _event=None) -> None:
+        """
+        NAME
+            _on_test_source_configure - Refresh line numbers and dismiss signal completion when the editor is reflowed.
+        """
+        self._refresh_test_source_line_numbers()
+        self._hide_test_source_completion_popup()
+
+    def _current_test_source_line_before_cursor(self) -> str:
+        """
+        NAME
+            _current_test_source_line_before_cursor - Return the current source-editor line content up to the cursor.
+        """
+        widget = getattr(self, "_test_source_text", None)
+        if widget is None:
+            return ""
+        try:
+            return widget.get("insert linestart", "insert")
+        except Exception:
+            return ""
+
+    def _test_source_completion_mode_for_line(self, line_text: str) -> str:
+        """
+        NAME
+            _test_source_completion_mode_for_line - Classify the current DSL statement so completion only offers compatible signals.
+        """
+        normalized = str(line_text or "").lstrip().lower()
+        if not normalized:
+            return TEST_SOURCE_COMPLETION_MODE_NONE
+        for prefix in TEST_SOURCE_COMPLETION_WRITE_PREFIXES:
+            if normalized.startswith(prefix):
+                return TEST_SOURCE_COMPLETION_MODE_WRITE
+        for prefix in TEST_SOURCE_COMPLETION_READ_PREFIXES:
+            if normalized.startswith(prefix):
+                return TEST_SOURCE_COMPLETION_MODE_READ
+        for prefix in TEST_SOURCE_COMPLETION_CLEAR_PREFIXES:
+            if normalized.startswith(prefix):
+                return TEST_SOURCE_COMPLETION_MODE_CLEAR
+        return TEST_SOURCE_COMPLETION_MODE_NONE
+
+    def _selected_profile_signal_names_for_device_label(self, label: str, mode: str) -> List[str]:
+        """
+        NAME
+            _selected_profile_signal_names_for_device_label - Resolve DSL signal names for one selected-profile device label and statement mode.
+        """
+        clean_label = str(label or "").strip()
+        if not clean_label:
+            return []
+        if mode not in (
+            TEST_SOURCE_COMPLETION_MODE_READ,
+            TEST_SOURCE_COMPLETION_MODE_WRITE,
+            TEST_SOURCE_COMPLETION_MODE_CLEAR,
+        ):
+            return []
+        device = self._test_profile_devices.get(clean_label.lower(), {})
+        if not isinstance(device, dict):
+            return []
+        device_type = resolve_profile_device_dsl_type(device)
+        if not device_type:
+            return []
+        catalog = robot_test_dsl_signal_catalog()
+        signals = catalog.get(device_type)
+        if not isinstance(signals, dict):
+            return []
+        capability_key = {
+            TEST_SOURCE_COMPLETION_MODE_READ: "readable",
+            TEST_SOURCE_COMPLETION_MODE_WRITE: "writable",
+            TEST_SOURCE_COMPLETION_MODE_CLEAR: "clearable",
+        }.get(mode, "")
+        if not capability_key:
+            return []
+        resolved_names: List[str] = []
+        for name, metadata in signals.items():
+            signal_name = str(name or "").strip()
+            if not signal_name or not isinstance(metadata, dict):
+                continue
+            if bool(metadata.get(capability_key, False)):
+                resolved_names.append(signal_name)
+        return sorted(resolved_names)
+
+    def _source_completion_device_label_before_cursor(self) -> str:
+        """
+        NAME
+            _source_completion_device_label_before_cursor - Extract the device label from a trailing device-reference prefix.
+        """
+        line_text = self._current_test_source_line_before_cursor()
+        if not line_text:
+            return ""
+        match = re.search(TEST_SOURCE_COMPLETION_DEVICE_PATTERN, line_text)
+        if match is None:
+            return ""
+        return str(match.group(1) or match.group(2) or "").strip()
+
+    def _show_test_source_completion_popup(self) -> None:
+        """
+        NAME
+            _show_test_source_completion_popup - Show a signal-completion popup for the device reference before the cursor.
+        """
+        mode = self._test_source_completion_mode_for_line(self._current_test_source_line_before_cursor())
+        if not mode:
+            self._hide_test_source_completion_popup()
+            return
+        label = self._source_completion_device_label_before_cursor()
+        if not label:
+            self._hide_test_source_completion_popup()
+            return
+        signals = self._selected_profile_signal_names_for_device_label(label, mode)
+        display_signals = list(signals) if signals else [TEST_SOURCE_COMPLETION_EMPTY]
+        widget = getattr(self, "_test_source_text", None)
+        if widget is None or str(widget.cget("state")) == "disabled":
+            self._hide_test_source_completion_popup()
+            return
+        bbox = widget.bbox("insert")
+        if bbox is None:
+            self._hide_test_source_completion_popup()
+            return
+        popup = getattr(self, "_test_source_completion_popup", None)
+        if popup is not None and not popup.winfo_exists():
+            popup = None
+            self._test_source_completion_popup = None
+            self._test_source_completion_list = None
+        if popup is None:
+            popup = tk.Toplevel(self)
+            popup.title(TEST_SOURCE_COMPLETION_POPUP_TITLE)
+            popup.transient(self)
+            popup.resizable(False, False)
+            listbox = tk.Listbox(popup, exportselection=False, height=min(8, len(display_signals)))
+            listbox.pack(fill="both", expand=True)
+            listbox.bind("<Double-1>", self._insert_selected_test_source_completion)
+            self._test_source_completion_popup = popup
+            self._test_source_completion_list = listbox
+        listbox = getattr(self, "_test_source_completion_list", None)
+        if listbox is None:
+            return
+        listbox.delete(0, tk.END)
+        for signal_name in display_signals:
+            listbox.insert(tk.END, signal_name)
+        if display_signals:
+            listbox.selection_clear(0, tk.END)
+            listbox.selection_set(0)
+        x, y, _width, height = bbox
+        popup.geometry(f"+{widget.winfo_rootx() + x}+{widget.winfo_rooty() + y + height}")
+        popup.deiconify()
+        popup.lift()
+
+    def _insert_selected_test_source_completion(self, _event=None) -> None:
+        """
+        NAME
+            _insert_selected_test_source_completion - Insert the selected signal-completion token into the source editor.
+        """
+        listbox = getattr(self, "_test_source_completion_list", None)
+        widget = getattr(self, "_test_source_text", None)
+        if listbox is None or widget is None or str(widget.cget("state")) == "disabled":
+            self._hide_test_source_completion_popup()
+            return
+        selection = listbox.curselection()
+        if not selection:
+            self._hide_test_source_completion_popup()
+            return
+        signal_name = str(listbox.get(selection[0]) or "").strip()
+        if not signal_name or signal_name == TEST_SOURCE_COMPLETION_EMPTY:
+            self._hide_test_source_completion_popup()
+            return
+        widget.insert("insert", signal_name)
+        widget.focus_set()
+        self._hide_test_source_completion_popup()
+        self._refresh_test_source_line_numbers()
+
+    def _hide_test_source_completion_popup(self) -> None:
+        """
+        NAME
+            _hide_test_source_completion_popup - Hide the signal-completion popup when it is visible.
+        """
+        popup = getattr(self, "_test_source_completion_popup", None)
+        if popup is None:
+            return
+        try:
+            popup.withdraw()
+        except tk.TclError:
+            self._test_source_completion_popup = None
+            self._test_source_completion_list = None
+
+    def _set_test_source_status(self, text: str) -> None:
+        """
+        NAME
+            _set_test_source_status - Update the source-editor status line.
+        """
+        if hasattr(self, "_test_source_status_var"):
+            self._test_source_status_var.set(str(text or "").strip())
+
+    def _set_test_source_buttons_enabled(self, enabled: bool) -> None:
+        """
+        NAME
+            _set_test_source_buttons_enabled - Enable or disable source-editor mutation controls.
+        """
+        state = ["!disabled"] if enabled else ["disabled"]
+        for attr_name in (
+            "_test_source_save_button",
+            "_test_source_revert_button",
+            "_test_source_validate_button",
+        ):
+            button = getattr(self, attr_name, None)
+            if button is not None:
+                button.state(state)
+
+    def _on_test_source_modified(self, _event=None) -> None:
+        """
+        NAME
+            _on_test_source_modified - Mark the source-editor status when the current profile test has unsaved edits.
+        """
+        widget = getattr(self, "_test_source_text", None)
+        if widget is None:
+            return
+        if not widget.edit_modified():
+            return
+        scope = getattr(self, "_selected_test_source_scope", "")
+        if scope in ("config", "profile"):
+            if scope == "config":
+                base = TEST_SOURCE_STATUS_CONFIG_FMT.format(
+                    name=getattr(self, "_selected_test_source_name", "")
+                )
+            else:
+                base = TEST_SOURCE_STATUS_PROFILE_FMT.format(
+                    name=getattr(self, "_selected_test_source_name", "")
+                )
+            self._set_test_source_status(base + TEST_SOURCE_STATUS_DIRTY_SUFFIX)
+        widget.edit_modified(False)
+
+    def _on_test_source_undo(self, _event=None) -> str | None:
+        """
+        NAME
+            _on_test_source_undo - Undo one source-editor change when the editor is editable.
+        """
+        widget = getattr(self, "_test_source_text", None)
+        if widget is None or str(widget.cget("state")) == "disabled":
+            return None
+        try:
+            widget.edit_undo()
+        except tk.TclError:
+            return "break"
+        self._refresh_test_source_line_numbers()
+        return "break"
+
+    def _on_test_source_redo(self, _event=None) -> str | None:
+        """
+        NAME
+            _on_test_source_redo - Redo one source-editor change when the editor is editable.
+        """
+        widget = getattr(self, "_test_source_text", None)
+        if widget is None or str(widget.cget("state")) == "disabled":
+            return None
+        try:
+            widget.edit_redo()
+        except tk.TclError:
+            return "break"
+        self._refresh_test_source_line_numbers()
+        return "break"
+
+    def _reload_selected_test_source(self) -> None:
+        """
+        NAME
+            _reload_selected_test_source - Revert the source editor to the last saved DSL source.
+        """
+        self._load_selected_test_source()
+
+    def _current_test_source_text(self) -> str:
+        """
+        NAME
+            _current_test_source_text - Return the DSL source text currently shown in the editor.
+        """
+        widget = getattr(self, "_test_source_text", None)
+        if widget is None:
+            return ""
+        return widget.get("1.0", "end-1c")
+
+    def _validate_selected_test_source(self) -> None:
+        """
+        NAME
+            _validate_selected_test_source - Validate the current editor contents for the selected editable test.
+        """
+        profile_name = self._selected_real_profile()
+        test_name = str(getattr(self, "_selected_test_source_name", "") or "").strip()
+        scope = str(getattr(self, "_selected_test_source_scope", "") or "").strip()
+        self._clear_test_source_results()
+        if scope not in ("config", "profile") or not test_name:
+            self._append_output(TEST_SOURCE_EDIT_BLOCKED)
+            self._append_test_output(TEST_SOURCE_EDIT_BLOCKED)
+            self._append_test_source_result(TEST_SOURCE_EDIT_BLOCKED)
+            return
+        try:
+            payload = self._load_local_profiles_payload()
+        except Exception as exc:
+            self._append_output(str(exc))
+            self._append_test_output(str(exc))
+            self._append_test_source_result(str(exc))
+            return
+        source_text = self._current_test_source_text()
+
+        def _operation() -> object:
+            try:
+                if scope == "config":
+                    return write_test_source_into_config_library(
+                        payload,
+                        profile_name,
+                        test_name,
+                        source_text,
+                    )
+                return update_test_source_in_root_payload(
+                    payload,
+                    profile_name,
+                    test_name,
+                    source_text,
+                )
+            except DslServiceError as exc:
+                return exc
+
+        outcome = self._run_blocking_status_operation(
+            TEST_SOURCE_START_VALIDATE_FMT.format(name=test_name, profile=profile_name),
+            _operation,
+            include_test_output=True,
+        )
+        if isinstance(outcome, DslServiceError):
+            self._append_output(str(outcome))
+            self._append_test_output(str(outcome))
+            self._append_test_source_result(str(outcome))
+            return
+        validation_text = render_validation_text(
+            outcome.validation,
+            robot_test_dsl_store_from_root_payload(payload),
+            entries_override={test_name: outcome.entry},
+        )
+        for line in validation_text.splitlines():
+            if line == "OK":
+                continue
+            self._append_output(line)
+            self._append_test_output(line)
+            self._append_test_source_result(line)
+        if outcome.ok():
+            status_text = TEST_SOURCE_STATUS_VALID_FMT.format(name=test_name)
+            self._set_test_source_status(status_text)
+            self._append_test_output(status_text)
+            self._append_test_source_result(status_text)
+            return
+        self._set_test_source_status(TEST_SOURCE_STATUS_INVALID_FMT.format(name=test_name))
+        self._append_test_output(TEST_SOURCE_STATUS_INVALID_FMT.format(name=test_name))
+        self._append_test_source_result(TEST_SOURCE_STATUS_INVALID_FMT.format(name=test_name))
+
+    def _save_selected_test_source(self) -> None:
+        """
+        NAME
+            _save_selected_test_source - Save the current editor contents back into the selected editable test.
+        """
+        profile_name = self._selected_real_profile()
+        test_name = str(getattr(self, "_selected_test_source_name", "") or "").strip()
+        scope = str(getattr(self, "_selected_test_source_scope", "") or "").strip()
+        self._clear_test_source_results()
+        if scope not in ("config", "profile") or not test_name:
+            self._append_output(TEST_SOURCE_EDIT_BLOCKED)
+            self._append_test_output(TEST_SOURCE_EDIT_BLOCKED)
+            self._append_test_source_result(TEST_SOURCE_EDIT_BLOCKED)
+            return
+        try:
+            session = self._begin_local_profiles_edit()
+        except Exception as exc:
+            self._append_output(str(exc))
+            self._append_test_output(str(exc))
+            self._append_test_source_result(str(exc))
+            return
+        payload = session.to_payload()
+        source_text = self._current_test_source_text()
+
+        def _operation() -> object:
+            try:
+                if scope == "config":
+                    result = write_test_source_into_config_library(
+                        payload,
+                        profile_name,
+                        test_name,
+                        source_text,
+                    )
+                else:
+                    result = update_test_source_in_root_payload(
+                        payload,
+                        profile_name,
+                        test_name,
+                        source_text,
+                    )
+            except DslServiceError as exc:
+                return exc
+            session.mark_dirty()
+            self._persist_local_profiles_edit(session)
+            return result
+
+        outcome = self._run_blocking_status_operation(
+            TEST_SOURCE_START_SAVE_FMT.format(name=test_name, profile=profile_name),
+            _operation,
+            include_test_output=True,
+        )
+        if isinstance(outcome, DslServiceError):
+            self._append_output(str(outcome))
+            self._append_test_output(str(outcome))
+            self._append_test_source_result(str(outcome))
+            return
+        validation_text = render_validation_text(
+            outcome.validation,
+            robot_test_dsl_store_from_root_payload(payload),
+            entries_override={test_name: outcome.entry},
+        )
+        for line in validation_text.splitlines():
+            if line == "OK":
+                continue
+            self._append_output(line)
+            self._append_test_output(line)
+            self._append_test_source_result(line)
+        self._selected_test_source_original = outcome.entry.source
+        self._set_test_source_editor(outcome.entry.source, editable=True)
+        self._refresh_test_library_view(profile_name)
+        self._refresh_tests_for_profile(profile_name)
+        if scope == "config":
+            self._select_test_library_config_name(test_name)
+        else:
+            self._select_test_library_profile_name(test_name)
+        if outcome.ok():
+            if scope == "config":
+                saved_text = TEST_SOURCE_STATUS_CONFIG_SAVED_FMT.format(name=test_name)
+            else:
+                saved_text = TEST_SOURCE_STATUS_SAVED_FMT.format(name=test_name)
+            self._set_test_source_status(saved_text)
+            self._append_test_output(saved_text)
+            self._append_test_source_result(saved_text)
+            return
+        if scope == "config":
+            invalid_text = TEST_SOURCE_STATUS_CONFIG_SAVED_INVALID_FMT.format(name=test_name)
+        else:
+            invalid_text = TEST_SOURCE_STATUS_SAVED_INVALID_FMT.format(name=test_name)
+        self._set_test_source_status(invalid_text)
+        self._append_test_output(invalid_text)
+        self._append_test_source_result(invalid_text)
 
     def _build_reports_help(self) -> str:
         """
@@ -4844,11 +6373,135 @@ class BringupControlUI(tk.Tk):
         self._lines.append(line)
         if len(self._lines) > self._max_lines:
             self._lines = self._lines[-self._max_lines :]
-        self._output.configure(state="normal")
-        self._output.delete("1.0", "end")
-        self._output.insert("end", "\n".join(self._lines) + "\n")
-        self._output.see("end")
-        self._output.configure(state="disabled")
+        self._render_log_lines(self._output, self._lines)
+
+    def _append_test_output(self, line: str) -> None:
+        """
+        NAME
+            _append_test_output - Append a line to the Tests-tab activity log.
+        """
+        lines = getattr(self, "_test_lines", None)
+        if lines is None:
+            lines = []
+            self._test_lines = lines
+        lines.append(line)
+        if len(lines) > self._max_lines:
+            self._test_lines = lines[-self._max_lines :]
+        self._render_log_lines(getattr(self, "_test_output", None), self._test_lines)
+
+    def _render_log_lines(self, widget: Optional[tk.Text], lines: List[str]) -> None:
+        """
+        NAME
+            _render_log_lines - Replace a text widget body with the provided log lines.
+        """
+        if widget is None:
+            return
+        widget.configure(state="normal")
+        widget.delete("1.0", "end")
+        widget.insert("end", "\n".join(lines) + "\n")
+        widget.see("end")
+        widget.configure(state="disabled")
+
+    def _set_test_source_results(self, lines: List[str]) -> None:
+        """
+        NAME
+            _set_test_source_results - Replace the non-modal source validation popup contents.
+        """
+        clean_lines = [str(line) for line in lines if str(line).strip()]
+        if not clean_lines:
+            text_widget = getattr(self, "_test_source_results_popup_text", None)
+            self._render_log_lines(text_widget, clean_lines)
+            return
+        popup = self._ensure_test_source_results_popup(show=True)
+        if popup is None:
+            return
+        text_widget = getattr(self, "_test_source_results_popup_text", None)
+        self._render_log_lines(text_widget, clean_lines)
+
+    def _append_test_source_result(self, line: str) -> None:
+        """
+        NAME
+            _append_test_source_result - Append one line to the non-modal source validation popup.
+        """
+        lines = getattr(self, "_test_source_result_lines", None)
+        if lines is None:
+            lines = []
+            self._test_source_result_lines = lines
+        if str(line or "").strip():
+            lines.append(str(line))
+        self._set_test_source_results(self._test_source_result_lines)
+
+    def _clear_test_source_results(self) -> None:
+        """
+        NAME
+            _clear_test_source_results - Clear the source validation popup contents without closing it.
+        """
+        self._test_source_result_lines = []
+        self._set_test_source_results([])
+
+    def _ensure_test_source_results_popup(self, *, show: bool) -> Optional[tk.Toplevel]:
+        """
+        NAME
+            _ensure_test_source_results_popup - Create or refresh the non-modal source validation popup.
+        """
+        popup = getattr(self, "_test_source_results_popup", None)
+        if popup is not None and not popup.winfo_exists():
+            popup = None
+            self._test_source_results_popup = None
+            self._test_source_results_popup_text = None
+        if popup is None:
+            popup = tk.Toplevel(self)
+            popup.title(TEST_SOURCE_RESULTS_TITLE)
+            popup.geometry(TEST_SOURCE_RESULTS_GEOMETRY)
+            popup.protocol("WM_DELETE_WINDOW", self._close_test_source_results_popup)
+            popup.transient(self)
+            body = ttk.Frame(popup, padding=8)
+            body.pack(fill="both", expand=True)
+            text_widget = tk.Text(
+                body,
+                height=TEST_SOURCE_RESULTS_HEIGHT,
+                wrap="word",
+                state="disabled",
+            )
+            text_widget.pack(side="left", fill="both", expand=True)
+            scroll = ttk.Scrollbar(body, command=text_widget.yview)
+            scroll.pack(side="right", fill="y")
+            text_widget.configure(yscrollcommand=scroll.set)
+            footer = ttk.Frame(popup, padding=(8, 0, 8, 8))
+            footer.pack(fill="x")
+            ttk.Button(
+                footer,
+                text=TEST_SOURCE_RESULTS_CLOSE,
+                command=self._close_test_source_results_popup,
+            ).pack(side="right")
+            self._test_source_results_popup = popup
+            self._test_source_results_popup_text = text_widget
+        if show:
+            popup.deiconify()
+            popup.lift()
+        return popup
+
+    def _close_test_source_results_popup(self) -> None:
+        """
+        NAME
+            _close_test_source_results_popup - Close the non-modal source validation popup.
+        """
+        popup = getattr(self, "_test_source_results_popup", None)
+        if popup is None:
+            return
+        try:
+            popup.destroy()
+        finally:
+            self._test_source_results_popup = None
+            self._test_source_results_popup_text = None
+
+    def _is_test_activity_command(self, name: object) -> bool:
+        """
+        NAME
+            _is_test_activity_command - Return true when a command belongs in the Tests-tab activity log.
+        """
+        command = str(name or "").strip().lower()
+        return command in TEST_ACTIVITY_COMMANDS
 
     def _remember_out_line(self, line: str) -> None:
         """
@@ -5108,6 +6761,8 @@ class BringupControlUI(tk.Tk):
             return
         ts = timestamp_hms()
         self._append_output(f"{ts} RETRY {name}")
+        if self._is_test_activity_command(name):
+            self._append_test_output(f"{ts} RETRY {name}")
         seq = send_tracked_command(
             self._session,
             self._tracker,
@@ -5148,12 +6803,18 @@ class BringupControlUI(tk.Tk):
             return
         if not self._tcp_connected:
             self._append_output("Not connected: command blocked.")
+            if self._is_test_activity_command(command):
+                self._append_test_output("Not connected: command blocked.")
             return
         if self._tracker.is_pending():
             self._append_output("Busy: wait for current command to finish.")
+            if self._is_test_activity_command(command):
+                self._append_test_output("Busy: wait for current command to finish.")
             return
         ts = timestamp_hms()
         self._append_output(f"{ts} CMD {command}")
+        if self._is_test_activity_command(command):
+            self._append_test_output(f"{ts} CMD {command}")
         self._last_cmd = (command, args)
         seq = send_tracked_command(
             self._session,
@@ -5171,15 +6832,17 @@ class BringupControlUI(tk.Tk):
         NAME
             _on_test_selected - Send selectTestByName when dropdown changes.
         """
-        if not hasattr(self, "_test_box"):
+        if not self._test_selection_boxes():
             return
         if not self._tcp_connected:
             self._append_output("Not connected: selection blocked.")
+            self._append_test_output("Not connected: selection blocked.")
             return
         if self._tracker.is_pending():
             self._append_output("Busy: wait for current command to finish.")
+            self._append_test_output("Busy: wait for current command to finish.")
             return
-        name = self._test_box.get().strip()
+        name = str(self._selected_test_var.get() or "").strip()
         if not name or name == "(none)":
             return
         if name == self._last_selected_test:
@@ -5187,6 +6850,7 @@ class BringupControlUI(tk.Tk):
         self._last_selected_test = name
         ts = timestamp_hms()
         self._append_output(f"{ts} CMD selectTestByName \"{name}\"")
+        self._append_test_output(f"{ts} CMD selectTestByName \"{name}\"")
         self._last_cmd = ("selectTestByName", {"name": name})
         seq = send_tracked_command(
             self._session,
@@ -5249,11 +6913,12 @@ class BringupControlUI(tk.Tk):
     def _dsl_import_from_ui(self) -> None:
         """
         NAME
-            _dsl_import_from_ui - Import a DSL source file into local bringup_system.json from the UI.
+            _dsl_import_from_ui - Import a DSL source file into the selected profile test set from the UI.
         """
         profile_name = self._selected_real_profile()
         if not profile_name:
             self._append_output(DSL_OUTPUT_NO_PROFILE)
+            self._append_test_output(DSL_OUTPUT_NO_PROFILE)
             return
         selected = filedialog.askopenfilename(
             title=DSL_DIALOG_IMPORT_NAME_TITLE,
@@ -5262,6 +6927,7 @@ class BringupControlUI(tk.Tk):
         )
         if not selected:
             self._append_output(DSL_IMPORT_CANCELLED)
+            self._append_test_output(DSL_IMPORT_CANCELLED)
             return
         selected_path = Path(selected)
         default_name = selected_path.stem.strip() or TEST_NAME_EMPTY
@@ -5273,29 +6939,20 @@ class BringupControlUI(tk.Tk):
         )
         if test_name is None:
             self._append_output(DSL_IMPORT_CANCELLED)
+            self._append_test_output(DSL_IMPORT_CANCELLED)
             return
         test_name = test_name.strip()
         if not test_name:
             self._append_output("DSL import blocked: test name is required.")
+            self._append_test_output("DSL import blocked: test name is required.")
             return
         try:
             session = self._begin_local_profiles_edit()
         except Exception as exc:
             self._append_output(str(exc))
+            self._append_test_output(str(exc))
             return
         payload = session.to_payload()
-        store = robot_test_dsl_store_from_root_payload(payload)
-        initial_set = store.default_set or ""
-        set_name = simpledialog.askstring(
-            DSL_DIALOG_IMPORT_SET_TITLE,
-            DSL_DIALOG_IMPORT_SET_PROMPT,
-            parent=self,
-            initialvalue=initial_set,
-        )
-        if set_name is None:
-            self._append_output(DSL_IMPORT_CANCELLED)
-            return
-        cleaned_set = set_name.strip()
         def _operation() -> object:
             try:
                 result = import_test_into_root_payload(
@@ -5303,21 +6960,21 @@ class BringupControlUI(tk.Tk):
                     profile_name,
                     test_name,
                     selected_path,
-                    set_name=cleaned_set or None,
                 )
             except DslServiceError as exc:
                 return exc
-            if result.ok():
-                session.mark_dirty()
-                self._persist_local_profiles_edit(session)
+            session.mark_dirty()
+            self._persist_local_profiles_edit(session)
             return result
 
         outcome = self._run_blocking_status_operation(
             DSL_IMPORT_PATH_FMT.format(path=str(selected_path)),
             _operation,
+            include_test_output=True,
         )
         if isinstance(outcome, DslServiceError):
             self._append_output(str(outcome))
+            self._append_test_output(str(outcome))
             return
         validation_text = render_validation_text(
             outcome.validation,
@@ -5327,15 +6984,605 @@ class BringupControlUI(tk.Tk):
         if validation_text != "OK":
             for line in validation_text.splitlines():
                 self._append_output(line)
-            return
+                self._append_test_output(line)
+        self._refresh_tests_for_profile(profile_name)
+        self._refresh_test_library_view(profile_name)
+        self._select_test_library_profile_name(test_name)
+        if hasattr(self, "_test_box"):
+            values = list(self._test_box.cget("values"))
+            if test_name in values:
+                self._test_box.set(test_name)
+                self._last_selected_test = test_name
         if outcome.ok():
-            self._refresh_tests_for_profile(profile_name)
-            if hasattr(self, "_test_box"):
-                values = list(self._test_box.cget("values"))
-                if test_name in values:
-                    self._test_box.set(test_name)
-                    self._last_selected_test = test_name
             self._append_output(DSL_IMPORT_SAVED_FMT)
+            self._append_test_output(DSL_IMPORT_SAVED_FMT)
+            return
+        invalid_text = TEST_SOURCE_STATUS_SAVED_INVALID_FMT.format(name=test_name)
+        self._append_output(invalid_text)
+        self._append_test_output(invalid_text)
+
+    def _create_new_test_from_ui(self) -> None:
+        """
+        NAME
+            _create_new_test_from_ui - Create a new minimal profile-owned DSL test from the UI.
+        """
+        profile_name = self._selected_real_profile()
+        if not profile_name:
+            self._append_output(DSL_OUTPUT_NO_PROFILE)
+            self._append_test_output(DSL_OUTPUT_NO_PROFILE)
+            return
+        test_name = simpledialog.askstring(
+            DSL_DIALOG_CREATE_NAME_TITLE,
+            DSL_DIALOG_CREATE_NAME_PROMPT,
+            parent=self,
+            initialvalue=TEST_LIBRARY_NAME_NEW_FMT.format(profile=profile_name),
+        )
+        if test_name is None:
+            self._append_output(DSL_CREATE_CANCELLED)
+            self._append_test_output(DSL_CREATE_CANCELLED)
+            return
+        test_name = test_name.strip()
+        if not test_name:
+            self._append_output(DSL_CREATE_NAME_REQUIRED)
+            self._append_test_output(DSL_CREATE_NAME_REQUIRED)
+            return
+        try:
+            session = self._begin_local_profiles_edit()
+        except Exception as exc:
+            self._append_output(str(exc))
+            self._append_test_output(str(exc))
+            return
+        payload = session.to_payload()
+
+        def _operation() -> object:
+            try:
+                result = create_blank_test_in_root_payload(
+                    payload,
+                    profile_name,
+                    test_name,
+                )
+            except DslServiceError as exc:
+                return exc
+            session.mark_dirty()
+            self._persist_local_profiles_edit(session)
+            return result
+
+        outcome = self._run_blocking_status_operation(
+            DSL_CREATE_START_FMT.format(profile=profile_name, target=test_name),
+            _operation,
+            include_test_output=True,
+        )
+        if isinstance(outcome, DslServiceError):
+            self._append_output(str(outcome))
+            self._append_test_output(str(outcome))
+            return
+        validation_text = render_validation_text(
+            outcome.validation,
+            robot_test_dsl_store_from_root_payload(payload),
+            entries_override={test_name: outcome.entry},
+        )
+        if validation_text != "OK":
+            for line in validation_text.splitlines():
+                self._append_output(line)
+                self._append_test_output(line)
+        self._refresh_tests_for_profile(profile_name)
+        self._refresh_test_library_view(profile_name)
+        if hasattr(self, "_test_box"):
+            values = list(self._test_box.cget("values"))
+            if test_name in values:
+                self._test_box.set(test_name)
+                self._last_selected_test = test_name
+        self._select_test_library_profile_name(test_name)
+        if outcome.ok():
+            self._append_output(DSL_CREATE_SAVED_FMT)
+            self._append_test_output(DSL_CREATE_SAVED_FMT)
+            return
+        invalid_text = TEST_SOURCE_STATUS_SAVED_INVALID_FMT.format(name=test_name)
+        self._append_output(invalid_text)
+        self._append_test_output(invalid_text)
+
+    def _rename_selected_test_from_ui(self) -> None:
+        """
+        NAME
+            _rename_selected_test_from_ui - Rename the selected DSL test in external-global or config-backed scope.
+        """
+        profile_name = self._selected_real_profile()
+        source_name, scope = self._selected_test_library_entry()
+        if not source_name:
+            self._append_output(DSL_OUTPUT_NO_TEST)
+            self._append_test_output(DSL_OUTPUT_NO_TEST)
+            return
+        target_name = simpledialog.askstring(
+            DSL_DIALOG_RENAME_NAME_TITLE,
+            DSL_DIALOG_RENAME_NAME_PROMPT,
+            parent=self,
+            initialvalue=source_name,
+        )
+        if target_name is None:
+            self._append_output(DSL_RENAME_CANCELLED)
+            self._append_test_output(DSL_RENAME_CANCELLED)
+            return
+        target_name = target_name.strip()
+        if not target_name:
+            self._append_output(DSL_RENAME_NAME_REQUIRED)
+            self._append_test_output(DSL_RENAME_NAME_REQUIRED)
+            return
+        if scope == "global":
+            def _operation() -> object:
+                try:
+                    return rename_external_library_test(source_name, target_name)
+                except DslServiceError as exc:
+                    return exc
+
+            outcome = self._run_blocking_status_operation(
+                DSL_RENAME_START_FMT.format(source=source_name, target=target_name),
+                _operation,
+                include_test_output=True,
+            )
+            if isinstance(outcome, DslServiceError):
+                self._append_output(str(outcome))
+                self._append_test_output(str(outcome))
+                return
+            self._refresh_test_library_view(profile_name)
+            self._select_test_library_global_name(target_name)
+            self._append_output(DSL_RENAME_SAVED_FMT)
+            self._append_test_output(DSL_RENAME_SAVED_FMT)
+            return
+        try:
+            session = self._begin_local_profiles_edit()
+        except Exception as exc:
+            self._append_output(str(exc))
+            self._append_test_output(str(exc))
+            return
+        payload = session.to_payload()
+
+        def _operation() -> object:
+            try:
+                entry = rename_test_in_root_payload(payload, source_name, target_name)
+            except DslServiceError as exc:
+                return exc
+            session.mark_dirty()
+            self._persist_local_profiles_edit(session)
+            return entry
+
+        outcome = self._run_blocking_status_operation(
+            DSL_RENAME_START_FMT.format(source=source_name, target=target_name),
+            _operation,
+            include_test_output=True,
+        )
+        if isinstance(outcome, DslServiceError):
+            self._append_output(str(outcome))
+            self._append_test_output(str(outcome))
+            return
+        self._refresh_tests_for_profile(profile_name)
+        self._refresh_test_library_view(profile_name)
+        if scope == "config":
+            self._select_test_library_config_name(target_name)
+        else:
+            self._select_test_library_profile_name(target_name)
+        if hasattr(self, "_test_box"):
+            values = list(self._test_box.cget("values"))
+            if target_name in values:
+                self._test_box.set(target_name)
+                self._last_selected_test = target_name
+        self._append_output(DSL_RENAME_SAVED_FMT)
+        self._append_test_output(DSL_RENAME_SAVED_FMT)
+
+    def _delete_selected_test_from_ui(self) -> None:
+        """
+        NAME
+            _delete_selected_test_from_ui - Archive and delete the selected DSL test from the selected scope.
+        """
+        profile_name = self._selected_real_profile()
+        test_name, scope = self._selected_test_library_entry()
+        if not test_name:
+            self._append_output(DSL_OUTPUT_NO_TEST)
+            self._append_test_output(DSL_OUTPUT_NO_TEST)
+            return
+        if not messagebox.askyesno(
+            TEST_SOURCE_SWITCH_TITLE,
+            f"Delete and archive test {test_name}?",
+            parent=self,
+        ):
+            return
+        if scope == "global":
+            def _operation() -> object:
+                try:
+                    return delete_external_library_test(test_name)
+                except DslServiceError as exc:
+                    return exc
+
+            outcome = self._run_blocking_status_operation(
+                DSL_DELETE_START_FMT.format(name=test_name),
+                _operation,
+                include_test_output=True,
+            )
+            if isinstance(outcome, DslServiceError):
+                self._append_output(str(outcome))
+                self._append_test_output(str(outcome))
+                return
+            self._refresh_test_library_view(profile_name)
+            self._append_output(DSL_DELETE_SAVED_FMT.format(path=str(outcome)))
+            self._append_test_output(DSL_DELETE_SAVED_FMT.format(path=str(outcome)))
+            return
+        try:
+            session = self._begin_local_profiles_edit()
+        except Exception as exc:
+            self._append_output(str(exc))
+            self._append_test_output(str(exc))
+            return
+        payload = session.to_payload()
+
+        def _operation() -> object:
+            try:
+                archive_path = delete_test_from_root_payload(payload, test_name)
+            except DslServiceError as exc:
+                return exc
+            session.mark_dirty()
+            self._persist_local_profiles_edit(session)
+            return archive_path
+
+        outcome = self._run_blocking_status_operation(
+            DSL_DELETE_START_FMT.format(name=test_name),
+            _operation,
+            include_test_output=True,
+        )
+        if isinstance(outcome, DslServiceError):
+            self._append_output(str(outcome))
+            self._append_test_output(str(outcome))
+            return
+        self._refresh_tests_for_profile(profile_name)
+        self._refresh_test_library_view(profile_name)
+        self._append_output(DSL_DELETE_SAVED_FMT.format(path=str(outcome)))
+        self._append_test_output(DSL_DELETE_SAVED_FMT.format(path=str(outcome)))
+
+    def _dsl_import_global_from_ui(self) -> None:
+        """
+        NAME
+            _dsl_import_global_from_ui - Import a DSL source file into the external shared global library.
+        """
+        selected = filedialog.askopenfilename(
+            title=DSL_DIALOG_IMPORT_NAME_TITLE,
+            initialdir=str(self._default_profiles_path().parent),
+            filetypes=DSL_FILE_TYPES,
+        )
+        if not selected:
+            self._append_output(DSL_IMPORT_CANCELLED)
+            self._append_test_output(DSL_IMPORT_CANCELLED)
+            return
+        selected_path = Path(selected)
+        default_name = selected_path.stem.strip() or TEST_NAME_EMPTY
+        test_name = simpledialog.askstring(
+            DSL_DIALOG_IMPORT_NAME_TITLE,
+            DSL_DIALOG_IMPORT_NAME_PROMPT,
+            parent=self,
+            initialvalue=default_name,
+        )
+        if test_name is None:
+            self._append_output(DSL_IMPORT_CANCELLED)
+            self._append_test_output(DSL_IMPORT_CANCELLED)
+            return
+        test_name = test_name.strip()
+        if not test_name:
+            self._append_output("DSL import blocked: test name is required.")
+            self._append_test_output("DSL import blocked: test name is required.")
+            return
+
+        def _operation() -> object:
+            try:
+                return import_test_into_external_library(test_name, selected_path)
+            except DslServiceError as exc:
+                return exc
+
+        outcome = self._run_blocking_status_operation(
+            DSL_IMPORT_GLOBAL_PATH_FMT.format(path=str(selected_path)),
+            _operation,
+            include_test_output=True,
+        )
+        if isinstance(outcome, DslServiceError):
+            self._append_output(str(outcome))
+            self._append_test_output(str(outcome))
+            return
+        self._refresh_test_library_view(self._selected_real_profile())
+        self._select_test_library_global_name(test_name)
+        self._append_output(DSL_IMPORT_GLOBAL_SAVED_FMT)
+        self._append_test_output(DSL_IMPORT_GLOBAL_SAVED_FMT)
+
+    def _dsl_import_to_config_from_ui(self) -> None:
+        """
+        NAME
+            _dsl_import_to_config_from_ui - Import a DSL source file into the config-scoped shared library.
+        """
+        profile_name = self._selected_real_profile()
+        if not profile_name:
+            self._append_output(DSL_OUTPUT_NO_PROFILE)
+            self._append_test_output(DSL_OUTPUT_NO_PROFILE)
+            return
+        selected = filedialog.askopenfilename(
+            title=DSL_DIALOG_IMPORT_NAME_TITLE,
+            initialdir=str(self._default_profiles_path().parent),
+            filetypes=DSL_FILE_TYPES,
+        )
+        if not selected:
+            self._append_output(DSL_IMPORT_CANCELLED)
+            self._append_test_output(DSL_IMPORT_CANCELLED)
+            return
+        selected_path = Path(selected)
+        default_name = selected_path.stem.strip() or TEST_NAME_EMPTY
+        test_name = simpledialog.askstring(
+            DSL_DIALOG_IMPORT_NAME_TITLE,
+            DSL_DIALOG_IMPORT_NAME_PROMPT,
+            parent=self,
+            initialvalue=default_name,
+        )
+        if test_name is None:
+            self._append_output(DSL_IMPORT_CANCELLED)
+            self._append_test_output(DSL_IMPORT_CANCELLED)
+            return
+        test_name = test_name.strip()
+        if not test_name:
+            self._append_output("DSL import blocked: test name is required.")
+            self._append_test_output("DSL import blocked: test name is required.")
+            return
+        try:
+            session = self._begin_local_profiles_edit()
+        except Exception as exc:
+            self._append_output(str(exc))
+            self._append_test_output(str(exc))
+            return
+        payload = session.to_payload()
+
+        def _operation() -> object:
+            try:
+                result = import_test_into_config_library(
+                    payload,
+                    profile_name,
+                    test_name,
+                    selected_path,
+                )
+            except DslServiceError as exc:
+                return exc
+            session.mark_dirty()
+            self._persist_local_profiles_edit(session)
+            return result
+
+        outcome = self._run_blocking_status_operation(
+            DSL_IMPORT_CONFIG_PATH_FMT.format(path=str(selected_path), profile=profile_name),
+            _operation,
+            include_test_output=True,
+        )
+        if isinstance(outcome, DslServiceError):
+            self._append_output(str(outcome))
+            self._append_test_output(str(outcome))
+            if str(outcome).startswith(DSL_COPY_DUPLICATE_PREFIX):
+                self._refresh_test_library_view(profile_name)
+                if self._select_test_library_profile_name(target_name):
+                    message = DSL_COPY_DUPLICATE_REVEAL_FMT.format(name=target_name)
+                    self._append_output(message)
+                    self._append_test_output(message)
+            return
+        validation_text = render_validation_text(
+            outcome.validation,
+            robot_test_dsl_store_from_root_payload(payload),
+            entries_override={test_name: outcome.entry},
+        )
+        if validation_text != "OK":
+            for line in validation_text.splitlines():
+                self._append_output(line)
+                self._append_test_output(line)
+        self._refresh_tests_for_profile(profile_name)
+        self._refresh_test_library_view(profile_name)
+        self._select_test_library_config_name(test_name)
+        if outcome.ok():
+            self._append_output(DSL_IMPORT_CONFIG_SAVED_FMT)
+            self._append_test_output(DSL_IMPORT_CONFIG_SAVED_FMT)
+            return
+        invalid_text = TEST_SOURCE_STATUS_CONFIG_SAVED_INVALID_FMT.format(name=test_name)
+        self._append_output(invalid_text)
+        self._append_test_output(invalid_text)
+
+    def _copy_selected_test_to_config_from_ui(self) -> None:
+        """
+        NAME
+            _copy_selected_test_to_config_from_ui - Copy the selected external global-library DSL test into config scope.
+        """
+        profile_name = self._selected_real_profile()
+        if not profile_name:
+            self._append_output(DSL_OUTPUT_NO_PROFILE)
+            self._append_test_output(DSL_OUTPUT_NO_PROFILE)
+            return
+        source_name = self._selected_test_library_global_name()
+        if not source_name:
+            self._append_output(DSL_OUTPUT_NO_GLOBAL_TEST)
+            self._append_test_output(DSL_OUTPUT_NO_GLOBAL_TEST)
+            return
+        default_name = TEST_LIBRARY_NAME_COPY_FMT.format(profile=profile_name, name=source_name)
+        target_name = simpledialog.askstring(
+            DSL_DIALOG_COPY_NAME_TITLE,
+            DSL_DIALOG_COPY_NAME_PROMPT,
+            parent=self,
+            initialvalue=default_name,
+        )
+        if target_name is None:
+            self._append_output(DSL_COPY_CANCELLED)
+            self._append_test_output(DSL_COPY_CANCELLED)
+            return
+        target_name = target_name.strip()
+        if not target_name:
+            self._append_output(DSL_COPY_NAME_REQUIRED)
+            self._append_test_output(DSL_COPY_NAME_REQUIRED)
+            return
+        try:
+            session = self._begin_local_profiles_edit()
+        except Exception as exc:
+            self._append_output(str(exc))
+            self._append_test_output(str(exc))
+            return
+        payload = session.to_payload()
+
+        def _operation() -> object:
+            try:
+                result = copy_external_library_test_into_root_payload(
+                    payload,
+                    profile_name,
+                    source_name,
+                    target_name,
+                    destination="config",
+                )
+            except DslServiceError as exc:
+                return exc
+            session.mark_dirty()
+            self._persist_local_profiles_edit(session)
+            return result
+
+        outcome = self._run_blocking_status_operation(
+            DSL_COPY_GLOBAL_CONFIG_FMT.format(
+                source=source_name,
+                profile=profile_name,
+                target=target_name,
+            ),
+            _operation,
+            include_test_output=True,
+        )
+        if isinstance(outcome, DslServiceError):
+            self._append_output(str(outcome))
+            self._append_test_output(str(outcome))
+            return
+        validation_text = render_validation_text(
+            outcome.validation,
+            robot_test_dsl_store_from_root_payload(payload),
+            entries_override={target_name: outcome.entry},
+        )
+        if validation_text != "OK":
+            for line in validation_text.splitlines():
+                self._append_output(line)
+                self._append_test_output(line)
+        self._refresh_tests_for_profile(profile_name)
+        self._refresh_test_library_view(profile_name)
+        self._select_test_library_config_name(target_name)
+        if outcome.ok():
+            self._append_output(DSL_COPY_CONFIG_SAVED_FMT)
+            self._append_test_output(DSL_COPY_CONFIG_SAVED_FMT)
+            return
+        invalid_text = TEST_SOURCE_STATUS_CONFIG_SAVED_INVALID_FMT.format(name=target_name)
+        self._append_output(invalid_text)
+        self._append_test_output(invalid_text)
+
+    def _copy_selected_test_to_profile_from_ui(self) -> None:
+        """
+        NAME
+            _copy_selected_test_to_profile_from_ui - Copy the selected global/config DSL test into the selected profile.
+        """
+        profile_name = self._selected_real_profile()
+        if not profile_name:
+            self._append_output(DSL_OUTPUT_NO_PROFILE)
+            self._append_test_output(DSL_OUTPUT_NO_PROFILE)
+            return
+        source_name, scope = self._selected_test_library_entry()
+        if scope == "profile":
+            self._append_output(DSL_OUTPUT_NO_CONFIG_TEST)
+            self._append_test_output(DSL_OUTPUT_NO_CONFIG_TEST)
+            return
+        if scope == "global":
+            no_selection_text = DSL_OUTPUT_NO_GLOBAL_TEST
+        elif scope == "config":
+            no_selection_text = DSL_OUTPUT_NO_CONFIG_TEST
+        else:
+            no_selection_text = DSL_OUTPUT_NO_GLOBAL_TEST
+        if not source_name or scope not in ("global", "config"):
+            self._append_output(no_selection_text)
+            self._append_test_output(no_selection_text)
+            return
+        default_name = TEST_LIBRARY_NAME_COPY_FMT.format(profile=profile_name, name=source_name)
+        target_name = simpledialog.askstring(
+            DSL_DIALOG_COPY_NAME_TITLE,
+            DSL_DIALOG_COPY_NAME_PROMPT,
+            parent=self,
+            initialvalue=default_name,
+        )
+        if target_name is None:
+            self._append_output(DSL_COPY_CANCELLED)
+            self._append_test_output(DSL_COPY_CANCELLED)
+            return
+        target_name = target_name.strip()
+        if not target_name:
+            self._append_output(DSL_COPY_NAME_REQUIRED)
+            self._append_test_output(DSL_COPY_NAME_REQUIRED)
+            return
+        try:
+            session = self._begin_local_profiles_edit()
+        except Exception as exc:
+            self._append_output(str(exc))
+            self._append_test_output(str(exc))
+            return
+        payload = session.to_payload()
+
+        def _operation() -> object:
+            try:
+                if scope == "global":
+                    result = copy_external_library_test_into_root_payload(
+                        payload,
+                        profile_name,
+                        source_name,
+                        target_name,
+                        destination="profile",
+                    )
+                else:
+                    result = copy_test_into_root_payload(
+                        payload,
+                        profile_name,
+                        source_name,
+                        target_name,
+                    )
+            except DslServiceError as exc:
+                return exc
+            session.mark_dirty()
+            self._persist_local_profiles_edit(session)
+            return result
+
+        outcome = self._run_blocking_status_operation(
+            DSL_COPY_TO_PROFILE_FMT.format(
+                source=source_name,
+                profile=profile_name,
+                target=target_name,
+            ),
+            _operation,
+            include_test_output=True,
+        )
+        if isinstance(outcome, DslServiceError):
+            self._append_output(str(outcome))
+            self._append_test_output(str(outcome))
+            if str(outcome).startswith(DSL_COPY_DUPLICATE_PREFIX):
+                self._refresh_test_library_view(profile_name)
+                if self._select_test_library_profile_name(target_name):
+                    message = DSL_COPY_DUPLICATE_REVEAL_FMT.format(name=target_name)
+                    self._append_output(message)
+                    self._append_test_output(message)
+            return
+        validation_text = render_validation_text(
+            outcome.validation,
+            robot_test_dsl_store_from_root_payload(payload),
+            entries_override={target_name: outcome.entry},
+        )
+        if validation_text != "OK":
+            for line in validation_text.splitlines():
+                self._append_output(line)
+                self._append_test_output(line)
+        self._refresh_tests_for_profile(profile_name)
+        self._refresh_test_library_view(profile_name)
+        self._select_test_library_profile_name(target_name)
+        if hasattr(self, "_test_box"):
+            values = list(self._test_box.cget("values"))
+            if target_name in values:
+                self._test_box.set(target_name)
+                self._last_selected_test = target_name
+        if outcome.ok():
+            self._append_output(DSL_COPY_SAVED_FMT)
+            self._append_test_output(DSL_COPY_SAVED_FMT)
+            return
+        invalid_text = TEST_SOURCE_STATUS_SAVED_INVALID_FMT.format(name=target_name)
+        self._append_output(invalid_text)
+        self._append_test_output(invalid_text)
 
     def _dsl_validate_from_ui(self) -> None:
         """
@@ -5345,11 +7592,13 @@ class BringupControlUI(tk.Tk):
         profile_name = self._selected_real_profile()
         if not profile_name:
             self._append_output(DSL_OUTPUT_NO_PROFILE)
+            self._append_test_output(DSL_OUTPUT_NO_PROFILE)
             return
         try:
             payload = self._load_local_profiles_payload()
         except Exception as exc:
             self._append_output(str(exc))
+            self._append_test_output(str(exc))
             return
 
         def _operation() -> object:
@@ -5359,14 +7608,18 @@ class BringupControlUI(tk.Tk):
         result = self._run_blocking_status_operation(
             DSL_VALIDATE_START_FMT.format(profile=profile_name),
             _operation,
+            include_test_output=True,
         )
         store = robot_test_dsl_store_from_root_payload(payload)
         for line in render_validation_text(result, store).splitlines():
             self._append_output(line)
+            self._append_test_output(line)
         if result.ok():
             self._append_output(DSL_VALIDATE_OK_FMT.format(profile=profile_name))
+            self._append_test_output(DSL_VALIDATE_OK_FMT.format(profile=profile_name))
             return
         self._append_output(DSL_VALIDATE_FAIL_FMT.format(profile=profile_name))
+        self._append_test_output(DSL_VALIDATE_FAIL_FMT.format(profile=profile_name))
 
     def _config_dialog_start(self) -> Tuple[Path, str]:
         """
@@ -5380,12 +7633,15 @@ class BringupControlUI(tk.Tk):
         self,
         start_line: str,
         operation: Callable[[], object],
+        include_test_output: bool = False,
     ) -> object:
         """
         NAME
             _run_blocking_status_operation - Run a blocking host-side operation with simple UI status output.
         """
         self._append_output(f"{timestamp_hms()} {start_line}")
+        if include_test_output:
+            self._append_test_output(f"{timestamp_hms()} {start_line}")
         self.update_idletasks()
         return operation()
 
@@ -5602,7 +7858,7 @@ class BringupControlUI(tk.Tk):
                     running += f" ({active_status})"
                 if run_all:
                     running += " [run all]"
-            self._running_label.configure(text=f"Running: {running}")
+            self._running_text_var.set(f"Running: {running}")
         if self._is_connected is not None:
             try:
                 nt_connected = bool(self._is_connected())
@@ -6027,6 +8283,8 @@ class BringupControlUI(tk.Tk):
             ts = timestamp_hms()
             header = f"{ts} ACK {seq} {name} {status} {message}".rstrip()
             self._append_output(header)
+            if self._is_test_activity_command(name):
+                self._append_test_output(header)
             self._apply_live_runtime_notice_from_ack(name, status, message)
             self._last_ack_seq = seq
         elif msg_type == "out":
@@ -6038,12 +8296,18 @@ class BringupControlUI(tk.Tk):
             ts = timestamp_hms()
             header = f"{ts} OUT {seq} {name}".rstrip()
             self._append_output(header)
+            if self._is_test_activity_command(name):
+                self._append_test_output(header)
             if text:
                 for line in text.splitlines():
                     self._remember_out_line(line)
                     self._append_output(f"  {line}")
+                    if self._is_test_activity_command(name):
+                        self._append_test_output(f"  {line}")
             if json_payload:
                 self._append_output("  json: " + str(json_payload))
+                if self._is_test_activity_command(name):
+                    self._append_test_output("  json: " + str(json_payload))
                 try:
                     data = json.loads(json_payload)
                 except Exception:
@@ -6153,8 +8417,8 @@ class BringupControlUI(tk.Tk):
             btn.state(
                 ["!disabled"] if self._host_local_action_enabled(command) else ["disabled"]
             )
-        if hasattr(self, "_test_box"):
-            self._test_box.configure(state=state)
+        for box in self._test_selection_boxes():
+            box.configure(state=state)
         if self._reset_button is not None:
             self._reset_button.state(["!disabled"] if self._tcp_connected else ["disabled"])
 
@@ -6253,14 +8517,17 @@ class BringupControlUI(tk.Tk):
         NAME
             _sync_test_selection - Update dropdown to match robot selection.
         """
-        if not hasattr(self, "_test_box"):
+        test_boxes = self._test_selection_boxes()
+        if not test_boxes:
             return
         if not name or name == "(none)":
             return
-        if name == self._test_box.get():
+        if name not in list(test_boxes[0].cget("values")):
+            return
+        if name == str(self._selected_test_var.get() or "").strip():
             return
         self._last_selected_test = name
-        self._test_box.set(name)
+        self._selected_test_var.set(name)
 
     def _handle_close(self) -> None:
         """

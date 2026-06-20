@@ -317,15 +317,28 @@ from tools.common.profile_constants import (
 )
 from tools.can_topology.validate_profiles import Reporter, validate_profiles
 from tools.common.robot_test_dsl import (
+    create_blank_test_in_root_payload as robot_test_dsl_create_blank_test_in_root_payload,
+    copy_external_library_test_into_root_payload as robot_test_dsl_copy_external_library_test_into_root_payload,
+    copy_test_into_root_payload as robot_test_dsl_copy_test_into_root_payload,
     DEFAULT_TEST_SET as DSL_DEFAULT_TEST_SET,
+    delete_external_library_test as robot_test_dsl_delete_external_library_test,
+    delete_test_from_root_payload as robot_test_dsl_delete_test_from_root_payload,
     RobotTestDslEntry,
     RobotTestDslStore,
     ValidationResult,
     cleanup_stale_tests_in_store as robot_test_dsl_cleanup_stale_tests_in_store,
     device_catalog as robot_test_dsl_device_catalog,
+    import_test_into_config_library as robot_test_dsl_import_test_into_config_library,
+    import_test_into_external_library as robot_test_dsl_import_test_into_external_library,
     import_test_into_root_payload as robot_test_dsl_import_test_into_root_payload,
     issue_detail as robot_test_dsl_issue_detail,
+    list_external_library_test_names as robot_test_dsl_list_external_library_test_names,
+    rename_external_library_test as robot_test_dsl_rename_external_library_test,
+    rename_test_in_root_payload as robot_test_dsl_rename_test_in_root_payload,
     render_validation_text as robot_test_dsl_render_validation_text,
+    resolve_global_library_test_names as robot_test_dsl_resolve_global_library_test_names,
+    resolve_profile_test_names as robot_test_dsl_resolve_profile_test_names,
+    resolve_profile_test_set_name as robot_test_dsl_resolve_profile_test_set_name,
     signal_catalog as robot_test_dsl_signal_catalog,
     store_from_root_payload as robot_test_dsl_store_from_root_payload,
     store_to_payload as robot_test_dsl_store_to_payload,
@@ -556,7 +569,9 @@ CMD_SAVE_TESTS = "save-tests"
 CMD_TEST = "test"
 CMD_TESTS = "tests"
 CMD_CREATE = "create"
+CMD_NEW = "new"
 CMD_IMPORT = "import"
+CMD_LIBRARY = "library"
 CMD_CLEANUP = "cleanup"
 CMD_STALE = "stale"
 CMD_EXPORT = "export"
@@ -2022,15 +2037,24 @@ MESSAGE_ERROR_LEGACY_TEST_AUTHORING_REMOVED = (
     "ERROR: legacy local test authoring was removed. "
     "Use tools/can_nt/scripts/dsl_tests_config_tool.py for DSL import/export/validate."
 )
-MESSAGE_ERROR_DSL_CLI_USAGE = "ERROR: test import|export|validate|delete|cleanup|set ..."
-MESSAGE_ERROR_DSL_SHOW_USAGE = "ERROR: show tests | show test <name> [normalized] | show test sets"
+MESSAGE_ERROR_DSL_CLI_USAGE = "ERROR: test new|import|copy|export|validate|delete|cleanup|set ..."
+MESSAGE_ERROR_DSL_SHOW_USAGE = "ERROR: show tests | show test <name> [normalized] | show test sets | show test library"
 MESSAGE_ERROR_DSL_PROFILE_REQUIRED = "ERROR: active profile required."
 MESSAGE_ERROR_DSL_CONFIG_REQUIRED = "ERROR: local bringup_system.json must be loaded first (merge/import config)."
 MESSAGE_ERROR_DSL_TEST_NOT_FOUND = "ERROR: test not found: {name}"
 MESSAGE_ERROR_DSL_SET_NOT_FOUND = "ERROR: test set not found: {name}"
 MESSAGE_ERROR_DSL_PROFILE_UNKNOWN = "ERROR: unknown profile: {name}"
 MESSAGE_ERROR_DSL_LOCAL_ONLY = "ERROR: DSL show commands are local-only."
+MESSAGE_DSL_TEST_CREATED = "Created DSL test: {name}"
 MESSAGE_DSL_TEST_IMPORTED = "Imported DSL test: {name}"
+MESSAGE_DSL_TEST_COPIED = "Copied DSL test {source} -> {target}"
+MESSAGE_DSL_TEST_IMPORTED_GLOBAL = "Imported external global DSL test: {name}"
+MESSAGE_DSL_TEST_IMPORTED_CONFIG = "Imported config library DSL test: {name}"
+MESSAGE_DSL_TEST_COPIED_GLOBAL = "Copied external global DSL test {source} -> {target} ({destination})"
+MESSAGE_DSL_TEST_RENAMED = "Renamed DSL test {source} -> {target}"
+MESSAGE_DSL_TEST_RENAMED_GLOBAL = "Renamed external global DSL test {source} -> {target}"
+MESSAGE_DSL_TEST_DELETED_ARCHIVED = "Deleted DSL test {name} (archived to {path})"
+MESSAGE_DSL_TEST_DELETED_GLOBAL_ARCHIVED = "Deleted external global DSL test {name} (archived to {path})"
 MESSAGE_DSL_TEST_DELETED = "Deleted DSL test: {name}"
 MESSAGE_DSL_SET_CREATED = "Created test set: {name}"
 MESSAGE_DSL_SET_DELETED = "Deleted test set: {name}"
@@ -2040,6 +2064,10 @@ MESSAGE_DSL_SET_MEMBER_REMOVED = "Removed test {test} from set {name}"
 MESSAGE_DSL_TEST_EXPORTED = "Exported DSL test: {name}"
 MESSAGE_DSL_TESTS_CLEANED = "Removed stale DSL tests: {names}"
 MESSAGE_DSL_TESTS_CLEAN_NONE = "No stale DSL tests found."
+MESSAGE_DSL_LIBRARY_GLOBAL_HEADER = "external global library:"
+MESSAGE_DSL_LIBRARY_CONFIG_HEADER = "config library set: {name}"
+MESSAGE_DSL_PROFILE_SET_HEADER = "profile test set: {name}"
+MESSAGE_DSL_NONE = "(none)"
 MESSAGE_DSL_VALIDATION_LINE_FMT = "line {line}: {text}"
 MESSAGE_DSL_VALIDATION_FIELD_FMT = "field {field}"
 DSL_VALIDATION_META_FIELDS = {"source", "normalized", "sourceHash", "devices", "testSets"}
@@ -6444,9 +6472,9 @@ class BridgeCli:
             _suggest_test_config_args - Suggest config-mode test subcommands.
         """
         if not tokens:
-            return [CMD_SET, CMD_CREATE, CMD_DELETE, CMD_CLEANUP, PLACEHOLDER_TEST]
+            return [CMD_NEW, CMD_IMPORT, CMD_COPY, CMD_SET, CMD_CREATE, CMD_DELETE, CMD_CLEANUP, PLACEHOLDER_TEST]
         sub = tokens[COUNT_ZERO].lower()
-        if sub in (CMD_SET, CMD_CREATE, CMD_DELETE) and len(tokens) == COUNT_ONE:
+        if sub in (CMD_SET, CMD_CREATE, CMD_DELETE, CMD_COPY) and len(tokens) == COUNT_ONE:
             return [PLACEHOLDER_TEST]
         if sub == CMD_CLEANUP and len(tokens) == COUNT_ONE:
             return [CMD_STALE]
@@ -6634,6 +6662,58 @@ class BridgeCli:
         if target != CMD_TEST:
             print(MESSAGE_ERROR_DSL_SHOW_USAGE)
             return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
+        if len(cleaned) >= COUNT_TWO and cleaned[COUNT_ONE].lower() == CMD_LIBRARY:
+            external_global_names = robot_test_dsl_list_external_library_test_names()
+            config_library_names = robot_test_dsl_resolve_global_library_test_names(root)
+            profile_set_name = robot_test_dsl_resolve_profile_test_set_name(
+                root,
+                self._active_profile_name() or EMPTY_STRING,
+            )
+            payload = {
+                "externalGlobalTests": external_global_names,
+                "configLibrarySet": store.default_set,
+                "configLibraryTests": config_library_names,
+                "activeProfile": self._active_profile_name() or EMPTY_STRING,
+                "profileSet": profile_set_name,
+                "profileTests": robot_test_dsl_resolve_profile_test_names(
+                    root,
+                    self._active_profile_name() or EMPTY_STRING,
+                ),
+            }
+            if json_output:
+                print(self._dump_json(payload, pretty))
+            else:
+                print(MESSAGE_DSL_LIBRARY_GLOBAL_HEADER)
+                if external_global_names:
+                    for name in external_global_names:
+                        print(f"  {name}")
+                else:
+                    print(f"  {MESSAGE_DSL_NONE}")
+                print(
+                    MESSAGE_DSL_LIBRARY_CONFIG_HEADER.format(
+                        name=store.default_set or MESSAGE_DSL_NONE
+                    )
+                )
+                if config_library_names:
+                    for name in config_library_names:
+                        print(f"  {name}")
+                else:
+                    print(f"  {MESSAGE_DSL_NONE}")
+                print(
+                    MESSAGE_DSL_PROFILE_SET_HEADER.format(
+                        name=profile_set_name or MESSAGE_DSL_NONE
+                    )
+                )
+                profile_names = robot_test_dsl_resolve_profile_test_names(
+                    root,
+                    self._active_profile_name() or EMPTY_STRING,
+                )
+                if profile_names:
+                    for name in profile_names:
+                        print(f"  {name}")
+                else:
+                    print(f"  {MESSAGE_DSL_NONE}")
+            return StatusResult(code=SS__NORMAL)
         if len(cleaned) >= COUNT_TWO and cleaned[COUNT_ONE].lower() == "sets":
             payload = {
                 "defaultSet": store.default_set,
@@ -6684,13 +6764,48 @@ class BridgeCli:
             return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
         store = self._dsl_store()
         sub = tokens[COUNT_ONE].lower()
+        if sub == CMD_NEW:
+            if len(tokens) < 3:
+                print("ERROR: test new <name> [set <set_name>]")
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            test_name = tokens[2]
+            set_name = None
+            if len(tokens) >= 5:
+                if tokens[3].lower() != CMD_SET:
+                    print("ERROR: test new <name> [set <set_name>]")
+                    return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
+                set_name = tokens[4]
+            try:
+                create_result = robot_test_dsl_create_blank_test_in_root_payload(
+                    root,
+                    profile_name,
+                    test_name,
+                    set_name=set_name,
+                    signal_catalog_path=ROBOT_TEST_DSL_SIGNALS_PATH,
+                )
+            except Exception as exc:
+                print(str(exc))
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+            result = create_result.validation
+            if not result.ok():
+                self._dsl_print_validation(
+                    result,
+                    False,
+                    False,
+                    entries_override={test_name: create_result.entry},
+                )
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+            self._mark_tests_dirty()
+            self._mark_profiles_dirty()
+            print(MESSAGE_DSL_TEST_CREATED.format(name=test_name))
+            return StatusResult(code=SS__NORMAL)
         if sub == CMD_IMPORT:
             if len(tokens) < 4:
                 print("ERROR: test import <name> <path> [set <set_name>]")
                 return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
             test_name = tokens[2]
             source_path = Path(tokens[3])
-            set_name = store.default_set or DSL_DEFAULT_TEST_SET
+            set_name = None
             if len(tokens) >= 6:
                 if tokens[4].lower() != CMD_SET:
                     print("ERROR: test import <name> <path> [set <set_name>]")
@@ -6720,6 +6835,150 @@ class BridgeCli:
             self._mark_tests_dirty()
             self._mark_profiles_dirty()
             print(MESSAGE_DSL_TEST_IMPORTED.format(name=test_name))
+            return StatusResult(code=SS__NORMAL)
+        if sub == "import-global":
+            if len(tokens) < 4:
+                print("ERROR: test import-global <name> <path>")
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            test_name = tokens[2]
+            source_path = Path(tokens[3])
+            try:
+                robot_test_dsl_import_test_into_external_library(test_name, source_path)
+            except Exception as exc:
+                print(str(exc))
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+            print(MESSAGE_DSL_TEST_IMPORTED_GLOBAL.format(name=test_name))
+            return StatusResult(code=SS__NORMAL)
+        if sub == "import-config":
+            if len(tokens) < 4:
+                print("ERROR: test import-config <name> <path>")
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            test_name = tokens[2]
+            source_path = Path(tokens[3])
+            try:
+                import_result = robot_test_dsl_import_test_into_config_library(
+                    root,
+                    profile_name,
+                    test_name,
+                    source_path,
+                    signal_catalog_path=ROBOT_TEST_DSL_SIGNALS_PATH,
+                )
+            except Exception as exc:
+                print(str(exc))
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+            self._mark_tests_dirty()
+            self._mark_profiles_dirty()
+            result = import_result.validation
+            if not result.ok():
+                self._dsl_print_validation(
+                    result,
+                    False,
+                    False,
+                    entries_override={test_name: import_result.entry},
+                )
+            print(MESSAGE_DSL_TEST_IMPORTED_CONFIG.format(name=test_name))
+            return StatusResult(code=SS__NORMAL)
+        if sub == CMD_COPY:
+            if len(tokens) < 4:
+                print("ERROR: test copy <source_test> <target_test> [set <set_name>]")
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            source_name = tokens[2]
+            target_name = tokens[3]
+            set_name = None
+            if len(tokens) >= 6:
+                if tokens[4].lower() != CMD_SET:
+                    print("ERROR: test copy <source_test> <target_test> [set <set_name>]")
+                    return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
+                set_name = tokens[5]
+            try:
+                copy_result = robot_test_dsl_copy_test_into_root_payload(
+                    root,
+                    profile_name,
+                    source_name,
+                    target_name,
+                    set_name=set_name,
+                    signal_catalog_path=ROBOT_TEST_DSL_SIGNALS_PATH,
+                )
+            except Exception as exc:
+                print(str(exc))
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+            result = copy_result.validation
+            if not result.ok():
+                self._dsl_print_validation(
+                    result,
+                    False,
+                    False,
+                    entries_override={target_name: copy_result.entry},
+                )
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+            self._mark_tests_dirty()
+            self._mark_profiles_dirty()
+            print(MESSAGE_DSL_TEST_COPIED.format(source=source_name, target=target_name))
+            return StatusResult(code=SS__NORMAL)
+        if sub == "copy-global":
+            if len(tokens) < 5:
+                print("ERROR: test copy-global <source_test> <target_test> <config|profile>")
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            source_name = tokens[2]
+            target_name = tokens[3]
+            destination = tokens[4].strip().lower()
+            if destination not in ("config", "profile"):
+                print("ERROR: test copy-global <source_test> <target_test> <config|profile>")
+                return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
+            try:
+                copy_result = robot_test_dsl_copy_external_library_test_into_root_payload(
+                    root,
+                    profile_name,
+                    source_name,
+                    target_name,
+                    destination=destination,
+                    signal_catalog_path=ROBOT_TEST_DSL_SIGNALS_PATH,
+                )
+            except Exception as exc:
+                print(str(exc))
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+            self._mark_tests_dirty()
+            self._mark_profiles_dirty()
+            result = copy_result.validation
+            if not result.ok():
+                self._dsl_print_validation(
+                    result,
+                    False,
+                    False,
+                    entries_override={target_name: copy_result.entry},
+                )
+            print(
+                MESSAGE_DSL_TEST_COPIED_GLOBAL.format(
+                    source=source_name,
+                    target=target_name,
+                    destination=destination,
+                )
+            )
+            return StatusResult(code=SS__NORMAL)
+        if sub == "rename-global":
+            if len(tokens) < 4:
+                print("ERROR: test rename-global <old_name> <new_name>")
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            old_name = tokens[2]
+            new_name = tokens[3]
+            try:
+                robot_test_dsl_rename_external_library_test(old_name, new_name)
+            except Exception as exc:
+                print(str(exc))
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+            print(MESSAGE_DSL_TEST_RENAMED_GLOBAL.format(source=old_name, target=new_name))
+            return StatusResult(code=SS__NORMAL)
+        if sub == "delete-global":
+            if len(tokens) < 3:
+                print("ERROR: test delete-global <name>")
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            test_name = tokens[2]
+            try:
+                archive_path = robot_test_dsl_delete_external_library_test(test_name)
+            except Exception as exc:
+                print(str(exc))
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+            print(MESSAGE_DSL_TEST_DELETED_GLOBAL_ARCHIVED.format(name=test_name, path=archive_path))
             return StatusResult(code=SS__NORMAL)
         if sub == CMD_EXPORT:
             if len(tokens) < 4:
@@ -6758,12 +7017,24 @@ class BridgeCli:
             if test_name not in store.tests_by_name:
                 print(MESSAGE_ERROR_DSL_TEST_NOT_FOUND.format(name=test_name))
                 return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
-            del store.tests_by_name[test_name]
-            for set_names in store.test_sets.values():
-                while test_name in set_names:
-                    set_names.remove(test_name)
-            self._dsl_write_store(store)
-            print(MESSAGE_DSL_TEST_DELETED.format(name=test_name))
+            archive_path = robot_test_dsl_delete_test_from_root_payload(root, test_name)
+            self._mark_tests_dirty()
+            self._mark_profiles_dirty()
+            print(MESSAGE_DSL_TEST_DELETED_ARCHIVED.format(name=test_name, path=archive_path))
+            return StatusResult(code=SS__NORMAL)
+        if sub == "rename":
+            if len(tokens) < 4:
+                print("ERROR: test rename <old_name> <new_name>")
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            old_name = tokens[2]
+            new_name = tokens[3]
+            if old_name not in store.tests_by_name:
+                print(MESSAGE_ERROR_DSL_TEST_NOT_FOUND.format(name=old_name))
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+            robot_test_dsl_rename_test_in_root_payload(root, old_name, new_name)
+            self._mark_tests_dirty()
+            self._mark_profiles_dirty()
+            print(MESSAGE_DSL_TEST_RENAMED.format(source=old_name, target=new_name))
             return StatusResult(code=SS__NORMAL)
         if sub == CMD_SET:
             if len(tokens) < 4:

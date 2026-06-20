@@ -51,6 +51,7 @@ RE_REF = re.compile(r'^(?P<device>"[^"\n]+"|[A-Za-z][A-Za-z0-9_\-]*)\.(?P<signal
 RE_TEST = re.compile(r'^test\s+"([^"\n]+)"\s*$')
 RE_DEVICE = re.compile(r'^device\s+"([^"\n]+)"\s*$')
 RE_PHASE = re.compile(r'^(init|main|close):\s*$')
+RE_SECTION_HEADER = re.compile(r'^(?P<name>[A-Za-z][A-Za-z0-9_\-]*):\s*$')
 RE_UNSAFE_EXIT = re.compile(r'^unsafe-exit\s+(.+?)\s*$')
 RE_SET = re.compile(r'^set\s+(.+?)\s*=\s*(.+?)\s*$')
 RE_SET_SIGNAL = re.compile(
@@ -70,6 +71,11 @@ RE_RANGE_EXPR = re.compile(
 class CompileError(Exception):
     message: str
     line_number: int
+
+    def __str__(self) -> str:
+        if int(self.line_number) > 0:
+            return f"Compile error at line {self.line_number}: {self.message}"
+        return str(self.message)
 
 
 def compile_store_sources(store: RobotTestDslStore) -> RobotTestDslStore:
@@ -133,6 +139,9 @@ def compile_source(name: str, source: str) -> RobotTestDslNormalized:
         if match:
             active_phase = match.group(1)
             continue
+        match = RE_SECTION_HEADER.match(line)
+        if match:
+            raise CompileError(f"unknown phase header: {line}", line_number)
         if active_phase is None:
             raise CompileError("statement must appear inside a phase", line_number)
         target_phase = _phase_object(active_phase, init, main, close)
@@ -214,6 +223,238 @@ def compile_source(name: str, source: str) -> RobotTestDslNormalized:
         init=init,
         main=main,
         close=close,
+    )
+
+
+def collect_compile_errors(source: str) -> List[CompileError]:
+    """
+    NAME
+        collect_compile_errors - Best-effort pass that gathers multiple compile-time errors from one DSL source.
+    """
+    if not isinstance(source, str):
+        return [CompileError("source must be a string", 0)]
+    errors: List[CompileError] = []
+    lines = _logical_lines(source)
+    active_phase: Optional[str] = None
+    for line_number, line in lines:
+        match = RE_TEST.match(line)
+        if match:
+            continue
+        match = RE_DEVICE.match(line)
+        if match:
+            continue
+        match = RE_UNSAFE_EXIT.match(line)
+        if match:
+            try:
+                _parse_reference(match.group(1), line_number)
+            except CompileError as exc:
+                errors.append(exc)
+            continue
+        match = RE_PHASE.match(line)
+        if match:
+            active_phase = match.group(1)
+            continue
+        match = RE_SECTION_HEADER.match(line)
+        if match:
+            errors.append(CompileError(f"unknown phase header: {line}", line_number))
+            continue
+        if active_phase is None:
+            errors.append(CompileError("statement must appear inside a phase", line_number))
+            continue
+        match = RE_SET.match(line)
+        if match:
+            try:
+                _parse_reference(match.group(1), line_number)
+                rhs = match.group(2)
+                signal_match = RE_SET_SIGNAL.match(rhs)
+                if signal_match:
+                    _parse_reference(signal_match.group("source"), line_number)
+                    deadband = signal_match.group("deadband")
+                    deadband_literal = _parse_literal(deadband) if deadband is not None else None
+                    if deadband_literal is not None and deadband_literal.value_type != LITERAL_TYPE_NUMBER:
+                        raise CompileError("deadband value must be numeric", line_number)
+                    scale_literal = _parse_literal(signal_match.group("scale"))
+                    if scale_literal.value_type != LITERAL_TYPE_NUMBER:
+                        raise CompileError("scaled value must be numeric", line_number)
+                else:
+                    _parse_literal(rhs)
+            except CompileError as exc:
+                errors.append(exc)
+            continue
+        match = RE_CLEAR.match(line)
+        if match:
+            try:
+                _parse_reference(match.group(1), line_number)
+            except CompileError as exc:
+                errors.append(exc)
+            continue
+        match = RE_KEYWORD_EXPR.match(line)
+        if match:
+            try:
+                _parse_condition(
+                    match.group(1),
+                    "preview",
+                    line,
+                    match.group(2),
+                    line_number,
+                )
+            except CompileError as exc:
+                errors.append(exc)
+            continue
+        errors.append(CompileError(f"unrecognized statement: {line}", line_number))
+    return errors
+
+
+def compile_source_best_effort(name: str, source: str) -> Tuple[RobotTestDslNormalized, List[CompileError]]:
+    """
+    NAME
+        compile_source_best_effort - Compile one DSL source while collecting per-line compile errors and skipping bad lines.
+    """
+    if not isinstance(source, str):
+        empty = RobotTestDslNormalized(name=name)
+        return empty, [CompileError("source must be a string", 0)]
+    lines = _logical_lines(source)
+    test_name: Optional[str] = None
+    devices: List[RobotTestDslDeviceRef] = []
+    unsafe_exit: List[RobotTestDslUnsafeExit] = []
+    init = RobotTestDslPhase()
+    main = RobotTestDslPhase()
+    close = RobotTestDslPhase()
+    active_phase: Optional[str] = None
+    condition_counts: Dict[str, int] = {
+        STMT_ABORT: 0,
+        STMT_SUCCESS: 0,
+        STMT_UNTIL: 0,
+        STMT_REQUIRE: 0,
+    }
+    set_count = 0
+    clear_count = 0
+    unsafe_exit_count = 0
+    errors: List[CompileError] = []
+    for line_number, line in lines:
+        match = RE_TEST.match(line)
+        if match:
+            test_name = match.group(1)
+            continue
+        match = RE_DEVICE.match(line)
+        if match:
+            devices.append(RobotTestDslDeviceRef(name=match.group(1)))
+            continue
+        match = RE_UNSAFE_EXIT.match(line)
+        if match:
+            unsafe_exit_count += 1
+            try:
+                target = _parse_reference(match.group(1), line_number)
+                unsafe_exit.append(
+                    RobotTestDslUnsafeExit(
+                        statement_id=f"unsafe_exit_{unsafe_exit_count}",
+                        text=line,
+                        target=target,
+                    )
+                )
+            except CompileError as exc:
+                errors.append(exc)
+            continue
+        match = RE_PHASE.match(line)
+        if match:
+            active_phase = match.group(1)
+            continue
+        match = RE_SECTION_HEADER.match(line)
+        if match:
+            errors.append(CompileError(f"unknown phase header: {line}", line_number))
+            continue
+        if active_phase is None:
+            errors.append(CompileError("statement must appear inside a phase", line_number))
+            continue
+        target_phase = _phase_object(active_phase, init, main, close)
+        match = RE_SET.match(line)
+        if match:
+            set_count += 1
+            try:
+                target = _parse_reference(match.group(1), line_number)
+                rhs = match.group(2)
+                signal_match = RE_SET_SIGNAL.match(rhs)
+                if signal_match:
+                    source_ref = _parse_reference(signal_match.group("source"), line_number)
+                    deadband = signal_match.group("deadband")
+                    deadband_literal = _parse_literal(deadband) if deadband is not None else None
+                    if deadband_literal is not None and deadband_literal.value_type != LITERAL_TYPE_NUMBER:
+                        raise CompileError("deadband value must be numeric", line_number)
+                    scale_literal = _parse_literal(signal_match.group("scale"))
+                    if scale_literal.value_type != LITERAL_TYPE_NUMBER:
+                        raise CompileError("scaled value must be numeric", line_number)
+                    default_literal = _parse_literal(signal_match.group("default"))
+                    statement = RobotTestDslSetStatement(
+                        statement_id=f"set_{set_count}",
+                        text=line,
+                        target=target,
+                        source=source_ref,
+                        deadband=float(deadband_literal.value) if deadband_literal is not None else None,
+                        scale=float(scale_literal.value),
+                        default_literal=default_literal,
+                    )
+                else:
+                    literal = _parse_literal(rhs)
+                    statement = RobotTestDslSetStatement(
+                        statement_id=f"set_{set_count}",
+                        text=line,
+                        target=target,
+                        literal=literal,
+                    )
+                target_phase.sets.append(statement)
+            except CompileError as exc:
+                errors.append(exc)
+            continue
+        match = RE_CLEAR.match(line)
+        if match:
+            clear_count += 1
+            try:
+                target = _parse_reference(match.group(1), line_number)
+                target_phase.clears.append(
+                    RobotTestDslClearStatement(
+                        statement_id=f"clear_{clear_count}",
+                        text=line,
+                        target=target,
+                    )
+                )
+            except CompileError as exc:
+                errors.append(exc)
+            continue
+        match = RE_KEYWORD_EXPR.match(line)
+        if match:
+            keyword = match.group(1)
+            condition_counts[keyword] += 1
+            try:
+                condition = _parse_condition(
+                    keyword,
+                    f"{keyword}_{condition_counts[keyword]}",
+                    line,
+                    match.group(2),
+                    line_number,
+                )
+                if keyword == STMT_ABORT:
+                    target_phase.aborts.append(condition)
+                elif keyword == STMT_SUCCESS:
+                    target_phase.successes.append(condition)
+                elif keyword == STMT_UNTIL:
+                    target_phase.untils.append(condition)
+                elif keyword == STMT_REQUIRE:
+                    target_phase.requires.append(condition)
+            except CompileError as exc:
+                errors.append(exc)
+            continue
+        errors.append(CompileError(f"unrecognized statement: {line}", line_number))
+    final_name = test_name or name
+    return (
+        RobotTestDslNormalized(
+            name=final_name,
+            devices=devices,
+            unsafe_exit=unsafe_exit,
+            init=init,
+            main=main,
+            close=close,
+        ),
+        errors,
     )
 
 

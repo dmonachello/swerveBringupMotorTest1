@@ -69,6 +69,7 @@ show_target    = "status"
                | "profile" [ ws name ]
                | "tests"
                | "test" ws "sets"
+               | "test" ws "library"
                | "test" ws name [ ws "normalized" ]
                | "topology"
                | "topology" ws "neighbors"
@@ -162,11 +163,19 @@ config         = "group" ws name
                | "bindings" [ ws bindings_args ]
                | "can-mappings" [ ws mappings_args ]
                | "tests" [ ws tests_args ]
-               | "test" ws ("import" ws name ws path [ ws "set" ws name ]
+               | "test" ws ("new" ws name [ ws "set" ws name ]
+                           | "import" ws name ws path [ ws "set" ws name ]
+                           | "import-global" ws name ws path
+                           | "import-config" ws name ws path
+                           | "copy" ws name ws name [ ws "set" ws name ]
+                           | "copy-global" ws name ws name ws ("config" | "profile")
+                           | "rename" ws name ws name
+                           | "rename-global" ws name ws name
                            | "export" ws name ws path
                            | "validate" [ ws name ] [ ws "--json" ] [ ws "--pretty" ]
                            | "validate" [ ws "--json" ] [ ws "--pretty" ] [ ws name ]
                            | "delete" ws name
+                           | "delete-global" ws name
                            | "cleanup" ws "stale"
                            | "set" ws ("create" ws name
                                       | "delete" ws name

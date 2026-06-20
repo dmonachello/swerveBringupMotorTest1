@@ -197,6 +197,89 @@ class RobotTestDslTests(unittest.TestCase):
         self.assertFalse(result.ok())
         self.assertTrue(any("motor-device source" in issue.message for issue in result.errors))
 
+    def test_validate_store_reports_unknown_device_reference_not_phase_header(self) -> None:
+        source = '\n'.join(
+            [
+                'test "bad_device"',
+                'device "motor1"',
+                "main:",
+                '  set "bogus".output_speed = 0.75',
+                "  until timer.elapsed >= 3.0",
+            ]
+        )
+        store = RobotTestDslStore(
+            tests_by_name={
+                "bad_device": RobotTestDslEntry(
+                    name="bad_device",
+                    source=source,
+                    normalized=compile_source("bad_device", source),
+                    source_hash=source_hash(source),
+                )
+            },
+            test_sets={"default": ["bad_device"]},
+            default_set="default",
+        )
+        result = validate_store(
+            store,
+            device_catalog={"motor1": {"type": "motor"}},
+            signal_catalog={
+                "motor": {
+                    "output_speed": {"writable": True, "safeValue": 0.0, "valueType": "number"},
+                },
+                "TestTimer": {"elapsed": {"writable": False, "valueType": "number"}},
+            },
+        )
+        self.assertFalse(result.ok())
+        self.assertTrue(any("undeclared device reference" in issue.message for issue in result.errors))
+        self.assertFalse(any("unknown phase header" in issue.message for issue in result.errors))
+
+    def test_validate_store_reports_unknown_signal_with_device_context(self) -> None:
+        source = '\n'.join(
+            [
+                'test "bad_signal"',
+                'device "SPARKMAX/NEO 25"',
+                'device "controller0"',
+                "main:",
+                '  set "SPARKMAX/NEO 25".output_nonexistant_cmd = controller0.leftY scaled 0.25 default 0.0',
+                "  until timer.elapsed >= 3.0",
+            ]
+        )
+        store = RobotTestDslStore(
+            tests_by_name={
+                "bad_signal": RobotTestDslEntry(
+                    name="bad_signal",
+                    source=source,
+                    normalized=compile_source("bad_signal", source),
+                    source_hash=source_hash(source),
+                )
+            },
+            test_sets={"default": ["bad_signal"]},
+            default_set="default",
+        )
+        result = validate_store(
+            store,
+            device_catalog={
+                "SPARKMAX/NEO 25": {"type": "motor"},
+                "controller0": {"type": "xboxController"},
+            },
+            signal_catalog={
+                "motor": {
+                    "output": {"writable": True, "safeValue": 0.0, "valueType": "number"},
+                },
+                "xboxController": {
+                    "leftY": {"writable": False, "readable": True, "valueType": "number"},
+                },
+                "TestTimer": {"elapsed": {"writable": False, "valueType": "number"}},
+            },
+        )
+        self.assertFalse(result.ok())
+        self.assertTrue(
+            any(
+                'unknown signal on device "SPARKMAX/NEO 25": output_nonexistant_cmd' in issue.message
+                for issue in result.errors
+            )
+        )
+
     def test_store_payload_round_trip_preserves_deadband(self) -> None:
         source = '\n'.join(
             [

@@ -12,7 +12,16 @@ DESCRIPTION
 from typing import Any, Dict, List
 
 from tools.common.profiles import list_profile_names
-from tools.common.robot_test_dsl import resolve_profile_test_names
+from tools.common.robot_test_dsl import (
+    config_library_test_runnable_map,
+    device_catalog,
+    external_library_test_runnable_map,
+    profile_test_runnable_map,
+    resolve_global_library_test_names,
+    resolve_profile_test_names,
+    resolve_runnable_profile_test_names,
+    resolve_profile_test_set_name,
+)
 from tools.common.tests_domain import collect_available_tests
 from tools.common.tests_io import load_tests_payload
 from tools.common.paths import tests_deploy_path
@@ -59,7 +68,7 @@ class DslTestsQueryApi:
     def list_test_names(self, profile_name: str) -> List[str]:
         """
         NAME
-            list_test_names - Resolve test names for one profile using shared precedence.
+            list_test_names - Resolve runnable test names for one profile using shared precedence.
         """
         clean_profile = str(profile_name or "").strip()
         if not clean_profile or clean_profile == PROFILE_NONE:
@@ -72,11 +81,93 @@ class DslTestsQueryApi:
             return store_names
         return self._legacy_test_names()
 
+    def list_global_test_names(self) -> List[str]:
+        """
+        NAME
+            list_global_test_names - Resolve shared global-library DSL test names.
+        """
+        dsl_payload = self._payload.get("dslTests")
+        if not isinstance(dsl_payload, dict):
+            return []
+        return resolve_global_library_test_names(self._payload)
+
+    def list_profile_test_names(self, profile_name: str) -> List[str]:
+        """
+        NAME
+            list_profile_test_names - Resolve all saved profile-owned DSL test names.
+        """
+        clean_profile = str(profile_name or "").strip()
+        if not clean_profile or clean_profile == PROFILE_NONE:
+            return []
+        dsl_payload = self._payload.get("dslTests")
+        if not isinstance(dsl_payload, dict):
+            return []
+        return resolve_profile_test_names(self._payload, clean_profile)
+
+    def profile_test_runnable_map(self, profile_name: str) -> Dict[str, bool]:
+        """
+        NAME
+            profile_test_runnable_map - Resolve per-test runnable state for one profile.
+        """
+        clean_profile = str(profile_name or "").strip()
+        if not clean_profile or clean_profile == PROFILE_NONE:
+            return {}
+        dsl_payload = self._payload.get("dslTests")
+        if not isinstance(dsl_payload, dict):
+            return {}
+        return profile_test_runnable_map(self._payload, clean_profile)
+
+    def config_library_test_runnable_map(self, profile_name: str) -> Dict[str, bool]:
+        """
+        NAME
+            config_library_test_runnable_map - Resolve per-test runnable state for the config-scoped shared library.
+        """
+        clean_profile = str(profile_name or "").strip()
+        if not clean_profile or clean_profile == PROFILE_NONE:
+            return {}
+        dsl_payload = self._payload.get("dslTests")
+        if not isinstance(dsl_payload, dict):
+            return {}
+        return config_library_test_runnable_map(self._payload, clean_profile)
+
+    def external_library_test_runnable_map(self, profile_name: str) -> Dict[str, bool]:
+        """
+        NAME
+            external_library_test_runnable_map - Resolve per-test runnable state for the external shared library.
+        """
+        clean_profile = str(profile_name or "").strip()
+        if not clean_profile or clean_profile == PROFILE_NONE:
+            return {}
+        return external_library_test_runnable_map(self._payload, clean_profile)
+
+    def profile_test_set_name(self, profile_name: str) -> str:
+        """
+        NAME
+            profile_test_set_name - Resolve the explicitly bound runnable DSL set for one profile.
+        """
+        clean_profile = str(profile_name or "").strip()
+        if not clean_profile or clean_profile == PROFILE_NONE:
+            return ""
+        dsl_payload = self._payload.get("dslTests")
+        if not isinstance(dsl_payload, dict):
+            return ""
+        return resolve_profile_test_set_name(self._payload, clean_profile)
+
+    def profile_device_catalog(self, profile_name: str) -> Dict[str, Dict[str, Any]]:
+        """
+        NAME
+            profile_device_catalog - Resolve the full DSL-usable device catalog for one selected profile.
+        """
+        clean_profile = str(profile_name or "").strip()
+        if not clean_profile or clean_profile == PROFILE_NONE:
+            return {}
+        return device_catalog(self._payload, clean_profile)
+
     def _dsl_test_names(self, profile_name: str) -> List[str] | None:
         dsl_payload = self._payload.get("dslTests")
         if not isinstance(dsl_payload, dict):
             return None
-        return resolve_profile_test_names(self._payload, profile_name)
+        return resolve_runnable_profile_test_names(self._payload, profile_name)
 
     @staticmethod
     def _store_test_names(profile_name: str) -> List[str] | None:

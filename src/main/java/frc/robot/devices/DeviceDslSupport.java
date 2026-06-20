@@ -3,6 +3,8 @@ package frc.robot.devices;
 import frc.robot.diag.snapshots.DeviceSnapshot;
 import frc.robot.diag.snapshots.LimitsAttachment;
 import frc.robot.manufacturers.ctre.diag.CtreMotorAttachment;
+import frc.robot.manufacturers.ctre.diag.PdpStatusAttachment;
+import frc.robot.manufacturers.rev.diag.PdhStatusAttachment;
 import frc.robot.manufacturers.rev.diag.RevMotorAttachment;
 import frc.robot.tests.dsl.DslSignalRegistry;
 
@@ -19,6 +21,10 @@ public final class DeviceDslSupport {
   private static final double MOTOR_OUTPUT_MIN = -1.0;
   private static final double MOTOR_OUTPUT_MAX = 1.0;
   private static final int LIMIT_INDEX_ZERO = 0;
+  private static final String CHANNEL_PREFIX = "channel";
+  private static final String CHANNEL_CURRENT_SUFFIX = "_current";
+  private static final String CHANNEL_FAULT_SUFFIX = "_fault";
+  private static final String CHANNEL_STICKY_FAULT_SUFFIX = "_sticky_fault";
 
   private DeviceDslSupport() {}
 
@@ -100,6 +106,134 @@ public final class DeviceDslSupport {
     return device.getPositionRotations();
   }
 
+  public static Object readPowerDistributionSignal(DeviceUnit device, String signalName) {
+    if (device == null || signalName == null) {
+      return null;
+    }
+    DeviceSnapshot snapshot = device.snapshot();
+    PdhStatusAttachment pdh = snapshot.getAttachment(PdhStatusAttachment.class);
+    PdpStatusAttachment pdp = snapshot.getAttachment(PdpStatusAttachment.class);
+    if (DslSignalRegistry.SIGNAL_VOLTAGE.equals(signalName)) {
+      if (pdh != null) {
+        return pdh.voltage;
+      }
+      if (pdp != null) {
+        return pdp.voltage;
+      }
+    }
+    if (DslSignalRegistry.SIGNAL_TOTAL_CURRENT.equals(signalName)) {
+      if (pdh != null) {
+        return pdh.totalCurrent;
+      }
+      if (pdp != null) {
+        return pdp.totalCurrent;
+      }
+    }
+    if (DslSignalRegistry.SIGNAL_TEMPERATURE.equals(signalName)) {
+      if (pdh != null) {
+        return pdh.temperature;
+      }
+      if (pdp != null) {
+        return pdp.temperature;
+      }
+    }
+    if (DslSignalRegistry.SIGNAL_SWITCHABLE_ENABLED.equals(signalName)) {
+      if (pdh != null) {
+        return pdh.switchableEnabled;
+      }
+      if (pdp != null) {
+        return pdp.switchableEnabled;
+      }
+    }
+    if (DslSignalRegistry.SIGNAL_BROWNOUT.equals(signalName)) {
+      if (pdh != null) {
+        return pdh.brownout;
+      }
+      if (pdp != null) {
+        return pdp.brownout;
+      }
+    }
+    if (DslSignalRegistry.SIGNAL_CAN_WARNING.equals(signalName)) {
+      if (pdh != null) {
+        return pdh.canWarning;
+      }
+      if (pdp != null) {
+        return pdp.canWarning;
+      }
+    }
+    if (DslSignalRegistry.SIGNAL_HARDWARE_FAULT.equals(signalName)) {
+      if (pdh != null) {
+        return pdh.hardwareFault;
+      }
+      if (pdp != null) {
+        return pdp.hardwareFault;
+      }
+    }
+    if (DslSignalRegistry.SIGNAL_STICKY_BROWNOUT.equals(signalName)) {
+      if (pdh != null) {
+        return pdh.stickyBrownout;
+      }
+      if (pdp != null) {
+        return pdp.stickyBrownout;
+      }
+    }
+    if (DslSignalRegistry.SIGNAL_STICKY_CAN_WARNING.equals(signalName)) {
+      if (pdh != null) {
+        return pdh.stickyCanWarning;
+      }
+      if (pdp != null) {
+        return pdp.stickyCanWarning;
+      }
+    }
+    if (DslSignalRegistry.SIGNAL_STICKY_CAN_BUS_OFF.equals(signalName)) {
+      if (pdh != null) {
+        return pdh.stickyCanBusOff;
+      }
+      if (pdp != null) {
+        return pdp.stickyCanBusOff;
+      }
+    }
+    if (DslSignalRegistry.SIGNAL_STICKY_HAS_RESET.equals(signalName)) {
+      if (pdh != null) {
+        return pdh.stickyHasReset;
+      }
+      if (pdp != null) {
+        return pdp.stickyHasReset;
+      }
+    }
+    Integer channelIndex = parsePowerChannelSignalIndex(signalName, CHANNEL_CURRENT_SUFFIX);
+    if (channelIndex != null) {
+      if (pdh != null && pdh.channelCurrentA != null && channelIndex < pdh.channelCurrentA.length) {
+        return pdh.channelCurrentA[channelIndex];
+      }
+      if (pdp != null && pdp.channelCurrentA != null && channelIndex < pdp.channelCurrentA.length) {
+        return pdp.channelCurrentA[channelIndex];
+      }
+      return null;
+    }
+    channelIndex = parsePowerChannelSignalIndex(signalName, CHANNEL_FAULT_SUFFIX);
+    if (channelIndex != null) {
+      if (pdh != null && pdh.channelFault != null && channelIndex < pdh.channelFault.length) {
+        return pdh.channelFault[channelIndex];
+      }
+      if (pdp != null && pdp.channelFault != null && channelIndex < pdp.channelFault.length) {
+        return pdp.channelFault[channelIndex];
+      }
+      return null;
+    }
+    channelIndex = parsePowerChannelSignalIndex(signalName, CHANNEL_STICKY_FAULT_SUFFIX);
+    if (channelIndex != null) {
+      if (pdh != null && pdh.channelStickyFault != null && channelIndex < pdh.channelStickyFault.length) {
+        return pdh.channelStickyFault[channelIndex];
+      }
+      if (pdp != null && pdp.channelStickyFault != null && channelIndex < pdp.channelStickyFault.length) {
+        return pdp.channelStickyFault[channelIndex];
+      }
+      return null;
+    }
+    return null;
+  }
+
   public static boolean writeMotorSignal(DeviceUnit device, String signalName, double value) {
     if (device == null
         || signalName == null
@@ -160,5 +294,24 @@ public final class DeviceDslSupport {
     return DslSignalRegistry.SIGNAL_POSITION.equals(signalName)
         || DslSignalRegistry.SIGNAL_POSITION_ACTUAL.equals(signalName)
         || DslSignalRegistry.SIGNAL_POSITION_DELTA.equals(signalName);
+  }
+
+  private static Integer parsePowerChannelSignalIndex(String signalName, String suffix) {
+    if (signalName == null
+        || suffix == null
+        || !signalName.startsWith(CHANNEL_PREFIX)
+        || !signalName.endsWith(suffix)) {
+      return null;
+    }
+    String body = signalName.substring(CHANNEL_PREFIX.length(), signalName.length() - suffix.length());
+    if (body.isBlank()) {
+      return null;
+    }
+    try {
+      int value = Integer.parseInt(body);
+      return value >= 0 ? value : null;
+    } catch (NumberFormatException ignored) {
+      return null;
+    }
   }
 }

@@ -101,6 +101,22 @@ def test_templates_dir() -> Path:
     return repo_root() / "tools" / "test_template_wizard" / "test_templates"
 
 
+def dsl_global_library_dir() -> Path:
+    """
+    NAME
+        dsl_global_library_dir - Path to the external shared DSL test library directory.
+    """
+    return repo_root() / "tools" / "test_dsl_library"
+
+
+def dsl_test_archive_dir() -> Path:
+    """
+    NAME
+        dsl_test_archive_dir - Path to the shared DSL archive directory.
+    """
+    return dsl_global_library_dir() / "_archive"
+
+
 def logs_dir() -> Path:
     """
     NAME

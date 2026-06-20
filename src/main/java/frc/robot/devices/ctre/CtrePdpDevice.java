@@ -1,6 +1,7 @@
 package frc.robot.devices.ctre;
 
 import frc.robot.BringupUtil;
+import frc.robot.devices.DeviceDslSupport;
 import frc.robot.devices.DeviceLifecycleOwnership;
 import frc.robot.devices.DeviceUnit;
 import frc.robot.diag.snapshots.DeviceSnapshot;
@@ -135,5 +136,15 @@ public final class CtrePdpDevice implements DeviceUnit {
   @Override
   public DeviceLifecycleOwnership getLifecycleOwnership() {
     return DeviceLifecycleOwnership.APP_OWNED_SINGLETON_SERVICE;
+  }
+
+  @Override
+  public Object readDslSignal(String signalName) {
+    return DeviceDslSupport.readPowerDistributionSignal(this, signalName);
+  }
+
+  @Override
+  public boolean clearDslSignal(String signalName) {
+    return DeviceDslSupport.clearFaultSignal(this, signalName);
   }
 }

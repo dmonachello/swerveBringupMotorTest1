@@ -48,7 +48,7 @@ HOST_UI_ACTIONS: List[Dict[str, Any]] = [
     },
     {
         "name": HOST_ACTION_DSL_TEST_IMPORT,
-        "showInHostUi": True,
+        "showInHostUi": False,
         "uiSection": DSL_SECTION_TITLE,
         "uiLabel": HOST_UI_DSL_IMPORT_LABEL,
         "uiDescription": HOST_UI_DSL_IMPORT_DESCRIPTION,
@@ -58,7 +58,7 @@ HOST_UI_ACTIONS: List[Dict[str, Any]] = [
     },
     {
         "name": HOST_ACTION_DSL_TEST_VALIDATE,
-        "showInHostUi": True,
+        "showInHostUi": False,
         "uiSection": DSL_SECTION_TITLE,
         "uiLabel": HOST_UI_DSL_VALIDATE_LABEL,
         "uiDescription": HOST_UI_DSL_VALIDATE_DESCRIPTION,

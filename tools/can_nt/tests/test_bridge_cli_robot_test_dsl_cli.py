@@ -149,6 +149,54 @@ class BridgeCliRobotTestDslCliTests(unittest.TestCase):
             self.assertEqual(result.code, SS__NORMAL)
             entry = cli._local_root_payload["dslTests"]["testsByName"]["controller_confirm"]
             self.assertEqual(entry["normalized"]["devices"][0]["name"], "controller0")
+            self.assertEqual(
+                cli._local_root_payload["profiles"]["dsl_demo_050426"]["dslTestSet"],
+                "default",
+            )
+
+    def test_import_without_existing_profile_set_creates_profile_owned_runnable_set(self) -> None:
+        cli = self._build_cli(include_controller=True)
+        cli._local_root_payload["profiles"]["dsl_demo_050426"].pop("dslTestSet", None)
+        source = (
+            'test "controller_confirm"\n'
+            'device "controller0"\n\n'
+            "main:\n"
+            "    success controller0.A\n"
+            "    abort timer.elapsed >= 5.0\n"
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source_path = Path(temp_dir) / "controller_confirm.dsl"
+            source_path.write_text(source, encoding="utf-8")
+
+            result = cli._dsl_test_command(["test", "import", "controller_confirm", str(source_path)])
+
+        self.assertEqual(result.code, SS__NORMAL)
+        self.assertEqual(
+            cli._local_root_payload["profiles"]["dsl_demo_050426"]["dslTestSet"],
+            "dsl_demo_050426",
+        )
+        self.assertEqual(
+            cli._local_root_payload["dslTests"]["testSets"]["dsl_demo_050426"],
+            ["controller_confirm"],
+        )
+
+    def test_new_creates_minimal_profile_owned_test(self) -> None:
+        cli = self._build_cli(include_controller=True)
+        cli._local_root_payload["profiles"]["dsl_demo_050426"].pop("dslTestSet", None)
+
+        result = cli._dsl_test_command(["test", "new", "fresh_profile_test"])
+
+        self.assertEqual(result.code, SS__NORMAL)
+        self.assertEqual(
+            cli._local_root_payload["profiles"]["dsl_demo_050426"]["dslTestSet"],
+            "dsl_demo_050426",
+        )
+        self.assertEqual(
+            cli._local_root_payload["dslTests"]["testSets"]["dsl_demo_050426"],
+            ["fresh_profile_test"],
+        )
+        entry = cli._local_root_payload["dslTests"]["testsByName"]["fresh_profile_test"]
+        self.assertIn('test "fresh_profile_test"', entry["source"])
 
     def test_import_accepts_signal_driven_set(self) -> None:
         cli = self._build_cli(include_controller=True)
@@ -345,6 +393,124 @@ class BridgeCliRobotTestDslCliTests(unittest.TestCase):
         self.assertNotIn("bad_old_test", cli._local_root_payload["dslTests"]["testsByName"])
         self.assertIn("good_test", cli._local_root_payload["dslTests"]["testsByName"])
         self.assertEqual(cli._local_root_payload["dslTests"]["testSets"]["legacy"], ["good_test"])
+
+    def test_copy_global_test_into_profile_creates_profile_owned_duplicate(self) -> None:
+        cli = self._build_cli(include_controller=True)
+        cli._local_root_payload["profiles"]["dsl_demo_050426"].pop("dslTestSet", None)
+        source = (
+            'test "swerve_global"\n'
+            'device "FALCON 9"\n'
+            'device "controller0"\n\n'
+            "main:\n"
+            '    set "FALCON 9".output = controller0.leftY scaled 0.25 default 0.0\n'
+            "    until timer.elapsed >= 1.0\n"
+        )
+        cli._local_root_payload["dslTests"] = robot_test_dsl_store_to_payload(
+            RobotTestDslStore(
+                tests_by_name={
+                    "swerve_global": RobotTestDslEntry(
+                        name="swerve_global",
+                        source=source,
+                        normalized=compile_robot_test_dsl_source("swerve_global", source),
+                        source_hash="",
+                    )
+                },
+                test_sets={"global_library": ["swerve_global"]},
+                default_set="global_library",
+            )
+        )
+
+        result = cli._dsl_test_command(["test", "copy", "swerve_global", "demo_spin"])
+
+        self.assertEqual(result.code, SS__NORMAL)
+        self.assertEqual(
+            cli._local_root_payload["profiles"]["dsl_demo_050426"]["dslTestSet"],
+            "dsl_demo_050426",
+        )
+        self.assertEqual(
+            cli._local_root_payload["dslTests"]["testSets"]["dsl_demo_050426"],
+            ["demo_spin"],
+        )
+        self.assertEqual(
+            cli._local_root_payload["dslTests"]["testSets"]["global_library"],
+            ["swerve_global"],
+        )
+        self.assertEqual(
+            cli._local_root_payload["dslTests"]["testsByName"]["demo_spin"]["normalized"]["name"],
+            "demo_spin",
+        )
+
+    def test_show_test_library_reports_external_config_and_profile_scopes(self) -> None:
+        cli = self._build_cli(include_controller=True)
+        cli._local_root_payload["dslTests"] = {
+            "schemaVersion": 1,
+            "defaultSet": "global_library",
+            "testSets": {
+                "global_library": ["swerve_global"],
+                "default": ["demo_spin"],
+            },
+            "testsByName": {
+                "swerve_global": {"source": "", "sourceHash": "", "normalized": {}},
+                "demo_spin": {"source": "", "sourceHash": "", "normalized": {}},
+            },
+        }
+        output = io.StringIO()
+        with patch(
+            "tools.can_nt.bridge_cli.robot_test_dsl_list_external_library_test_names",
+            return_value=["external_alpha"],
+        ):
+            with contextlib.redirect_stdout(output):
+                result = cli._dsl_show_command(["show", "test", "library"])
+
+        self.assertEqual(result.code, SS__NORMAL)
+        text = output.getvalue()
+        self.assertIn("external global library:", text)
+        self.assertIn("external_alpha", text)
+        self.assertIn("config library set: global_library", text)
+        self.assertIn("profile test set: default", text)
+        self.assertIn("swerve_global", text)
+        self.assertIn("demo_spin", text)
+
+    def test_test_rename_and_delete_archive_config_backed_test(self) -> None:
+        cli = self._build_cli(include_controller=True)
+        cli._local_root_payload["dslTests"] = {
+            "schemaVersion": 1,
+            "defaultSet": "global_library",
+            "testSets": {
+                "global_library": [],
+                "default": ["demo_spin"],
+            },
+            "testsByName": {
+                "demo_spin": {
+                    "source": 'test "demo_spin"\nmain:\n    until timer.elapsed >= 1.0\n',
+                    "sourceHash": "",
+                    "normalized": {"name": "demo_spin", "devices": [], "unsafeExit": [], "init": {}, "main": {}, "close": {}},
+                },
+            },
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch("tools.can_nt.bridge_cli.robot_test_dsl_delete_test_from_root_payload") as delete_mock:
+                delete_mock.return_value = Path(temp_dir) / "archive.dsl"
+                rename_result = cli._dsl_test_command(["test", "rename", "demo_spin", "demo_spin_2"])
+                delete_result = cli._dsl_test_command(["test", "delete", "demo_spin_2"])
+        self.assertEqual(rename_result.code, SS__NORMAL)
+        self.assertEqual(delete_result.code, SS__NORMAL)
+        self.assertIn("demo_spin_2", cli._local_root_payload["dslTests"]["testsByName"])
+        delete_mock.assert_called_once()
+
+    def test_test_rename_global_and_delete_global(self) -> None:
+        cli = self._build_cli(include_controller=True)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            library_dir = Path(temp_dir)
+            (library_dir / "external_alpha.dsl").write_text('test "external_alpha"\nmain:\n    until timer.elapsed >= 1.0\n', encoding="utf-8")
+            with patch("tools.can_nt.bridge_cli.robot_test_dsl_rename_external_library_test") as rename_mock:
+                rename_mock.return_value = library_dir / "external_beta.dsl"
+                rename_result = cli._dsl_test_command(["test", "rename-global", "external_alpha", "external_beta"])
+            with patch("tools.can_nt.bridge_cli.robot_test_dsl_delete_external_library_test") as delete_mock:
+                delete_mock.return_value = library_dir / "_archive" / "external_beta.dsl"
+                delete_result = cli._dsl_test_command(["test", "delete-global", "external_beta"])
+        self.assertEqual(rename_result.code, SS__NORMAL)
+        self.assertEqual(delete_result.code, SS__NORMAL)
 
     def test_config_mode_instantiate_all_uses_robot_path_when_not_in_group_context(self) -> None:
         cli = self._build_cli(connected=True)

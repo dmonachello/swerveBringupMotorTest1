@@ -60,7 +60,8 @@
         "lmtSw0",
         "FALCON 9",
         "controller0"
-      ]
+      ],
+      "dslTestSet": "test_minimal_25_9"
     }
   },
   "devices": [
@@ -263,8 +264,8 @@
       "terminator": true
     }
   ],
-  "data_version": "2026-06-01_155349",
-  "data_hash": "e34492554014b9560d0df1ef89b7e4e7abda397915aa7eb1e4bbcec7e0959cc9",
+  "data_version": "2026-06-19_202704",
+  "data_hash": "f524d42c0a96fbb9edecb3a1689a8199ec71b36593da59b1cbb23194c96878ff",
   "default_profile": "2026_no_swyfts",
   "bridgeConfig": {
     "schemaVersion": 2,
@@ -842,6 +843,15 @@
       ],
       "mini_25_9": [
         "spark25_leftY"
+      ],
+      "test_minimal_25_9": [
+        "test_minimal_25_9_spark25_leftY",
+        "falcon9_move_150_rotations",
+        "falcon9_to_limit",
+        "xxx25_leftY",
+        "testDSL1",
+        "newTests_123",
+        "mtrs_limit"
       ]
     },
     "testsByName": {
@@ -969,7 +979,8 @@
             "untils": [],
             "requires": []
           }
-        }
+        },
+        "runnable": true
       },
       "Swerve NEOs Right Joystick": {
         "source": "test \"Swerve NEOs Right Joystick\"\ndevice \"frontLeft Angle Motor\"\ndevice \"frontRight Angle Motor\"\ndevice \"backLeft Angle Motor\"\ndevice \"backRight Angle Motor\"\ndevice \"controller0\"\n\nunsafe-exit \"frontLeft Angle Motor\".output_percent_cmd\nunsafe-exit \"frontRight Angle Motor\".output_percent_cmd\nunsafe-exit \"backLeft Angle Motor\".output_percent_cmd\nunsafe-exit \"backRight Angle Motor\".output_percent_cmd\n\nmain:\n    set \"frontLeft Angle Motor\".output_percent_cmd = controller0.rightY deadband 0.12 scaled 0.20 default 0.0\n    set \"frontRight Angle Motor\".output_percent_cmd = controller0.rightY deadband 0.12 scaled 0.20 default 0.0\n    set \"backLeft Angle Motor\".output_percent_cmd = controller0.rightY deadband 0.12 scaled 0.20 default 0.0\n    set \"backRight Angle Motor\".output_percent_cmd = controller0.rightY deadband 0.12 scaled 0.20 default 0.0\n    abort controller0.B\n",
@@ -1095,7 +1106,8 @@
             "untils": [],
             "requires": []
           }
-        }
+        },
+        "runnable": true
       },
       "Swerve NEOs Right Joystick Until B": {
         "source": "test \"Swerve NEOs Right Joystick Until B\"\ndevice \"frontLeft Angle Motor\"\ndevice \"frontRight Angle Motor\"\ndevice \"backLeft Angle Motor\"\ndevice \"backRight Angle Motor\"\ndevice \"controller0\"\n\nunsafe-exit \"frontLeft Angle Motor\".output_percent_cmd\nunsafe-exit \"frontRight Angle Motor\".output_percent_cmd\nunsafe-exit \"backLeft Angle Motor\".output_percent_cmd\nunsafe-exit \"backRight Angle Motor\".output_percent_cmd\n\nmain:\n    set \"frontLeft Angle Motor\".output_percent_cmd = controller0.rightY deadband 0.12 scaled 0.20 default 0.0\n    set \"frontRight Angle Motor\".output_percent_cmd = controller0.rightY deadband 0.12 scaled 0.20 default 0.0\n    set \"backLeft Angle Motor\".output_percent_cmd = controller0.rightY deadband 0.12 scaled 0.20 default 0.0\n    set \"backRight Angle Motor\".output_percent_cmd = controller0.rightY deadband 0.12 scaled 0.20 default 0.0\n    until controller0.B\n",
@@ -1221,7 +1233,8 @@
             "untils": [],
             "requires": []
           }
-        }
+        },
+        "runnable": true
       },
       "spark25_leftY": {
         "source": "test \"spark25_leftY\"\n\ndevice \"SPARKMAX/NEO 25\"\ndevice \"controller0\"\n\nmain:\n\tset \"SPARKMAX/NEO 25\".output_percent_cmd = controller0.leftY deadband 0.08 scaled 0.25 default 0.0\n\n\tuntil timer.elapsed >= 10.0\n\n",
@@ -1299,7 +1312,8 @@
             "untils": [],
             "requires": []
           }
-        }
+        },
+        "runnable": true
       },
       "falcon9_leftY": {
         "source": "test \"falcon9_leftY\"\n\ndevice \"FALCON 9\"\ndevice \"controller0\"\n\nmain:\n\tset \"FALCON 9\".output_percent_cmd = controller0.leftY deadband 0.08 scaled 0.25 default 0.0\n\n\tuntil timer.elapsed >= 10.0\n\n",
@@ -1377,7 +1391,8 @@
             "untils": [],
             "requires": []
           }
-        }
+        },
+        "runnable": true
       },
       "spark25_to_limit": {
         "source": "test \"spark25_to_limit\"\n\ndevice \"SPARKMAX/NEO 25\"\ndevice \"lmtSw0\"\n\nmain:\n\tset \"SPARKMAX/NEO 25\".output_percent_cmd = 0.20\n\n\n\tabort \"SPARKMAX/NEO 25\".current_actual > 40\n\n\tsuccess lmtSw0.pressed stable 0.050\n\n\n\n",
@@ -1461,11 +1476,12 @@
             "untils": [],
             "requires": []
           }
-        }
+        },
+        "runnable": true
       },
       "falcon9_to_limit": {
-        "source": "test \"falcon9_to_limit\"\n\ndevice \"FALCON 9\"\ndevice \"lmtSw0\"\n\nmain:\n\tset \"FALCON 9\".output_percent_cmd = 0.20\n\n\n\tabort \"FALCON 9\".current_actual > 40\n\n\tsuccess lmtSw0.pressed stable 0.050\n\n\n\n",
-        "sourceHash": "fc6f2f2501bac5b96407f804e7e54c0ddfeb23c861843a4b619b76607925f736",
+        "source": "test \"falcon9_to_limit\"\n\ndevice \"FALCON 9\"\ndevice \"lmtSw0\"\n\nmain:\n\tset \"FALCON 9\".output_percent_cmd = 0.20\n\n\n\tabort \"FALCON 9\".current_actual > 40\n\n\tsuccess lmtSw0.pressed\n\n\n\n",
+        "sourceHash": "42f07decbf66d269b7cff20047e2e4fc9068b0bd821b51537be1b6beb5101e7c",
         "normalized": {
           "name": "falcon9_to_limit",
           "devices": [
@@ -1524,14 +1540,13 @@
               {
                 "id": "success_1",
                 "kind": "success",
-                "text": "success lmtSw0.pressed stable 0.050",
+                "text": "success lmtSw0.pressed",
                 "reference": {
                   "device": "lmtSw0",
                   "signal": "pressed",
                   "text": "lmtSw0.pressed"
                 },
-                "mode": "bare",
-                "stableSeconds": 0.05
+                "mode": "bare"
               }
             ],
             "untils": [],
@@ -1545,7 +1560,8 @@
             "untils": [],
             "requires": []
           }
-        }
+        },
+        "runnable": true
       },
       "motors_to_limit": {
         "source": "test \"motors_to_limit\"\n\ndevice \"SPARKMAX/NEO 25\"\ndevice \"FALCON 9\"\ndevice \"lmtSw0\"\n\nmain:\n\tset \"SPARKMAX/NEO 25\".output_percent_cmd = 0.15\n\tset \"FALCON 9\".output_percent_cmd = 0.15\n\n\tabort \"SPARKMAX/NEO 25\".current_actual > 40\n\tabort \"FALCON 9\".current_actual > 40\n\n\tsuccess lmtSw0.pressed stable 0.050\n\n\n\n\n",
@@ -1661,7 +1677,653 @@
             "untils": [],
             "requires": []
           }
-        }
+        },
+        "runnable": true
+      },
+      "test_minimal_25_9_spark25_leftY": {
+        "source": "test \"test_minimal_25_9_spark25_leftY\"\n\ndevice \"SPARKMAX/NEO 25\"\ndevice \"controller0\"\n\nmain:\n\tset \"SPARKMAX/NEO 25\".output_percent_cmd = controller0.leftY deadband 0.08 scaled 0.25 default 0.0\n\n\tuntil timer.elapsed >= 10.0\n\n",
+        "sourceHash": "76bd1f087e0f987bb971ad78161728bf8279b422170e3270529299815582eb2b",
+        "normalized": {
+          "name": "test_minimal_25_9_spark25_leftY",
+          "devices": [
+            {
+              "name": "SPARKMAX/NEO 25"
+            },
+            {
+              "name": "controller0"
+            }
+          ],
+          "unsafeExit": [],
+          "init": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          },
+          "main": {
+            "sets": [
+              {
+                "id": "set_1",
+                "text": "set \"SPARKMAX/NEO 25\".output_percent_cmd = controller0.leftY deadband 0.08 scaled 0.25 default 0.0",
+                "target": {
+                  "device": "SPARKMAX/NEO 25",
+                  "signal": "output_percent_cmd",
+                  "text": "SPARKMAX/NEO 25.output_percent_cmd"
+                },
+                "source": {
+                  "device": "controller0",
+                  "signal": "leftY",
+                  "text": "controller0.leftY"
+                },
+                "deadband": 0.08,
+                "scale": 0.25,
+                "defaultLiteral": {
+                  "value": 0.0,
+                  "valueType": "number"
+                }
+              }
+            ],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [
+              {
+                "id": "until_1",
+                "kind": "until",
+                "text": "until timer.elapsed >= 10.0",
+                "reference": {
+                  "device": "timer",
+                  "signal": "elapsed",
+                  "text": "timer.elapsed"
+                },
+                "mode": "comparison",
+                "operator": ">=",
+                "literal": {
+                  "value": 10.0,
+                  "valueType": "number"
+                }
+              }
+            ],
+            "requires": []
+          },
+          "close": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          }
+        },
+        "runnable": true
+      },
+      "falcon9_move_150_rotations": {
+        "source": "test \"falcon9_move_150_rotations\"\n\n# the DUT\ndevice \"FALCON 9\"\n\nmain:\n    set \"FALCON 9\".output_percent_cmd = 0.25\n\n    abort \"FALCON 9\".current_actual > 40\n\n    require \"FALCON 9\".position_delta > 10\n\n    until \"FALCON 9\".position_delta > 150.0\n    until timer.elapsed >= 60.0\n",
+        "sourceHash": "45c984f46ce130a505ef4bf9e4f1a1d5c09105bce6738a5384dc47c422a198ce",
+        "normalized": {
+          "name": "falcon9_move_150_rotations",
+          "devices": [
+            {
+              "name": "FALCON 9"
+            }
+          ],
+          "unsafeExit": [],
+          "init": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          },
+          "main": {
+            "sets": [
+              {
+                "id": "set_1",
+                "text": "set \"FALCON 9\".output_percent_cmd = 0.25",
+                "target": {
+                  "device": "FALCON 9",
+                  "signal": "output_percent_cmd",
+                  "text": "FALCON 9.output_percent_cmd"
+                },
+                "literal": {
+                  "value": 0.25,
+                  "valueType": "number"
+                }
+              }
+            ],
+            "clears": [],
+            "aborts": [
+              {
+                "id": "abort_1",
+                "kind": "abort",
+                "text": "abort \"FALCON 9\".current_actual > 40",
+                "reference": {
+                  "device": "FALCON 9",
+                  "signal": "current_actual",
+                  "text": "FALCON 9.current_actual"
+                },
+                "mode": "comparison",
+                "operator": ">",
+                "literal": {
+                  "value": 40,
+                  "valueType": "number"
+                }
+              }
+            ],
+            "successes": [],
+            "untils": [
+              {
+                "id": "until_1",
+                "kind": "until",
+                "text": "until \"FALCON 9\".position_delta > 150.0",
+                "reference": {
+                  "device": "FALCON 9",
+                  "signal": "position_delta",
+                  "text": "FALCON 9.position_delta"
+                },
+                "mode": "comparison",
+                "operator": ">",
+                "literal": {
+                  "value": 150.0,
+                  "valueType": "number"
+                }
+              },
+              {
+                "id": "until_2",
+                "kind": "until",
+                "text": "until timer.elapsed >= 60.0",
+                "reference": {
+                  "device": "timer",
+                  "signal": "elapsed",
+                  "text": "timer.elapsed"
+                },
+                "mode": "comparison",
+                "operator": ">=",
+                "literal": {
+                  "value": 60.0,
+                  "valueType": "number"
+                }
+              }
+            ],
+            "requires": [
+              {
+                "id": "require_1",
+                "kind": "require",
+                "text": "require \"FALCON 9\".position_delta > 10",
+                "reference": {
+                  "device": "FALCON 9",
+                  "signal": "position_delta",
+                  "text": "FALCON 9.position_delta"
+                },
+                "mode": "comparison",
+                "operator": ">",
+                "literal": {
+                  "value": 10,
+                  "valueType": "number"
+                }
+              }
+            ]
+          },
+          "close": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          }
+        },
+        "runnable": true
+      },
+      "xxx25_leftY": {
+        "source": "test \"xxx25_leftY\"\n\ndevice \"SPARKMAX/NEO 25\"\ndevice \"controller0\"\n\ninit:\n\nmain:\n\tset \"SPARKMAX/NEO 25\".output_percent_cmd = controller0.leftY deadband 0.08 scaled 0.25 default 0.0\n\n\tuntil timer.elapsed >= 10.0\n\n",
+        "sourceHash": "ae55998031fdbd6222448dd06e51499d35ca99adffb9abb3ae1b09535f41278c",
+        "normalized": {
+          "name": "xxx25_leftY",
+          "devices": [
+            {
+              "name": "SPARKMAX/NEO 25"
+            },
+            {
+              "name": "controller0"
+            }
+          ],
+          "unsafeExit": [],
+          "init": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          },
+          "main": {
+            "sets": [
+              {
+                "id": "set_1",
+                "text": "set \"SPARKMAX/NEO 25\".output_percent_cmd = controller0.leftY deadband 0.08 scaled 0.25 default 0.0",
+                "target": {
+                  "device": "SPARKMAX/NEO 25",
+                  "signal": "output_percent_cmd",
+                  "text": "SPARKMAX/NEO 25.output_percent_cmd"
+                },
+                "source": {
+                  "device": "controller0",
+                  "signal": "leftY",
+                  "text": "controller0.leftY"
+                },
+                "deadband": 0.08,
+                "scale": 0.25,
+                "defaultLiteral": {
+                  "value": 0.0,
+                  "valueType": "number"
+                }
+              }
+            ],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [
+              {
+                "id": "until_1",
+                "kind": "until",
+                "text": "until timer.elapsed >= 10.0",
+                "reference": {
+                  "device": "timer",
+                  "signal": "elapsed",
+                  "text": "timer.elapsed"
+                },
+                "mode": "comparison",
+                "operator": ">=",
+                "literal": {
+                  "value": 10.0,
+                  "valueType": "number"
+                }
+              }
+            ],
+            "requires": []
+          },
+          "close": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          }
+        },
+        "runnable": true
+      },
+      "testDSL1": {
+        "source": "test \"testDSL1\"\n\nmain:\n    require timer.elapsed >= 0.0\n    until timer.elapsed >= 1.0\n",
+        "sourceHash": "430d78eaa2ea3994b632fde24a18be8594dbb7ef4815c80e369eb5e349961957",
+        "normalized": {
+          "name": "testDSL1",
+          "devices": [],
+          "unsafeExit": [],
+          "init": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          },
+          "main": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [
+              {
+                "id": "until_1",
+                "kind": "until",
+                "text": "until timer.elapsed >= 1.0",
+                "reference": {
+                  "device": "timer",
+                  "signal": "elapsed",
+                  "text": "timer.elapsed"
+                },
+                "mode": "comparison",
+                "operator": ">=",
+                "literal": {
+                  "value": 1.0,
+                  "valueType": "number"
+                }
+              }
+            ],
+            "requires": [
+              {
+                "id": "require_1",
+                "kind": "require",
+                "text": "require timer.elapsed >= 0.0",
+                "reference": {
+                  "device": "timer",
+                  "signal": "elapsed",
+                  "text": "timer.elapsed"
+                },
+                "mode": "comparison",
+                "operator": ">=",
+                "literal": {
+                  "value": 0.0,
+                  "valueType": "number"
+                }
+              }
+            ]
+          },
+          "close": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          }
+        },
+        "runnable": true
+      },
+      "mtrs_limit": {
+        "source": "test \"mtrs_limit\"\n\ndevice \"FALCON 9\"\ndevice \"lmtSw0\"\ndevice \"SPARKMAX/NEO 25\"\n\nmain:\n\tset \"FALCON 9\".output_percent_cmd = 0.15\n\n\tset \"SPARKMAX/NEO 25\".output_percent_cmd = 0.15\n\n\tabort \"SPARKMAX/NEO 25\".current_actual > 40\n\tabort \"FALCON 9\".current_actual > 40\n\n\tsuccess lmtSw0.pressed\n\tuntil timer.elapsed >= 3.0\n\n\n\n",
+        "sourceHash": "7e70cd5e2782c274ffc4f40fcf3d49aeb97ffd7238b7b956b74e94eff185aa1a",
+        "normalized": {
+          "name": "mtrs_limit",
+          "devices": [
+            {
+              "name": "FALCON 9"
+            },
+            {
+              "name": "lmtSw0"
+            },
+            {
+              "name": "SPARKMAX/NEO 25"
+            }
+          ],
+          "unsafeExit": [],
+          "init": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          },
+          "main": {
+            "sets": [
+              {
+                "id": "set_1",
+                "text": "set \"FALCON 9\".output_percent_cmd = 0.15",
+                "target": {
+                  "device": "FALCON 9",
+                  "signal": "output_percent_cmd",
+                  "text": "FALCON 9.output_percent_cmd"
+                },
+                "literal": {
+                  "value": 0.15,
+                  "valueType": "number"
+                }
+              },
+              {
+                "id": "set_2",
+                "text": "set \"SPARKMAX/NEO 25\".output_percent_cmd = 0.15",
+                "target": {
+                  "device": "SPARKMAX/NEO 25",
+                  "signal": "output_percent_cmd",
+                  "text": "SPARKMAX/NEO 25.output_percent_cmd"
+                },
+                "literal": {
+                  "value": 0.15,
+                  "valueType": "number"
+                }
+              }
+            ],
+            "clears": [],
+            "aborts": [
+              {
+                "id": "abort_1",
+                "kind": "abort",
+                "text": "abort \"SPARKMAX/NEO 25\".current_actual > 40",
+                "reference": {
+                  "device": "SPARKMAX/NEO 25",
+                  "signal": "current_actual",
+                  "text": "SPARKMAX/NEO 25.current_actual"
+                },
+                "mode": "comparison",
+                "operator": ">",
+                "literal": {
+                  "value": 40,
+                  "valueType": "number"
+                }
+              },
+              {
+                "id": "abort_2",
+                "kind": "abort",
+                "text": "abort \"FALCON 9\".current_actual > 40",
+                "reference": {
+                  "device": "FALCON 9",
+                  "signal": "current_actual",
+                  "text": "FALCON 9.current_actual"
+                },
+                "mode": "comparison",
+                "operator": ">",
+                "literal": {
+                  "value": 40,
+                  "valueType": "number"
+                }
+              }
+            ],
+            "successes": [
+              {
+                "id": "success_1",
+                "kind": "success",
+                "text": "success lmtSw0.pressed",
+                "reference": {
+                  "device": "lmtSw0",
+                  "signal": "pressed",
+                  "text": "lmtSw0.pressed"
+                },
+                "mode": "bare"
+              }
+            ],
+            "untils": [
+              {
+                "id": "until_1",
+                "kind": "until",
+                "text": "until timer.elapsed >= 3.0",
+                "reference": {
+                  "device": "timer",
+                  "signal": "elapsed",
+                  "text": "timer.elapsed"
+                },
+                "mode": "comparison",
+                "operator": ">=",
+                "literal": {
+                  "value": 3.0,
+                  "valueType": "number"
+                }
+              }
+            ],
+            "requires": []
+          },
+          "close": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          }
+        },
+        "runnable": true
+      },
+      "newTests_123": {
+        "source": "test \"newTests_123\"\n\ndevice \"SPARKMAX/NEO 25\"\ndevice \"FALCON 9\"\ndevice \"controller0\"\ndevice \"pdp\"\ndevice \"lmtSw0\"\n\nmain:\n\tset \"SPARKMAX/NEO 25\".output_percent_cmd = controller0.leftY deadband 0.08 scaled 0.25 default 0.0\n\tset \"FALCON 9\".output_percent_cmd = 0.333\n\n\tuntil timer.elapsed >= 10.0\n\tuntil lmtSw0.pressed == true\n\n\tabort pdp.channel0_current > 10.0\n\trequire pdp.channel0_fault == false\n\trequire \"FALCON 9\".current_actual > 0.1\n",
+        "sourceHash": "5af138007ef03cdd8407d7bcd83c9931864aa09b8fe19a99419906c184d37459",
+        "normalized": {
+          "name": "newTests_123",
+          "devices": [
+            {
+              "name": "SPARKMAX/NEO 25"
+            },
+            {
+              "name": "FALCON 9"
+            },
+            {
+              "name": "controller0"
+            },
+            {
+              "name": "pdp"
+            },
+            {
+              "name": "lmtSw0"
+            }
+          ],
+          "unsafeExit": [],
+          "init": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          },
+          "main": {
+            "sets": [
+              {
+                "id": "set_1",
+                "text": "set \"SPARKMAX/NEO 25\".output_percent_cmd = controller0.leftY deadband 0.08 scaled 0.25 default 0.0",
+                "target": {
+                  "device": "SPARKMAX/NEO 25",
+                  "signal": "output_percent_cmd",
+                  "text": "SPARKMAX/NEO 25.output_percent_cmd"
+                },
+                "source": {
+                  "device": "controller0",
+                  "signal": "leftY",
+                  "text": "controller0.leftY"
+                },
+                "deadband": 0.08,
+                "scale": 0.25,
+                "defaultLiteral": {
+                  "value": 0.0,
+                  "valueType": "number"
+                }
+              },
+              {
+                "id": "set_2",
+                "text": "set \"FALCON 9\".output_percent_cmd = 0.333",
+                "target": {
+                  "device": "FALCON 9",
+                  "signal": "output_percent_cmd",
+                  "text": "FALCON 9.output_percent_cmd"
+                },
+                "literal": {
+                  "value": 0.333,
+                  "valueType": "number"
+                }
+              }
+            ],
+            "clears": [],
+            "aborts": [
+              {
+                "id": "abort_1",
+                "kind": "abort",
+                "text": "abort pdp.channel0_current > 10.0",
+                "reference": {
+                  "device": "pdp",
+                  "signal": "channel0_current",
+                  "text": "pdp.channel0_current"
+                },
+                "mode": "comparison",
+                "operator": ">",
+                "literal": {
+                  "value": 10.0,
+                  "valueType": "number"
+                }
+              }
+            ],
+            "successes": [],
+            "untils": [
+              {
+                "id": "until_1",
+                "kind": "until",
+                "text": "until timer.elapsed >= 10.0",
+                "reference": {
+                  "device": "timer",
+                  "signal": "elapsed",
+                  "text": "timer.elapsed"
+                },
+                "mode": "comparison",
+                "operator": ">=",
+                "literal": {
+                  "value": 10.0,
+                  "valueType": "number"
+                }
+              },
+              {
+                "id": "until_2",
+                "kind": "until",
+                "text": "until lmtSw0.pressed == true",
+                "reference": {
+                  "device": "lmtSw0",
+                  "signal": "pressed",
+                  "text": "lmtSw0.pressed"
+                },
+                "mode": "comparison",
+                "operator": "==",
+                "literal": {
+                  "value": true,
+                  "valueType": "boolean"
+                }
+              }
+            ],
+            "requires": [
+              {
+                "id": "require_1",
+                "kind": "require",
+                "text": "require pdp.channel0_fault == false",
+                "reference": {
+                  "device": "pdp",
+                  "signal": "channel0_fault",
+                  "text": "pdp.channel0_fault"
+                },
+                "mode": "comparison",
+                "operator": "==",
+                "literal": {
+                  "value": false,
+                  "valueType": "boolean"
+                }
+              },
+              {
+                "id": "require_2",
+                "kind": "require",
+                "text": "require \"FALCON 9\".current_actual > 0.1",
+                "reference": {
+                  "device": "FALCON 9",
+                  "signal": "current_actual",
+                  "text": "FALCON 9.current_actual"
+                },
+                "mode": "comparison",
+                "operator": ">",
+                "literal": {
+                  "value": 0.1,
+                  "valueType": "number"
+                }
+              }
+            ]
+          },
+          "close": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          }
+        },
+        "runnable": true
       }
     }
   },

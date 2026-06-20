@@ -44,7 +44,7 @@ public final class BringupTestRegistry {
     List<BringupTest> tests = new ArrayList<>();
     for (String name : names) {
       DslModels.DslTestEntry entry = root.testsByName.get(name);
-      if (entry == null || entry.normalized == null) {
+      if (entry == null || Boolean.FALSE.equals(entry.runnable) || entry.normalized == null) {
         continue;
       }
       tests.add(new DslBringupTest(entry.normalized));
@@ -74,8 +74,7 @@ public final class BringupTestRegistry {
       info.defaultTestSetName = root.defaultSet;
       info.activeTestSetName = resolveActiveSetName(root);
       info.testSetCount = root.testSets != null ? root.testSets.size() : 0;
-      List<String> entries = selectTestNames(root);
-      info.testCount = entries.size();
+      info.testCount = loadTests().size();
     }
     return info;
   }
@@ -112,9 +111,6 @@ public final class BringupTestRegistry {
     if (root == null || root.testsByName == null || root.testsByName.isEmpty()) {
       return Collections.emptyList();
     }
-    if (root.testSets == null || root.testSets.isEmpty()) {
-      return new ArrayList<>(root.testsByName.keySet());
-    }
     String active = resolveActiveSetName(root);
     List<String> names = active != null ? root.testSets.get(active) : null;
     return names != null ? names : Collections.emptyList();
@@ -127,12 +123,6 @@ public final class BringupTestRegistry {
     String profileSet = BringupUtil.getSelectedDslTestSetForProfile(BringupUtil.getActiveCanProfile());
     if (profileSet != null && !profileSet.isBlank() && root.testSets != null && root.testSets.containsKey(profileSet)) {
       return profileSet;
-    }
-    if (root.defaultSet != null && root.testSets != null && root.testSets.containsKey(root.defaultSet)) {
-      return root.defaultSet;
-    }
-    if (root.testSets != null && !root.testSets.isEmpty()) {
-      return root.testSets.keySet().iterator().next();
     }
     return null;
   }
