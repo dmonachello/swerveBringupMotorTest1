@@ -350,6 +350,10 @@ class BridgeCliAstExecutor:
         now = time.time()
         self._cli._proto_mark_connected(now=now)
         self._cli._proto_mark_handshake(now=now)
+        self._cli._sync_host_profile_context_to_robot(
+            self._cli._query_robot_selected_profile_after_connect(),
+            prompt_user=not self._cli._batch,
+        )
         self._cli._start_keepalive()
         print(AST_EXEC_SPEC["msg_connected"])
         return StatusResult(code=SS__NORMAL)
@@ -358,6 +362,8 @@ class BridgeCliAstExecutor:
         self._cli._stop_keepalive()
         disconnect(self._cli._session)
         self._cli._proto_mark_disconnected(now=time.time())
+        self._cli._robot_selected_profile = None
+        self._cli._profile_context_mismatch_seen = None
         print(AST_EXEC_SPEC["msg_disconnected"])
         return StatusResult(code=SS__NORMAL)
 

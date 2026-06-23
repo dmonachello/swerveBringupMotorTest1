@@ -39,6 +39,7 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
   private static final String CMD_DEVICE_OVERRIDE_INSTANTIATE =
       "deviceOverrideInstantiate";
   private static final String CMD_DEVICE_OVERRIDE_CLEAR = "deviceOverrideClear";
+  private static final String GROUP_ACTIVE = "active-group";
 
   private static final String JSON_KEY_JSON = "json";
   private static final String MESSAGE_RUNTIME_ACTIVATE_REQUIRED =
@@ -47,6 +48,12 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
       "Manual duty blocked: robot disabled.";
   private static final String MESSAGE_MANUAL_DUTY_DISABLED_ESTOP =
       "Manual duty blocked: robot disabled (E-Stop).";
+  private static final String MESSAGE_MANUAL_DUTY_CONTROLLED_SCOPE =
+      "Manual duty blocked: device is outside the active controlled lifecycle scope.";
+  private static final String MESSAGE_MANUAL_GROUP_DUTY_CONTROLLED_SCOPE =
+      "Manual duty blocked: group contains device(s) outside the active controlled lifecycle scope.";
+  private static final String MESSAGE_ACTIVE_GROUP_LIFECYCLE_LOCKED =
+      "Active group membership is locked while controlled lifecycle session is ACTIVE. Deactivate lifecycle first.";
   private static final String JSON_KEY_DEVICE = "device";
   private static final String JSON_KEY_GROUP = "group";
   private static final String JSON_KEY_MOVED = "moved";
@@ -126,6 +133,8 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
 
     JsonObject buildSelectedDeviceJson();
 
+    String buildRuntimeStateText();
+
     String buildStatusText();
 
     JsonObject buildRuntimeStateJson();
@@ -141,6 +150,10 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
     BridgeGroupManager.SelectedState getBridgeSelected();
 
     boolean isRuntimeActive();
+
+    boolean isControlledLifecycleActive();
+
+    boolean isControlledLifecycleDeviceActive(String deviceName);
 
     boolean isRobotEnabled();
 
@@ -243,8 +256,11 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
       }
       case CMD_SHOW_RUNTIME_STATE: {
         boolean wantsJson = Boolean.TRUE.equals(dependencies.parseUiArgBoolean(args, JSON_KEY_JSON));
-        String text = dependencies.buildStatusText() + "\n" + dependencies.buildGroupsText();
-        dependencies.applyShowResult(result, text, dependencies.buildRuntimeStateJson(), wantsJson);
+        dependencies.applyShowResult(
+            result,
+            dependencies.buildRuntimeStateText(),
+            dependencies.buildRuntimeStateJson(),
+            wantsJson);
         break;
       }
       case CMD_GROUP_CREATE: {
@@ -364,16 +380,17 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
           result.message = "Unknown device: " + deviceName;
           break;
         }
-        if (!dependencies.isRuntimeActive()) {
-          result.ok = false;
-          result.message = MESSAGE_RUNTIME_ACTIVATE_REQUIRED;
-          break;
-        }
         if (!dependencies.isRobotEnabled()) {
           result.ok = false;
           result.message = dependencies.isRobotEStopped()
               ? MESSAGE_MANUAL_DUTY_DISABLED_ESTOP
               : MESSAGE_MANUAL_DUTY_DISABLED;
+          break;
+        }
+        if (dependencies.isControlledLifecycleActive()
+            && !dependencies.isControlledLifecycleDeviceActive(deviceName)) {
+          result.ok = false;
+          result.message = MESSAGE_MANUAL_DUTY_CONTROLLED_SCOPE;
           break;
         }
         if (!dependencies.applyManualDeviceDuty(deviceName, duty)) {
@@ -387,6 +404,11 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
       }
       case CMD_MANUAL_DEVICE_DUTY_CLEAR: {
         String deviceName = dependencies.parseUiArgString(args, "name");
+        if (deviceName != null && dependencies.findDeviceEntryByLabel(deviceName) == null) {
+          result.ok = false;
+          result.message = "Unknown device: " + deviceName;
+          break;
+        }
         if (!dependencies.clearManualDeviceDuty(deviceName)) {
           result.ok = false;
           result.message = "Manual duty clear failed.";
@@ -409,11 +431,6 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
           result.message = "Group not found: " + groupName;
           break;
         }
-        if (!dependencies.isRuntimeActive()) {
-          result.ok = false;
-          result.message = MESSAGE_RUNTIME_ACTIVATE_REQUIRED;
-          break;
-        }
         if (!dependencies.isRobotEnabled()) {
           result.ok = false;
           result.message = dependencies.isRobotEStopped()
@@ -421,7 +438,14 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
               : MESSAGE_MANUAL_DUTY_DISABLED;
           break;
         }
-        if (!dependencies.applyManualGroupDuty(groupName, duty)) {
+        if (dependencies.isControlledLifecycleActive()
+            && groupContainsOutsideControlledScopeMember(groupName, bridgeGroups)) {
+          result.ok = false;
+          result.message = MESSAGE_MANUAL_GROUP_DUTY_CONTROLLED_SCOPE;
+          break;
+        }
+        boolean ok = dependencies.applyManualGroupDuty(groupName, duty);
+        if (!ok) {
           result.ok = false;
           result.message = "Manual group duty apply failed: " + groupName;
           break;
@@ -432,7 +456,18 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
       }
       case CMD_MANUAL_GROUP_DUTY_CLEAR: {
         String groupName = dependencies.parseUiArgString(args, "group");
-        if (!dependencies.clearManualGroupDuty(groupName)) {
+        if (groupName == null) {
+          result.ok = false;
+          result.message = "manualGroupDutyClear requires args.group.";
+          break;
+        }
+        if (bridgeGroups.getGroup(groupName) == null) {
+          result.ok = false;
+          result.message = "Group not found: " + groupName;
+          break;
+        }
+        boolean ok = dependencies.clearManualGroupDuty(groupName);
+        if (!ok) {
           result.ok = false;
           result.message = "Manual group duty clear failed.";
           break;
@@ -508,6 +543,11 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
       result.message = "Group not found: " + groupName;
       return;
     }
+    if (isActiveGroupLocked(groupName)) {
+      result.ok = false;
+      result.message = MESSAGE_ACTIVE_GROUP_LIFECYCLE_LOCKED;
+      return;
+    }
     if (dependencies.findDeviceEntryByLabel(deviceName) == null) {
       result.ok = false;
       result.message = "Unknown device: " + deviceName;
@@ -554,6 +594,11 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
       result.message = "Group not found: " + groupName;
       return;
     }
+    if (isActiveGroupLocked(groupName)) {
+      result.ok = false;
+      result.message = MESSAGE_ACTIVE_GROUP_LIFECYCLE_LOCKED;
+      return;
+    }
     if (!bridgeGroups.hasDevice(groupName, deviceName)) {
       result.ok = false;
       result.message = "Device not in group: " + deviceName;
@@ -580,6 +625,11 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
     if (group == null) {
       result.ok = false;
       result.message = "Group not found: " + groupName;
+      return;
+    }
+    if (isActiveGroupLocked(groupName)) {
+      result.ok = false;
+      result.message = MESSAGE_ACTIVE_GROUP_LIFECYCLE_LOCKED;
       return;
     }
     if (!bridgeGroups.hasDevice(groupName, deviceName)) {
@@ -720,5 +770,28 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
     result.message = "Test started.";
     result.outText = result.message;
   }
+
+  private boolean isActiveGroupLocked(String groupName) {
+    return dependencies.isControlledLifecycleActive() && GROUP_ACTIVE.equals(groupName);
+  }
+
+  private boolean groupContainsOutsideControlledScopeMember(
+      String groupName,
+      BridgeGroupManager bridgeGroups) {
+    BridgeGroupManager.Group group = bridgeGroups.getGroup(groupName);
+    if (group == null) {
+      return false;
+    }
+    for (BridgeGroupManager.MemberState member : group.members.values()) {
+      if (member == null || !member.enabled || member.label == null || member.label.isBlank()) {
+        continue;
+      }
+      if (!dependencies.isControlledLifecycleDeviceActive(member.label)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
 }
 

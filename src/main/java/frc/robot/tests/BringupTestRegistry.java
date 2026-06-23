@@ -54,7 +54,7 @@ public final class BringupTestRegistry {
 
   public static TestsInfo getTestsInfo() {
     TestsInfo info = new TestsInfo();
-    info.profileName = BringupUtil.getActiveCanProfile();
+    info.profileName = resolveCurrentProfileName();
     info.source = TESTS_SOURCE_REGISTRY;
     Path profilePath = BringupUtil.getProfilePath();
     info.path = profilePath;
@@ -120,11 +120,39 @@ public final class BringupTestRegistry {
     if (root == null) {
       return null;
     }
-    String profileSet = BringupUtil.getSelectedDslTestSetForProfile(BringupUtil.getActiveCanProfile());
+    String profileSet = BringupUtil.getSelectedDslTestSetForProfile(resolveCurrentProfileName());
     if (profileSet != null && !profileSet.isBlank() && root.testSets != null && root.testSets.containsKey(profileSet)) {
       return profileSet;
     }
     return null;
+  }
+
+  static String resolveCurrentProfileName() {
+    return resolveCurrentProfileName(
+        BringupUtil.isProfileActive(),
+        BringupUtil.getActiveCanProfile(),
+        BringupUtil.getSelectedCanProfile());
+  }
+
+  static String resolveCurrentProfileName(
+      boolean runtimeActive,
+      String activeProfileName,
+      String selectedProfileName) {
+    if (runtimeActive) {
+      String active = normalizeProfileName(activeProfileName);
+      if (!active.isBlank()) {
+        return active;
+      }
+    }
+    String selected = normalizeProfileName(selectedProfileName);
+    if (!selected.isBlank()) {
+      return selected;
+    }
+    return "";
+  }
+
+  private static String normalizeProfileName(String profileName) {
+    return profileName != null ? profileName.trim() : "";
   }
 
   private static String hashFile(Path path) throws IOException {

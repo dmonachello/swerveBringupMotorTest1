@@ -11,14 +11,13 @@ import org.junit.jupiter.api.Test;
 class RobotLocalCommandExecutorTest {
 
   private static final String CMD_SHOW_DEVICES = "showDevices";
+  private static final String CMD_LIFECYCLE_ACTIVATE = "lifecycleActivate";
   private static final String CMD_PRINT_TESTS_OVERVIEW = "printTestsOverview";
   private static final String CMD_PROFILES_APPLY = "profilesApply";
   private static final String CMD_RUN_TEST = "runTest";
   private static final String MESSAGE_ACTIVE_BUSY = "Another command is already active.";
   private static final String MESSAGE_CONTROLLER_HOLD_RELEASED = "controller hold released";
   private static final String MESSAGE_UI_RUN_COMMAND_ENDED = "UI run command ended";
-  private static final String MESSAGE_TEST_RUNTIME_NOT_READY =
-      "Active profile runtime is not ready for tests. Use Runtime Activate.";
 
   @Test
   void immediateCompleteCommandClearsActiveSlotBeforeNextSubmit() {
@@ -68,7 +67,7 @@ class RobotLocalCommandExecutorTest {
   }
 
   @Test
-  void runTestEnsuresActiveProfileBeforeStarting() {
+  void runTestDoesNotRequireLegacyRuntimeActivation() {
     HostStub host = new HostStub();
     RobotLocalCommandExecutor executor = new RobotLocalCommandExecutor(host);
 
@@ -76,12 +75,12 @@ class RobotLocalCommandExecutorTest {
 
     assertEquals(RobotLocalDispatchStatus.ACCEPTED, result.status());
     assertTrue(result.executionResult().ok());
-    assertTrue(host.ensureActiveProfileCalled);
+    assertFalse(host.ensureActiveProfileCalled);
     assertTrue(host.runSelectedTestCalled);
   }
 
   @Test
-  void runTestFailsFastWhenActiveProfileCannotBeEnsured() {
+  void runTestStillDispatchesWhenLegacyRuntimeEnsureWouldFail() {
     HostStub host = new HostStub();
     host.ensureActiveProfileResult = false;
     RobotLocalCommandExecutor executor = new RobotLocalCommandExecutor(host);
@@ -89,10 +88,9 @@ class RobotLocalCommandExecutorTest {
     RobotLocalDispatchResult result = executor.submit(request(CMD_RUN_TEST));
 
     assertEquals(RobotLocalDispatchStatus.ACCEPTED, result.status());
-    assertFalse(result.executionResult().ok());
-    assertEquals(MESSAGE_TEST_RUNTIME_NOT_READY, result.executionResult().message());
-    assertTrue(host.ensureActiveProfileCalled);
-    assertFalse(host.runSelectedTestCalled);
+    assertTrue(result.executionResult().ok());
+    assertFalse(host.ensureActiveProfileCalled);
+    assertTrue(host.runSelectedTestCalled);
   }
 
   @Test
@@ -133,6 +131,36 @@ class RobotLocalCommandExecutorTest {
     assertEquals(MESSAGE_UI_RUN_COMMAND_ENDED, host.lastApplyCommandStopReason);
   }
 
+  @Test
+  void lifecycleActivateRoutesThroughLegacyUiCommandPathWithArgs() {
+    HostStub host = new HostStub();
+    host.legacyUiResult =
+        RobotLocalExecutionResult.complete("Lifecycle activated.", "Lifecycle activated.", "{\"ok\":true}");
+    RobotLocalCommandExecutor executor = new RobotLocalCommandExecutor(host);
+    JsonObject args = new JsonObject();
+    args.addProperty("label", "front_left_drive");
+    args.addProperty("mode", "READ_ONLY");
+
+    RobotLocalDispatchResult result =
+        executor.submit(
+            new RobotLocalCommandRequest(
+                CMD_LIFECYCLE_ACTIVATE,
+                RobotLocalCommandSource.HOST_UI,
+                RobotLocalDispatchMode.IMMEDIATE,
+                args,
+                RobotLocalNoopValueProvider.INSTANCE,
+                "clientA",
+                0.0,
+                true));
+
+    assertEquals(RobotLocalDispatchStatus.ACCEPTED, result.status());
+    assertTrue(result.executionResult().ok());
+    assertEquals(CMD_LIFECYCLE_ACTIVATE, host.lastLegacyUiCommandName);
+    assertEquals("front_left_drive", host.lastLegacyUiArgs.get("label").getAsString());
+    assertEquals("READ_ONLY", host.lastLegacyUiArgs.get("mode").getAsString());
+    assertEquals("{\"ok\":true}", result.executionResult().outJson());
+  }
+
   private static RobotLocalCommandRequest request(String name) {
     return new RobotLocalCommandRequest(
         name,
@@ -165,6 +193,10 @@ class RobotLocalCommandExecutorTest {
     private RobotLocalExecutionResult runSelectedTestResult =
         RobotLocalExecutionResult.complete("runSelectedTest");
     private String lastApplyCommandStopReason;
+    private String lastLegacyUiCommandName;
+    private JsonObject lastLegacyUiArgs;
+    private RobotLocalExecutionResult legacyUiResult =
+        RobotLocalExecutionResult.complete("legacyUi");
 
     @Override
     public boolean ensureActiveProfile(String reason) {
@@ -281,7 +313,9 @@ class RobotLocalCommandExecutorTest {
         String clientId,
         double timestampSec,
         boolean isTcp) {
-      return RobotLocalExecutionResult.complete(commandName);
+      lastLegacyUiCommandName = commandName;
+      lastLegacyUiArgs = args;
+      return legacyUiResult;
     }
   }
 

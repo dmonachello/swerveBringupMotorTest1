@@ -348,6 +348,32 @@ def _resolve_profile_context_name(ui_table, fallback: str) -> str:
     return fallback_name
 
 
+def _await_profile_context_name(ui_table, fallback: str, timeout_s: float = 1.0) -> str:
+    """
+    NAME
+        _await_profile_context_name - Wait briefly for robot-selected profile NT state.
+
+    DESCRIPTION
+        CLI startup can race the robot-side NT publisher. Wait a short bounded
+        interval so the first interactive prompt can use the real robot profile
+        when it is already available, instead of drifting to the local default
+        and correcting later from a background watcher.
+    """
+    deadline = time.time() + max(0.0, float(timeout_s))
+    fallback_name = _normalize_profile_name(fallback)
+    resolved = _resolve_profile_context_name(ui_table, fallback_name)
+    if resolved and _normalize_profile_name(resolved) != fallback_name:
+        return resolved
+    while time.time() < deadline:
+        time.sleep(0.05)
+        candidate = _resolve_profile_context_name(ui_table, fallback_name)
+        if candidate and _normalize_profile_name(candidate) != fallback_name:
+            return candidate
+        if candidate:
+            resolved = candidate
+    return resolved
+
+
 @dataclass
 class FrameItem:
     """
@@ -781,9 +807,11 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         state.last_status.clear()
         return True
 
-    initial_context = _resolve_profile_context_name(ui_table, profile_context_name)
-    if initial_context and initial_context != profile_context_name:
-        _apply_profile_context(initial_context)
+    allow_robot_profile_context_tracking = not bool(args.cli or args.batch)
+    if allow_robot_profile_context_tracking:
+        initial_context = _resolve_profile_context_name(ui_table, profile_context_name)
+        if initial_context and initial_context != profile_context_name:
+            _apply_profile_context(initial_context)
 
     console_monitor = None
     console_monitor_enabled = bool(args.console_monitor or args.ui)
@@ -1156,9 +1184,10 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                     if not ok:
                         print(f"ERROR: reload failed: {err}")
                         continue
-                    resolved_context = _resolve_profile_context_name(ui_table, profile_context_name)
-                    if not _apply_profile_context(resolved_context):
-                        print(f"Profiles reloaded; context remains {resolved_context or profile_context_name}.")
+                    if allow_robot_profile_context_tracking:
+                        resolved_context = _resolve_profile_context_name(ui_table, profile_context_name)
+                        if not _apply_profile_context(resolved_context):
+                            print(f"Profiles reloaded; context remains {resolved_context or profile_context_name}.")
                     dv = get_profiles_data_version()
                     dh = get_profiles_data_hash()
                     if dv:
@@ -1166,10 +1195,11 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                     if dh:
                         print(f"Profiles data_hash: {dh}")
 
-                resolved_context = _resolve_profile_context_name(ui_table, profile_context_name)
-                if resolved_context and resolved_context != profile_context_name:
-                    if _apply_profile_context(resolved_context):
-                        print(f"Profile context -> {resolved_context}")
+                if allow_robot_profile_context_tracking:
+                    resolved_context = _resolve_profile_context_name(ui_table, profile_context_name)
+                    if resolved_context and resolved_context != profile_context_name:
+                        if _apply_profile_context(resolved_context):
+                            print(f"Profile context -> {resolved_context}")
 
                 if _maybe_handle_dumps(args, now, start, state, devices, seen_labels, seen_can_keys):
                     return 0

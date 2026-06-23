@@ -7,12 +7,18 @@ package frc.robot;
 public final class BuildInfo {
   private BuildInfo() {}
 
-  public static final String BUILD_GIT_DESCRIBE = "host-config-api-refactor-2026-06-09-1-ga580839-dirty";
-  public static final String BUILD_GIT_SHA = "a580839";
-  public static final String BUILD_GIT_BRANCH = "restore-from-a580839";
+  public static final String BUILD_GIT_DESCRIBE = "tests-tab-authoring-2026-06-19-1-g8885b7a-dirty";
+  public static final String BUILD_REVISION = "220";
+  public static final String BUILD_WORKSPACE_REVISION = "29";
+  public static final String BUILD_CODE_REVISION = "e7b96305587e";
+  public static final String BUILD_GIT_SHA = "8885b7a";
+  public static final String BUILD_GIT_BRANCH = "feature/controlled-bringup-lifecycle";
   public static final String BUILD_GIT_DIRTY = "dirty";
-  public static final String BUILD_TIMESTAMP = "2026-06-09T11:17:11-04:00";
+  public static final String BUILD_TIMESTAMP = "2026-06-19T20:29:43-04:00";
 
+  public static final String BUILD_LABEL_REVISION = "build-revision";
+  public static final String BUILD_LABEL_WORKSPACE_REVISION = "workspace-revision";
+  public static final String BUILD_LABEL_CODE_REVISION = "code-revision";
   public static final String BUILD_LABEL_GIT = "git";
   public static final String BUILD_LABEL_SHA = "git-sha";
   public static final String BUILD_LABEL_BRANCH = "git-branch";
@@ -20,6 +26,7 @@ public final class BuildInfo {
   public static final String BUILD_LABEL_TIME = "build-time";
 
   public static final String BUILD_SEPARATOR = ": ";
+  public static final String BOOT_PREFIX = "BOOT ";
   public static final String TEXT_NEWLINE = "\n";
 
   /**
@@ -35,5 +42,38 @@ public final class BuildInfo {
    */
   public static String formatBuildLine(String label, String value) {
     return label + BUILD_SEPARATOR + value;
+  }
+
+  /**
+   * NAME
+   *   buildBootRevisionLine - Build the direct boot-console revision line.
+   *
+   * RETURNS
+   *   A single-line boot banner entry for build revision visibility.
+   */
+  public static String buildBootRevisionLine() {
+    return BOOT_PREFIX + formatBuildLine(BUILD_LABEL_REVISION, BUILD_REVISION);
+  }
+
+  /**
+   * NAME
+   *   buildBootWorkspaceRevisionLine - Build the direct boot-console workspace-revision line.
+   *
+   * RETURNS
+   *   A single-line boot banner entry for local workspace ordering visibility.
+   */
+  public static String buildBootWorkspaceRevisionLine() {
+    return BOOT_PREFIX + formatBuildLine(BUILD_LABEL_WORKSPACE_REVISION, BUILD_WORKSPACE_REVISION);
+  }
+
+  /**
+   * NAME
+   *   buildBootCodeRevisionLine - Build the direct boot-console code-revision line.
+   *
+   * RETURNS
+   *   A single-line boot banner entry for local code fingerprint visibility.
+   */
+  public static String buildBootCodeRevisionLine() {
+    return BOOT_PREFIX + formatBuildLine(BUILD_LABEL_CODE_REVISION, BUILD_CODE_REVISION);
   }
 }

@@ -115,6 +115,9 @@ public class RobotV2 extends TimedRobot {
    */
   @Override
   public void robotInit() {
+    System.out.println(BuildInfo.buildBootRevisionLine());
+    System.out.println(BuildInfo.buildBootWorkspaceRevisionLine());
+    System.out.println(BuildInfo.buildBootCodeRevisionLine());
     // Load profile before anything instantiates devices.
     BringupUtil.applyProfileFromArgs();
     runtime = new BringupRuntime(

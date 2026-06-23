@@ -783,24 +783,6 @@ public final class BringupRestServer {
   private void runImmediateCommandLocked(CommandRecord record) {
     record.status = STATUS_RUNNING;
     record.updatedAtMs = nowMs();
-    if (COMMAND_SHOW_DEVICES.equals(record.name)) {
-      JsonObject payload = callbacks.buildDevicesJson();
-      if (payload != null) {
-        record.appendOutput(GSON.toJson(payload), nowMs());
-      }
-      record.finish(STATUS_FINISHED, MESSAGE_FINISHED, nowMs());
-      activeCommand = null;
-      return;
-    }
-    if (COMMAND_SHOW_RUNTIME_STATE.equals(record.name)) {
-      JsonObject payload = callbacks.buildRuntimeStateJson();
-      if (payload != null) {
-        record.appendOutput(GSON.toJson(payload), nowMs());
-      }
-      record.finish(STATUS_FINISHED, MESSAGE_FINISHED, nowMs());
-      activeCommand = null;
-      return;
-    }
     frc.robot.BridgeUiCommandHandler.RestCommandResult result =
         callbacks.executeCommand(record.name, record.args.toString(), record.clientId);
     if (result == null) {

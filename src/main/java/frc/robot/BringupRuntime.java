@@ -1,7 +1,19 @@
 package frc.robot;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 import edu.wpi.first.networktables.NetworkTable;
+import frc.robot.diag.lifecycle.activation.ActivationMode;
+import frc.robot.diag.lifecycle.activation.ActivationResult;
+import frc.robot.diag.lifecycle.activation.ActivationSession;
+import frc.robot.diag.lifecycle.activation.DeactivateResult;
+import frc.robot.diag.lifecycle.activation.LifecycleState;
+import frc.robot.diag.lifecycle.devices.DeviceRecord;
+import frc.robot.diag.lifecycle.integration.ControlledBringupLifecycleRuntime;
+import frc.robot.diag.lifecycle.integration.LifecycleCatalogBundle;
+import frc.robot.diag.lifecycle.integration.LifecycleProfileTopologyAdapter;
 import frc.robot.diag.probe.ActiveDevicePresenceProbe;
+import frc.robot.diag.lifecycle.runtime.DeviceRuntimeState;
 import frc.robot.telemetry.SampledTelemetrySampler;
 import java.util.Collections;
 import java.util.List;
@@ -17,7 +29,48 @@ import frc.robot.devices.DeviceUnit;
  */
 public final class BringupRuntime {
   private static final String COMMAND_RUN_TEST = "runTest";
+  private static final String GROUP_ACTIVE = "active-group";
+  private static final String GROUP_DEFAULT = "defaultGroup";
   private static final String TEXT_EMPTY = "";
+  private static final double BINDING_VALUE_ANALOG = 0.0;
+  private static final String JSON_KEY_AVAILABLE = "available";
+  private static final String JSON_KEY_PROFILE = "profile";
+  private static final String JSON_KEY_STATE = "state";
+  private static final String JSON_KEY_ACTIVE_SESSION = "activeSession";
+  private static final String JSON_KEY_SESSION_ID = "sessionId";
+  private static final String JSON_KEY_REQUESTED_LABEL = "requestedLabel";
+  private static final String JSON_KEY_REQUESTED_DEVICE_LABELS = "requestedDeviceLabels";
+  private static final String JSON_KEY_MODE = "mode";
+  private static final String JSON_KEY_ACTIVE_DEVICE_LABELS = "activeDeviceLabels";
+  private static final String JSON_KEY_DEVICES = "devices";
+  private static final String JSON_KEY_LABEL = "label";
+  private static final String JSON_KEY_LIFECYCLE_KIND = "lifecycleKind";
+  private static final String JSON_KEY_INSTANTIATED = "instantiated";
+  private static final String JSON_KEY_ACTIVE = "active";
+  private static final String JSON_KEY_ACTIVE_SESSION_ID = "activeSessionId";
+  private static final String JSON_KEY_ACTIVE_GROUP_LABEL = "activeGroupLabel";
+  private static final String JSON_KEY_LAST_ACTIVATION_MODE = "lastActivationMode";
+  private static final String JSON_KEY_LAST_ERROR = "lastError";
+  private static final String JSON_KEY_PRESENCE_STATE = "presenceState";
+  private static final String JSON_KEY_HEALTH_STATE = "healthState";
+  private static final String TEXT_LIFECYCLE_HEADER = "=== Controlled Lifecycle ===";
+  private static final String TEXT_LIFECYCLE_FOOTER = "============================";
+  private static final String TEXT_LIFECYCLE_UNAVAILABLE = "Controlled lifecycle unavailable.";
+  private static final String TEXT_ACTIVE_DEVICES_PREFIX = "activeDevices=";
+  private static final String TEXT_SESSION_PREFIX = "session=";
+  private static final String TEXT_MODE_PREFIX = " mode=";
+  private static final String TEXT_REQUESTED_LABEL_PREFIX = " requestedLabel=";
+  private static final String TEXT_STATE_PREFIX = "state=";
+  private static final String TEXT_PROFILE_PREFIX = "profile=";
+  private static final String TEXT_AVAILABLE_PREFIX = "available=";
+  private static final String TEXT_DEVICE_PREFIX = "  ";
+  private static final String TEXT_KIND_PREFIX = " kind=";
+  private static final String TEXT_INSTANTIATED_PREFIX = " instantiated=";
+  private static final String TEXT_ACTIVE_PREFIX = " active=";
+  private static final String TEXT_LAST_ERROR_PREFIX = " lastError=";
+  private static final String TEXT_NONE = "(none)";
+  private static final String ERROR_CONTROLLED_LIFECYCLE_UNAVAILABLE =
+      "Controlled lifecycle runtime unavailable.";
 
   private final CanBusHealth canHealth;
   private final NetworkTable diagTable;
@@ -27,6 +80,8 @@ public final class BringupRuntime {
       new BridgeGroupManager.SelectedState();
   private final SampledTelemetrySampler sampledTelemetry = new SampledTelemetrySampler();
   private final DeviceLifecycleRegistry deviceLifecycle = new DeviceLifecycleRegistry();
+  private LifecycleCatalogBundle controlledBringupLifecycle;
+  private ControlledBringupLifecycleRuntime controlledBringupLifecycleRuntime;
 
   private BringupCore core;
   private DiagnosticsReporter diagnostics;
@@ -83,6 +138,234 @@ public final class BringupRuntime {
    */
   public DeviceLifecycleRegistry getDeviceLifecycle() {
     return deviceLifecycle;
+  }
+
+  /**
+   * NAME
+   *   getControlledBringupLifecycle - Return the passive controlled-bringup lifecycle catalogs.
+   *
+   * RETURNS
+   *   Current lifecycle catalog bundle rebuilt from the selected or active profile.
+   */
+  public LifecycleCatalogBundle getControlledBringupLifecycle() {
+    return controlledBringupLifecycle;
+  }
+
+  /**
+   * NAME
+   *   getControlledBringupLifecycleRuntime - Return the internal lifecycle runtime wrapper.
+   *
+   * RETURNS
+   *   Internal activation-manager wrapper bound to the current core and profile catalogs.
+   */
+  public ControlledBringupLifecycleRuntime getControlledBringupLifecycleRuntime() {
+    return controlledBringupLifecycleRuntime;
+  }
+
+  /**
+   * NAME
+   *   activateControlledBringupLifecycle - Activate one lifecycle device/group label.
+   *
+   * PARAMETERS
+   *   label - Requested lifecycle label.
+   *   mode - Requested activation mode.
+   *
+   * RETURNS
+   *   Activation result from the controlled lifecycle runtime.
+   */
+  public ActivationResult activateControlledBringupLifecycle(String label, ActivationMode mode) {
+    synchronizeControlledBringupLifecycleGroups();
+    ControlledBringupLifecycleRuntime lifecycleRuntime = controlledBringupLifecycleRuntime;
+    if (lifecycleRuntime == null) {
+      return new ActivationResult(
+          false,
+          label,
+          null,
+          mode,
+          List.of(),
+          List.of(),
+          List.of(),
+          LifecycleState.INACTIVE,
+          ERROR_CONTROLLED_LIFECYCLE_UNAVAILABLE,
+          ERROR_CONTROLLED_LIFECYCLE_UNAVAILABLE);
+    }
+    ActivationResult result = lifecycleRuntime.activationManager().activate(label, mode);
+    refreshDeviceLifecycle(System.currentTimeMillis());
+    return result;
+  }
+
+  /**
+   * NAME
+   *   deactivateControlledBringupLifecycle - Deactivate the lifecycle session matching one label.
+   *
+   * PARAMETERS
+   *   label - Requested lifecycle label.
+   *
+   * RETURNS
+   *   Deactivation result from the controlled lifecycle runtime.
+   */
+  public DeactivateResult deactivateControlledBringupLifecycle(String label) {
+    synchronizeControlledBringupLifecycleGroups();
+    ControlledBringupLifecycleRuntime lifecycleRuntime = controlledBringupLifecycleRuntime;
+    if (lifecycleRuntime == null) {
+      return new DeactivateResult(
+          false,
+          label,
+          null,
+          List.of(),
+          LifecycleState.INACTIVE,
+          ERROR_CONTROLLED_LIFECYCLE_UNAVAILABLE,
+          ERROR_CONTROLLED_LIFECYCLE_UNAVAILABLE);
+    }
+    DeactivateResult result = lifecycleRuntime.activationManager().deactivate(label);
+    refreshDeviceLifecycle(System.currentTimeMillis());
+    return result;
+  }
+
+  /**
+   * NAME
+   *   deactivateActiveControlledBringupLifecycle - Deactivate the current active lifecycle session.
+   *
+   * RETURNS
+   *   Deactivation result from the controlled lifecycle runtime.
+   */
+  public DeactivateResult deactivateActiveControlledBringupLifecycle() {
+    synchronizeControlledBringupLifecycleGroups();
+    ControlledBringupLifecycleRuntime lifecycleRuntime = controlledBringupLifecycleRuntime;
+    if (lifecycleRuntime == null) {
+      return new DeactivateResult(
+          false,
+          null,
+          null,
+          List.of(),
+          LifecycleState.INACTIVE,
+          ERROR_CONTROLLED_LIFECYCLE_UNAVAILABLE,
+          ERROR_CONTROLLED_LIFECYCLE_UNAVAILABLE);
+    }
+    DeactivateResult result = lifecycleRuntime.activationManager().deactivateActive();
+    refreshDeviceLifecycle(System.currentTimeMillis());
+    return result;
+  }
+
+  /**
+   * NAME
+   *   buildControlledBringupLifecycleText - Build human-readable controlled lifecycle state.
+   *
+   * RETURNS
+   *   Multiline text snapshot of the current internal lifecycle runtime.
+   */
+  public String buildControlledBringupLifecycleText() {
+    synchronizeControlledBringupLifecycleGroups();
+    ControlledBringupLifecycleRuntime lifecycleRuntime = controlledBringupLifecycleRuntime;
+    StringBuilder sb = new StringBuilder(512);
+    ReportTextUtil.appendLine(sb, TEXT_LIFECYCLE_HEADER);
+    if (lifecycleRuntime == null) {
+      ReportTextUtil.appendLine(sb, TEXT_LIFECYCLE_UNAVAILABLE);
+      ReportTextUtil.appendLine(sb, TEXT_LIFECYCLE_FOOTER);
+      return sb.toString();
+    }
+    ReportTextUtil.appendLine(
+        sb,
+        TEXT_AVAILABLE_PREFIX + true);
+    ReportTextUtil.appendLine(
+        sb,
+        TEXT_PROFILE_PREFIX + (lifecycleRuntime.catalogBundle().profileName() != null
+            ? lifecycleRuntime.catalogBundle().profileName()
+            : TEXT_EMPTY));
+    ReportTextUtil.appendLine(
+        sb,
+        TEXT_STATE_PREFIX + lifecycleRuntime.activationManager().lifecycleState().name());
+    ActivationSession activeSession =
+        lifecycleRuntime.activationManager().getActiveSession().orElse(null);
+    if (activeSession == null) {
+      ReportTextUtil.appendLine(sb, TEXT_SESSION_PREFIX + TEXT_NONE);
+    } else {
+      ReportTextUtil.appendLine(
+          sb,
+          TEXT_SESSION_PREFIX
+              + activeSession.sessionId()
+              + TEXT_REQUESTED_LABEL_PREFIX
+              + activeSession.requestedLabel()
+              + TEXT_MODE_PREFIX
+              + activeSession.mode().name());
+    }
+    ReportTextUtil.appendLine(
+        sb,
+        TEXT_ACTIVE_DEVICES_PREFIX + formatLabelList(lifecycleRuntime.activationManager().activeDeviceLabels()));
+    for (DeviceRecord record : lifecycleRuntime.catalogBundle().deviceCatalog().deviceRecords()) {
+      DeviceRuntimeState runtimeState =
+          lifecycleRuntime.catalogBundle().deviceCatalog().runtimeState(record.label());
+      ReportTextUtil.appendLine(
+          sb,
+          TEXT_DEVICE_PREFIX
+              + record.label()
+              + TEXT_KIND_PREFIX
+              + record.lifecycleKind().name()
+              + TEXT_INSTANTIATED_PREFIX
+              + runtimeState.isInstantiated()
+              + TEXT_ACTIVE_PREFIX
+              + runtimeState.isActive()
+              + TEXT_LAST_ERROR_PREFIX
+              + (runtimeState.lastError() != null ? runtimeState.lastError() : TEXT_EMPTY));
+    }
+    ReportTextUtil.appendLine(sb, TEXT_LIFECYCLE_FOOTER);
+    return sb.toString();
+  }
+
+  /**
+   * NAME
+   *   buildControlledBringupLifecycleJson - Build machine-readable controlled lifecycle state.
+   *
+   * RETURNS
+   *   JSON snapshot of the current internal lifecycle runtime.
+   */
+  public JsonObject buildControlledBringupLifecycleJson() {
+    synchronizeControlledBringupLifecycleGroups();
+    JsonObject root = new JsonObject();
+    ControlledBringupLifecycleRuntime lifecycleRuntime = controlledBringupLifecycleRuntime;
+    root.addProperty(JSON_KEY_AVAILABLE, lifecycleRuntime != null);
+    if (lifecycleRuntime == null) {
+      root.addProperty(JSON_KEY_STATE, LifecycleState.INACTIVE.name());
+      return root;
+    }
+    root.addProperty(
+        JSON_KEY_PROFILE,
+        lifecycleRuntime.catalogBundle().profileName() != null
+            ? lifecycleRuntime.catalogBundle().profileName()
+            : TEXT_EMPTY);
+    root.addProperty(JSON_KEY_STATE, lifecycleRuntime.activationManager().lifecycleState().name());
+    ActivationSession activeSession =
+        lifecycleRuntime.activationManager().getActiveSession().orElse(null);
+    if (activeSession != null) {
+      JsonObject session = new JsonObject();
+      session.addProperty(JSON_KEY_SESSION_ID, activeSession.sessionId());
+      session.addProperty(JSON_KEY_REQUESTED_LABEL, activeSession.requestedLabel());
+      session.addProperty(JSON_KEY_MODE, activeSession.mode().name());
+      session.add(JSON_KEY_REQUESTED_DEVICE_LABELS, toJsonArray(activeSession.requestedDeviceLabels()));
+      root.add(JSON_KEY_ACTIVE_SESSION, session);
+    }
+    root.add(
+        JSON_KEY_ACTIVE_DEVICE_LABELS,
+        toJsonArray(lifecycleRuntime.activationManager().activeDeviceLabels()));
+    JsonArray devices = new JsonArray();
+    for (DeviceRecord record : lifecycleRuntime.catalogBundle().deviceCatalog().deviceRecords()) {
+      DeviceRuntimeState runtimeState =
+          lifecycleRuntime.catalogBundle().deviceCatalog().runtimeState(record.label());
+      JsonObject device = new JsonObject();
+      device.addProperty(JSON_KEY_LABEL, record.label());
+      device.addProperty(JSON_KEY_LIFECYCLE_KIND, record.lifecycleKind().name());
+      device.addProperty(JSON_KEY_INSTANTIATED, runtimeState.isInstantiated());
+      device.addProperty(JSON_KEY_ACTIVE, runtimeState.isActive());
+      device.addProperty(JSON_KEY_ACTIVE_SESSION_ID, safeText(runtimeState.activeSessionId()));
+      device.addProperty(JSON_KEY_ACTIVE_GROUP_LABEL, safeText(runtimeState.activeGroupLabel()));
+      device.addProperty(JSON_KEY_LAST_ACTIVATION_MODE, safeText(runtimeState.lastActivationMode()));
+      device.addProperty(JSON_KEY_LAST_ERROR, safeText(runtimeState.lastError()));
+      device.addProperty(JSON_KEY_PRESENCE_STATE, runtimeState.presenceState().name());
+      device.addProperty(JSON_KEY_HEALTH_STATE, runtimeState.healthState().name());
+      devices.add(device);
+    }
+    root.add(JSON_KEY_DEVICES, devices);
+    return root;
   }
 
   /**
@@ -402,8 +685,7 @@ public final class BringupRuntime {
     }
     sampledTelemetry.clearAll();
     replaceCore();
-    bridgeSelected.device = TEXT_EMPTY;
-    bridgeSelected.enabled = false;
+    clearProfileScopedBridgeRuntimeState();
     if (diagnostics != null) {
       diagnostics.resetState();
     }
@@ -436,7 +718,29 @@ public final class BringupRuntime {
    *   Empty string on success, or an error message when staging fails.
    */
   public String stageSelectedProfileForBringup() {
-    return BringupUtil.stageSelectedProfileForBringup();
+    String error = BringupUtil.stageSelectedProfileForBringup();
+    if (error != null && !error.isBlank()) {
+      return error;
+    }
+    if (!BringupUtil.isProfileActive() && core != null) {
+      core.syncProfileTopologyFromRegistry();
+    }
+    synchronizeProfileBridgeRuntimeConfig();
+    return TEXT_EMPTY;
+  }
+
+  /**
+   * NAME
+   *   clearProfileScopedBridgeRuntimeState - Clear runtime-only bridge/group state.
+   *
+   * SIDE EFFECTS
+   *   Removes dynamic group membership and selected-device runtime state so a
+   *   profile reset or restart does not inherit stale session-scoped data.
+   */
+  public void clearProfileScopedBridgeRuntimeState() {
+    bridgeGroups.clear();
+    bridgeSelected.device = TEXT_EMPTY;
+    bridgeSelected.enabled = false;
   }
 
   /**
@@ -525,15 +829,155 @@ public final class BringupRuntime {
 
   /**
    * NAME
-   *   initializeDeviceLifecycle - Rebuild lifecycle registry from profile-defined devices.
+   *   initializeDeviceLifecycle - Rebuild lifecycle registry from profile devices plus runtime
+   *   dynamic groups.
    *
    * PARAMETERS
    *   nowMs - Event timestamp.
    */
   public void initializeDeviceLifecycle(long nowMs) {
-    List<BringupUtil.DeviceEntry> entries = currentProfileDevices();
-    deviceLifecycle.resetForProfile(currentProfileName(), entries, nowMs);
+    String lifecycleProfileName = currentLifecycleProfileName();
+    List<BringupUtil.DeviceEntry> entries = currentLifecycleProfileDevices();
+    synchronizeBridgeRuntimeConfig(
+        bridgeGroups,
+        bridgeSelected,
+        BringupUtil.getProfileBridgeConfig(lifecycleProfileName),
+        entries);
+    controlledBringupLifecycle =
+        LifecycleProfileTopologyAdapter.build(
+            lifecycleProfileName,
+            entries,
+            BringupUtil.getProfileBridgeConfig(lifecycleProfileName),
+            bridgeGroups.getGroups());
+    controlledBringupLifecycleRuntime =
+        core != null
+            ? ControlledBringupLifecycleRuntime.fromBringupCore(core, controlledBringupLifecycle)
+            : null;
+    deviceLifecycle.resetForProfile(lifecycleProfileName, entries, nowMs);
     refreshDeviceLifecycle(nowMs);
+  }
+
+  /**
+   * NAME
+   *   synchronizeControlledBringupLifecycleGroups - Sync runtime-only bridge groups into the
+   *   current lifecycle catalogs without resetting lifecycle activation state.
+   */
+  public void synchronizeControlledBringupLifecycleGroups() {
+    ensureLifecycleRuntimeGroupsDefined();
+    if (controlledBringupLifecycle == null) {
+      initializeDeviceLifecycle(System.currentTimeMillis());
+      return;
+    }
+    LifecycleProfileTopologyAdapter.syncRuntimeGroups(
+        controlledBringupLifecycle.groupCatalog(), bridgeGroups.getGroups());
+  }
+
+  private void ensureLifecycleRuntimeGroupsDefined() {
+    if (bridgeGroups.getGroup(GROUP_ACTIVE) == null) {
+      bridgeGroups.createGroup(GROUP_ACTIVE);
+    }
+  }
+
+  /**
+   * NAME
+   *   synchronizeProfileBridgeRuntimeConfig - Rebuild bridge runtime groups from the current
+   *   lifecycle profile config.
+   *
+   * SIDE EFFECTS
+   *   Clears prior group/selected-device state, loads all profile-defined groups, falls back to
+   *   the legacy default group when no groups are defined, and always recreates active-group.
+   */
+  private void synchronizeProfileBridgeRuntimeConfig() {
+    synchronizeBridgeRuntimeConfig(
+        bridgeGroups,
+        bridgeSelected,
+        BringupUtil.getProfileBridgeConfig(currentLifecycleProfileName()),
+        currentLifecycleProfileDevices());
+  }
+
+  /**
+   * NAME
+   *   synchronizeBridgeRuntimeConfig - Rebuild runtime bridge groups from one profile config.
+   *
+   * PARAMETERS
+   *   bridgeGroups - Runtime group manager to populate.
+   *   bridgeSelected - Runtime selected-device state to populate.
+   *   config - Profile-defined runtime group configuration.
+   *   fallbackDevices - Device order used for the legacy default group when no groups are defined.
+   */
+  static void synchronizeBridgeRuntimeConfig(
+      BridgeGroupManager bridgeGroups,
+      BridgeGroupManager.SelectedState bridgeSelected,
+      BringupUtil.BridgeProfileRuntimeConfig config,
+      List<BringupUtil.DeviceEntry> fallbackDevices) {
+    if (bridgeGroups == null || bridgeSelected == null) {
+      return;
+    }
+    bridgeGroups.clear();
+    bridgeSelected.device = TEXT_EMPTY;
+    bridgeSelected.enabled = false;
+    BringupUtil.BridgeProfileRuntimeConfig resolvedConfig =
+        config != null ? config : BringupUtil.BridgeProfileRuntimeConfig.empty();
+    boolean loadedGroups = false;
+    for (BringupUtil.BridgeProfileGroupConfig group : resolvedConfig.groups) {
+      if (group == null || group.name == null || group.name.isBlank()) {
+        continue;
+      }
+      bridgeGroups.createGroup(group.name);
+      for (BringupUtil.BridgeProfileMemberConfig member : group.members) {
+        if (member == null || member.label == null || member.label.isBlank()) {
+          continue;
+        }
+        bridgeGroups.addMember(group.name, member.label, true);
+        if (!member.enabled) {
+          bridgeGroups.setMemberEnabled(group.name, member.label, false);
+        }
+      }
+      for (BringupUtil.BridgeProfileBindingConfig binding : group.bindings) {
+        if (binding == null || binding.input == null || binding.kind == null) {
+          continue;
+        }
+        BridgeGroupManager.BindingKind kind = BridgeGroupManager.BindingKind.parse(binding.kind);
+        if (kind == null) {
+          continue;
+        }
+        double value = binding.hasValue ? binding.value : BINDING_VALUE_ANALOG;
+        bridgeGroups.addBinding(group.name, binding.input, kind, value);
+      }
+      if (!group.enabled) {
+        bridgeGroups.setGroupEnabled(group.name, false);
+      }
+      loadedGroups = true;
+    }
+    if (resolvedConfig.selectedDevice != null
+        && resolvedConfig.selectedDevice.device != null
+        && !resolvedConfig.selectedDevice.device.isBlank()) {
+      bridgeSelected.device = resolvedConfig.selectedDevice.device;
+      bridgeSelected.enabled = resolvedConfig.selectedDevice.enabled;
+    }
+    if (!loadedGroups) {
+      bridgeGroups.syncGroupMembers(GROUP_DEFAULT, extractBridgeLabels(fallbackDevices));
+    }
+    if (bridgeGroups.getGroup(GROUP_ACTIVE) == null) {
+      bridgeGroups.createGroup(GROUP_ACTIVE);
+    }
+  }
+
+  private static List<String> extractBridgeLabels(List<BringupUtil.DeviceEntry> devices) {
+    List<String> labels = new java.util.ArrayList<>();
+    if (devices == null) {
+      return labels;
+    }
+    for (BringupUtil.DeviceEntry entry : devices) {
+      if (entry == null || entry.label == null) {
+        continue;
+      }
+      String label = entry.label.trim();
+      if (!label.isBlank()) {
+        labels.add(label);
+      }
+    }
+    return labels;
   }
 
   /**
@@ -544,17 +988,25 @@ public final class BringupRuntime {
    *   nowMs - Event timestamp.
    */
   public void refreshDeviceLifecycle(long nowMs) {
-    List<BringupUtil.DeviceEntry> entries = currentProfileDevices();
+    List<BringupUtil.DeviceEntry> entries = currentLifecycleProfileDevices();
     java.util.Map<String, frc.robot.diag.snapshots.DeviceSnapshot> snapshotsByLabel =
         new java.util.LinkedHashMap<>();
     java.util.Map<String, Boolean> instantiatedByLabel = new java.util.LinkedHashMap<>();
     java.util.Map<String, Boolean> inScopeByLabel = new java.util.LinkedHashMap<>();
     boolean runtimeActive = BringupUtil.isProfileActive();
+    boolean controlledLifecycleActive =
+        controlledBringupLifecycleRuntime != null
+            && controlledBringupLifecycleRuntime.activationManager().lifecycleState()
+                == LifecycleState.ACTIVE;
     for (BringupUtil.DeviceEntry entry : entries) {
       if (entry == null || entry.label == null || entry.label.isBlank()) {
         continue;
       }
-      inScopeByLabel.put(entry.label.trim().toLowerCase(), runtimeActive);
+      frc.robot.diag.lifecycle.runtime.DeviceRuntimeState controlledState =
+          controlledLifecycleRuntimeStateForLabel(entry.label);
+      inScopeByLabel.put(
+          entry.label.trim().toLowerCase(),
+          resolveLifecycleDeviceInScope(runtimeActive, controlledLifecycleActive, controlledState));
     }
     if (core != null) {
       for (BringupUtil.DeviceEntry entry : entries) {
@@ -562,10 +1014,13 @@ public final class BringupRuntime {
           continue;
         }
         frc.robot.devices.DeviceUnit device = core.findDeviceByLabel(entry.label);
+        frc.robot.diag.lifecycle.runtime.DeviceRuntimeState controlledState =
+            controlledLifecycleRuntimeStateForLabel(entry.label);
         String normalized = entry.label.trim().toLowerCase();
         boolean instantiated = device != null && device.isCreated();
         instantiatedByLabel.put(normalized, instantiated);
-        if (!runtimeActive || !instantiated) {
+        if (!shouldCaptureLifecycleSnapshot(
+            runtimeActive, controlledLifecycleActive, instantiated, controlledState)) {
           continue;
         }
         frc.robot.diag.snapshots.DeviceSnapshot snapshot =
@@ -580,16 +1035,89 @@ public final class BringupRuntime {
     deviceLifecycle.refresh(entries, snapshotsByLabel, instantiatedByLabel, inScopeByLabel, nowMs);
   }
 
-  private List<BringupUtil.DeviceEntry> currentProfileDevices() {
-    return BringupUtil.isProfileActive()
-        ? BringupUtil.getActiveDevicesSorted()
-        : BringupUtil.getSelectedDevicesSorted();
+  static boolean resolveLifecycleDeviceInScope(
+      boolean runtimeActive,
+      boolean controlledLifecycleActive,
+      frc.robot.diag.lifecycle.runtime.DeviceRuntimeState controlledState) {
+    if (controlledLifecycleActive) {
+      return controlledState != null && controlledState.isActive();
+    }
+    return runtimeActive;
   }
 
-  private String currentProfileName() {
-    return BringupUtil.isProfileActive()
-        ? BringupUtil.getActiveRuntimeProfileLabel()
-        : BringupUtil.getSelectedCanProfileLabel();
+  static boolean shouldCaptureLifecycleSnapshot(
+      boolean runtimeActive,
+      boolean controlledLifecycleActive,
+      boolean instantiated,
+      frc.robot.diag.lifecycle.runtime.DeviceRuntimeState controlledState) {
+    if (!instantiated) {
+      return false;
+    }
+    if (controlledLifecycleActive) {
+      return controlledState != null && controlledState.isActive();
+    }
+    return runtimeActive;
+  }
+
+  private frc.robot.diag.lifecycle.runtime.DeviceRuntimeState controlledLifecycleRuntimeStateForLabel(
+      String label) {
+    if (controlledBringupLifecycleRuntime == null || label == null || label.isBlank()) {
+      return null;
+    }
+    try {
+      return controlledBringupLifecycleRuntime.catalogBundle().deviceCatalog().runtimeState(label);
+    } catch (IllegalArgumentException ex) {
+      return null;
+    }
+  }
+
+  private List<BringupUtil.DeviceEntry> currentLifecycleProfileDevices() {
+    String profileName = currentLifecycleProfileName();
+    if (profileName == null || profileName.isBlank()) {
+      return Collections.emptyList();
+    }
+    return BringupUtil.getProfileDevicesSorted(profileName);
+  }
+
+  private String currentLifecycleProfileName() {
+    return resolveLifecycleProfileName(
+        BringupUtil.isProfileActive(),
+        BringupUtil.getActiveRuntimeProfileLabel(),
+        BringupUtil.getSelectedCanProfile(),
+        BringupUtil.getDefaultCanProfile());
+  }
+
+  static String resolveLifecycleProfileName(
+      boolean runtimeActive,
+      String activeRuntimeProfileName,
+      String selectedProfileName,
+      String defaultProfileName) {
+    if (runtimeActive) {
+      String activeName = normalizeLifecycleProfileName(activeRuntimeProfileName);
+      if (!activeName.isBlank()) {
+        return activeName;
+      }
+    }
+    String selectedName = normalizeLifecycleProfileName(selectedProfileName);
+    if (!selectedName.isBlank()) {
+      return selectedName;
+    }
+    String defaultName = normalizeLifecycleProfileName(defaultProfileName);
+    if (!defaultName.isBlank()) {
+      return defaultName;
+    }
+    return TEXT_EMPTY;
+  }
+
+  private static String normalizeLifecycleProfileName(String profileName) {
+    if (profileName == null) {
+      return TEXT_EMPTY;
+    }
+    String normalized = profileName.trim();
+    if (normalized.isBlank() || TEXT_NONE.equals(normalized)) {
+      return TEXT_EMPTY;
+    }
+    return normalized;
   }
 
   private void replaceCore() {
@@ -601,5 +1129,29 @@ public final class BringupRuntime {
       diagnostics.setCore(core);
     }
     initializeDeviceLifecycle(System.currentTimeMillis());
+  }
+
+  private JsonArray toJsonArray(List<String> labels) {
+    JsonArray array = new JsonArray();
+    if (labels == null) {
+      return array;
+    }
+    for (String label : labels) {
+      if (label != null && !label.isBlank()) {
+        array.add(label);
+      }
+    }
+    return array;
+  }
+
+  private String formatLabelList(List<String> labels) {
+    if (labels == null || labels.isEmpty()) {
+      return TEXT_NONE;
+    }
+    return String.join(", ", labels);
+  }
+
+  private String safeText(String value) {
+    return value != null ? value : TEXT_EMPTY;
   }
 }

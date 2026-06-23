@@ -80,6 +80,14 @@ public class BridgeUiCommandHandler {
       this.outJson = outJson;
       this.running = running;
     }
+
+    public static RestCommandResult finished(
+        boolean ok,
+        String message,
+        String outText,
+        String outJson) {
+      return new RestCommandResult(ok, message, outText, outJson, false);
+    }
   }
 
   private static final long MIN_PRINT_INTERVAL_MS = 1000;
@@ -90,12 +98,15 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_VENDOR = "vendor";
   private static final String JSON_KEY_TYPE = "type";
   private static final String JSON_KEY_ID = "id";
+  private static final String JSON_KEY_NAME = "name";
   private static final String JSON_KEY_DEVICE = "device";
   private static final String JSON_KEY_SKIPPED_MEMBERS = "skippedMembers";
   private static final String JSON_KEY_ENABLED = "enabled";
   private static final String JSON_KEY_INSTANTIATED = "instantiated";
   private static final String JSON_KEY_PRESENCE_CONF = "presenceConfidence";
   private static final String JSON_KEY_LIFECYCLE_STATE = "lifecycleState";
+  private static final String JSON_KEY_CONTROLLED_LIFECYCLE_ACTIVE =
+      "controlledLifecycleActive";
   private static final String JSON_KEY_TESTABLE = "testable";
   private static final String JSON_KEY_OVERRIDE_ACTIVE = "overrideActive";
   private static final String JSON_KEY_OVERRIDE_ORIGINATED = "overrideOriginated";
@@ -106,6 +117,38 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_NOT_TESTABLE_REASON = "notTestableReason";
   private static final String JSON_KEY_LAST_SEEN_MS = "lastSeenMs";
   private static final String JSON_KEY_ATTACHMENTS = "attachments";
+  private static final String JSON_KEY_SCHEMA_VERSION = "schemaVersion";
+  private static final String JSON_KEY_GENERATED_AT_MS = "generatedAtMs";
+  private static final String JSON_KEY_BUILD = "build";
+  private static final String JSON_KEY_PROFILE = "profile";
+  private static final String JSON_KEY_RUNTIME_ACTIVE = "runtimeActive";
+  private static final String JSON_KEY_DISCOVER_THRESHOLD = "discoverThreshold";
+  private static final String JSON_KEY_LOST_PRESENCE_THRESHOLD = "lostPresenceThreshold";
+  private static final String JSON_KEY_ESTOPPED = "estopped";
+  private static final String JSON_KEY_MODE = "mode";
+  private static final String JSON_KEY_GROUPS = "groups";
+  private static final String JSON_KEY_MEMBERS = "members";
+  private static final String JSON_KEY_BINDINGS = "bindings";
+  private static final String JSON_KEY_PRESENCE_CONFIDENCE = "presenceConfidence";
+  private static final String JSON_KEY_ACTIVE = "active";
+  private static final String JSON_KEY_REASON = "reason";
+  private static final String TEXT_RUNTIME_STATE_HEADER = "=== Runtime State ===";
+  private static final String TEXT_RUNTIME_STATE_GROUPS = "groups:";
+  private static final String TEXT_RUNTIME_STATE_SELECTED_DEVICE = "selectedDevice:";
+  private static final String TEXT_RUNTIME_STATE_DEVICES = "devices:";
+  private static final String TEXT_RUNTIME_STATE_NONE = "(none)";
+  private static final String TEXT_RUNTIME_STATE_ENABLED_PREFIX = " enabled=";
+  private static final String TEXT_RUNTIME_STATE_MEMBERS_PREFIX = " members=";
+  private static final String TEXT_RUNTIME_STATE_BINDINGS_PREFIX = " bindings=";
+  private static final String TEXT_RUNTIME_STATE_VENDOR_PREFIX = " vendor=";
+  private static final String TEXT_RUNTIME_STATE_TYPE_PREFIX = " type=";
+  private static final String TEXT_RUNTIME_STATE_ID_PREFIX = " id=";
+  private static final String TEXT_RUNTIME_STATE_INSTANTIATED_PREFIX = " instantiated=";
+  private static final String TEXT_RUNTIME_STATE_LIFECYCLE_PREFIX = " lifecycleState=";
+  private static final String TEXT_RUNTIME_STATE_TESTABLE_PREFIX = " testable=";
+  private static final String TEXT_RUNTIME_STATE_PRESENCE_PREFIX = " presenceConfidence=";
+  private static final String TEXT_RUNTIME_STATE_DEVICE_FIELD_PREFIX = "  device=";
+  private static final String TEXT_RUNTIME_STATE_DEVICE_ENABLED_PREFIX = " enabled=";
   private static final String MESSAGE_RUNTIME_INACTIVE_ACTIVATE =
       "Runtime inactive. Click Runtime Activate.";
   private static final String MESSAGE_ACTIVE_PRESENCE_PROBE_UNAVAILABLE =
@@ -118,12 +161,31 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_VEL_RPM = "velRpm";
   private static final String JSON_KEY_POSITION_ROT = "positionRot";
   private static final String JSON_KEY_BUS_V = "busV";
+  private static final String JSON_KEY_ACTIVE_SESSION_ID = "activeSessionId";
+  private static final String JSON_KEY_ACTIVE_GROUP_LABEL = "activeGroupLabel";
+  private static final String JSON_KEY_LAST_ACTIVATION_MODE = "lastActivationMode";
   private static final String JSON_KEY_LAST_ERROR = "lastError";
   private static final String JSON_KEY_FAULTS_RAW = "faultsRaw";
   private static final String JSON_KEY_STICKY_FAULTS_RAW = "stickyFaultsRaw";
   private static final String JSON_KEY_WARNINGS_RAW = "warningsRaw";
   private static final String JSON_KEY_STICKY_WARNINGS_RAW = "stickyWarningsRaw";
   private static final String JSON_KEY_IS_FOLLOWER = "isFollower";
+  private static final String TEXT_CONTROLLED_LIFECYCLE_ACTIVE =
+      "controlled-active";
+  private static final String TEXT_CONTROLLED_LIFECYCLE_INSTANTIATED =
+      "controlled-instantiated";
+  private static final String TEXT_CONTROLLED_LIFECYCLE_FAILED =
+      "controlled-failed";
+  private static final String TEXT_CONTROLLED_LIFECYCLE_ACTIVE_EVENT =
+      "controlled-lifecycle";
+  private static final String TEXT_CONTROLLED_LIFECYCLE_FAILED_EVENT =
+      "controlled-lifecycle-failed";
+  private static final String TEXT_CONTROLLED_LIFECYCLE_TESTABLE_REASON =
+      "Testable via controlled lifecycle session.";
+  private static final String TEXT_CONTROLLED_LIFECYCLE_INSTANTIATED_REASON =
+      "Instantiated by controlled lifecycle but not active.";
+  private static final String TEXT_CONTROLLED_LIFECYCLE_SCOPE_REQUIRED_REASON =
+      "Testable only when included in the active controlled lifecycle session.";
   private static final String JSON_KEY_CURRENT_INSTANT_A = "currentInstantA";
   private static final String JSON_KEY_CURRENT_AVG_A = "currentAvgA";
   private static final String JSON_KEY_CURRENT_PEAK_A = "currentPeakA";
@@ -146,9 +208,6 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_CODE_TEXT = "codeText";
   private static final String JSON_KEY_VERSION = "version";
   private static final String JSON_KEY_SAFETY_LATCH = "safetyLatch";
-  private static final String JSON_KEY_ACTIVE = "active";
-  private static final String JSON_KEY_REASON = "reason";
-  private static final String JSON_KEY_BUILD = "build";
   private static final String JSON_KEY_BUILD_FIELDS = "fields";
   private static final String JSON_KEY_BUILD_LABEL = "label";
   private static final String JSON_KEY_BUILD_VALUE = "value";
@@ -185,6 +244,11 @@ public class BridgeUiCommandHandler {
   private static final String CMD_PROFILE_ACTIVATE = "profileActivate";
   private static final String CMD_RUNTIME_ACTIVATE = "runtimeActivate";
   private static final String CMD_RUNTIME_DEACTIVATE = "runtimeDeactivate";
+  private static final String CMD_LIFECYCLE_ACTIVATE = "lifecycleActivate";
+  private static final String CMD_LIFECYCLE_DEACTIVATE = "lifecycleDeactivate";
+  private static final String CMD_LIFECYCLE_DEACTIVATE_ACTIVE =
+      "lifecycleDeactivateActive";
+  private static final String CMD_SHOW_LIFECYCLE_STATE = "showLifecycleState";
   private static final String CMD_PROFILES_RELOAD = "profilesReload";
   private static final String UI_STATE_ENABLED_KEY = "state/enabled";
   private static final String UI_STATE_ESTOPPED_KEY = "state/estopped";
@@ -205,10 +269,6 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_ACTIVE_PROFILE = "activeProfile";
   private static final String JSON_KEY_SELECTED_PROFILE = "selectedProfile";
   private static final String JSON_KEY_ACTIVE_RUNTIME_PROFILE = "activeRuntimeProfile";
-  private static final String JSON_KEY_RUNTIME_ACTIVE = "runtimeActive";
-  private static final String JSON_KEY_DISCOVER_THRESHOLD = "discoverThreshold";
-  private static final String JSON_KEY_LOST_PRESENCE_THRESHOLD =
-      "lostPresenceThreshold";
   private static final String JSON_KEY_ACTIVATED = "activated";
   private static final String JSON_KEY_EXPECTED_HASH = "expectedHash";
   private static final String JSON_KEY_COMPUTED_HASH = "computedHash";
@@ -506,6 +566,10 @@ public class BridgeUiCommandHandler {
           @Override
           public void selectCanProfile(String profileName) {
             BringupUtil.selectCanProfile(profileName);
+            runtime.clearProfileScopedBridgeRuntimeState();
+            BridgeUiCommandHandler.this.resetProfileRuntimeUiState();
+            runtime.stageSelectedProfileForBringup();
+            runtime.initializeDeviceLifecycle(System.currentTimeMillis());
           }
 
           @Override
@@ -536,6 +600,14 @@ public class BridgeUiCommandHandler {
           @Override
           public boolean isRuntimeActivationAllowed() {
             return DriverStation.isEnabled() && DriverStation.isTeleop() && !DriverStation.isEStopped();
+          }
+
+          @Override
+          public boolean isControlledLifecycleActive() {
+            var lifecycleRuntime = runtime.getControlledBringupLifecycleRuntime();
+            return lifecycleRuntime != null
+                && lifecycleRuntime.activationManager().lifecycleState()
+                    == frc.robot.diag.lifecycle.activation.LifecycleState.ACTIVE;
           }
 
           @Override
@@ -582,6 +654,10 @@ public class BridgeUiCommandHandler {
           @Override
           public void selectNextProfile() {
             BringupUtil.selectNextProfile();
+            runtime.clearProfileScopedBridgeRuntimeState();
+            BridgeUiCommandHandler.this.resetProfileRuntimeUiState();
+            runtime.stageSelectedProfileForBringup();
+            runtime.initializeDeviceLifecycle(System.currentTimeMillis());
           }
 
           @Override
@@ -808,6 +884,11 @@ public class BridgeUiCommandHandler {
       }
 
       @Override
+      public String buildRuntimeStateText() {
+        return BridgeUiCommandHandler.this.buildRuntimeStateText();
+      }
+
+      @Override
       public String buildStatusText() {
         return BridgeUiCommandHandler.this.buildStatusText();
       }
@@ -845,6 +926,16 @@ public class BridgeUiCommandHandler {
       @Override
       public boolean isRuntimeActive() {
         return runtime.isRuntimeReady();
+      }
+
+      @Override
+      public boolean isControlledLifecycleActive() {
+        return BridgeUiCommandHandler.this.isControlledLifecycleActive();
+      }
+
+      @Override
+      public boolean isControlledLifecycleDeviceActive(String deviceName) {
+        return BridgeUiCommandHandler.this.isControlledLifecycleDeviceActive(deviceName);
       }
 
       @Override
@@ -887,6 +978,60 @@ public class BridgeUiCommandHandler {
         return BridgeUiCommandHandler.this.clearDeviceOverride(deviceName);
       }
     });
+
+    BridgeUiLifecycleCommands lifecycleCommands =
+        new BridgeUiLifecycleCommands(new BridgeUiLifecycleCommands.Dependencies() {
+          @Override
+          public String parseUiArgString(JsonObject args, String key) {
+            return BridgeUiCommandHandler.this.parseUiArgString(args, key);
+          }
+
+          @Override
+          public Boolean parseUiArgBoolean(JsonObject args, String key) {
+            return BridgeUiCommandHandler.this.parseUiArgBoolean(args, key);
+          }
+
+          @Override
+          public void applyShowResult(
+              BridgeUiCommandResult result,
+              String text,
+              JsonObject json,
+              boolean wantsJson) {
+            BridgeUiCommandHandler.this.applyShowResult(result, text, json, wantsJson);
+          }
+
+          @Override
+          public boolean isRuntimeActivationAllowed() {
+            return DriverStation.isEnabled() && DriverStation.isTeleop() && !DriverStation.isEStopped();
+          }
+
+          @Override
+          public frc.robot.diag.lifecycle.activation.ActivationResult activateLifecycle(
+              String label,
+              frc.robot.diag.lifecycle.activation.ActivationMode mode) {
+            return runtime.activateControlledBringupLifecycle(label, mode);
+          }
+
+          @Override
+          public frc.robot.diag.lifecycle.activation.DeactivateResult deactivateLifecycle(String label) {
+            return runtime.deactivateControlledBringupLifecycle(label);
+          }
+
+          @Override
+          public frc.robot.diag.lifecycle.activation.DeactivateResult deactivateActiveLifecycle() {
+            return runtime.deactivateActiveControlledBringupLifecycle();
+          }
+
+          @Override
+          public String buildLifecycleStateText() {
+            return runtime.buildControlledBringupLifecycleText();
+          }
+
+          @Override
+          public JsonObject buildLifecycleStateJson() {
+            return runtime.buildControlledBringupLifecycleJson();
+          }
+        });
 
     BridgeUiReportCommands reportCommands = new BridgeUiReportCommands(new BridgeUiReportCommands.Dependencies() {
       @Override
@@ -1088,6 +1233,7 @@ public class BridgeUiCommandHandler {
         profileCommands,
         testCommands,
         groupCommands,
+        lifecycleCommands,
         reportCommands,
         runtimeCommands));
 
@@ -1802,6 +1948,14 @@ public class BridgeUiCommandHandler {
       setActiveResultJson(result, null, List.of(WARNING_REJECT_TEST_RUNNING));
       return;
     }
+    if (isControlledLifecycleActive()) {
+      result.ok = false;
+      result.message =
+          "Active group membership is locked while controlled lifecycle session is ACTIVE. Deactivate lifecycle first.";
+      result.outText = result.message;
+      setActiveResultJson(result, ensureActiveGroupDefined(), List.of(result.message));
+      return;
+    }
     BridgeGroupManager.Group group = ensureActiveGroupDefined();
     if (group == null) {
       result.ok = false;
@@ -1868,6 +2022,14 @@ public class BridgeUiCommandHandler {
       result.message = WARNING_REJECT_TEST_RUNNING;
       result.outText = result.message;
       setActiveResultJson(result, null, List.of(WARNING_REJECT_TEST_RUNNING));
+      return;
+    }
+    if (isControlledLifecycleActive()) {
+      result.ok = false;
+      result.message =
+          "Active group membership is locked while controlled lifecycle session is ACTIVE. Deactivate lifecycle first.";
+      result.outText = result.message;
+      setActiveResultJson(result, ensureActiveGroupDefined(), List.of(result.message));
       return;
     }
     BridgeGroupManager.Group group = ensureActiveGroupDefined();
@@ -1938,10 +2100,11 @@ public class BridgeUiCommandHandler {
 
   /**
    * NAME
-   *   selectNextReadyActiveCandidate - Select next ready device by active profile order.
+   *   selectNextReadyActiveCandidate - Select next eligible device by active or selected profile
+   *   order.
    */
   private ActiveNextCandidate selectNextReadyActiveCandidate(List<String> warnings) {
-    List<BringupUtil.DeviceEntry> entries = BringupUtil.getActiveDevices();
+    List<BringupUtil.DeviceEntry> entries = activeGroupCandidateEntries();
     if (entries == null || entries.isEmpty()) {
       return null;
     }
@@ -1961,7 +2124,7 @@ public class BridgeUiCommandHandler {
       if (!PROFILE_DEVICE_TYPE_MOTOR.equalsIgnoreCase(profileType)) {
         continue;
       }
-      if (!isDeviceTotallyReady(label)) {
+      if (!isDeviceEligibleForActiveGroup(label)) {
         warnings.add(WARNING_SKIPPED_PREFIX + label);
         continue;
       }
@@ -1973,16 +2136,77 @@ public class BridgeUiCommandHandler {
 
   /**
    * NAME
-   *   isDeviceTotallyReady - Check readiness for active-group operations.
+   *   activeGroupCandidateEntries - Return the profile-scoped device order used by active-group.
    */
-  private boolean isDeviceTotallyReady(String label) {
+  private List<BringupUtil.DeviceEntry> activeGroupCandidateEntries() {
+    return runtime.isRuntimeReady()
+        ? BringupUtil.getActiveDevices()
+        : BringupUtil.getSelectedDevicesSorted();
+  }
+
+  /**
+   * NAME
+   *   isDeviceEligibleForActiveGroup - Check eligibility for active-group membership.
+   */
+  private boolean isDeviceEligibleForActiveGroup(String label) {
     if (label == null || label.isBlank()) {
       return false;
     }
     runtime.refreshDeviceLifecycle(System.currentTimeMillis());
     DeviceLifecycleRegistry.DeviceLifecycleView lifecycle =
         runtime.getDeviceLifecycle().viewForLabel(label);
-    return lifecycle != null && lifecycle.testable;
+    if (lifecycle == null) {
+      return false;
+    }
+    if (runtime.isRuntimeReady()) {
+      return lifecycle.testable;
+    }
+    return true;
+  }
+
+  /**
+   * NAME
+   *   isControlledLifecycleActive - Return whether one controlled lifecycle session is active.
+   */
+  private boolean isControlledLifecycleActive() {
+    var lifecycleRuntime = runtime.getControlledBringupLifecycleRuntime();
+    return lifecycleRuntime != null
+        && lifecycleRuntime.activationManager().lifecycleState()
+            == frc.robot.diag.lifecycle.activation.LifecycleState.ACTIVE;
+  }
+
+  /**
+   * NAME
+   *   isControlledLifecycleDeviceActive - Return whether a device is active in the controlled session.
+   */
+  private boolean isControlledLifecycleDeviceActive(String label) {
+    if (!isControlledLifecycleActive() || label == null || label.isBlank()) {
+      return false;
+    }
+    var lifecycleRuntime = runtime.getControlledBringupLifecycleRuntime();
+    frc.robot.diag.lifecycle.runtime.DeviceRuntimeState controlledState =
+        controlledLifecycleRuntimeStateForLabel(lifecycleRuntime, label);
+    return controlledState != null && controlledState.isActive();
+  }
+
+  /**
+   * NAME
+   *   isManualDutyEligible - Enforce lifecycle-scoped manual-duty eligibility.
+   */
+  private boolean isManualDutyEligible(String label) {
+    if (label == null || label.isBlank()) {
+      return false;
+    }
+    runtime.refreshDeviceLifecycle(System.currentTimeMillis());
+    DeviceLifecycleRegistry.DeviceLifecycleView lifecycle =
+        runtime.getDeviceLifecycle().viewForLabel(label);
+    if (lifecycle == null || !lifecycle.testable) {
+      return false;
+    }
+    if (isControlledLifecycleActive()) {
+      return isControlledLifecycleDeviceActive(label);
+    }
+    return true;
   }
 
   /**
@@ -2478,6 +2702,7 @@ public class BridgeUiCommandHandler {
       case "clearStopLatch":
       case "uiPollLog":
       case "showStatus":
+      case CMD_SHOW_VERSION:
       case "showGroups":
       case "showGroup":
       case CMD_ACTIVE_ADD:
@@ -2512,6 +2737,10 @@ public class BridgeUiCommandHandler {
       case CMD_PROFILE_ACTIVATE:
       case CMD_RUNTIME_ACTIVATE:
       case CMD_RUNTIME_DEACTIVATE:
+      case CMD_LIFECYCLE_ACTIVATE:
+      case CMD_LIFECYCLE_DEACTIVATE:
+      case CMD_LIFECYCLE_DEACTIVATE_ACTIVE:
+      case CMD_SHOW_LIFECYCLE_STATE:
       case CMD_PROFILES_RELOAD:
       case CMD_PROFILES_APPLY:
         return true;
@@ -2583,11 +2812,8 @@ public class BridgeUiCommandHandler {
     if (core() == null || deviceName == null || deviceName.isBlank()) {
       return false;
     }
-    runtime.refreshDeviceLifecycle(System.currentTimeMillis());
     String target = deviceName.trim();
-    DeviceLifecycleRegistry.DeviceLifecycleView lifecycle =
-        runtime.getDeviceLifecycle().viewForLabel(target);
-    if (lifecycle == null || !lifecycle.testable) {
+    if (!isManualDutyEligible(target)) {
       return false;
     }
     String previous = bridgeSelected().device != null ? bridgeSelected().device.trim() : TEXT_EMPTY;
@@ -2650,7 +2876,6 @@ public class BridgeUiCommandHandler {
     }
     double clamped = Math.max(DUTY_MIN, Math.min(DUTY_MAX, duty));
     boolean appliedAny = false;
-    runtime.refreshDeviceLifecycle(System.currentTimeMillis());
     bridgeSelected().enabled = false;
     bridgeSelected().device = TEXT_EMPTY;
     for (BridgeGroupManager.MemberState member : group.members.values()) {
@@ -2661,9 +2886,7 @@ public class BridgeUiCommandHandler {
       if (entry == null) {
         continue;
       }
-      DeviceLifecycleRegistry.DeviceLifecycleView lifecycle =
-          runtime.getDeviceLifecycle().viewForLabel(member.label);
-      if (lifecycle == null || !lifecycle.testable) {
+      if (!isManualDutyEligible(member.label)) {
         continue;
       }
       if (core().setDutyByDeviceLabel(member.label, clamped)) {
@@ -2854,6 +3077,16 @@ public class BridgeUiCommandHandler {
   private void appendBuildLines(StringBuilder sb) {
     sb.append(BuildInfo.TEXT_NEWLINE).append(TEXT_BUILD_HEADER);
     sb.append(BuildInfo.TEXT_NEWLINE)
+        .append(BuildInfo.formatBuildLine(BuildInfo.BUILD_LABEL_REVISION, BuildInfo.BUILD_REVISION));
+    sb.append(BuildInfo.TEXT_NEWLINE)
+        .append(
+            BuildInfo.formatBuildLine(
+                BuildInfo.BUILD_LABEL_WORKSPACE_REVISION, BuildInfo.BUILD_WORKSPACE_REVISION));
+    sb.append(BuildInfo.TEXT_NEWLINE)
+        .append(
+            BuildInfo.formatBuildLine(
+                BuildInfo.BUILD_LABEL_CODE_REVISION, BuildInfo.BUILD_CODE_REVISION));
+    sb.append(BuildInfo.TEXT_NEWLINE)
         .append(BuildInfo.formatBuildLine(BuildInfo.BUILD_LABEL_GIT, BuildInfo.BUILD_GIT_DESCRIBE));
     sb.append(BuildInfo.TEXT_NEWLINE)
         .append(BuildInfo.formatBuildLine(BuildInfo.BUILD_LABEL_SHA, BuildInfo.BUILD_GIT_SHA));
@@ -2872,6 +3105,11 @@ public class BridgeUiCommandHandler {
   private JsonObject buildBuildInfoJson() {
     JsonObject root = new JsonObject();
     JsonArray fields = new JsonArray();
+    fields.add(buildBuildField(BuildInfo.BUILD_LABEL_REVISION, BuildInfo.BUILD_REVISION));
+    fields.add(
+        buildBuildField(
+            BuildInfo.BUILD_LABEL_WORKSPACE_REVISION, BuildInfo.BUILD_WORKSPACE_REVISION));
+    fields.add(buildBuildField(BuildInfo.BUILD_LABEL_CODE_REVISION, BuildInfo.BUILD_CODE_REVISION));
     fields.add(buildBuildField(BuildInfo.BUILD_LABEL_GIT, BuildInfo.BUILD_GIT_DESCRIBE));
     fields.add(buildBuildField(BuildInfo.BUILD_LABEL_SHA, BuildInfo.BUILD_GIT_SHA));
     fields.add(buildBuildField(BuildInfo.BUILD_LABEL_BRANCH, BuildInfo.BUILD_GIT_BRANCH));
@@ -3196,13 +3434,26 @@ public class BridgeUiCommandHandler {
     root.addProperty("schemaVersion", 1);
     long nowMs = System.currentTimeMillis();
     runtime.refreshDeviceLifecycle(nowMs);
+    runtime.synchronizeControlledBringupLifecycleGroups();
     ensureActiveGroupDefined();
+    var lifecycleRuntime = runtime.getControlledBringupLifecycleRuntime();
+    boolean controlledLifecycleActive =
+        lifecycleRuntime != null
+            && lifecycleRuntime.activationManager().lifecycleState()
+                == frc.robot.diag.lifecycle.activation.LifecycleState.ACTIVE;
     root.addProperty("generatedAtMs", nowMs);
     root.addProperty("build", BringupCore.getBuildMarker());
-    root.addProperty("profile", BringupUtil.getActiveCanProfileLabel());
+    String runtimeProfile = BringupUtil.getActiveCanProfileLabel();
+    if (controlledLifecycleActive
+        && lifecycleRuntime.catalogBundle().profileName() != null
+        && !lifecycleRuntime.catalogBundle().profileName().isBlank()) {
+      runtimeProfile = lifecycleRuntime.catalogBundle().profileName();
+    }
+    root.addProperty("profile", runtimeProfile);
     root.addProperty(JSON_KEY_SELECTED_PROFILE, BringupUtil.getSelectedCanProfileLabel());
     root.addProperty(JSON_KEY_ACTIVE_RUNTIME_PROFILE, BringupUtil.getActiveRuntimeProfileLabel());
-    root.addProperty(JSON_KEY_RUNTIME_ACTIVE, runtime.isRuntimeReady());
+    root.addProperty(JSON_KEY_RUNTIME_ACTIVE, runtime.isRuntimeReady() || controlledLifecycleActive);
+    root.addProperty(JSON_KEY_CONTROLLED_LIFECYCLE_ACTIVE, controlledLifecycleActive);
     root.addProperty(
         JSON_KEY_DISCOVER_THRESHOLD,
         BringupUtil.getProfileDiscoverThreshold(
@@ -3232,6 +3483,162 @@ public class BridgeUiCommandHandler {
     root.add("selectedDevice", buildSelectedDeviceJson());
     root.add("devices", buildRuntimeStateDevices(nowMs));
     return root;
+  }
+
+  /**
+   * NAME
+   *   buildRuntimeStateText - Build a human-readable runtime-state report.
+   *
+   * DESCRIPTION
+   *   Renders the shared runtime-state JSON model into the default CLI text
+   *   view so TCP/REST callers get the same contract with a text default.
+   */
+  private String buildRuntimeStateText() {
+    JsonObject state = buildRuntimeStateJson();
+    StringBuilder sb = new StringBuilder(1024);
+    sb.append(TEXT_RUNTIME_STATE_HEADER).append('\n');
+    appendRuntimeStateScalarLine(sb, JSON_KEY_SCHEMA_VERSION, state);
+    appendRuntimeStateScalarLine(sb, JSON_KEY_GENERATED_AT_MS, state);
+    appendRuntimeStateScalarLine(sb, JSON_KEY_BUILD, state);
+    appendRuntimeStateScalarLine(sb, JSON_KEY_PROFILE, state);
+    appendRuntimeStateScalarLine(sb, JSON_KEY_SELECTED_PROFILE, state);
+    appendRuntimeStateScalarLine(sb, JSON_KEY_ACTIVE_RUNTIME_PROFILE, state);
+    appendRuntimeStateScalarLine(sb, JSON_KEY_RUNTIME_ACTIVE, state);
+    appendRuntimeStateScalarLine(sb, JSON_KEY_CONTROLLED_LIFECYCLE_ACTIVE, state);
+    appendRuntimeStateScalarLine(sb, JSON_KEY_DISCOVER_THRESHOLD, state);
+    appendRuntimeStateScalarLine(sb, JSON_KEY_LOST_PRESENCE_THRESHOLD, state);
+    appendRuntimeStateScalarLine(sb, JSON_KEY_ENABLED, state);
+    appendRuntimeStateScalarLine(sb, JSON_KEY_ESTOPPED, state);
+    appendRuntimeStateScalarLine(sb, JSON_KEY_MODE, state);
+    appendRuntimeStateSafetyLatch(sb, state.getAsJsonObject(JSON_KEY_SAFETY_LATCH));
+    appendRuntimeStateGroups(sb, state.getAsJsonArray(JSON_KEY_GROUPS));
+    appendRuntimeStateSelectedDevice(sb, state.getAsJsonObject("selectedDevice"));
+    appendRuntimeStateDevices(sb, state.getAsJsonArray(JSON_KEY_DEVICES));
+    return sb.toString();
+  }
+
+  /**
+   * NAME
+   *   appendRuntimeStateScalarLine - Append one top-level scalar runtime-state field.
+   */
+  private void appendRuntimeStateScalarLine(StringBuilder sb, String key, JsonObject state) {
+    if (sb == null || key == null || state == null || !state.has(key)) {
+      return;
+    }
+    sb.append(key).append('=').append(state.get(key).getAsString()).append('\n');
+  }
+
+  /**
+   * NAME
+   *   appendRuntimeStateSafetyLatch - Append safety-latch summary.
+   */
+  private void appendRuntimeStateSafetyLatch(StringBuilder sb, JsonObject safetyLatch) {
+    if (sb == null || safetyLatch == null) {
+      return;
+    }
+    sb.append(JSON_KEY_SAFETY_LATCH)
+        .append('.')
+        .append(JSON_KEY_ACTIVE)
+        .append('=')
+        .append(
+            safetyLatch.has(JSON_KEY_ACTIVE)
+                ? safetyLatch.get(JSON_KEY_ACTIVE).getAsString()
+                : TEXT_RUNTIME_STATE_NONE)
+        .append('\n');
+    sb.append(JSON_KEY_SAFETY_LATCH)
+        .append('.')
+        .append(JSON_KEY_REASON)
+        .append('=')
+        .append(
+            safetyLatch.has(JSON_KEY_REASON)
+                ? safetyLatch.get(JSON_KEY_REASON).getAsString()
+                : TEXT_RUNTIME_STATE_NONE)
+        .append('\n');
+  }
+
+  /**
+   * NAME
+   *   appendRuntimeStateGroups - Append runtime-state group summary.
+   */
+  private void appendRuntimeStateGroups(StringBuilder sb, JsonArray groups) {
+    sb.append(TEXT_RUNTIME_STATE_GROUPS).append('\n');
+    if (groups == null || groups.size() == 0) {
+      sb.append("  ").append(TEXT_RUNTIME_STATE_NONE).append('\n');
+      return;
+    }
+    for (int i = 0; i < groups.size(); i++) {
+      JsonObject group = groups.get(i).getAsJsonObject();
+      JsonArray members = group.has(JSON_KEY_MEMBERS) ? group.getAsJsonArray(JSON_KEY_MEMBERS) : null;
+      JsonArray bindings = group.has(JSON_KEY_BINDINGS) ? group.getAsJsonArray(JSON_KEY_BINDINGS) : null;
+      sb.append("  ")
+          .append(group.get(JSON_KEY_NAME).getAsString())
+          .append(TEXT_RUNTIME_STATE_ENABLED_PREFIX)
+          .append(group.get(JSON_KEY_ENABLED).getAsString())
+          .append(TEXT_RUNTIME_STATE_MEMBERS_PREFIX)
+          .append(members != null ? members.size() : 0)
+          .append(TEXT_RUNTIME_STATE_BINDINGS_PREFIX)
+          .append(bindings != null ? bindings.size() : 0)
+          .append('\n');
+    }
+  }
+
+  /**
+   * NAME
+   *   appendRuntimeStateSelectedDevice - Append selected-device runtime-state summary.
+   */
+  private void appendRuntimeStateSelectedDevice(StringBuilder sb, JsonObject selectedDevice) {
+    sb.append(TEXT_RUNTIME_STATE_SELECTED_DEVICE).append('\n');
+    if (selectedDevice == null) {
+      sb.append("  ").append(TEXT_RUNTIME_STATE_NONE).append('\n');
+      return;
+    }
+    String device =
+        selectedDevice.has(JSON_KEY_DEVICE)
+            ? selectedDevice.get(JSON_KEY_DEVICE).getAsString()
+            : TEXT_RUNTIME_STATE_NONE;
+    if (device.isBlank()) {
+      device = TEXT_RUNTIME_STATE_NONE;
+    }
+    sb.append(TEXT_RUNTIME_STATE_DEVICE_FIELD_PREFIX)
+        .append(device)
+        .append(TEXT_RUNTIME_STATE_DEVICE_ENABLED_PREFIX)
+        .append(
+            selectedDevice.has(JSON_KEY_ENABLED)
+                ? selectedDevice.get(JSON_KEY_ENABLED).getAsString()
+                : TEXT_RUNTIME_STATE_NONE)
+        .append('\n');
+  }
+
+  /**
+   * NAME
+   *   appendRuntimeStateDevices - Append runtime-state device summary.
+   */
+  private void appendRuntimeStateDevices(StringBuilder sb, JsonArray devices) {
+    sb.append(TEXT_RUNTIME_STATE_DEVICES).append('\n');
+    if (devices == null || devices.size() == 0) {
+      sb.append("  ").append(TEXT_RUNTIME_STATE_NONE).append('\n');
+      return;
+    }
+    for (int i = 0; i < devices.size(); i++) {
+      JsonObject device = devices.get(i).getAsJsonObject();
+      sb.append("  ")
+          .append(device.get(JSON_KEY_LABEL).getAsString())
+          .append(TEXT_RUNTIME_STATE_VENDOR_PREFIX)
+          .append(device.get(JSON_KEY_VENDOR).getAsString())
+          .append(TEXT_RUNTIME_STATE_TYPE_PREFIX)
+          .append(device.get(JSON_KEY_TYPE).getAsString())
+          .append(TEXT_RUNTIME_STATE_ID_PREFIX)
+          .append(device.get(JSON_KEY_ID).getAsString())
+          .append(TEXT_RUNTIME_STATE_INSTANTIATED_PREFIX)
+          .append(device.get(JSON_KEY_INSTANTIATED).getAsString())
+          .append(TEXT_RUNTIME_STATE_LIFECYCLE_PREFIX)
+          .append(device.get(JSON_KEY_LIFECYCLE_STATE).getAsString())
+          .append(TEXT_RUNTIME_STATE_TESTABLE_PREFIX)
+          .append(device.get(JSON_KEY_TESTABLE).getAsString())
+          .append(TEXT_RUNTIME_STATE_PRESENCE_PREFIX)
+          .append(device.get(JSON_KEY_PRESENCE_CONFIDENCE).getAsString())
+          .append('\n');
+    }
   }
 
   /**
@@ -3408,6 +3815,8 @@ public class BridgeUiCommandHandler {
    *   buildRuntimeStateDevices - Build device entries with live telemetry.
    */
   private JsonArray buildRuntimeStateDevices(long nowMs) {
+    var lifecycleRuntime = runtime.getControlledBringupLifecycleRuntime();
+    boolean controlledLifecycleActive = isControlledLifecycleActive();
     String selectedLabel = bridgeSelected().device != null
         ? bridgeSelected().device.trim().toLowerCase()
         : TEXT_EMPTY;
@@ -3468,6 +3877,9 @@ public class BridgeUiCommandHandler {
       obj.addProperty(JSON_KEY_ID, entry.id);
       DeviceLifecycleRegistry.DeviceLifecycleView lifecycle =
           runtime.getDeviceLifecycle().viewForLabel(entry.label);
+      frc.robot.diag.lifecycle.runtime.DeviceRuntimeState controlledState =
+          controlledLifecycleRuntimeStateForLabel(lifecycleRuntime, entry.label);
+      boolean controlledActive = controlledState != null && controlledState.isActive();
 
       DeviceSnapshot snap = null;
       if (entry.label != null) {
@@ -3476,9 +3888,12 @@ public class BridgeUiCommandHandler {
       if (snap == null && entry.id >= 0) {
         snap = byId.get(entry.id);
       }
+      boolean controlledInstantiated =
+          controlledState != null && controlledState.isInstantiated();
       obj.addProperty(
           JSON_KEY_INSTANTIATED,
-          lifecycle != null ? lifecycle.lifecycleState.startsWith("instantiated") : snap != null);
+          controlledInstantiated
+              || (lifecycle != null ? lifecycle.lifecycleState.startsWith("instantiated") : snap != null));
       if (lifecycle != null) {
         obj.addProperty(JSON_KEY_PRESENCE_CONF, lifecycle.presenceScore);
         obj.addProperty(JSON_KEY_LIFECYCLE_STATE, lifecycle.lifecycleState);
@@ -3489,6 +3904,13 @@ public class BridgeUiCommandHandler {
         obj.addProperty(JSON_KEY_LAST_EVENT, lifecycle.lastEvent);
         obj.addProperty(JSON_KEY_LAST_TRANSITION_TIME_MS, lifecycle.lastTransitionTimeMs);
         obj.addProperty(JSON_KEY_NOT_TESTABLE_REASON, lifecycle.notTestableReason);
+      }
+      applyControlledLifecycleRuntimeFields(obj, controlledState, lifecycle, nowMs);
+      if (controlledLifecycleActive && !controlledActive) {
+        obj.addProperty(JSON_KEY_TESTABLE, false);
+        obj.addProperty(
+            JSON_KEY_NOT_TESTABLE_REASON,
+            TEXT_CONTROLLED_LIFECYCLE_SCOPE_REQUIRED_REASON);
       }
       if (snap != null) {
         if (lifecycle == null) {
@@ -3572,6 +3994,77 @@ public class BridgeUiCommandHandler {
       array.add(obj);
     }
     return array;
+  }
+
+  private frc.robot.diag.lifecycle.runtime.DeviceRuntimeState controlledLifecycleRuntimeStateForLabel(
+      frc.robot.diag.lifecycle.integration.ControlledBringupLifecycleRuntime lifecycleRuntime,
+      String label) {
+    if (lifecycleRuntime == null || label == null || label.isBlank()) {
+      return null;
+    }
+    try {
+      return lifecycleRuntime.catalogBundle().deviceCatalog().runtimeState(label);
+    } catch (IllegalArgumentException ex) {
+      return null;
+    }
+  }
+
+  private void applyControlledLifecycleRuntimeFields(
+      JsonObject obj,
+      frc.robot.diag.lifecycle.runtime.DeviceRuntimeState controlledState,
+      DeviceLifecycleRegistry.DeviceLifecycleView lifecycle,
+      long nowMs) {
+    if (obj == null || controlledState == null) {
+      return;
+    }
+    boolean controlledActive = controlledState.isActive();
+    boolean controlledInstantiated = controlledState.isInstantiated();
+    String controlledError = controlledState.lastError();
+    boolean hasControlledLifecycle =
+        controlledActive
+            || controlledInstantiated
+            || (controlledError != null && !controlledError.isBlank());
+    if (!hasControlledLifecycle) {
+      return;
+    }
+
+    obj.addProperty(JSON_KEY_INSTANTIATED, controlledInstantiated);
+    obj.addProperty(
+        JSON_KEY_LIFECYCLE_STATE,
+        controlledActive
+            ? TEXT_CONTROLLED_LIFECYCLE_ACTIVE
+            : controlledInstantiated
+                ? TEXT_CONTROLLED_LIFECYCLE_INSTANTIATED
+                : TEXT_CONTROLLED_LIFECYCLE_FAILED);
+    obj.addProperty(JSON_KEY_TESTABLE, controlledActive);
+    obj.addProperty(JSON_KEY_OVERRIDE_ACTIVE, false);
+    obj.addProperty(JSON_KEY_OVERRIDE_ORIGINATED, false);
+    obj.addProperty(JSON_KEY_OVERRIDE_FAILURE, false);
+    obj.addProperty(
+        JSON_KEY_LAST_EVENT,
+        controlledActive
+            ? TEXT_CONTROLLED_LIFECYCLE_ACTIVE_EVENT
+            : TEXT_CONTROLLED_LIFECYCLE_FAILED_EVENT);
+    if (lifecycle == null) {
+      obj.addProperty(JSON_KEY_LAST_TRANSITION_TIME_MS, nowMs);
+    }
+    obj.addProperty(
+        JSON_KEY_NOT_TESTABLE_REASON,
+        controlledActive
+            ? TEXT_CONTROLLED_LIFECYCLE_TESTABLE_REASON
+            : TEXT_CONTROLLED_LIFECYCLE_INSTANTIATED_REASON);
+    obj.addProperty(JSON_KEY_ACTIVE_SESSION_ID, safeText(controlledState.activeSessionId()));
+    obj.addProperty(JSON_KEY_ACTIVE_GROUP_LABEL, safeText(controlledState.activeGroupLabel()));
+    obj.addProperty(
+        JSON_KEY_LAST_ACTIVATION_MODE, safeText(controlledState.lastActivationMode()));
+    obj.addProperty(JSON_KEY_LAST_ERROR, safeText(controlledError));
+    if (controlledInstantiated) {
+      obj.addProperty(JSON_KEY_LAST_SEEN_MS, nowMs);
+    }
+  }
+
+  private String safeText(String value) {
+    return value != null ? value : TEXT_EMPTY;
   }
 
   /**
@@ -3789,6 +4282,8 @@ public class BridgeUiCommandHandler {
     ReportTextUtil.appendLine(sb, "=== Swerve Bringup V2 ===");
     ReportTextUtil.appendLine(sb, AppVersion.VERSION_PREFIX + AppVersion.ROBOT_APP_VERSION);
     ReportTextUtil.appendLine(sb, "Build: " + BringupCore.getBuildMarker());
+    ReportTextUtil.appendLine(
+        sb, BuildInfo.formatBuildLine(BuildInfo.BUILD_LABEL_REVISION, BuildInfo.BUILD_REVISION));
     ReportTextUtil.appendLine(sb, "Deadband: " + DEADBAND);
     ReportTextUtil.appendLine(sb, "Dashboard updates: " + (dashboardUpdatesEnabled ? "ON" : "OFF"));
     ReportTextUtil.appendLine(sb, "CAN profile: " + BringupUtil.getActiveCanProfileLabel());
@@ -3814,6 +4309,8 @@ public class BridgeUiCommandHandler {
     StringBuilder sb = new StringBuilder(384);
     ReportTextUtil.appendLine(sb, "=== Bringup Bindings ===");
     ReportTextUtil.appendLine(sb, "Build: " + BringupCore.getBuildMarker());
+    ReportTextUtil.appendLine(
+        sb, BuildInfo.formatBuildLine(BuildInfo.BUILD_LABEL_REVISION, BuildInfo.BUILD_REVISION));
     for (String line : bindings.describeBindings()) {
       ReportTextUtil.appendLine(sb, "  " + line);
     }
@@ -3842,6 +4339,8 @@ public class BridgeUiCommandHandler {
     StringBuilder sb = new StringBuilder(256);
     ReportTextUtil.appendLine(sb, "=== Profile Updated ===");
     ReportTextUtil.appendLine(sb, "Build: " + BringupCore.getBuildMarker());
+    ReportTextUtil.appendLine(
+        sb, BuildInfo.formatBuildLine(BuildInfo.BUILD_LABEL_REVISION, BuildInfo.BUILD_REVISION));
     ReportTextUtil.appendLine(sb, "CAN profile: " + BringupUtil.getActiveCanProfileLabel());
     appendDeviceSummary(sb);
     ReportTextUtil.appendLine(sb, "========================");
@@ -3956,6 +4455,8 @@ public class BridgeUiCommandHandler {
     StringBuilder sb = new StringBuilder(256);
     ReportTextUtil.appendLine(sb, "=== Active Profile Devices ===");
     ReportTextUtil.appendLine(sb, "Build: " + BringupCore.getBuildMarker());
+    ReportTextUtil.appendLine(
+        sb, BuildInfo.formatBuildLine(BuildInfo.BUILD_LABEL_REVISION, BuildInfo.BUILD_REVISION));
     ReportTextUtil.appendLine(sb, "CAN profile: " + BringupUtil.getActiveCanProfileLabel());
     appendDeviceSummary(sb);
     ReportTextUtil.appendLine(sb, "===============================");

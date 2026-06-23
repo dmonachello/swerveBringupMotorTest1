@@ -347,6 +347,14 @@ def profile_activate(session: BridgeSession, profile_name: str) -> Optional[int]
     return _send(session, "profileActivate", {KEY_NAME: profile_name})
 
 
+def select_profile(session: BridgeSession, profile_name: str) -> Optional[int]:
+    """
+    NAME
+        select_profile - Select a profile on the robot without activating runtime.
+    """
+    return _send(session, "selectProfile", {KEY_NAME: profile_name})
+
+
 def runtime_activate(session: BridgeSession, profile_name: str = "") -> Optional[int]:
     """
     NAME
@@ -364,6 +372,31 @@ def runtime_deactivate(session: BridgeSession) -> Optional[int]:
         runtime_deactivate - Deactivate the active runtime profile on the robot.
     """
     return _send(session, "runtimeDeactivate", {})
+
+
+def lifecycle_activate(session: BridgeSession, label: str, mode: str = "READ_ONLY") -> Optional[int]:
+    """
+    NAME
+        lifecycle_activate - Activate the controlled lifecycle session for a label.
+    """
+    args = {KEY_LABEL: str(label).strip(), "mode": str(mode).strip() or "READ_ONLY"}
+    return _send(session, "lifecycleActivate", args)
+
+
+def lifecycle_deactivate(session: BridgeSession, label: str) -> Optional[int]:
+    """
+    NAME
+        lifecycle_deactivate - Deactivate the controlled lifecycle session for a label.
+    """
+    return _send(session, "lifecycleDeactivate", {KEY_LABEL: str(label).strip()})
+
+
+def lifecycle_deactivate_active(session: BridgeSession) -> Optional[int]:
+    """
+    NAME
+        lifecycle_deactivate_active - Deactivate the currently active controlled lifecycle session.
+    """
+    return _send(session, "lifecycleDeactivateActive", {})
 
 
 def profiles_reload(session: BridgeSession) -> Optional[int]:
@@ -598,6 +631,14 @@ def show_runtime_state(session: BridgeSession, json_output: bool = False) -> Opt
         show_runtime_state - Request runtime-state output.
     """
     return _send(session, "showRuntimeState", _json_arg(json_output))
+
+
+def show_lifecycle_state(session: BridgeSession, json_output: bool = False) -> Optional[int]:
+    """
+    NAME
+        show_lifecycle_state - Request controlled lifecycle state output.
+    """
+    return _send(session, "showLifecycleState", _json_arg(json_output))
 
 
 def show_tests(session: BridgeSession, json_output: bool = False) -> Optional[int]:

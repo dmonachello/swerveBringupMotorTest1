@@ -16,6 +16,8 @@ import sys
 from pathlib import Path
 import argparse
 
+KEY_DEVICE_COUNT = "deviceCount"
+
 SCRIPT_PATH = Path(__file__).resolve()
 REPO_ROOT = SCRIPT_PATH.parents[2]
 if str(REPO_ROOT) not in sys.path:
@@ -51,6 +53,14 @@ from tools.can_nt.bridge_robot_control_facade import BridgeRobotControlTransport
 from tools.can_nt.bridge_cli_constants import CLI_PARSER_CONST
 from tools.can_nt.bridge_cli_constants_gen import SPEC as PARSER_SPEC
 from tools.can_nt.can_profiles import get_default_profile
+from tools.common.profile_session import (
+    SYNC_ACTION_ADOPT,
+    SYNC_ACTION_MISSING_LOCAL,
+    SYNC_ACTION_NONE,
+    SYNC_ACTION_PROMPT,
+    decide_host_profile_sync,
+    normalize_profile_name,
+)
 from tools.can_nt.bridge_ops import (
     add_all_devices,
     add_next_motor,
@@ -89,6 +99,7 @@ from tools.can_nt.bridge_ops import (
     show_groups,
     show_profile,
     show_profiles,
+    show_lifecycle_state,
     show_runtime_state,
     show_selected_device,
     show_status,
@@ -101,6 +112,10 @@ from tools.can_nt.bridge_ops import (
     ui_ping,
     parse_json_arg,
     profile_activate,
+    select_profile,
+    lifecycle_activate,
+    lifecycle_deactivate,
+    lifecycle_deactivate_active,
     runtime_activate,
     runtime_deactivate,
     profiles_reload,
@@ -412,6 +427,8 @@ KEEPALIVE_DISCONNECTED_WAIT_SEC = 0.5
 KEEPALIVE_JOIN_TIMEOUT_SEC = 1.0
 ROBOT_COMMAND_TIMEOUT_SEC = 3.5
 ROBOT_LONG_COMMAND_TIMEOUT_SEC = 20.0
+CONNECT_PROFILE_SYNC_TIMEOUT_SEC = 1.0
+CONNECT_PROFILE_SYNC_SLEEP_SEC = 0.05
 PROFILE_EXPORT_TEST_RUN_WAIT_SEC = 2.0
 TEST_WAIT_DEFAULT_TIMEOUT_SEC = 10.0
 TEST_WAIT_POLL_SEC = 0.1
@@ -709,6 +726,10 @@ CMD_ACTIVATE_PROFILE = PARSER_SPEC.cmd_activate_profile
 CMD_PROFILES_RELOAD = "profilesReload"
 CMD_RUNTIME_ACTIVATE = "runtimeActivate"
 CMD_RUNTIME_DEACTIVATE = "runtimeDeactivate"
+CMD_LIFECYCLE_ACTIVATE = "lifecycleActivate"
+CMD_LIFECYCLE_DEACTIVATE = "lifecycleDeactivate"
+CMD_LIFECYCLE_DEACTIVATE_ACTIVE = "lifecycleDeactivateActive"
+CMD_SHOW_LIFECYCLE_STATE = "showLifecycleState"
 CMD_SAVE_BRIDGE_CONFIG = "bridge-config"
 CMD_SAVE_RUNTIME_GROUPS = "runtime-groups"
 CMD_VALIDATE_ALL = PARSER_SPEC.cmd_validate_all
@@ -1005,6 +1026,7 @@ LABEL_INPUT_PAREN_REGEX = r"^(?P<label>.+?)\s*\([^)]*\bid=\d+\)\s*$"
 
 SHOW_TARGET_CONFIG = "config"
 SHOW_TARGET_RUNTIME = "runtime-state"
+SHOW_TARGET_LIFECYCLE = "lifecycle-state"
 SHOW_TARGET_CONFIG_RAW = "config-raw"
 SHOW_CONFIG_LOCAL_RAW = "local-raw"
 SHOW_TARGET_PROFILES = "profiles"
@@ -1013,6 +1035,9 @@ SHOW_TARGET_CONFIG_DIRTY = "config-dirty"
 SHOW_CONFIG_DIRTY = "dirty"
 
 KEY_PROFILE_INFO = "profile"
+KEY_SELECTED = "selected"
+KEY_ACTIVE_RUNTIME = "activeRuntime"
+KEY_RUNTIME_ACTIVE = "runtimeActive"
 KEY_DIAGRAM = "diagram"
 KEY_DIAGRAM_PROFILES = "profiles"
 KEY_DIAGRAM_NODES = "nodes"
@@ -1060,6 +1085,7 @@ MATCH_STATE_UNKNOWN = "UNKNOWN"
 PROMPT_LABEL_BRIDGE = "bridge"
 PROMPT_DIRTY_MARK = "*"
 PROMPT_EXEC = "bridge> "
+PROMPT_EXEC_DISCONNECTED = "bridge(disconnected)> "
 PROMPT_EXEC_WITH_PROFILE_FMT = "bridge{suffix}> "
 PROMPT_CONFIG_PREFIX = "bridge(config"
 PROMPT_GROUP_SEGMENT = "-group-"
@@ -1133,6 +1159,9 @@ MESSAGE_ERR_TEST_SHOW_LOCAL_ONLY = (
 )
 MESSAGE_ERR_SHOW_TESTS_ROBOT_ONLY = (
     "ERROR: show tests robot requires an active REST session."
+)
+MESSAGE_ERR_SHOW_LIFECYCLE_ROBOT_ONLY = (
+    "ERROR: show lifecycle-state requires an active REST session."
 )
 LOCAL_ONLY_SHOW_TARGETS = (
     SHOW_TARGET_MESSAGE_LEVEL,
@@ -1272,6 +1301,9 @@ MESSAGE_LOCAL_PROFILES_HEADER = "Local profiles:"
 MESSAGE_LOCAL_PROFILE_HEADER = "Local profile:"
 MESSAGE_LOCAL_PROFILE_NAME = "  name={name}"
 MESSAGE_LOCAL_PROFILE_ACTIVE = "  active={name}"
+MESSAGE_LOCAL_PROFILE_SELECTED = "  selected={name}"
+MESSAGE_LOCAL_PROFILE_ACTIVE_RUNTIME = "  activeRuntime={name}"
+MESSAGE_LOCAL_PROFILE_RUNTIME_ACTIVE = "  runtimeActive={value}"
 MESSAGE_LOCAL_PROFILE_DEFAULT = "  default={name}"
 MESSAGE_LOCAL_PROFILE_AVAILABLE = "  available={count}"
 MESSAGE_LOCAL_PROFILE_DEVICES_HEADER = "  devices={count}"
@@ -1297,6 +1329,7 @@ MESSAGE_ERR_DEVICE_FIELD_DICT = "ERROR: device set value must be a JSON object."
 MESSAGE_WARN_DEVICE_INCOMPLETE = "WARNING: Device {label} missing required fields: {fields}"
 MESSAGE_ERR_REGISTRY_DEVICE_NOT_FOUND = "ERROR: Device not found in devices table."
 MESSAGE_SOURCE_LOCAL = "SOURCE: local"
+MESSAGE_SOURCE_ROBOT = "SOURCE: robot"
 MESSAGE_LOCAL_CONFIG_RAW = "Local bridgeConfig (raw):"
 MESSAGE_LOCAL_REGISTRY_DEVICE = "Local devices-table entry {label}:"
 MESSAGE_LOCAL_REGISTRY_EMPTY = "  (no fields)"
@@ -1500,6 +1533,17 @@ MESSAGE_ERR_PROFILES_ACTIVATE = "ERROR: profiles activate requires a profile nam
 MESSAGE_ERR_RUNTIME_ACTION = "ERROR: runtime requires activate [<profile>] or deactivate."
 MESSAGE_ERR_RUNTIME_ACTIVATE_SEND = "ERROR: Failed to send runtime activate."
 MESSAGE_ERR_RUNTIME_DEACTIVATE_SEND = "ERROR: Failed to send runtime deactivate."
+MESSAGE_ERR_LIFECYCLE_ACTION = (
+    "ERROR: lifecycle requires activate <label> [mode <mode>] | deactivate <label> | deactivate-active."
+)
+MESSAGE_ERR_LIFECYCLE_LABEL = "ERROR: lifecycle label required."
+MESSAGE_ERR_LIFECYCLE_MODE = "ERROR: lifecycle mode requires a value."
+MESSAGE_ERR_LIFECYCLE_ACTIVATE_SEND = "ERROR: Failed to send lifecycle activate."
+MESSAGE_ERR_LIFECYCLE_DEACTIVATE_SEND = "ERROR: Failed to send lifecycle deactivate."
+MESSAGE_ERR_LIFECYCLE_DEACTIVATE_ACTIVE_SEND = "ERROR: Failed to send lifecycle deactivate-active."
+MESSAGE_LIFECYCLE_ACTIVATED_PREFIX = "Lifecycle activated: "
+MESSAGE_LIFECYCLE_DEACTIVATED_PREFIX = "Lifecycle deactivated: "
+MESSAGE_LIFECYCLE_DEACTIVATED_ACTIVE = "Lifecycle deactivated active session."
 MESSAGE_ERR_PROFILES_ACTIVATE_SEND = "ERROR: Failed to send profile activate command."
 MESSAGE_ERR_PROFILES_RELOAD_SEND = "ERROR: Failed to send profiles reload command."
 MESSAGE_INFO_PROFILES_RELOAD = "Profiles reloaded on robot."
@@ -1799,6 +1843,17 @@ HELP_RUNTIME_TEXT = (
     "runtime deactivate\n"
     "  Deactivate the active runtime without changing the selected profile."
 )
+HELP_TOPIC_LIFECYCLE = "lifecycle"
+HELP_LIFECYCLE_TEXT = (
+    "lifecycle activate <label> [mode <mode>]\n"
+    "  Activate the controlled bringup lifecycle for one device or group label.\n"
+    "lifecycle deactivate <label>\n"
+    "  Deactivate the active controlled lifecycle session when it matches <label>.\n"
+    "lifecycle deactivate-active\n"
+    "  Deactivate whichever controlled lifecycle session is active now.\n"
+    "show lifecycle-state [--json] [--pretty]\n"
+    "  Show the robot-controlled lifecycle state snapshot."
+)
 HELP_TOPIC_PROFILES_INIT = "profiles init"
 HELP_PROFILES_INIT_TEXT = (
     "profiles init\n  Initialize an empty profiles payload in memory."
@@ -1855,6 +1910,19 @@ HELP_DIAGNOSE_TEXT = (
 )
 MESSAGE_AUTO_MERGE_FAIL = "WARNING: Failed to auto-load default profiles: {path}"
 MESSAGE_AUTO_MERGE_OK = "Loaded default profiles: {path}"
+MESSAGE_PROFILE_CONTEXT_SYNC_FMT = "Profile context -> {profile}"
+MESSAGE_PROFILE_CONTEXT_MISMATCH_FMT = (
+    "Robot selected profile is '{robot}', but host context is '{host}'. "
+    "Switch host context to the robot profile?"
+)
+MESSAGE_PROFILE_CONTEXT_BATCH_SYNC_FMT = (
+    "WARNING: Robot selected profile is '{robot}', but host context is '{host}'. "
+    "Using robot profile for this session."
+)
+MESSAGE_PROFILE_CONTEXT_MISSING_LOCAL_FMT = (
+    "WARNING: Robot selected profile '{robot}' is not available in local profiles; "
+    "keeping host context '{host}'."
+)
 MESSAGE_ERR_PROFILE_MIX = (
     "ERROR: Profiles mismatch. Use 'import config <path>' to replace groups."
 )
@@ -2278,6 +2346,8 @@ class BridgeCli:
         self._last_test_run_id: Optional[int] = None
         self._load_message_level(message_level)
         self._groups_profile: Optional[str] = None
+        self._robot_selected_profile: Optional[str] = None
+        self._profile_context_mismatch_seen: Optional[Tuple[str, str]] = None
         self._pending_prompt_text: Optional[str] = None
         self._use_prompt_toolkit: bool = PROMPT_TOOLKIT_AVAILABLE
         self._warned_prompt_toolkit: bool = False
@@ -2561,6 +2631,10 @@ class BridgeCli:
     def _prompt(self) -> str:
         mode = self._modes[-1]
         if mode.name == "exec":
+            if not self._session.is_connected():
+                return self._decorate_prompt_dirty(
+                    self._decorate_prompt_tiu(PROMPT_EXEC_DISCONNECTED)
+                )
             suffix = self._profile_prompt_suffix(use_active=True)
             if suffix:
                 prompt = PROMPT_EXEC_WITH_PROFILE_FMT.format(suffix=suffix)
@@ -2585,12 +2659,74 @@ class BridgeCli:
         NAME
             _profile_prompt_suffix - Render prompt suffix for active profile.
         """
-        profile = self._groups_profile or ""
-        if use_active and not profile:
-            profile = self._active_profile_name() or ""
+        profile = EMPTY_STRING
+        if use_active and self._session.is_connected():
+            profile = self._robot_selected_profile or EMPTY_STRING
+        else:
+            profile = self._groups_profile or EMPTY_STRING
+            if use_active and not profile:
+                profile = self._active_profile_name() or EMPTY_STRING
         if profile:
             return f"{PROMPT_PROFILE_PREFIX}{profile}"
         return ""
+
+    def _host_profile_context_name(self) -> str:
+        """
+        NAME
+            _host_profile_context_name - Return the current host-side profile context.
+        """
+        return str(self._groups_profile or EMPTY_STRING).strip()
+
+    @staticmethod
+    def _normalize_profile_context_name(value: object) -> str:
+        """
+        NAME
+            _normalize_profile_context_name - Normalize one profile name for host/robot comparison.
+        """
+        return normalize_profile_name(value)
+
+    @staticmethod
+    def _selected_profile_from_show_profiles_payload(payload: object) -> str:
+        """
+        NAME
+            _selected_profile_from_show_profiles_payload - Parse selected profile from showProfiles JSON.
+        """
+        if not isinstance(payload, dict):
+            return EMPTY_STRING
+        profile = payload.get(KEY_PROFILE)
+        if not isinstance(profile, dict):
+            return EMPTY_STRING
+        return BridgeCli._normalize_profile_context_name(profile.get("selected"))
+
+    @staticmethod
+    def _selected_profile_from_show_profiles_text(text: object) -> str:
+        """
+        NAME
+            _selected_profile_from_show_profiles_text - Parse selected profile from text showProfiles output.
+        """
+        if not isinstance(text, str):
+            return EMPTY_STRING
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
+            if not line.startswith("selected="):
+                continue
+            return BridgeCli._normalize_profile_context_name(line.split("=", 1)[1])
+        return EMPTY_STRING
+
+    def _apply_host_profile_context(self, name: str, announce: bool) -> None:
+        """
+        NAME
+            _apply_host_profile_context - Switch the host profile context without mutating the robot.
+        """
+        key = normalize_profile_name(name)
+        profiles = self._local_root_payload.get(KEY_PROFILES) if isinstance(self._local_root_payload, dict) else None
+        if not key or not isinstance(profiles, dict) or key not in profiles:
+            return
+        self._groups_profile = key
+        self._local_profile_entry(key, create=True)
+        self._refresh_tests_profile(key)
+        if announce:
+            print(MESSAGE_PROFILE_CONTEXT_SYNC_FMT.format(profile=key))
 
     def _has_dirty_state(self) -> bool:
         """
@@ -2895,8 +3031,6 @@ class BridgeCli:
         default_profile = payload.get(KEY_DEFAULT_PROFILE)
         if not isinstance(default_profile, str) or default_profile not in profiles:
             payload[KEY_DEFAULT_PROFILE] = next(iter(profiles.keys()))
-        if not self._groups_profile:
-            self._groups_profile = str(payload.get(KEY_DEFAULT_PROFILE, EMPTY_STRING)).strip() or None
         if self._groups_profile:
             if isinstance(self._local_config, dict):
                 by_profile = self._local_config.get(KEY_BRIDGE_BY_PROFILE)
@@ -3102,7 +3236,7 @@ class BridgeCli:
             return
         if self._groups_profile and self._groups_profile in profiles:
             return
-        self._groups_profile = self._default_profile_name()
+        self._groups_profile = None
 
     def _set_active_profile(self, name: str) -> StatusResult:
         """
@@ -3120,6 +3254,20 @@ class BridgeCli:
         if key not in profiles:
             print(MESSAGE_ERR_PROFILE_UNKNOWN.format(name=name))
             return StatusResult(code=SS__CONFIG__INVALID)
+        if self._session.is_connected():
+            seq = select_profile(self._session, key)
+            if seq is None:
+                print(MESSAGE_ERR_PROFILES_ACTIVATE_SEND)
+                return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+            self._proto_mark_cmd_sent("selectProfile", now=time.time())
+            event = self._wait_for_seq(seq, timeout_sec=ROBOT_LONG_COMMAND_TIMEOUT_SEC)
+            if self._event_failed(event, "selectProfile"):
+                return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+            semantic_error = self._profile_select_event_error(event)
+            if semantic_error:
+                print(semantic_error)
+                return StatusResult(code=SS__EXECUTOR__FAILED, message=semantic_error)
+            self._robot_selected_profile = key
         self._groups_profile = key
         self._local_profile_entry(key, create=True)
         self._refresh_tests_profile(key)
@@ -6131,6 +6279,7 @@ class BridgeCli:
         if mode == MODE_CONFIG:
             return [
                 CMD_SHOW,
+                "lifecycle",
                 CMD_GROUP,
                 CMD_NO,
                 CMD_PROFILE,
@@ -6175,6 +6324,7 @@ class BridgeCli:
             return [CMD_SHOW, CMD_SET, CMD_NO]
         return [
             CMD_SHOW,
+            "lifecycle",
             CMD_DIAGNOSE,
             PARSER_SPEC.cmd_connect,
             PARSER_SPEC.cmd_disconnect,
@@ -6278,6 +6428,7 @@ class BridgeCli:
             SHOW_TARGET_CAN_MAPPINGS,
             PARSER_SPEC.show_target_selected_device,
             PARSER_SPEC.show_target_runtime_state,
+            SHOW_TARGET_LIFECYCLE,
             CMD_CONFIG,
             CMD_CONFIG + PARSER_SPEC.space_str + CMD_LOCAL_RAW,
             CMD_CONFIG + PARSER_SPEC.space_str + CMD_DIRTY,
@@ -9200,6 +9351,10 @@ class BridgeCli:
                 return StatusResult(code=SS__NETWORK__HANDSHAKE_FAILED, message=message)
             self._proto_mark_connected(now=time.time())
             self._proto_mark_handshake(now=time.time())
+            self._sync_host_profile_context_to_robot(
+                self._query_robot_selected_profile_after_connect(),
+                prompt_user=not self._batch,
+            )
             self._start_keepalive()
             print("Connected.")
             return StatusResult(code=SS__NORMAL)
@@ -9207,14 +9362,27 @@ class BridgeCli:
             self._stop_keepalive()
             disconnect(self._session)
             self._proto_mark_disconnected(now=time.time())
+            self._robot_selected_profile = None
+            self._profile_context_mismatch_seen = None
             print("Disconnected.")
             return StatusResult(code=SS__NORMAL)
         if cmd == "configure" and len(tokens) > 1 and tokens[1].lower() == "terminal":
             self._ensure_local_config()
             self._modes.append(CliMode("config"))
             return StatusResult(code=SS__NORMAL)
+        if cmd == CMD_PROFILE:
+            if len(tokens) < COUNT_TWO:
+                print(MESSAGE_ERR_PROFILE_REQUIRED)
+                return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED)
+            result = self._set_active_profile(tokens[COUNT_ONE])
+            if not result.ok():
+                return result
+            print(f"Active profile: {self._groups_profile}")
+            return StatusResult(code=SS__NORMAL)
         if cmd == CMD_BINDINGS:
             return self._config_bindings_command(tokens)
+        if cmd == "lifecycle":
+            return self._lifecycle_command(tokens)
         if cmd == CMD_RUNTIME:
             return self._runtime_command(tokens)
         if cmd == "show":
@@ -9277,6 +9445,8 @@ class BridgeCli:
 
     def _config_command(self, tokens: List[str]) -> StatusResult:
         cmd = tokens[0].lower()
+        if cmd == "lifecycle":
+            return self._lifecycle_command(tokens)
         if cmd == CMD_RUNTIME:
             return self._runtime_command(tokens)
         if cmd == CMD_BINDINGS:
@@ -9947,6 +10117,11 @@ class BridgeCli:
             return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
         if target == SHOW_TARGET_CONFIG:
             target = SHOW_TARGET_RUNTIME
+        if target == SHOW_TARGET_LIFECYCLE:
+            if has_source_flag and source != SHOW_SOURCE_ROBOT:
+                print(MESSAGE_ERR_SHOW_LIFECYCLE_ROBOT_ONLY)
+                return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
+            source = SHOW_SOURCE_ROBOT
         if target == SHOW_TARGET_SAFETY_LATCH:
             source = SHOW_SOURCE_ROBOT
         if target == SHOW_TARGET_MESSAGE_LEVEL:
@@ -10579,6 +10754,46 @@ class BridgeCli:
         print(MESSAGE_ERR_RUNTIME_ACTION)
         return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
 
+    def _lifecycle_command(self, tokens: List[str]) -> StatusResult:
+        """
+        NAME
+            _lifecycle_command - Dispatch controlled lifecycle activate/deactivate commands.
+        """
+        if len(tokens) < COUNT_TWO:
+            print(MESSAGE_ERR_LIFECYCLE_ACTION)
+            return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+        action = tokens[COUNT_ONE].lower()
+        if action == CMD_ACTIVATE_PROFILE:
+            if len(tokens) < COUNT_THREE:
+                print(MESSAGE_ERR_LIFECYCLE_LABEL)
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            label = tokens[COUNT_TWO]
+            mode = "READ_ONLY"
+            if len(tokens) > COUNT_THREE:
+                if len(tokens) != COUNT_FIVE or tokens[COUNT_THREE].lower() != "mode":
+                    print(MESSAGE_ERR_LIFECYCLE_ACTION)
+                    return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
+                mode = tokens[COUNT_FOUR].strip()
+                if not mode:
+                    print(MESSAGE_ERR_LIFECYCLE_MODE)
+                    return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            return self._lifecycle_activate(label, mode)
+        if action == "deactivate":
+            if len(tokens) < COUNT_THREE:
+                print(MESSAGE_ERR_LIFECYCLE_LABEL)
+                return StatusResult(code=SS__CLI_PARSER__MISSING_ARGUMENT)
+            if len(tokens) != COUNT_THREE:
+                print(MESSAGE_ERR_LIFECYCLE_ACTION)
+                return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
+            return self._lifecycle_deactivate(tokens[COUNT_TWO])
+        if action == "deactivate-active":
+            if len(tokens) != COUNT_TWO:
+                print(MESSAGE_ERR_LIFECYCLE_ACTION)
+                return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
+            return self._lifecycle_deactivate_active()
+        print(MESSAGE_ERR_LIFECYCLE_ACTION)
+        return StatusResult(code=SS__CLI_PARSER__INVALID_SYNTAX)
+
     def _runtime_activate(self, profile_name: str = EMPTY_STRING) -> StatusResult:
         """
         NAME
@@ -10614,6 +10829,103 @@ class BridgeCli:
         if self._event_failed(event, CMD_RUNTIME_DEACTIVATE):
             return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
         return StatusResult(code=SS__NORMAL)
+
+    def _lifecycle_activate(self, label: str, mode: str = "READ_ONLY") -> StatusResult:
+        """
+        NAME
+            _lifecycle_activate - Activate the robot controlled lifecycle session for a label.
+        """
+        if not self._session.is_connected():
+            return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
+        seq = lifecycle_activate(self._session, label, mode)
+        if seq is None:
+            print(MESSAGE_ERR_LIFECYCLE_ACTIVATE_SEND)
+            return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+        self._proto_mark_cmd_sent(CMD_LIFECYCLE_ACTIVATE, now=time.time())
+        event = self._wait_for_seq(seq, timeout_sec=ROBOT_LONG_COMMAND_TIMEOUT_SEC)
+        if self._event_failed(event, CMD_LIFECYCLE_ACTIVATE):
+            return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+        semantic_error = self._lifecycle_event_error(event)
+        if semantic_error:
+            return StatusResult(code=SS__EXECUTOR__FAILED, message=semantic_error)
+        return StatusResult(code=SS__NORMAL)
+
+    def _lifecycle_deactivate(self, label: str) -> StatusResult:
+        """
+        NAME
+            _lifecycle_deactivate - Deactivate the robot controlled lifecycle session for a label.
+        """
+        if not self._session.is_connected():
+            return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
+        seq = lifecycle_deactivate(self._session, label)
+        if seq is None:
+            print(MESSAGE_ERR_LIFECYCLE_DEACTIVATE_SEND)
+            return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+        self._proto_mark_cmd_sent(CMD_LIFECYCLE_DEACTIVATE, now=time.time())
+        event = self._wait_for_seq(seq, timeout_sec=ROBOT_LONG_COMMAND_TIMEOUT_SEC)
+        if self._event_failed(event, CMD_LIFECYCLE_DEACTIVATE):
+            return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+        semantic_error = self._lifecycle_event_error(event)
+        if semantic_error:
+            return StatusResult(code=SS__EXECUTOR__FAILED, message=semantic_error)
+        return StatusResult(code=SS__NORMAL)
+
+    def _lifecycle_deactivate_active(self) -> StatusResult:
+        """
+        NAME
+            _lifecycle_deactivate_active - Deactivate the current robot controlled lifecycle session.
+        """
+        if not self._session.is_connected():
+            return StatusResult(code=SS__NETWORK__NOT_CONNECTED)
+        seq = lifecycle_deactivate_active(self._session)
+        if seq is None:
+            print(MESSAGE_ERR_LIFECYCLE_DEACTIVATE_ACTIVE_SEND)
+            return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+        self._proto_mark_cmd_sent(CMD_LIFECYCLE_DEACTIVATE_ACTIVE, now=time.time())
+        event = self._wait_for_seq(seq, timeout_sec=ROBOT_LONG_COMMAND_TIMEOUT_SEC)
+        if self._event_failed(event, CMD_LIFECYCLE_DEACTIVATE_ACTIVE):
+            return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
+        semantic_error = self._lifecycle_event_error(event)
+        if semantic_error:
+            return StatusResult(code=SS__EXECUTOR__FAILED, message=semantic_error)
+        return StatusResult(code=SS__NORMAL)
+
+    def _lifecycle_event_error(self, event: Optional[BridgeEvent]) -> str:
+        """
+        NAME
+            _lifecycle_event_error - Extract one semantic lifecycle failure message from a successful transport event.
+        """
+        if event is None:
+            return EMPTY_STRING
+        payload = parse_json_arg(getattr(event, "json_text", EMPTY_STRING))
+        if isinstance(payload, dict) and payload.get("success") is True:
+            return EMPTY_STRING
+        if isinstance(payload, dict) and payload.get("success") is False:
+            for key in ("errorMessage", "message", "errorCode"):
+                value = str(payload.get(key, EMPTY_STRING)).strip()
+                if value:
+                    return value
+        text_value = str(getattr(event, "text", EMPTY_STRING) or EMPTY_STRING).strip()
+        if self._is_lifecycle_success_text(text_value):
+            return EMPTY_STRING
+        if text_value:
+            return text_value
+        if event.message:
+            return str(event.message).strip()
+        return "Lifecycle command failed."
+
+    def _is_lifecycle_success_text(self, value: str) -> bool:
+        """
+        NAME
+            _is_lifecycle_success_text - Recognize successful lifecycle text payloads for backward-compatible fallback handling.
+        """
+        if not value:
+            return False
+        if value.startswith(MESSAGE_LIFECYCLE_ACTIVATED_PREFIX):
+            return True
+        if value.startswith(MESSAGE_LIFECYCLE_DEACTIVATED_PREFIX):
+            return True
+        return value == MESSAGE_LIFECYCLE_DEACTIVATED_ACTIVE
 
     def _config_push(self, path: str, activate_profile: str) -> StatusResult:
         """
@@ -10829,6 +11141,20 @@ class BridgeCli:
                 return False
             if resp in ("y", "yes"):
                 return True
+
+    def _confirm_yes_default(self, prompt: str) -> bool:
+        """
+        NAME
+            _confirm_yes_default - Prompt for confirmation with Yes as the default.
+        """
+        if self._batch:
+            return False
+        while True:
+            resp = input(f"{prompt} [Y/n] ").strip().lower()
+            if not resp or resp in ("y", "yes"):
+                return True
+            if resp in ("n", "no"):
+                return False
 
     @staticmethod
     def _has_json(tokens: List[str]) -> bool:
@@ -11790,6 +12116,7 @@ class BridgeCli:
             HELP_TOPIC_PROFILES_EXPORT: HELP_PROFILES_EXPORT_TEXT,
             HELP_TOPIC_PROFILES_RELOAD: HELP_PROFILES_RELOAD_TEXT,
             HELP_TOPIC_RUNTIME: HELP_RUNTIME_TEXT,
+            HELP_TOPIC_LIFECYCLE: HELP_LIFECYCLE_TEXT,
             HELP_TOPIC_CONFIG_PUSH: HELP_CONFIG_PUSH_TEXT,
             HELP_TOPIC_RESET_ZERO_CONFIG: HELP_RESET_ZERO_CONFIG_TEXT,
             HELP_TOPIC_RECOVER: HELP_RECOVER_TEXT,
@@ -11983,7 +12310,7 @@ class BridgeCli:
             return json.dumps(payload, indent=JSON_PRETTY_INDENT)
         return json.dumps(payload)
 
-    def _fetch_robot_runtime_payload(self) -> Optional[Dict[str, object]]:
+    def _fetch_robot_runtime_payload(self, print_events: bool = True) -> Optional[Dict[str, object]]:
         """
         NAME
             _fetch_robot_runtime_payload - Fetch runtime-state JSON from the robot.
@@ -11994,7 +12321,12 @@ class BridgeCli:
         if seq is None:
             return None
         self._proto_mark_cmd_sent(CMD_SHOW_RUNTIME_STATE, now=time.time())
-        event = self._wait_for_seq(seq, timeout_sec=self._robot_show_timeout_sec(CMD_SHOW_RUNTIME_STATE))
+        event = self._wait_for_seq(
+            seq,
+            timeout_sec=self._robot_show_timeout_sec(CMD_SHOW_RUNTIME_STATE),
+            print_events=print_events,
+            suppress_timeout_warning=not print_events,
+        )
         if self._event_failed(event, "show runtime-state"):
             return None
         payload = parse_json_arg(event.json_text or event.text or EMPTY_STRING)
@@ -12158,6 +12490,126 @@ class BridgeCli:
             return {}
         payload = parse_json_arg(event.json_text)
         return payload if isinstance(payload, dict) else {}
+
+    def _sync_host_profile_context_to_robot(self, robot_profile: object, prompt_user: bool) -> None:
+        """
+        NAME
+            _sync_host_profile_context_to_robot - Align host context to robot-selected profile when requested.
+        """
+        decision = decide_host_profile_sync(
+            self._host_profile_context_name(),
+            robot_profile,
+            (
+                self._local_root_payload.get(KEY_PROFILES, {}).keys()
+                if isinstance(self._local_root_payload, dict)
+                and isinstance(self._local_root_payload.get(KEY_PROFILES), dict)
+                else []
+            ),
+        )
+        robot_name = decision.robot_profile
+        host_name = decision.host_profile
+        if not robot_name:
+            return
+        self._robot_selected_profile = robot_name
+        if decision.action == SYNC_ACTION_NONE:
+            self._profile_context_mismatch_seen = None
+            return
+        mismatch_key = (host_name, robot_name)
+        if self._profile_context_mismatch_seen == mismatch_key:
+            return
+        if decision.action == SYNC_ACTION_MISSING_LOCAL:
+            print(MESSAGE_PROFILE_CONTEXT_MISSING_LOCAL_FMT.format(robot=robot_name, host=host_name))
+            self._profile_context_mismatch_seen = mismatch_key
+            return
+        if decision.action == SYNC_ACTION_ADOPT:
+            self._apply_host_profile_context(robot_name, announce=True)
+            self._profile_context_mismatch_seen = None
+            return
+        if self._batch or not prompt_user:
+            print(MESSAGE_PROFILE_CONTEXT_BATCH_SYNC_FMT.format(robot=robot_name, host=host_name))
+            self._apply_host_profile_context(robot_name, announce=True)
+            self._profile_context_mismatch_seen = mismatch_key
+            return
+        if decision.action == SYNC_ACTION_PROMPT and self._confirm_yes_default(
+            MESSAGE_PROFILE_CONTEXT_MISMATCH_FMT.format(robot=robot_name, host=host_name)
+        ):
+            self._apply_host_profile_context(robot_name, announce=True)
+        self._profile_context_mismatch_seen = mismatch_key
+
+    def _query_robot_selected_profile(self) -> str:
+        """
+        NAME
+            _query_robot_selected_profile - Read the robot-selected profile using showProfiles JSON.
+        """
+        if not self._session.is_connected():
+            return EMPTY_STRING
+        runtime_payload = self._fetch_robot_runtime_payload(print_events=False)
+        if isinstance(runtime_payload, dict):
+            selected = self._normalize_profile_context_name(runtime_payload.get("selectedProfile"))
+            if selected:
+                return selected
+        seq = show_profiles(self._session, json_output=True)
+        event = self._wait_for_seq(
+            seq,
+            timeout_sec=ROBOT_COMMAND_TIMEOUT_SEC,
+            print_events=False,
+            suppress_timeout_warning=True,
+        )
+        if not self._event_failed(event, "show profiles"):
+            selected = self._selected_profile_from_show_profiles_payload(self._parse_event_json_payload(event))
+            if selected:
+                return selected
+            selected = self._selected_profile_from_show_profiles_text(
+                event.text if event is not None else EMPTY_STRING
+            )
+            if selected:
+                return selected
+            if event is not None and isinstance(event.state, dict):
+                selected = self._normalize_profile_context_name(event.state.get("selectedProfile"))
+                if selected:
+                    return selected
+        snapshot = self._session.get_state_snapshot()
+        if isinstance(snapshot, dict):
+            selected = self._normalize_profile_context_name(snapshot.get("selectedProfile"))
+            if selected:
+                return selected
+        return EMPTY_STRING
+
+    def _query_robot_selected_profile_after_connect(self) -> str:
+        """
+        NAME
+            _query_robot_selected_profile_after_connect - Retry selected-profile discovery during explicit connect.
+
+        DESCRIPTION
+            After a successful REST handshake, robot-selected profile state can
+            lag briefly behind the first host query. This bounded retry is only
+            used during explicit `connect`, not during disconnected startup.
+        """
+        deadline = time.time() + CONNECT_PROFILE_SYNC_TIMEOUT_SEC
+        while time.time() < deadline:
+            selected = self._query_robot_selected_profile()
+            if selected:
+                return selected
+            time.sleep(CONNECT_PROFILE_SYNC_SLEEP_SEC)
+        return self._query_robot_selected_profile()
+
+    def _profile_select_event_error(self, event: Optional[BridgeEvent]) -> str:
+        """
+        NAME
+            _profile_select_event_error - Return semantic profile-selection failure text when present.
+        """
+        payload = self._parse_event_json_payload(event)
+        if isinstance(payload, dict):
+            success_value = payload.get("success")
+            error_message = str(payload.get("errorMessage", EMPTY_STRING)).strip()
+            if success_value is False and error_message:
+                return error_message
+        if event is None:
+            return EMPTY_STRING
+        message_text = str(event.message or event.text or EMPTY_STRING).strip()
+        if message_text.startswith("Profile change blocked:"):
+            return message_text
+        return EMPTY_STRING
 
     def _print_profiles_apply_stages(self, payload: Dict[str, object]) -> None:
         """
@@ -12588,6 +13040,9 @@ class BridgeCli:
         elif target == SHOW_TARGET_RUNTIME:
             seq = show_runtime_state(self._session, json_output=json_output)
             cmd_name = CMD_SHOW_RUNTIME_STATE
+        elif target == SHOW_TARGET_LIFECYCLE:
+            seq = show_lifecycle_state(self._session, json_output=json_output)
+            cmd_name = CMD_SHOW_LIFECYCLE_STATE
         elif target == SHOW_TARGET_VERSION:
             seq = show_version(self._session, json_output=json_output)
             cmd_name = CMD_SHOW_VERSION
@@ -12628,7 +13083,7 @@ class BridgeCli:
             because the robot has just rebuilt devices, tests, and telemetry
             state. Keep ordinary show commands on the short default timeout.
         """
-        if cmd_name == CMD_SHOW_RUNTIME_STATE:
+        if cmd_name in (CMD_SHOW_RUNTIME_STATE, CMD_SHOW_LIFECYCLE_STATE):
             return ROBOT_LONG_COMMAND_TIMEOUT_SEC
         return ROBOT_COMMAND_TIMEOUT_SEC
 
@@ -13216,28 +13671,9 @@ class BridgeCli:
     def _show_local_profiles(self, json_output: bool, pretty: bool) -> StatusResult:
         """
         NAME
-            _show_local_profiles - Show available profile names.
+            _show_local_profiles - Show local profile summary.
         """
-        payload = self._local_root_payload
-        if not isinstance(payload, dict):
-            print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
-            return StatusResult(code=SS__CONFIG__NOT_LOADED)
-        profiles = payload.get(KEY_PROFILES)
-        if not isinstance(profiles, dict):
-            print(MESSAGE_ERR_REGISTRY_NOT_LOADED)
-            return StatusResult(code=SS__CONFIG__NOT_LOADED)
-        names = sorted([name for name in profiles.keys() if isinstance(name, str)])
-        print(MESSAGE_SOURCE_LOCAL)
-        if json_output:
-            print(self._dump_json({KEY_PROFILES: names}, pretty))
-            return StatusResult(code=SS__NORMAL)
-        if not names:
-            print(MESSAGE_LOCAL_PROFILES_EMPTY)
-            return StatusResult(code=SS__NORMAL)
-        print(MESSAGE_LOCAL_PROFILES_HEADER)
-        for name in names:
-            print(f"  {name}")
-        return StatusResult(code=SS__NORMAL)
+        return self._show_local_profile(EMPTY_STRING, json_output, pretty)
 
     def _show_local_profile(self, name: str, json_output: bool, pretty: bool) -> StatusResult:
         """
@@ -13247,7 +13683,8 @@ class BridgeCli:
         payload = self._local_root_payload
         profiles = payload.get(KEY_PROFILES) if isinstance(payload, dict) else {}
         names = [name for name in profiles.keys() if isinstance(name, str)] if isinstance(profiles, dict) else []
-        active = self._active_profile_name() or ""
+        active = self._host_profile_context_name() or ""
+        selected_context = self._host_profile_context_name() or ""
         default_profile = self._default_profile_name() or ""
         selected = name.strip() if name else ""
         if selected:
@@ -13269,15 +13706,27 @@ class BridgeCli:
                 print(MESSAGE_LOCAL_PROFILE_DEVICE_FMT.format(label=label))
             return StatusResult(code=SS__NORMAL)
         count = len(names)
-        output = {KEY_ACTIVE: active, KEY_DEFAULT: default_profile, KEY_AVAILABLE: sorted(names)}
+        output = {
+            KEY_ACTIVE: active,
+            KEY_SELECTED: selected_context,
+            KEY_ACTIVE_RUNTIME: EMPTY_STRING,
+            KEY_RUNTIME_ACTIVE: False,
+            KEY_DEFAULT: default_profile,
+            KEY_AVAILABLE: sorted(names),
+        }
         print(MESSAGE_SOURCE_LOCAL)
         if json_output:
             print(self._dump_json({KEY_PROFILE_INFO: output}, pretty))
             return StatusResult(code=SS__NORMAL)
         print(MESSAGE_LOCAL_PROFILE_HEADER)
         print(MESSAGE_LOCAL_PROFILE_ACTIVE.format(name=active or STRING_NONE))
+        print(MESSAGE_LOCAL_PROFILE_SELECTED.format(name=selected_context or STRING_NONE))
+        print(MESSAGE_LOCAL_PROFILE_ACTIVE_RUNTIME.format(name=STRING_NONE))
+        print(MESSAGE_LOCAL_PROFILE_RUNTIME_ACTIVE.format(value="false"))
         print(MESSAGE_LOCAL_PROFILE_DEFAULT.format(name=default_profile or STRING_NONE))
         print(MESSAGE_LOCAL_PROFILE_AVAILABLE.format(count=count))
+        for profile_name in sorted(names):
+            print(MESSAGE_LOCAL_PROFILE_DEVICE_FMT.format(label=profile_name))
         return StatusResult(code=SS__NORMAL)
 
     def _show_local_config_raw(self, json_output: bool, pretty: bool) -> StatusResult:

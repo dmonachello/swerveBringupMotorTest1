@@ -33,6 +33,8 @@ import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import ttk, filedialog, messagebox, simpledialog
 
+from tools.common.profile_session import SESSION_STATUS_LOCAL_ONLY
+
 SCRIPT_PACKAGE_NAME = "tools.can_topology"
 SCRIPT_REPO_ROOT_PARENT_INDEX = 2
 
@@ -860,6 +862,7 @@ class TopologyEditor(tk.Tk):
         self._zoom_label_var = tk.StringVar(value="Zoom: 100%")
         self._neighbor_status_var = tk.StringVar(value=NEIGHBOR_STATUS_NOT_POPULATED)
         self._neighbor_status_label: Optional[ttk.Label] = None
+        self._profile_session_status_var = tk.StringVar(value=SESSION_STATUS_LOCAL_ONLY)
         self._selected_nodes: set[int] = set()
         self._selected_buses: set[int] = set()
         self._selection_rect: Optional[int] = None
@@ -1055,6 +1058,7 @@ class TopologyEditor(tk.Tk):
             anchor="w", pady=(4, 8)
         )
         self._refresh_default_checkbox()
+        ttk.Label(bottom, textvariable=self._profile_session_status_var).pack(anchor="w", pady=(0, 4))
         ttk.Label(bottom, textvariable=self._zoom_label_var).pack(anchor="w", pady=(2, 2))
         self._neighbor_status_label = ttk.Label(bottom, textvariable=self._neighbor_status_var)
         self._neighbor_status_label.pack(anchor="w", pady=(0, 6))

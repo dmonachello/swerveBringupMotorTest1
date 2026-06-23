@@ -32,6 +32,7 @@ from tools.can_nt.bridge_cli import (
     KEY_DATA_VERSION,
     KEY_DEFAULT_PROFILE,
     KEY_DEVICE,
+    KEY_DEVICE_COUNT,
     KEY_DEVICE_TYPE,
     KEY_DEVICES,
     KEY_ENABLED,
@@ -68,6 +69,7 @@ from tools.can_nt.bridge_cli import (
     PROFILE_SCHEMA_VERSION,
     BRIDGE_CONFIG_SCHEMA_VERSION,
 )
+from tools.can_nt.bridge_session import BridgeEvent
 from tools.can_nt.bridge_cli_parser import BridgeCliParser
 from tools.can_nt.status import SS__CONFIG__INVALID, SS__CONFIG__SAVED, SS__NORMAL, StatusResult
 
@@ -93,6 +95,9 @@ class _FakeSession:
 
     def handshake_done(self) -> bool:
         return False
+
+    def ensure_handshake(self, reset: bool = False) -> bool:
+        return True
 
     def send_command(self, _name: str, _args: dict | None = None):
         return None
@@ -494,6 +499,26 @@ class BridgeCliVisibilityTests(unittest.TestCase):
         self.assertEqual(parser.parse("show signal motor1", mode="exec").tokens, ["show", "signal", "motor1"])
         self.assertEqual(parser.parse("tiu on", mode="exec").tokens, ["tiu", "on"])
 
+    def test_show_active_robot_json_includes_device_count(self) -> None:
+        cli = self._build_cli()
+        cli._fetch_robot_runtime_payload = lambda: {  # type: ignore[method-assign]
+            KEY_PROFILE: PROFILE_NAME,
+            KEY_ENABLED: False,
+            "estopped": False,
+            "mode": "teleop",
+            KEY_DEVICES: [{"label": "motor1"}],
+            KEY_GROUPS: [{"name": "active-group"}],
+            KEY_SELECTED_DEVICE: {KEY_DEVICE: EMPTY_STRING, KEY_ENABLED: False},
+        }
+
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            result = cli._show_active_robot(json_output=True, pretty=False)
+
+        self.assertEqual(result.code, SS__NORMAL)
+        payload = json.loads(output.getvalue().splitlines()[-1])
+        self.assertEqual(payload[KEY_DEVICE_COUNT], 1)
+
     def test_parser_accepts_runtime_commands(self) -> None:
         parser = BridgeCliParser()
 
@@ -507,6 +532,30 @@ class BridgeCliVisibilityTests(unittest.TestCase):
             ["runtime", "deactivate"],
         )
 
+    def test_parser_accepts_lifecycle_commands(self) -> None:
+        parser = BridgeCliParser()
+
+        self.assertEqual(
+            parser.parse("lifecycle activate active-group", mode="exec").tokens,
+            ["lifecycle", "activate", "active-group"],
+        )
+        self.assertEqual(
+            parser.parse("lifecycle activate FALCON9 mode active", mode="config").tokens,
+            ["lifecycle", "activate", "FALCON9", "mode", "active"],
+        )
+        self.assertEqual(
+            parser.parse("lifecycle deactivate active-group", mode="exec").tokens,
+            ["lifecycle", "deactivate", "active-group"],
+        )
+        self.assertEqual(
+            parser.parse("lifecycle deactivate-active", mode="exec").tokens,
+            ["lifecycle", "deactivate-active"],
+        )
+        self.assertEqual(
+            parser.parse("show lifecycle-state", mode="exec").tokens,
+            ["show", "lifecycle-state"],
+        )
+
     def test_runtime_activate_uses_runtime_command_path(self) -> None:
         cli = self._build_cli(connected=True)
         cli._wait_for_seq = lambda seq, timeout_sec=None: object()  # type: ignore[method-assign]
@@ -516,6 +565,394 @@ class BridgeCliVisibilityTests(unittest.TestCase):
             result = cli._runtime_activate("demo")
 
         self.assertEqual(result.code, SS__NORMAL)
+
+    def test_lifecycle_activate_uses_lifecycle_command_path(self) -> None:
+        cli = self._build_cli(connected=True)
+        cli._wait_for_seq = lambda seq, timeout_sec=None: object()  # type: ignore[method-assign]
+        cli._event_failed = lambda event, command_name: False  # type: ignore[method-assign]
+
+        with patch("tools.can_nt.bridge_cli.lifecycle_activate", return_value=9):
+            result = cli._lifecycle_activate("active-group", "READ_ONLY")
+
+        self.assertEqual(result.code, SS__NORMAL)
+
+    def test_lifecycle_command_dispatches_activate_keyword(self) -> None:
+        cli = self._build_cli(connected=True)
+        calls = []
+        cli._lifecycle_activate = lambda label, mode="READ_ONLY": calls.append((label, mode)) or StatusResult(code=SS__NORMAL)  # type: ignore[method-assign]
+
+        result = cli._lifecycle_command(["lifecycle", "activate", "active-group"])
+
+        self.assertEqual(result.code, SS__NORMAL)
+        self.assertEqual(calls, [("active-group", "READ_ONLY")])
+
+    def test_lifecycle_deactivate_uses_lifecycle_command_path(self) -> None:
+        cli = self._build_cli(connected=True)
+        cli._wait_for_seq = lambda seq, timeout_sec=None: object()  # type: ignore[method-assign]
+        cli._event_failed = lambda event, command_name: False  # type: ignore[method-assign]
+
+        with patch("tools.can_nt.bridge_cli.lifecycle_deactivate", return_value=10):
+            result = cli._lifecycle_deactivate("active-group")
+
+        self.assertEqual(result.code, SS__NORMAL)
+
+    def test_lifecycle_deactivate_active_uses_lifecycle_command_path(self) -> None:
+        cli = self._build_cli(connected=True)
+        cli._wait_for_seq = lambda seq, timeout_sec=None: object()  # type: ignore[method-assign]
+        cli._event_failed = lambda event, command_name: False  # type: ignore[method-assign]
+
+        with patch("tools.can_nt.bridge_cli.lifecycle_deactivate_active", return_value=11):
+            result = cli._lifecycle_deactivate_active()
+
+        self.assertEqual(result.code, SS__NORMAL)
+
+    def test_show_lifecycle_state_routes_to_robot_command_path(self) -> None:
+        cli = self._build_cli(connected=True)
+        cli._wait_for_seq = lambda seq, timeout_sec=None: object()  # type: ignore[method-assign]
+        cli._event_failed = lambda event, command_name: False  # type: ignore[method-assign]
+
+        with patch("tools.can_nt.bridge_cli.show_lifecycle_state", return_value=12):
+            result = cli._handle_show(["lifecycle-state"])
+
+        self.assertEqual(result.code, SS__NORMAL)
+
+    def test_lifecycle_event_error_reads_semantic_failure_payload(self) -> None:
+        cli = self._build_cli()
+        event = BridgeEvent(
+            type="out",
+            seq=1,
+            name="lifecycleActivate",
+            status="ok",
+            message="Unknown label: active-group",
+            text="Unknown label: active-group",
+            json_text='{"operation":"activate","success":false,"errorCode":"UNKNOWN_LABEL","errorMessage":"Unknown label: active-group"}',
+            ts=0.0,
+            session_id="",
+            state={},
+            raw={},
+        )
+
+        self.assertEqual(
+            "Unknown label: active-group",
+            cli._lifecycle_event_error(event),
+        )
+
+    def test_lifecycle_event_error_ignores_success_payload(self) -> None:
+        cli = self._build_cli()
+        event = BridgeEvent(
+            type="out",
+            seq=1,
+            name="lifecycleActivate",
+            status="ok",
+            message="Lifecycle activated: active-group",
+            text="Lifecycle activated: active-group",
+            json_text='{"operation":"activate","success":true,"requestedLabel":"active-group"}',
+            ts=0.0,
+            session_id="",
+            state={},
+            raw={},
+        )
+
+        self.assertEqual(EMPTY_STRING, cli._lifecycle_event_error(event))
+
+    def test_lifecycle_activate_returns_executor_failed_on_semantic_failure(self) -> None:
+        cli = self._build_cli(connected=True)
+        event = BridgeEvent(
+            type="out",
+            seq=1,
+            name="lifecycleActivate",
+            status="ok",
+            message="Unknown label: active-group",
+            text="Unknown label: active-group",
+            json_text='{"operation":"activate","success":false,"errorCode":"UNKNOWN_LABEL","errorMessage":"Unknown label: active-group"}',
+            ts=0.0,
+            session_id="",
+            state={},
+            raw={},
+        )
+        cli._wait_for_seq = lambda seq, timeout_sec=None: event  # type: ignore[method-assign]
+        cli._event_failed = lambda returned, command_name: False  # type: ignore[method-assign]
+
+        with patch("tools.can_nt.bridge_cli.lifecycle_activate", return_value=13):
+            result = cli._lifecycle_activate("active-group", "READ_ONLY")
+
+        self.assertNotEqual(result.code, SS__NORMAL)
+        self.assertEqual("Unknown label: active-group", result.message)
+
+    def test_lifecycle_activate_returns_normal_on_success_payload(self) -> None:
+        cli = self._build_cli(connected=True)
+        event = BridgeEvent(
+            type="out",
+            seq=1,
+            name="lifecycleActivate",
+            status="ok",
+            message="Lifecycle activated: active-group",
+            text="Lifecycle activated: active-group",
+            json_text='{"operation":"activate","success":true,"requestedLabel":"active-group"}',
+            ts=0.0,
+            session_id="",
+            state={},
+            raw={},
+        )
+        cli._wait_for_seq = lambda seq, timeout_sec=None: event  # type: ignore[method-assign]
+        cli._event_failed = lambda returned, command_name: False  # type: ignore[method-assign]
+
+        with patch("tools.can_nt.bridge_cli.lifecycle_activate", return_value=13):
+            result = cli._lifecycle_activate("active-group", "READ_ONLY")
+
+        self.assertEqual(result.code, SS__NORMAL)
+
+    def test_lifecycle_activate_returns_executor_failed_on_text_only_semantic_failure(self) -> None:
+        cli = self._build_cli(connected=True)
+        event = BridgeEvent(
+            type="out",
+            seq=1,
+            name="lifecycleActivate",
+            status="ok",
+            message="Unknown label: active-group",
+            text="Unknown label: active-group",
+            json_text="",
+            ts=0.0,
+            session_id="",
+            state={},
+            raw={},
+        )
+        cli._wait_for_seq = lambda seq, timeout_sec=None: event  # type: ignore[method-assign]
+        cli._event_failed = lambda returned, command_name: False  # type: ignore[method-assign]
+
+        with patch("tools.can_nt.bridge_cli.lifecycle_activate", return_value=13):
+            result = cli._lifecycle_activate("active-group", "READ_ONLY")
+
+        self.assertNotEqual(result.code, SS__NORMAL)
+        self.assertEqual("Unknown label: active-group", result.message)
+
+    def test_set_active_profile_syncs_robot_when_connected(self) -> None:
+        cli = self._build_cli(connected=True)
+        cli._wait_for_seq = lambda seq, timeout_sec=None: object()  # type: ignore[method-assign]
+        cli._event_failed = lambda returned, command_name: False  # type: ignore[method-assign]
+
+        with patch("tools.can_nt.bridge_cli.select_profile", return_value=21) as mock_select:
+            result = cli._set_active_profile(PROFILE_NAME)
+
+        self.assertEqual(result.code, SS__NORMAL)
+        mock_select.assert_called_once_with(cli._session, PROFILE_NAME)
+        self.assertEqual(PROFILE_NAME, cli._groups_profile)
+        self.assertEqual(PROFILE_NAME, cli._robot_selected_profile)
+
+    def test_exec_profile_command_sets_current_profile_when_connected(self) -> None:
+        cli = self._build_cli(connected=True)
+        cli._wait_for_seq = lambda seq, timeout_sec=None: object()  # type: ignore[method-assign]
+        cli._event_failed = lambda returned, command_name: False  # type: ignore[method-assign]
+
+        with patch("tools.can_nt.bridge_cli.select_profile", return_value=21) as mock_select:
+            result = cli._exec_command(["profile", PROFILE_NAME])
+
+        self.assertEqual(result.code, SS__NORMAL)
+        mock_select.assert_called_once_with(cli._session, PROFILE_NAME)
+        self.assertEqual(PROFILE_NAME, cli._robot_selected_profile)
+
+    def test_exec_prompt_prefers_robot_selected_profile_when_connected(self) -> None:
+        cli = self._build_cli(connected=True)
+        cli._groups_profile = "local-profile"
+        cli._robot_selected_profile = PROFILE_NAME
+
+        self.assertIn(f"-profile-{PROFILE_NAME}>", cli._prompt())
+
+    def test_show_profiles_local_matches_local_profile_summary(self) -> None:
+        cli = self._build_cli()
+        cli._groups_profile = PROFILE_NAME
+
+        profiles_output = io.StringIO()
+        with contextlib.redirect_stdout(profiles_output):
+            profiles_result = cli._show_local_profiles(json_output=False, pretty=False)
+
+        profile_output = io.StringIO()
+        with contextlib.redirect_stdout(profile_output):
+            profile_result = cli._show_local_profile("", json_output=False, pretty=False)
+
+        self.assertEqual(profiles_result.code, SS__NORMAL)
+        self.assertEqual(profile_result.code, SS__NORMAL)
+        self.assertEqual(profiles_output.getvalue(), profile_output.getvalue())
+        self.assertIn("selected=demo", profiles_output.getvalue())
+
+    def test_connect_batch_syncs_host_context_to_robot_selected_profile(self) -> None:
+        cli = self._build_cli(connected=False)
+        cli._groups_profile = "local-profile"
+
+        with (
+            patch("tools.can_nt.bridge_cli.connect", return_value=True),
+            patch.object(cli, "_query_robot_selected_profile", return_value=PROFILE_NAME),
+            patch("builtins.print") as mock_print,
+        ):
+            result = cli._exec_command(["connect"])
+
+        self.assertEqual(result.code, SS__NORMAL)
+        self.assertEqual(PROFILE_NAME, cli._groups_profile)
+        self.assertEqual(PROFILE_NAME, cli._robot_selected_profile)
+        self.assertTrue(
+            any(
+                "Using robot profile for this session." in str(call.args[0])
+                for call in mock_print.call_args_list
+                if call.args
+            )
+        )
+
+    def test_connect_adopts_empty_host_context_and_announces_robot_profile(self) -> None:
+        cli = self._build_cli(connected=False)
+        cli._batch = False
+        cli._groups_profile = None
+
+        with (
+            patch("tools.can_nt.bridge_cli.connect", return_value=True),
+            patch.object(cli, "_query_robot_selected_profile_after_connect", return_value=PROFILE_NAME),
+            patch("builtins.print") as mock_print,
+        ):
+            result = cli._exec_command(["connect"])
+
+        self.assertEqual(result.code, SS__NORMAL)
+        self.assertEqual(PROFILE_NAME, cli._groups_profile)
+        self.assertEqual(PROFILE_NAME, cli._robot_selected_profile)
+        self.assertTrue(
+            any(
+                "Profile context -> demo" in str(call.args[0])
+                for call in mock_print.call_args_list
+                if call.args
+            )
+        )
+
+    def test_connect_interactive_prompts_before_syncing_host_context(self) -> None:
+        cli = self._build_cli(connected=False)
+        cli._batch = False
+        cli._groups_profile = "local-profile"
+
+        with (
+            patch("tools.can_nt.bridge_cli.connect", return_value=True),
+            patch.object(cli, "_query_robot_selected_profile_after_connect", return_value=PROFILE_NAME),
+            patch.object(cli, "_confirm_yes_default", return_value=True) as mock_confirm,
+        ):
+            result = cli._exec_command(["connect"])
+
+        self.assertEqual(result.code, SS__NORMAL)
+        self.assertEqual(PROFILE_NAME, cli._groups_profile)
+        self.assertEqual(PROFILE_NAME, cli._robot_selected_profile)
+        mock_confirm.assert_called_once()
+
+    def test_execute_line_connect_uses_ast_connect_profile_sync(self) -> None:
+        cli = self._build_cli(connected=False)
+        cli._batch = False
+        cli._groups_profile = None
+
+        with (
+            patch("tools.can_nt.bridge_cli_ast.connect", return_value=True),
+            patch.object(cli._session, "ensure_handshake", return_value=True),
+            patch.object(cli, "_query_robot_selected_profile_after_connect", return_value=PROFILE_NAME),
+            patch("builtins.print") as mock_print,
+        ):
+            result = cli._execute_line("connect")
+
+        self.assertEqual(SS__NORMAL, result.code)
+        self.assertEqual(PROFILE_NAME, cli._groups_profile)
+        self.assertEqual(PROFILE_NAME, cli._robot_selected_profile)
+        self.assertTrue(
+            any(
+                "Profile context -> demo" in str(call.args[0])
+                for call in mock_print.call_args_list
+                if call.args
+            )
+        )
+
+    def test_show_profiles_local_reports_no_selected_context_when_none_chosen(self) -> None:
+        cli = self._build_cli()
+        cli._groups_profile = None
+
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            result = cli._show_local_profiles(json_output=False, pretty=False)
+
+        self.assertEqual(SS__NORMAL, result.code)
+        self.assertIn("selected=(none)", output.getvalue())
+        self.assertIn("active=(none)", output.getvalue())
+
+    def test_execute_line_profile_in_exec_mode_reaches_profile_handler(self) -> None:
+        cli = self._build_cli(connected=True)
+        ok_event = BridgeEvent(
+            type="out",
+            seq=1,
+            name="selectProfile",
+            status="ok",
+            message="Selected profile: demo",
+            text="Selected profile: demo",
+            json_text="",
+            ts=0.0,
+            session_id="",
+            state={},
+            raw={},
+        )
+        cli._wait_for_seq = lambda seq, timeout_sec=None: ok_event  # type: ignore[method-assign]
+        cli._event_failed = lambda returned, command_name: False  # type: ignore[method-assign]
+
+        with patch("tools.can_nt.bridge_cli.select_profile", return_value=21):
+            result = cli._execute_line("profile demo")
+
+        self.assertEqual(SS__NORMAL, result.code)
+        self.assertEqual(PROFILE_NAME, cli._groups_profile)
+
+    def test_set_active_profile_returns_failure_when_robot_blocks_profile_change(self) -> None:
+        cli = self._build_cli(connected=True)
+        cli._groups_profile = "local-profile"
+        blocked_event = BridgeEvent(
+            type="out",
+            seq=1,
+            name="selectProfile",
+            status="ok",
+            message="Profile change blocked: controlled lifecycle session is ACTIVE. Deactivate lifecycle first.",
+            text="Profile change blocked: controlled lifecycle session is ACTIVE. Deactivate lifecycle first.",
+            json_text="",
+            ts=0.0,
+            session_id="",
+            state={},
+            raw={},
+        )
+        cli._wait_for_seq = lambda seq, timeout_sec=None: blocked_event  # type: ignore[method-assign]
+        cli._event_failed = lambda returned, command_name: False  # type: ignore[method-assign]
+
+        with patch("tools.can_nt.bridge_cli.select_profile", return_value=21):
+            result = cli._set_active_profile(PROFILE_NAME)
+
+        self.assertNotEqual(SS__NORMAL, result.code)
+        self.assertEqual("local-profile", cli._groups_profile)
+
+    def test_query_robot_selected_profile_parses_text_fallback(self) -> None:
+        cli = self._build_cli(connected=True)
+        cli._fetch_robot_runtime_payload = lambda print_events=False: None  # type: ignore[method-assign]
+        text_event = BridgeEvent(
+            type="out",
+            seq=1,
+            name="showProfiles",
+            status="ok",
+            message="OK",
+            text="Profile:\n  active=test_minimal_25_9 (inactive)\n  selected=test_minimal_25_9\n",
+            json_text="",
+            ts=0.0,
+            session_id="",
+            state={},
+            raw={},
+        )
+        cli._wait_for_seq = lambda seq, timeout_sec=None, print_events=False, suppress_timeout_warning=True: text_event  # type: ignore[method-assign]
+        cli._event_failed = lambda returned, command_name: False  # type: ignore[method-assign]
+
+        with patch("tools.can_nt.bridge_cli.show_profiles", return_value=31):
+            selected = cli._query_robot_selected_profile()
+
+        self.assertEqual("test_minimal_25_9", selected)
+
+    def test_query_robot_selected_profile_falls_back_to_runtime_state(self) -> None:
+        cli = self._build_cli(connected=True)
+        cli._fetch_robot_runtime_payload = lambda print_events=False: {"selectedProfile": "test_minimal_25_9"}  # type: ignore[method-assign]
+
+        selected = cli._query_robot_selected_profile()
+
+        self.assertEqual("test_minimal_25_9", selected)
 
     def test_runtime_deactivate_uses_runtime_command_path(self) -> None:
         cli = self._build_cli(connected=True)

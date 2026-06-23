@@ -152,6 +152,18 @@ public final class BringupCore {
 
   /**
    * NAME
+   *   syncProfileTopologyFromRegistry - Rebuild wrapper topology from current registry/profile
+   *   data without forcing activation.
+   *
+   * SIDE EFFECTS
+   *   Replaces the current wrapper inventory when the profile-derived registry generation changed.
+   */
+  public void syncProfileTopologyFromRegistry() {
+    syncProfileRuntimeFromRegistry();
+  }
+
+  /**
+   * NAME
    *   getBuildMarker - Return the build marker string.
    *
    * RETURNS

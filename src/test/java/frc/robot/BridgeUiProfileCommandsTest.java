@@ -15,6 +15,7 @@ class BridgeUiProfileCommandsTest {
   private static final String CMD_PROFILE_ACTIVATE = "profileActivate";
   private static final String CMD_RUNTIME_ACTIVATE = "runtimeActivate";
   private static final String CMD_RUNTIME_DEACTIVATE = "runtimeDeactivate";
+  private static final String CMD_PROFILE_TOGGLE = "profileToggle";
   private static final String CMD_SHOW_PROFILES = "showProfiles";
   private static final String CMD_SHOW_PROFILE = "showProfile";
 
@@ -198,7 +199,89 @@ class BridgeUiProfileCommandsTest {
   }
 
   @Test
+  void selectProfileBlockedWhenControlledLifecycleIsActive() {
+    ProfileDeps deps = new ProfileDeps();
+    deps.nextName = "beta";
+    deps.controlledLifecycleActive = true;
+    BridgeUiProfileCommands commands = new BridgeUiProfileCommands(deps);
+    BridgeUiIngressPolicy.Ingress ingress = new BridgeUiIngressPolicy.Ingress(
+        CMD_SELECT_PROFILE,
+        new JsonObject(),
+        "clientA",
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        false);
+
+    BridgeUiCommandResult result = commands.execute(ingress, 0.0, false);
+
+    assertFalse(result.ok);
+    assertEquals(
+        "Profile change blocked: controlled lifecycle session is ACTIVE. Deactivate lifecycle first.",
+        result.message);
+  }
+
+  @Test
+  void profileToggleBlockedWhenControlledLifecycleIsActive() {
+    ProfileDeps deps = new ProfileDeps();
+    deps.controlledLifecycleActive = true;
+    BridgeUiProfileCommands commands = new BridgeUiProfileCommands(deps);
+    BridgeUiIngressPolicy.Ingress ingress = new BridgeUiIngressPolicy.Ingress(
+        CMD_PROFILE_TOGGLE,
+        new JsonObject(),
+        "clientA",
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        false);
+
+    BridgeUiCommandResult result = commands.execute(ingress, 0.0, false);
+
+    assertFalse(result.ok);
+    assertEquals(
+        "Profile change blocked: controlled lifecycle session is ACTIVE. Deactivate lifecycle first.",
+        result.message);
+  }
+
+  @Test
   void showProfilesJsonIncludesSelectedAndRuntimeState() {
+    ProfileDeps deps = new ProfileDeps();
+    deps.selectedProfileLabel = "beta";
+    deps.activeProfileLabel = "beta (inactive)";
+    deps.profileActive = false;
+    BridgeUiProfileCommands commands = new BridgeUiProfileCommands(deps);
+    JsonObject args = new JsonObject();
+    args.addProperty("json", true);
+    BridgeUiIngressPolicy.Ingress ingress = new BridgeUiIngressPolicy.Ingress(
+        CMD_SHOW_PROFILES,
+        args,
+        "clientA",
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        false);
+
+    BridgeUiCommandResult result = commands.execute(ingress, 0.0, false);
+
+    assertTrue(result.ok);
+    assertTrue(result.outJson.contains("\"selected\":\"beta\""));
+    assertTrue(result.outJson.contains("\"runtimeActive\":false"));
+  }
+
+  @Test
+  void showProfilesTextIncludesAvailableProfileNames() {
     ProfileDeps deps = new ProfileDeps();
     deps.selectedProfileLabel = "beta";
     deps.activeProfileLabel = "beta (inactive)";
@@ -220,8 +303,9 @@ class BridgeUiProfileCommandsTest {
     BridgeUiCommandResult result = commands.execute(ingress, 0.0, false);
 
     assertTrue(result.ok);
-    assertTrue(result.outJson.contains("\"selected\":\"beta\""));
-    assertTrue(result.outJson.contains("\"runtimeActive\":false"));
+    assertTrue(result.outText.contains("  available=2"));
+    assertTrue(result.outText.contains("    alpha"));
+    assertTrue(result.outText.contains("    beta"));
   }
 
   @Test
@@ -229,9 +313,11 @@ class BridgeUiProfileCommandsTest {
     ProfileDeps deps = new ProfileDeps();
     deps.nextName = "alpha";
     BridgeUiProfileCommands commands = new BridgeUiProfileCommands(deps);
+    JsonObject args = new JsonObject();
+    args.addProperty("json", true);
     BridgeUiIngressPolicy.Ingress ingress = new BridgeUiIngressPolicy.Ingress(
         CMD_SHOW_PROFILE,
-        new JsonObject(),
+        args,
         "clientA",
         true,
         true,
@@ -256,6 +342,7 @@ class BridgeUiProfileCommandsTest {
     private boolean activateActionRan;
     private boolean deactivateActionRan;
     private boolean deactivateCalled;
+    private boolean controlledLifecycleActive;
     private String activeRuntimeProfile = "";
     private String selectedProfileLabel = "alpha";
     private String activeProfileLabel = "alpha";
@@ -292,6 +379,11 @@ class BridgeUiProfileCommandsTest {
     @Override
     public boolean isRuntimeActivationAllowed() {
       return runtimeActivationAllowed;
+    }
+
+    @Override
+    public boolean isControlledLifecycleActive() {
+      return controlledLifecycleActive;
     }
 
     @Override
@@ -335,7 +427,7 @@ class BridgeUiProfileCommandsTest {
 
     @Override
     public Boolean parseUiArgBoolean(JsonObject args, String key) {
-      return true;
+      return args != null && args.has(key) ? args.get(key).getAsBoolean() : null;
     }
 
     @Override
@@ -358,7 +450,7 @@ class BridgeUiProfileCommandsTest {
 
     @Override
     public List<String> getProfileNames() {
-      return List.of("alpha");
+      return List.of("alpha", "beta");
     }
 
     @Override

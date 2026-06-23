@@ -38,6 +38,7 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
   private static final String TEXT_PROFILE_RUNTIME_ACTIVE_FMT = "  runtimeActive=%s";
   private static final String TEXT_PROFILE_DEFAULT_FMT = "  default=%s";
   private static final String TEXT_PROFILE_AVAILABLE_FMT = "  available=%d";
+  private static final String TEXT_PROFILE_AVAILABLE_NAME_FMT = "    %s";
   private static final String TEXT_PROFILE_NAME_FMT = "  name=%s";
   private static final String TEXT_PROFILE_DEVICES_HEADER_FMT = "  devices=%d";
   private static final String TEXT_PROFILE_DEVICE_FMT = "    %s";
@@ -51,6 +52,8 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
   private static final String TEXT_PROFILES_RELOAD_OK = "Profiles reloaded.";
   private static final String TEXT_PROFILES_RELOAD_FAILED = "Profiles reload failed: %s";
   private static final String MESSAGE_PROFILE_NOT_FOUND = "Profile not found.";
+  private static final String MESSAGE_PROFILE_CHANGE_BLOCKED_LIFECYCLE_ACTIVE =
+      "Profile change blocked: controlled lifecycle session is ACTIVE. Deactivate lifecycle first.";
 
   private static final String MESSAGE_SELECT_PROFILE_REQUIRED = "selectProfile requires args.name.";
   private static final String MESSAGE_SHOW_PROFILE_REQUIRED = "showProfile requires args.name.";
@@ -89,6 +92,8 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
     boolean isRuntimeDeclaredActive();
 
     boolean isRuntimeActivationAllowed();
+
+    boolean isControlledLifecycleActive();
 
     String getActiveCanProfileLabel();
 
@@ -155,6 +160,12 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
         executeProfilesReload(result);
         break;
       case CMD_PROFILE_TOGGLE:
+        if (dependencies.isControlledLifecycleActive()) {
+          result.ok = false;
+          result.message = MESSAGE_PROFILE_CHANGE_BLOCKED_LIFECYCLE_ACTIVE;
+          result.outText = result.message;
+          break;
+        }
         dependencies.selectNextProfile();
         dependencies.runProfileToggleAction();
         result.message = MESSAGE_PROFILE_SELECTED;
@@ -177,6 +188,12 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
   }
 
   private void executeSelectProfile(JsonObject args, BridgeUiCommandResult result) {
+    if (dependencies.isControlledLifecycleActive()) {
+      result.ok = false;
+      result.message = MESSAGE_PROFILE_CHANGE_BLOCKED_LIFECYCLE_ACTIVE;
+      result.outText = result.message;
+      return;
+    }
     String profileName = dependencies.parseUiArgString(args, ARG_NAME);
     if (profileName == null || profileName.isBlank()) {
       result.ok = false;
@@ -291,6 +308,11 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
         TEXT_PROFILE_DEFAULT_FMT,
         dependencies.getDefaultCanProfile())).append('\n');
     sb.append(String.format(TEXT_PROFILE_AVAILABLE_FMT, names.size()));
+    for (String name : names) {
+      if (name != null && !name.isBlank()) {
+        sb.append('\n').append(String.format(TEXT_PROFILE_AVAILABLE_NAME_FMT, name));
+      }
+    }
     return sb.toString();
   }
 

@@ -35,7 +35,14 @@ public final class RobotLocalCommandRegistry {
   private static final String UI_SECTION_SYSTEM = "System";
   private static final String UI_SECTION_SESSION = "Session";
   private static final String UI_SECTION_GROUPS = "Groups";
+  private static final String UI_SECTION_LIFECYCLE = "Lifecycle";
   private static final String UI_ARG_RESET_TRUE = "{\"reset\":true}";
+  private static final String UI_ARG_LIFECYCLE_ACTIVATE =
+      "{\"label\":\"active-group\",\"mode\":\"READ_ONLY\"}";
+  private static final String UI_ARG_LIFECYCLE_DEACTIVATE =
+      "{\"label\":\"active-group\"}";
+  private static final String UI_ARG_LIFECYCLE_SHOW_JSON =
+      "{\"json\":true}";
 
   public static final String COMMAND_ADD_MOTOR = "addMotor";
   public static final String COMMAND_ADD_ALL = "addAll";
@@ -94,6 +101,11 @@ public final class RobotLocalCommandRegistry {
   public static final String COMMAND_SHOW_BINDINGS = "showBindings";
   public static final String COMMAND_SHOW_SELECTED_DEVICE = "showSelectedDevice";
   public static final String COMMAND_SHOW_RUNTIME_STATE = "showRuntimeState";
+  public static final String COMMAND_LIFECYCLE_ACTIVATE = "lifecycleActivate";
+  public static final String COMMAND_LIFECYCLE_DEACTIVATE = "lifecycleDeactivate";
+  public static final String COMMAND_LIFECYCLE_DEACTIVATE_ACTIVE =
+      "lifecycleDeactivateActive";
+  public static final String COMMAND_SHOW_LIFECYCLE_STATE = "showLifecycleState";
   public static final String COMMAND_GROUP_CREATE = "groupCreate";
   public static final String COMMAND_GROUP_DELETE = "groupDelete";
   public static final String COMMAND_GROUP_ADD_DEVICE = "groupAddDevice";
@@ -307,6 +319,34 @@ public final class RobotLocalCommandRegistry {
     register(rows, groupDefinition(COMMAND_SHOW_BINDINGS, "Show Bindings", "Show runtime bindings.", false, legacyUiGroup));
     register(rows, groupDefinition(COMMAND_SHOW_SELECTED_DEVICE, "Show Selected Device", "Show selected device.", false, legacyUiGroup));
     register(rows, groupDefinition(COMMAND_SHOW_RUNTIME_STATE, "Show Runtime State", "Show runtime state payload.", false, legacyUiGroup));
+    register(rows, lifecycleDefinition(
+        COMMAND_LIFECYCLE_ACTIVATE,
+        "Lifecycle Activate",
+        "Activate one lifecycle device/group label.",
+        UI_ARG_LIFECYCLE_ACTIVATE,
+        false,
+        legacyUiGroup));
+    register(rows, lifecycleDefinition(
+        COMMAND_LIFECYCLE_DEACTIVATE,
+        "Lifecycle Deactivate",
+        "Deactivate the lifecycle session matching one requested label.",
+        UI_ARG_LIFECYCLE_DEACTIVATE,
+        false,
+        legacyUiGroup));
+    register(rows, lifecycleDefinition(
+        COMMAND_LIFECYCLE_DEACTIVATE_ACTIVE,
+        "Lifecycle Deactivate Active",
+        "Deactivate the current lifecycle session.",
+        "",
+        false,
+        legacyUiGroup));
+    register(rows, lifecycleDefinition(
+        COMMAND_SHOW_LIFECYCLE_STATE,
+        "Show Lifecycle State",
+        "Show controlled lifecycle state payload.",
+        UI_ARG_LIFECYCLE_SHOW_JSON,
+        false,
+        legacyUiGroup));
     register(rows, groupDefinition(COMMAND_GROUP_CREATE, "Group Create", "Create a group.", false, legacyUiGroup));
     register(rows, groupDefinition(COMMAND_GROUP_DELETE, "Group Delete", "Delete a group.", false, legacyUiGroup));
     register(rows, groupDefinition(COMMAND_GROUP_ADD_DEVICE, "Group Add Device", "Add a device to a group.", false, legacyUiGroup));
@@ -475,6 +515,28 @@ public final class RobotLocalCommandRegistry {
         label,
         description,
         "",
+        command);
+  }
+
+  private static RobotLocalCommandDefinition lifecycleDefinition(
+      String wireName,
+      String label,
+      String description,
+      String argsJson,
+      boolean showInUi,
+      RobotLocalCommand command) {
+    return new RobotLocalCommandDefinition(
+        wireName,
+        RobotLocalCommandGroup.GROUP,
+        RobotLocalInvocationKind.REMOTE,
+        false,
+        true,
+        false,
+        showInUi,
+        UI_SECTION_LIFECYCLE,
+        label,
+        description,
+        argsJson,
         command);
   }
 

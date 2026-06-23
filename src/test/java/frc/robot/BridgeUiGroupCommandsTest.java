@@ -20,6 +20,7 @@ class BridgeUiGroupCommandsTest {
   private static final String CMD_GROUP_REMOVE_DEVICE = "groupRemoveDevice";
   private static final String CMD_SHOW_DEVICE = "showDevice";
   private static final String CMD_SHOW_GROUPS = "showGroups";
+  private static final String CMD_SHOW_RUNTIME_STATE = "showRuntimeState";
   private static final String CMD_MANUAL_DEVICE_DUTY_SET = "manualDeviceDutySet";
   private static final String CMD_MANUAL_DEVICE_DUTY_CLEAR = "manualDeviceDutyClear";
   private static final String CMD_MANUAL_GROUP_DUTY_SET = "manualGroupDutySet";
@@ -39,6 +40,12 @@ class BridgeUiGroupCommandsTest {
   private static final String MSG_GROUP_DELETE_CONFIRM = "groupDelete requires confirm=true.";
   private static final String MSG_SHOW_DEVICE_REQUIRES = "showDevice requires args.name.";
   private static final String MSG_DEVICE_NOT_FOUND_PREFIX = "Device not found: ";
+  private static final String MSG_MANUAL_DUTY_SCOPE_BLOCKED =
+      "Manual duty blocked: device is outside the active controlled lifecycle scope.";
+  private static final String MSG_MANUAL_GROUP_DUTY_SCOPE_BLOCKED =
+      "Manual duty blocked: group contains device(s) outside the active controlled lifecycle scope.";
+  private static final String MSG_ACTIVE_GROUP_LOCKED =
+      "Active group membership is locked while controlled lifecycle session is ACTIVE. Deactivate lifecycle first.";
 
   private static final String GROUP_ALPHA = "alpha";
   private static final String GROUP_ACTIVE = "active-group";
@@ -159,6 +166,20 @@ class BridgeUiGroupCommandsTest {
   }
 
   @Test
+  void showRuntimeStateUsesRuntimeStateTextByDefault() {
+    TestDeps deps = new TestDeps();
+    BridgeUiGroupCommands commands = new BridgeUiGroupCommands(deps);
+
+    BridgeUiCommandResult result = commands.execute(ingress(CMD_SHOW_RUNTIME_STATE, new JsonObject()), 0.0, false);
+
+    assertTrue(result.ok);
+    assertTrue(deps.applyShowCalled);
+    assertFalse(deps.lastWantsJson);
+    assertEquals("runtimeStateText", deps.lastShowText);
+    assertEquals("runtimeStateText", result.outText);
+  }
+
+  @Test
   void manualDeviceDutySetActivatesSelectedDevice() {
     TestDeps deps = new TestDeps();
     deps.deviceByLabel.put(
@@ -189,8 +210,84 @@ class BridgeUiGroupCommandsTest {
   }
 
   @Test
+  void manualDeviceDutySetAllowsRightClickTestWhenRuntimeInactive() {
+    TestDeps deps = new TestDeps();
+    deps.runtimeActive = false;
+    deps.deviceByLabel.put(
+        DEVICE_MOTOR_1,
+        new BringupUtil.DeviceEntry(
+            DUTY_TEST_ID,
+            DUTY_TEST_MFG,
+            DUTY_TEST_DEVICE_TYPE,
+            "CAN",
+            DUTY_TEST_VENDOR,
+            DUTY_TEST_TYPE,
+            DEVICE_MOTOR_1,
+            DUTY_TEST_MOTOR,
+            null,
+            null,
+            null));
+    BridgeUiGroupCommands commands = new BridgeUiGroupCommands(deps);
+    JsonObject args = new JsonObject();
+    args.addProperty(KEY_NAME, DEVICE_MOTOR_1);
+    args.addProperty(KEY_DUTY, DUTY_HALF);
+
+    BridgeUiCommandResult result =
+        commands.execute(ingress(CMD_MANUAL_DEVICE_DUTY_SET, args), 0.0, true);
+
+    assertTrue(result.ok);
+    assertEquals(DEVICE_MOTOR_1, deps.selected.device);
+    assertTrue(deps.selected.enabled);
+  }
+
+  @Test
+  void manualDeviceDutySetBlocksDeviceOutsideControlledLifecycleScope() {
+    TestDeps deps = new TestDeps();
+    deps.controlledLifecycleActive = true;
+    deps.controlledLifecycleDeviceActiveByLabel.put(DEVICE_MOTOR_1, false);
+    deps.deviceByLabel.put(
+        DEVICE_MOTOR_1,
+        new BringupUtil.DeviceEntry(
+            DUTY_TEST_ID,
+            DUTY_TEST_MFG,
+            DUTY_TEST_DEVICE_TYPE,
+            "CAN",
+            DUTY_TEST_VENDOR,
+            DUTY_TEST_TYPE,
+            DEVICE_MOTOR_1,
+            DUTY_TEST_MOTOR,
+            null,
+            null,
+            null));
+    BridgeUiGroupCommands commands = new BridgeUiGroupCommands(deps);
+    JsonObject args = new JsonObject();
+    args.addProperty(KEY_NAME, DEVICE_MOTOR_1);
+    args.addProperty(KEY_DUTY, DUTY_HALF);
+
+    BridgeUiCommandResult result =
+        commands.execute(ingress(CMD_MANUAL_DEVICE_DUTY_SET, args), 0.0, true);
+
+    assertFalse(result.ok);
+    assertEquals(MSG_MANUAL_DUTY_SCOPE_BLOCKED, result.message);
+  }
+
+  @Test
   void manualDeviceDutyClearDisablesSelectedDevice() {
     TestDeps deps = new TestDeps();
+    deps.deviceByLabel.put(
+        DEVICE_MOTOR_1,
+        new BringupUtil.DeviceEntry(
+            DUTY_TEST_ID,
+            DUTY_TEST_MFG,
+            DUTY_TEST_DEVICE_TYPE,
+            "CAN",
+            DUTY_TEST_VENDOR,
+            DUTY_TEST_TYPE,
+            DEVICE_MOTOR_1,
+            DUTY_TEST_MOTOR,
+            null,
+            null,
+            null));
     deps.selected.device = DEVICE_MOTOR_1;
     deps.selected.enabled = true;
     BridgeUiGroupCommands commands = new BridgeUiGroupCommands(deps);
@@ -203,6 +300,20 @@ class BridgeUiGroupCommandsTest {
     assertTrue(result.ok);
     assertEquals(EMPTY, deps.selected.device);
     assertFalse(deps.selected.enabled);
+  }
+
+  @Test
+  void manualDeviceDutyClearRejectsUnknownDevice() {
+    TestDeps deps = new TestDeps();
+    BridgeUiGroupCommands commands = new BridgeUiGroupCommands(deps);
+    JsonObject args = new JsonObject();
+    args.addProperty(KEY_NAME, DEVICE_MOTOR_1);
+
+    BridgeUiCommandResult result =
+        commands.execute(ingress(CMD_MANUAL_DEVICE_DUTY_CLEAR, args), 0.0, true);
+
+    assertFalse(result.ok);
+    assertEquals("Unknown device: " + DEVICE_MOTOR_1, result.message);
   }
 
   @Test
@@ -223,6 +334,57 @@ class BridgeUiGroupCommandsTest {
   }
 
   @Test
+  void manualGroupDutySetAllowsRightClickTestWhenRuntimeInactive() {
+    TestDeps deps = new TestDeps();
+    deps.runtimeActive = false;
+    deps.bridgeGroups.createGroup(GROUP_MOTORS);
+    BridgeUiGroupCommands commands = new BridgeUiGroupCommands(deps);
+    JsonObject args = new JsonObject();
+    args.addProperty("group", GROUP_MOTORS);
+    args.addProperty(KEY_DUTY, DUTY_HALF);
+
+    BridgeUiCommandResult result =
+        commands.execute(ingress(CMD_MANUAL_GROUP_DUTY_SET, args), 0.0, true);
+
+    assertTrue(result.ok);
+    assertEquals(GROUP_MOTORS, deps.lastManualGroupName);
+    assertEquals(DUTY_HALF, deps.lastManualGroupDuty);
+  }
+
+  @Test
+  void manualGroupDutySetBlocksGroupOutsideControlledLifecycleScope() {
+    TestDeps deps = new TestDeps();
+    deps.controlledLifecycleActive = true;
+    deps.bridgeGroups.createGroup(GROUP_MOTORS);
+    deps.bridgeGroups.addDevice(GROUP_MOTORS, DEVICE_MOTOR_1, false);
+    deps.controlledLifecycleDeviceActiveByLabel.put(DEVICE_MOTOR_1, false);
+    deps.deviceByLabel.put(
+        DEVICE_MOTOR_1,
+        new BringupUtil.DeviceEntry(
+            DUTY_TEST_ID,
+            DUTY_TEST_MFG,
+            DUTY_TEST_DEVICE_TYPE,
+            "CAN",
+            DUTY_TEST_VENDOR,
+            DUTY_TEST_TYPE,
+            DEVICE_MOTOR_1,
+            DUTY_TEST_MOTOR,
+            null,
+            null,
+            null));
+    BridgeUiGroupCommands commands = new BridgeUiGroupCommands(deps);
+    JsonObject args = new JsonObject();
+    args.addProperty("group", GROUP_MOTORS);
+    args.addProperty(KEY_DUTY, DUTY_HALF);
+
+    BridgeUiCommandResult result =
+        commands.execute(ingress(CMD_MANUAL_GROUP_DUTY_SET, args), 0.0, true);
+
+    assertFalse(result.ok);
+    assertEquals(MSG_MANUAL_GROUP_DUTY_SCOPE_BLOCKED, result.message);
+  }
+
+  @Test
   void manualGroupDutyClearUsesGroupDependencyPath() {
     TestDeps deps = new TestDeps();
     deps.bridgeGroups.createGroup(GROUP_MOTORS);
@@ -235,6 +397,63 @@ class BridgeUiGroupCommandsTest {
 
     assertTrue(result.ok);
     assertEquals(GROUP_MOTORS, deps.lastManualGroupCleared);
+  }
+
+  @Test
+  void groupAddDeviceBlocksActiveGroupEditWhileControlledLifecycleActive() {
+    TestDeps deps = new TestDeps();
+    deps.controlledLifecycleActive = true;
+    deps.bridgeGroups.createGroup(GROUP_ACTIVE);
+    deps.deviceByLabel.put(
+        DEVICE_MOTOR_1,
+        new BringupUtil.DeviceEntry(
+            DUTY_TEST_ID,
+            DUTY_TEST_MFG,
+            DUTY_TEST_DEVICE_TYPE,
+            "CAN",
+            DUTY_TEST_VENDOR,
+            DUTY_TEST_TYPE,
+            DEVICE_MOTOR_1,
+            DUTY_TEST_MOTOR,
+            null,
+            null,
+            null));
+    BridgeUiGroupCommands commands = new BridgeUiGroupCommands(deps);
+    JsonObject args = new JsonObject();
+    args.addProperty(KEY_GROUP, GROUP_ACTIVE);
+    args.addProperty(KEY_DEVICE, DEVICE_MOTOR_1);
+
+    BridgeUiCommandResult result =
+        commands.execute(ingress(CMD_GROUP_ADD_DEVICE, args), 0.0, false);
+
+    assertFalse(result.ok);
+    assertEquals(MSG_ACTIVE_GROUP_LOCKED, result.message);
+  }
+
+  @Test
+  void manualGroupDutyClearRequiresGroup() {
+    TestDeps deps = new TestDeps();
+    BridgeUiGroupCommands commands = new BridgeUiGroupCommands(deps);
+
+    BridgeUiCommandResult result =
+        commands.execute(ingress(CMD_MANUAL_GROUP_DUTY_CLEAR, new JsonObject()), 0.0, true);
+
+    assertFalse(result.ok);
+    assertEquals("manualGroupDutyClear requires args.group.", result.message);
+  }
+
+  @Test
+  void manualGroupDutyClearRejectsUnknownGroup() {
+    TestDeps deps = new TestDeps();
+    BridgeUiGroupCommands commands = new BridgeUiGroupCommands(deps);
+    JsonObject args = new JsonObject();
+    args.addProperty(KEY_GROUP, GROUP_MOTORS);
+
+    BridgeUiCommandResult result =
+        commands.execute(ingress(CMD_MANUAL_GROUP_DUTY_CLEAR, args), 0.0, true);
+
+    assertFalse(result.ok);
+    assertEquals(MSG_GROUP_NOT_FOUND_PREFIX + GROUP_MOTORS, result.message);
   }
 
   @Test
@@ -331,6 +550,9 @@ class BridgeUiGroupCommandsTest {
     private String lastManualGroupName = EMPTY;
     private double lastManualGroupDuty = 0.0;
     private String lastManualGroupCleared = EMPTY;
+    private boolean runtimeActive = true;
+    private boolean controlledLifecycleActive;
+    private final Map<String, Boolean> controlledLifecycleDeviceActiveByLabel = new HashMap<>();
 
     @Override
     public Boolean parseUiArgBoolean(JsonObject args, String key) {
@@ -441,6 +663,11 @@ class BridgeUiGroupCommandsTest {
     }
 
     @Override
+    public String buildRuntimeStateText() {
+      return "runtimeStateText";
+    }
+
+    @Override
     public String buildStatusText() {
       return "statusText";
     }
@@ -475,7 +702,17 @@ class BridgeUiGroupCommandsTest {
 
     @Override
     public boolean isRuntimeActive() {
-      return true;
+      return runtimeActive;
+    }
+
+    @Override
+    public boolean isControlledLifecycleActive() {
+      return controlledLifecycleActive;
+    }
+
+    @Override
+    public boolean isControlledLifecycleDeviceActive(String deviceName) {
+      return Boolean.TRUE.equals(controlledLifecycleDeviceActiveByLabel.get(deviceName));
     }
 
     @Override

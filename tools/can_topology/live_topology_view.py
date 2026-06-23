@@ -269,6 +269,7 @@ ACTIVE_GROUP_RULES_TEXT = "Rules: Active Add appends next created motor in profi
 ACTIVE_GROUP_MEMBER_ENABLED = "enabled"
 ACTIVE_GROUP_MEMBER_DISABLED = "disabled"
 ACTIVE_GROUP_MEMBER_ABSENT = "not in group"
+ACTIVE_GROUP_MEMBER_LOCKED = "locked"
 ACTIVE_GROUP_PRIMARY_YES = "PRIMARY"
 ACTIVE_GROUP_SELECTED_YES = "selected"
 ACTIVE_GROUP_SELECTED_NO = "not selected"
@@ -914,6 +915,7 @@ class LiveTopologyView(ttk.Frame):
         self._dio_links: List[Tuple[int, int]] = []
         self._bridge_groups: List[Dict[str, object]] = []
         self._runtime_groups: List[Dict[str, object]] = []
+        self._controlled_lifecycle_active = False
         self._show_groups = True
         self._runtime_fingerprint: Optional[Tuple[object, ...]] = None
         self._runtime_state_notice_text = EMPTY_STRING
@@ -1458,6 +1460,7 @@ class LiveTopologyView(ttk.Frame):
         runtime_active: Optional[bool] = None
         robot_enabled: Optional[bool] = None
         robot_estopped: Optional[bool] = None
+        controlled_lifecycle_active = False
         runtime_groups: List[Dict[str, object]] = []
         if isinstance(payload, dict):
             active_raw = payload.get("runtimeActive")
@@ -1469,6 +1472,9 @@ class LiveTopologyView(ttk.Frame):
             estopped_raw = payload.get("estopped")
             if isinstance(estopped_raw, bool):
                 robot_estopped = estopped_raw
+            controlled_raw = payload.get("controlledLifecycleActive")
+            if isinstance(controlled_raw, bool):
+                controlled_lifecycle_active = controlled_raw
             devices = payload.get("devices") if isinstance(payload.get("devices"), list) else []
             for device in devices:
                 if not isinstance(device, dict):
@@ -1561,6 +1567,7 @@ class LiveTopologyView(ttk.Frame):
             selected_label,
             selected_enabled,
             runtime_active,
+            controlled_lifecycle_active,
             robot_enabled,
             robot_estopped,
             tuple(
@@ -1578,6 +1585,7 @@ class LiveTopologyView(ttk.Frame):
         )
         self._runtime_state = mapped
         self._runtime_groups = runtime_groups
+        self._controlled_lifecycle_active = controlled_lifecycle_active
         self._selected_label = selected_label
         self._selected_enabled = selected_enabled
         self._apply_runtime_notice_from_state(runtime_active, robot_enabled, robot_estopped)
@@ -2655,9 +2663,12 @@ class LiveTopologyView(ttk.Frame):
                     if checked and label_key == primary_label.strip().lower()
                     else EMPTY_STRING
                 )
+                checkbox_state = "disabled" if self._controlled_lifecycle_active else "normal"
                 detail_parts = []
                 if primary_text:
                     detail_parts.append(primary_text)
+                if self._controlled_lifecycle_active:
+                    detail_parts.append(ACTIVE_GROUP_MEMBER_LOCKED)
                 detail_parts.append(enabled_text)
                 detail_parts.append(f"{ACTIVE_GROUP_PRESENT_PREFIX}{presence_text}")
                 detail_parts.append(f"{ACTIVE_GROUP_FULL_PROBE_PREFIX}{probe_bucket or '--'}/{probe_age}")
@@ -2674,11 +2685,12 @@ class LiveTopologyView(ttk.Frame):
                     variable = tk.BooleanVar(value=checked)
                     top_line = ttk.Frame(row)
                     top_line.pack(fill="x")
-                    ttk.Checkbutton(
+                    checkbox = ttk.Checkbutton(
                         top_line,
                         variable=variable,
                         command=lambda row_label=label: self._on_active_group_member_checkbox_toggled(row_label),
-                    ).pack(side="left")
+                    )
+                    checkbox.pack(side="left")
                     label_var = tk.StringVar(value=label)
                     ttk.Label(top_line, textvariable=label_var, anchor="w").pack(side="left")
                     detail_var = tk.StringVar(value=" | ".join(detail_parts))
@@ -2695,12 +2707,14 @@ class LiveTopologyView(ttk.Frame):
                         "label_var": label_var,
                         "detail_var": detail_var,
                         "variable": variable,
+                        "checkbox": checkbox,
                     }
                     self._active_group_row_widgets[label_key] = widgets
                     self._active_group_member_vars[label_key] = variable
                 label_var = widgets.get("label_var")
                 detail_var = widgets.get("detail_var")
                 variable = widgets.get("variable")
+                checkbox = widgets.get("checkbox")
                 if isinstance(label_var, tk.StringVar):
                     label_var.set(label)
                 if isinstance(detail_var, tk.StringVar):
@@ -2708,6 +2722,8 @@ class LiveTopologyView(ttk.Frame):
                 if isinstance(variable, tk.BooleanVar):
                     variable.set(checked)
                     self._active_group_member_vars[label_key] = variable
+                if isinstance(checkbox, ttk.Checkbutton):
+                    checkbox.configure(state=checkbox_state)
         finally:
             self._active_group_member_update_in_progress = False
 
@@ -2717,6 +2733,8 @@ class LiveTopologyView(ttk.Frame):
             _on_active_group_member_checkbox_toggled - Forward one active-group membership toggle to the owning UI.
         """
         if self._active_group_member_update_in_progress:
+            return
+        if self._controlled_lifecycle_active:
             return
         callback = self._on_active_group_member_toggled_cb
         if not callable(callback):

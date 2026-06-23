@@ -14,6 +14,8 @@ class RobotLocalCommandRegistryTest {
   private static final String JSON_KEY_COMMANDS = "commands";
   private static final String JSON_KEY_NAME = "name";
   private static final String JSON_KEY_SHOW_IN_HOST_UI = "showInHostUi";
+  private static final String COMMAND_LIFECYCLE_ACTIVATE = "lifecycleActivate";
+  private static final String COMMAND_SHOW_LIFECYCLE_STATE = "showLifecycleState";
 
   @Test
   void registryResolvesEveryDeclaredCommand() {
@@ -47,5 +49,13 @@ class RobotLocalCommandRegistryTest {
     assertTrue(foundAddAll);
     assertTrue(foundStop);
     assertFalse(commands.isEmpty());
+  }
+
+  @Test
+  void registryIncludesLifecycleCommands() {
+    assertNotNull(RobotLocalCommandRegistry.definition(COMMAND_LIFECYCLE_ACTIVATE));
+    assertNotNull(RobotLocalCommandRegistry.definition(COMMAND_SHOW_LIFECYCLE_STATE));
+    assertTrue(RobotLocalCommandRegistry.isKnownCommand(COMMAND_LIFECYCLE_ACTIVATE));
+    assertTrue(RobotLocalCommandRegistry.isKnownCommand(COMMAND_SHOW_LIFECYCLE_STATE));
   }
 }

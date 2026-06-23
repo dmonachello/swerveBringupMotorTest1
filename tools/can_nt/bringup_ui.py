@@ -37,10 +37,12 @@ from .bridge_ops import (
     connect,
     download_current_config,
     disconnect,
+    lifecycle_activate,
+    lifecycle_deactivate,
+    lifecycle_deactivate_active,
     push_config,
-    runtime_activate,
-    runtime_deactivate,
     send_command,
+    show_lifecycle_state,
     show_runtime_state,
     select_test_by_name,
     ui_disconnect,
@@ -108,6 +110,13 @@ from tools.common.app_versions import (
     format_version_line,
 )
 from tools.common.build_info import build_lines
+from tools.common.profile_session import (
+    SYNC_ACTION_ADOPT,
+    SYNC_ACTION_MISSING_LOCAL,
+    SYNC_ACTION_PROMPT,
+    decide_host_profile_sync,
+    normalize_profile_name as normalize_profile_name_shared,
+)
 from .can_profiles import get_profile, get_profiles_load_error, list_profiles, reload_profiles
 from .can_profiles import get_default_profile
 from tools.config.schema_store import ConfigSchemaStore
@@ -181,11 +190,12 @@ NT_UI_STATE_ACTIVE_RUNTIME_PROFILE = "state/activeRuntimeProfile"
 DEFAULT_RUNTIME_STATE_RATE_HZ = 2.0
 ACTIVE_MANUAL_RUNTIME_STATE_RATE_HZ = 10.0
 DEFAULT_RUNTIME_STATE_RATE_TEXT = "2"
-BUTTON_RUNTIME_ACTIVATE = "Runtime Activate"
-BUTTON_RUNTIME_DEACTIVATE = "Runtime Deactivate"
+BUTTON_LIFECYCLE_ACTIVATE = "Lifecycle Activate"
+BUTTON_LIFECYCLE_DEACTIVATE = "Lifecycle Deactivate"
 BUTTON_PUSH_CONFIG = "Push Config"
 BUTTON_DOWNLOAD_CONFIG = "Download Current Config"
 BUTTON_SHOW_RUNTIME_STATE = "Show Runtime State"
+BUTTON_SHOW_LIFECYCLE_STATE = "Show Lifecycle State"
 OUTPUT_NOT_CONNECTED = "Not connected: command blocked."
 OUTPUT_BUSY = "Busy: wait for current command to finish."
 OUTPUT_NO_PROFILE = "No profile selected."
@@ -195,6 +205,10 @@ OUTPUT_PUSH_START_FMT = "PUSH {path} profile={profile}"
 OUTPUT_DOWNLOAD_START_FMT = "DOWNLOAD {path}"
 OUTPUT_RUNTIME_ACTIVATE_FMT = "CMD runtimeActivate \"{profile}\""
 OUTPUT_RUNTIME_DEACTIVATE = "CMD runtimeDeactivate"
+OUTPUT_LIFECYCLE_ACTIVATE_FMT = "CMD lifecycleActivate \"{label}\" mode={mode}"
+OUTPUT_LIFECYCLE_DEACTIVATE_FMT = "CMD lifecycleDeactivate \"{label}\""
+OUTPUT_LIFECYCLE_DEACTIVATE_ACTIVE = "CMD lifecycleDeactivateActive"
+OUTPUT_SELECTED_PROFILE_PREFIX = "Selected profile: "
 OUTPUT_GROUP_RUN_FMT = "CMD groupRunTest \"{group}\""
 OUTPUT_OWNER_REQUIRED = "Owning control client required. Use Reconnect UI Session to reclaim control."
 DOWNLOAD_FILENAME = "bringup_system.downloaded.json"
@@ -237,6 +251,12 @@ MANUAL_DUTY_BLOCKED_STALE_TEXT = "Manual motor control blocked: robot state stal
 MANUAL_DUTY_BLOCKED_ESTOP_TEXT = "Manual motor control blocked: robot estopped."
 MANUAL_DUTY_BLOCKED_DISABLED_TEXT = "Manual motor control blocked: robot disabled."
 MANUAL_DUTY_BLOCKED_RUNTIME_TEXT = "Manual motor control blocked: runtime inactive."
+MANUAL_DUTY_BLOCKED_CONTROLLED_SCOPE_TEXT = (
+    "Manual motor control blocked: device is outside the active controlled lifecycle scope."
+)
+ACTIVE_GROUP_LOCKED_TEXT = (
+    "Active group membership is locked while controlled lifecycle session is ACTIVE. Deactivate lifecycle first."
+)
 MANUAL_DUTY_BUSY_TEXT = "Manual motor control blocked: command in flight."
 MANUAL_DUTY_SCALE_ELEMENT_SLIDER = "slider"
 MANUAL_DUTY_NO_LABEL = ""
@@ -585,6 +605,8 @@ INVENTORY_KEY_ACTION_KIND = "actionKind"
 INVENTORY_KEY_SOURCE = "source"
 KEY_NAME = "name"
 CMD_SHOW_RUNTIME_STATE = "showRuntimeState"
+CMD_SHOW_LIFECYCLE_STATE = "showLifecycleState"
+LIFECYCLE_DEFAULT_MODE = "READ_ONLY"
 ACTION_KIND_REMOTE_COMMAND = "remoteCommand"
 ACTION_SOURCE_ROBOT = "robot"
 DSL_FILE_TYPES = (("DSL files", "*.dsl"), ("Text files", "*.txt"), ("All files", "*.*"))
@@ -836,10 +858,8 @@ def _normalize_profile_name(profile_name: object) -> str:
     NAME
         _normalize_profile_name - Return a trimmed profile name or PROFILE_NONE.
     """
-    if not isinstance(profile_name, str):
-        return PROFILE_NONE
-    name = profile_name.strip()
-    if not name or name == PROFILE_NONE:
+    name = normalize_profile_name_shared(profile_name)
+    if not name:
         return PROFILE_NONE
     return name
 
@@ -1351,6 +1371,7 @@ class BringupControlUI(tk.Tk):
         self._runtime_state_pending_at = 0.0
         self._runtime_state_timeout_sec = 0.6
         self._runtime_active_known: Optional[bool] = None
+        self._controlled_lifecycle_active_known: Optional[bool] = None
         self._robot_enabled_known = True
         self._robot_estopped_known = False
         self._runtime_state_notice_text = NT_VALUE_EMPTY
@@ -1391,6 +1412,7 @@ class BringupControlUI(tk.Tk):
         self._robot_selected_profile = PROFILE_NONE
         self._robot_active_runtime_profile = PROFILE_NONE
         self._last_profile_context = PROFILE_NONE
+        self._last_profile_mismatch_prompt: Optional[Tuple[str, str]] = None
         self._ui_command_prefs = _load_ui_command_prefs()
         self._ui_auto_select_default_profile = _load_ui_auto_select_default_pref()
         self._ui_show_visibility_tab = _load_ui_show_visibility_tab_pref()
@@ -1501,13 +1523,16 @@ class BringupControlUI(tk.Tk):
             header, text=BUTTON_DOWNLOAD_CONFIG, command=self._download_current_config_from_ui
         ).pack(side="left", padx=(6, 0))
         ttk.Button(
-            header, text=BUTTON_RUNTIME_ACTIVATE, command=self._runtime_activate_from_ui
-        ).pack(side="left", padx=(10, 0))
-        ttk.Button(
-            header, text=BUTTON_RUNTIME_DEACTIVATE, command=self._runtime_deactivate_from_ui
+            header, text=BUTTON_SHOW_RUNTIME_STATE, command=self._show_runtime_state_from_ui
         ).pack(side="left", padx=(6, 0))
         ttk.Button(
-            header, text=BUTTON_SHOW_RUNTIME_STATE, command=self._show_runtime_state_from_ui
+            header, text=BUTTON_LIFECYCLE_ACTIVATE, command=self._lifecycle_activate_from_ui
+        ).pack(side="left", padx=(10, 0))
+        ttk.Button(
+            header, text=BUTTON_LIFECYCLE_DEACTIVATE, command=self._lifecycle_deactivate_from_ui
+        ).pack(side="left", padx=(6, 0))
+        ttk.Button(
+            header, text=BUTTON_SHOW_LIFECYCLE_STATE, command=self._show_lifecycle_state_from_ui
         ).pack(side="left", padx=(6, 0))
 
         self._selected_test_var = tk.StringVar(value=tests[0])
@@ -2451,6 +2476,58 @@ class BringupControlUI(tk.Tk):
         self._last_profile_context = name
         self.after_idle(self._refresh_evidence_view)
 
+    def _apply_host_profile_context_only(self, profile_name: object, reload_views: bool) -> None:
+        """
+        NAME
+            _apply_host_profile_context_only - Switch local UI profile context without sending robot commands.
+        """
+        name = _normalize_profile_name(profile_name)
+        if name == PROFILE_NONE or not hasattr(self, "_profile_box"):
+            return
+        self._profile_box.set(name)
+        self._last_selected_profile = name
+        self._apply_profile_selection(name, reload_views=reload_views)
+
+    def _maybe_prompt_host_profile_context_sync(self) -> None:
+        """
+        NAME
+            _maybe_prompt_host_profile_context_sync - Offer to align local UI context to the robot-selected profile.
+        """
+        if not hasattr(self, "_profile_box"):
+            return
+        available_profiles = tuple(str(value) for value in self._profile_box.cget("values"))
+        decision = decide_host_profile_sync(
+            self._selected_profile_name(),
+            self._robot_selected_profile,
+            available_profiles,
+        )
+        robot_selected = decision.robot_profile or PROFILE_NONE
+        local_selected = decision.host_profile or PROFILE_NONE
+        if decision.action not in (SYNC_ACTION_ADOPT, SYNC_ACTION_MISSING_LOCAL, SYNC_ACTION_PROMPT):
+            self._last_profile_mismatch_prompt = None
+            return
+        mismatch_key = (local_selected, robot_selected)
+        if self._last_profile_mismatch_prompt == mismatch_key:
+            return
+        if decision.action == SYNC_ACTION_MISSING_LOCAL:
+            self._last_profile_mismatch_prompt = mismatch_key
+            return
+        if decision.action == SYNC_ACTION_ADOPT:
+            self._last_profile_mismatch_prompt = mismatch_key
+            self._apply_host_profile_context_only(robot_selected, reload_views=True)
+            return
+        self._last_profile_mismatch_prompt = mismatch_key
+        if messagebox.askyesno(
+            "Profile Context Mismatch",
+            (
+                f"Robot selected profile is '{robot_selected}', but the UI is using "
+                f"'{local_selected}'.\n\nSwitch the UI to the robot profile?"
+            ),
+            parent=self,
+            default=messagebox.YES,
+        ):
+            self._apply_host_profile_context_only(robot_selected, reload_views=True)
+
     def _apply_profile_selection(self, profile_name: object, reload_views: bool) -> None:
         """
         NAME
@@ -2610,8 +2687,36 @@ class BringupControlUI(tk.Tk):
             return MANUAL_DUTY_BLOCKED_ESTOP_TEXT
         if not self._robot_enabled_known:
             return MANUAL_DUTY_BLOCKED_DISABLED_TEXT
-        if self._runtime_active_known is False:
-            return MANUAL_DUTY_BLOCKED_RUNTIME_TEXT
+        return NT_VALUE_EMPTY
+
+    def _is_manual_duty_target_allowed(self, label: object) -> bool:
+        """
+        NAME
+            _is_manual_duty_target_allowed - Return whether one target label is eligible for manual duty.
+        """
+        clean_label = str(label or NT_VALUE_EMPTY).strip().lower()
+        if not clean_label:
+            return False
+        runtime_device = self._latest_runtime_devices.get(clean_label, {})
+        if not isinstance(runtime_device, dict):
+            return False
+        if self._controlled_lifecycle_active_known is True:
+            lifecycle_state = str(
+                runtime_device.get("lifecycleState", NT_VALUE_EMPTY)
+            ).strip()
+            return lifecycle_state == "controlled-active"
+        return bool(runtime_device.get("testable", False))
+
+    def _manual_duty_scope_block_message_for_targets(self, targets: List[str]) -> str:
+        """
+        NAME
+            _manual_duty_scope_block_message_for_targets - Return a lifecycle-scope block reason for manual duty targets.
+        """
+        if self._controlled_lifecycle_active_known is not True:
+            return NT_VALUE_EMPTY
+        for label in targets:
+            if not self._is_manual_duty_target_allowed(label):
+                return MANUAL_DUTY_BLOCKED_CONTROLLED_SCOPE_TEXT
         return NT_VALUE_EMPTY
 
     def _is_manual_motor_node(self, node: object) -> bool:
@@ -2643,6 +2748,10 @@ class BringupControlUI(tk.Tk):
             label = str(getattr(node, "label", NT_VALUE_EMPTY)).strip()
         if not label:
             return
+        scope_blocked = self._manual_duty_scope_block_message_for_targets([label])
+        if scope_blocked:
+            self._append_output(scope_blocked)
+            return
         self._open_manual_duty_targets(label, [label], int(event.x_root), int(event.y_root))
 
     def _on_live_group_right_click(self, group: Dict[str, Any], _event: tk.Event) -> None:
@@ -2661,6 +2770,10 @@ class BringupControlUI(tk.Tk):
         if not targets:
             self._append_output(f"Group has no motor targets: {group_name}")
             return
+        scope_blocked = self._manual_duty_scope_block_message_for_targets(targets)
+        if scope_blocked:
+            self._append_output(scope_blocked)
+            return
         self._open_manual_group_duty_targets(group_name, targets, int(_event.x_root), int(_event.y_root))
 
     def _on_active_group_member_toggled(self, label: str, enabled: bool) -> None:
@@ -2670,6 +2783,10 @@ class BringupControlUI(tk.Tk):
         """
         clean_label = str(label or NT_VALUE_EMPTY).strip()
         if not clean_label:
+            return
+        if self._controlled_lifecycle_active_known is True:
+            self._append_output(ACTIVE_GROUP_LOCKED_TEXT)
+            self.after_idle(self._request_runtime_state_refresh)
             return
         if not self._tcp_connected:
             self._append_output(OUTPUT_NOT_CONNECTED)
@@ -2751,7 +2868,13 @@ class BringupControlUI(tk.Tk):
             self._append_output(MANUAL_DUTY_BUSY_TEXT)
             return
         self._request_runtime_state_refresh()
-        self._open_manual_duty_popup(group_name, targets, group_name, x_root, y_root)
+        self._open_manual_duty_popup(
+            group_name,
+            targets,
+            group_name,
+            x_root,
+            y_root,
+        )
         for live_view in self._iter_live_views():
             live_view.set_group_run_inspector(group_name, targets)
 
@@ -5128,7 +5251,7 @@ class BringupControlUI(tk.Tk):
         """
         lines = [
             "Purpose:",
-            "  Manage selected profile, config sync, runtime activation, and incremental bringup.",
+            "  Manage selected profile, config sync, controlled activation, and incremental bringup.",
             "",
             "Toggle Profile:",
             "  Switches to the next profile defined in bringup_system.json.",
@@ -5151,12 +5274,12 @@ class BringupControlUI(tk.Tk):
             "  Fetches the robot's current bringup_system.json over REST and saves it locally.",
             "  Use this to re-anchor the host UI to the robot's current config.",
             "",
-            "Runtime Activate:",
-            "  Explicitly activates the selected profile runtime on the robot.",
-            "  This is the only UI action that should activate runtime.",
+            "Lifecycle Activate:",
+            "  Activates the active-group controlled session on the robot.",
+            "  Use this in enabled teleop before running motors.",
             "",
-            "Runtime Deactivate:",
-            "  Explicitly deactivates the active runtime on the robot.",
+            "Lifecycle Deactivate:",
+            "  Deactivates the current controlled session on the robot.",
             "",
             "Add Motor:",
             "  Adds the next motor from the selected profile to the incremental bringup list.",
@@ -5207,16 +5330,9 @@ class BringupControlUI(tk.Tk):
         NAME
             _refresh_tests_for_profile - Refresh tests dropdown for a profile.
         """
-        test_boxes = self._test_selection_boxes()
-        if not test_boxes:
-            return
         name = _normalize_profile_name(profile_name)
         tests = _load_tests(name) or [PROFILE_NONE]
-        for box in test_boxes:
-            box["values"] = tests
-        if tests:
-            self._selected_test_var.set(tests[0])
-            self._last_selected_test = tests[0]
+        self._sync_test_dropdown_values(tests)
 
     def _test_selection_boxes(self) -> List[ttk.Combobox]:
         """
@@ -7707,6 +7823,111 @@ class BringupControlUI(tk.Tk):
         """
         self._on_action(CMD_SHOW_RUNTIME_STATE)
 
+    def _lifecycle_activate_from_ui(self) -> None:
+        """
+        NAME
+            _lifecycle_activate_from_ui - Activate the controlled lifecycle for active-group in read-only mode.
+        """
+        if not self._tcp_connected:
+            self._append_output(OUTPUT_NOT_CONNECTED)
+            return
+        if self._tracker.is_pending():
+            self._append_output(OUTPUT_BUSY)
+            return
+        label = GROUP_ACTIVE_NAME
+        mode = LIFECYCLE_DEFAULT_MODE
+        args = {PROFILE_KEY_LABEL: label, "mode": mode}
+        self._append_output(
+            f"{timestamp_hms()} {OUTPUT_LIFECYCLE_ACTIVATE_FMT.format(label=label, mode=mode)}"
+        )
+        self._last_cmd = ("lifecycleActivate", args)
+        seq = send_tracked_command(
+            self._session,
+            self._tracker,
+            "lifecycleActivate",
+            args,
+            sender=lambda session, _command_name, _command_args: lifecycle_activate(session, label, mode),
+            now=time.time(),
+        )
+        if seq is not None:
+            self._last_sent_seq = seq
+
+    def _lifecycle_deactivate_from_ui(self) -> None:
+        """
+        NAME
+            _lifecycle_deactivate_from_ui - Deactivate the controlled lifecycle session for active-group.
+        """
+        if not self._tcp_connected:
+            self._append_output(OUTPUT_NOT_CONNECTED)
+            return
+        if self._tracker.is_pending():
+            self._append_output(OUTPUT_BUSY)
+            return
+        label = GROUP_ACTIVE_NAME
+        args = {PROFILE_KEY_LABEL: label}
+        self._append_output(
+            f"{timestamp_hms()} {OUTPUT_LIFECYCLE_DEACTIVATE_FMT.format(label=label)}"
+        )
+        self._last_cmd = ("lifecycleDeactivate", args)
+        seq = send_tracked_command(
+            self._session,
+            self._tracker,
+            "lifecycleDeactivate",
+            args,
+            sender=lambda session, _command_name, _command_args: lifecycle_deactivate(session, label),
+            now=time.time(),
+        )
+        if seq is not None:
+            self._last_sent_seq = seq
+
+    def _lifecycle_deactivate_active_from_ui(self) -> None:
+        """
+        NAME
+            _lifecycle_deactivate_active_from_ui - Deactivate whichever controlled lifecycle session is active.
+        """
+        if not self._tcp_connected:
+            self._append_output(OUTPUT_NOT_CONNECTED)
+            return
+        if self._tracker.is_pending():
+            self._append_output(OUTPUT_BUSY)
+            return
+        self._append_output(f"{timestamp_hms()} {OUTPUT_LIFECYCLE_DEACTIVATE_ACTIVE}")
+        self._last_cmd = ("lifecycleDeactivateActive", {})
+        seq = send_tracked_command(
+            self._session,
+            self._tracker,
+            "lifecycleDeactivateActive",
+            {},
+            sender=lambda session, _command_name, _command_args: lifecycle_deactivate_active(session),
+            now=time.time(),
+        )
+        if seq is not None:
+            self._last_sent_seq = seq
+
+    def _show_lifecycle_state_from_ui(self) -> None:
+        """
+        NAME
+            _show_lifecycle_state_from_ui - Request the lifecycle-state payload through the top-bar control.
+        """
+        if not self._tcp_connected:
+            self._append_output(OUTPUT_NOT_CONNECTED)
+            return
+        if self._tracker.is_pending():
+            self._append_output(OUTPUT_BUSY)
+            return
+        self._append_output(f"{timestamp_hms()} CMD {CMD_SHOW_LIFECYCLE_STATE}")
+        self._last_cmd = (CMD_SHOW_LIFECYCLE_STATE, {})
+        seq = send_tracked_command(
+            self._session,
+            self._tracker,
+            CMD_SHOW_LIFECYCLE_STATE,
+            {},
+            sender=lambda session, _command_name, _command_args: show_lifecycle_state(session, json_output=False),
+            now=time.time(),
+        )
+        if seq is not None:
+            self._last_sent_seq = seq
+
     def _push_config_from_ui(self) -> None:
         """
         NAME
@@ -7831,6 +8052,7 @@ class BringupControlUI(tk.Tk):
                 self._ui_table.getEntry(NT_UI_STATE_ACTIVE_RUNTIME_PROFILE).getString(PROFILE_NONE)
             )
             self._sync_diagnostic_profile_context(reload_views=True)
+            self._maybe_prompt_host_profile_context_sync()
             nt_connected = True
         else:
             enabled = True
@@ -7843,7 +8065,17 @@ class BringupControlUI(tk.Tk):
         self._robot_enabled_known = enabled
         self._robot_estopped_known = estopped
         if self._tests_table is not None:
-            selected_name = self._tests_table.getEntry("selectedName").getString("")
+            selected_name = str(
+                self._tests_table.getEntry("selectedName").getString("") or ""
+            ).strip()
+            test_names = self._resolve_test_names_from_rows()
+            if (
+                selected_name
+                and selected_name != PROFILE_NONE
+                and selected_name not in test_names
+            ):
+                test_names = test_names + [selected_name]
+            self._sync_test_dropdown_values(test_names)
             if not selected_name:
                 selected_name = self._resolve_selected_from_rows()
             if selected_name:
@@ -8067,6 +8299,9 @@ class BringupControlUI(tk.Tk):
         runtime_active = payload.get("runtimeActive")
         if isinstance(runtime_active, bool):
             self._runtime_active_known = runtime_active
+        controlled_lifecycle_active = payload.get("controlledLifecycleActive")
+        if isinstance(controlled_lifecycle_active, bool):
+            self._controlled_lifecycle_active_known = controlled_lifecycle_active
         selected_profile = _normalize_profile_name(payload.get("selectedProfile"))
         active_runtime_profile = _normalize_profile_name(
             payload.get("activeRuntimeProfile")
@@ -8199,9 +8434,12 @@ class BringupControlUI(tk.Tk):
             )
         elif estopped:
             self._set_runtime_state_notice("Robot E-Stop. Manual run blocked.", "error")
-        elif self._runtime_active_known is False:
+        elif (
+            self._runtime_active_known is False
+            and self._controlled_lifecycle_active_known is not True
+        ):
             self._set_runtime_state_notice(
-                "Runtime inactive. Click Runtime Activate.", "warn"
+                "No active controlled session. Enable teleop, then activate lifecycle.", "warn"
             )
         elif not enabled:
             self._set_runtime_state_notice(
@@ -8214,12 +8452,66 @@ class BringupControlUI(tk.Tk):
                 live_view.set_runtime_state_notice("Robot state stale (code not running?)", "warn")
             elif estopped:
                 live_view.set_runtime_state_notice("Robot E-Stop. Manual run blocked.", "error")
-            elif self._runtime_active_known is False:
-                live_view.set_runtime_state_notice("Runtime inactive. Click Runtime Activate.", "warn")
+            elif (
+                self._runtime_active_known is False
+                and self._controlled_lifecycle_active_known is not True
+            ):
+                live_view.set_runtime_state_notice(
+                    "No active controlled session. Enable teleop, then activate lifecycle.",
+                    "warn",
+                )
             elif not enabled:
                 live_view.set_runtime_state_notice("Robot disabled. Enable teleop to run motors.", "info")
             else:
                 live_view.clear_runtime_state_notice()
+
+    def _selected_profile_from_command_event(
+        self,
+        name: str,
+        status: str,
+        message: str,
+        text: str,
+    ) -> str:
+        """
+        NAME
+            _selected_profile_from_command_event - Parse one successful selectProfile result.
+        """
+        command_name = str(name or NT_VALUE_EMPTY).strip().lower()
+        if command_name != "selectprofile":
+            return PROFILE_NONE
+        if str(status or NT_VALUE_EMPTY).strip().lower() != "ok":
+            return PROFILE_NONE
+        for candidate in (message, text):
+            for line in str(candidate or NT_VALUE_EMPTY).splitlines():
+                clean_line = str(line or NT_VALUE_EMPTY).strip()
+                if not clean_line.startswith(OUTPUT_SELECTED_PROFILE_PREFIX):
+                    continue
+                return _normalize_profile_name(
+                    clean_line[len(OUTPUT_SELECTED_PROFILE_PREFIX):]
+                )
+        return PROFILE_NONE
+
+    def _apply_robot_profile_context_from_command_event(
+        self,
+        name: str,
+        status: str,
+        message: str,
+        text: str,
+    ) -> None:
+        """
+        NAME
+            _apply_robot_profile_context_from_command_event - Update robot profile context from command ACK/OUT.
+        """
+        selected_profile = self._selected_profile_from_command_event(
+            name,
+            status,
+            message,
+            text,
+        )
+        if selected_profile == PROFILE_NONE:
+            return
+        self._robot_selected_profile = selected_profile
+        self._sync_diagnostic_profile_context(reload_views=True)
 
     def _handle_tcp_response(self, event: BridgeEvent) -> None:
         """
@@ -8286,6 +8578,12 @@ class BringupControlUI(tk.Tk):
             if self._is_test_activity_command(name):
                 self._append_test_output(header)
             self._apply_live_runtime_notice_from_ack(name, status, message)
+            self._apply_robot_profile_context_from_command_event(
+                name,
+                status,
+                message,
+                NT_VALUE_EMPTY,
+            )
             self._last_ack_seq = seq
         elif msg_type == "out":
             seq = int(event.seq)
@@ -8312,6 +8610,12 @@ class BringupControlUI(tk.Tk):
                     data = json.loads(json_payload)
                 except Exception:
                     data = None
+            self._apply_robot_profile_context_from_command_event(
+                name,
+                event.status,
+                event.message,
+                text,
+            )
             command_lower = str(name or NT_VALUE_EMPTY).strip().lower()
             if command_lower in ACTIVE_GROUP_RESULT_COMMANDS:
                 self._apply_runtime_group_command_payload(data)
@@ -8334,6 +8638,7 @@ class BringupControlUI(tk.Tk):
                 self._handshake_done = False
                 self._handshake_inflight = False
                 self._session.reset_handshake()
+                self._last_profile_mismatch_prompt = None
         if msg_type in ("ack", "out"):
             self._tracker.handle_event(event)
             command_lower = str(event.name or "").strip().lower()
@@ -8393,6 +8698,12 @@ class BringupControlUI(tk.Tk):
             self._clear_runtime_event_notice()
         elif command == "runtimedeactivate" and state == "ok":
             self._runtime_active_known = False
+            self._clear_runtime_event_notice()
+        elif command == "lifecycleactivate" and state == "ok":
+            self._controlled_lifecycle_active_known = True
+            self._clear_runtime_event_notice()
+        elif command in {"lifecycledeactivate", "lifecycledeactivateactive"} and state == "ok":
+            self._controlled_lifecycle_active_known = False
             self._clear_runtime_event_notice()
 
     def _update_action_enabled(self) -> None:
@@ -8511,6 +8822,49 @@ class BringupControlUI(tk.Tk):
             if row.getEntry("selected").getBoolean(False):
                 return row.getEntry("name").getString("")
         return ""
+
+    def _resolve_test_names_from_rows(self) -> List[str]:
+        """
+        NAME
+            _resolve_test_names_from_rows - Return robot-known test names from the live tests table.
+        """
+        if self._tests_table is None:
+            return []
+        total = int(self._tests_table.getEntry("totalCount").getDouble(0.0))
+        rows = self._tests_table.getSubTable("rows")
+        if total <= 0:
+            return []
+        names: List[str] = []
+        for i in range(total):
+            row = rows.getSubTable(str(i))
+            name = str(row.getEntry("name").getString("") or "").strip()
+            if name and name not in names:
+                names.append(name)
+        return names
+
+    def _sync_test_dropdown_values(self, names: List[str]) -> None:
+        """
+        NAME
+            _sync_test_dropdown_values - Replace selected-test dropdown values from one authoritative source.
+        """
+        test_boxes = self._test_selection_boxes()
+        if not test_boxes:
+            return
+        values = [str(name).strip() for name in names if str(name).strip()]
+        if not values:
+            values = [PROFILE_NONE]
+        current_values = list(test_boxes[0].cget("values"))
+        if current_values == values:
+            return
+        current_selection = str(self._selected_test_var.get() or "").strip()
+        for box in test_boxes:
+            box["values"] = values
+        if current_selection in values:
+            self._selected_test_var.set(current_selection)
+            self._last_selected_test = current_selection
+            return
+        self._selected_test_var.set(values[0])
+        self._last_selected_test = values[0]
 
     def _sync_test_selection(self, name: str) -> None:
         """

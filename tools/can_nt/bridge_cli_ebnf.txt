@@ -24,6 +24,9 @@ exec           = show_exec
                | "configure" ws "terminal"
                | "connect"
                | "disconnect"
+               | "lifecycle" ws ("activate" ws name [ ws "mode" ws name ]
+                                  | "deactivate" ws name
+                                  | "deactivate-active")
                | "runtime" ws ("activate" [ ws name ] | "deactivate")
                | "instantiate" ws "next" ws "motor"
                | "instantiate" ws "all" ws "devices"
@@ -62,6 +65,7 @@ show_target    = "status"
                | "selected-device"
                | "safety-latch"
                | "runtime-state"
+               | "lifecycle-state"
                | "config"
                | "config" ws "local-raw"
                | "config" ws "dirty"
@@ -148,6 +152,9 @@ config         = "group" ws name
                | "profiles" ws "init"
                | "profiles" ws "reload"
                | "profiles" ws "activate" ws name
+               | "lifecycle" ws ("activate" ws name [ ws "mode" ws name ]
+                                  | "deactivate" ws name
+                                  | "deactivate-active")
                | "runtime" ws ("activate" [ ws name ] | "deactivate")
                | "profiles" ws "export" ws path
                | "profiles" ws "push" ws path [ ws "--activate" ws name ]

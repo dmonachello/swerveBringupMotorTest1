@@ -69,6 +69,9 @@ public class Robot extends TimedRobot {
    */
   @Override
   public void robotInit() {
+    System.out.println(BuildInfo.buildBootRevisionLine());
+    System.out.println(BuildInfo.buildBootWorkspaceRevisionLine());
+    System.out.println(BuildInfo.buildBootCodeRevisionLine());
     // Load profile before devices are created.
     BringupUtil.applyProfileFromArgs();
     core = new BringupCore(sampledTelemetry, diagTable, deviceLifecycle);
@@ -298,6 +301,8 @@ public class Robot extends TimedRobot {
   private void printStartupInfo() {
     StringBuilder sb = new StringBuilder(512);
     appendLine(sb, "=== Swerve Bringup ===");
+    appendLine(sb, AppVersion.VERSION_PREFIX + AppVersion.ROBOT_APP_VERSION);
+    appendLine(sb, BuildInfo.formatBuildLine(BuildInfo.BUILD_LABEL_REVISION, BuildInfo.BUILD_REVISION));
     appendLine(sb, "Bindings (from bringup_bindings.json):");
     for (String line : bindings.describeBindings()) {
       appendLine(sb, "  " + line);

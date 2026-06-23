@@ -434,6 +434,8 @@ class BridgeCliParser:
         if line.strip():
             if normalized_tokens and normalized_tokens[SPEC.count_zero].lower() == SPEC.common[SPEC.count_two]:
                 return ParsedLine(tokens=normalized_tokens, mode=mode, ast=self._build_ast(normalized_tokens, mode))
+            if normalized_tokens and mode == SPEC.modes[SPEC.idx_exec] and normalized_tokens[SPEC.count_zero].lower() == SPEC.cmd_profile:
+                return ParsedLine(tokens=normalized_tokens, mode=mode, ast=self._build_ast(normalized_tokens, mode))
             ok, _expected = self._grammar.validate(normalized_tokens, mode)
             if not ok:
                 raise CliParseError(SPEC.msg_parse_error)

@@ -35,16 +35,18 @@ public final class BringupRestServerTest {
   private static final String TEXT_NAME = "name";
   private static final String TEXT_COMMAND_ID = "commandId";
   private static final String TEXT_STATUS = "status";
-  private static final String TEXT_OUTPUT = "output";
+  private static final String TEXT_OUTPUT = "text";
   private static final String TEXT_CHUNKS = "chunks";
   private static final String TEXT_NEXT_SEQUENCE = "nextSequence";
   private static final String TEXT_CONFIG = "config";
+  private static final String TEXT_JSON = "json";
   private static final String STATUS_FINISHED = "FINISHED";
   private static final int HTTP_OK = 200;
   private static final int HTTP_ACCEPTED = 202;
   private static final int HTTP_CONFLICT = 409;
 
   private BringupRestServer server;
+  private int requestCounter = 0;
 
   @AfterEach
   public void tearDown() {
@@ -94,6 +96,7 @@ public final class BringupRestServerTest {
     JsonObject outputJson = GSON.fromJson(outputResponse.body(), JsonObject.class);
     JsonArray chunks = outputJson.getAsJsonArray(TEXT_CHUNKS);
     assertTrue(chunks.size() > 0);
+    assertEquals("devicesText", chunks.get(0).getAsJsonObject().get(TEXT_OUTPUT).getAsString());
 
     HttpResponse<String> secondOutputResponse =
         client.send(get("/commands/" + commandId + "/output?clientId=" + CLIENT_A), HttpResponse.BodyHandlers.ofString());
@@ -114,6 +117,37 @@ public final class BringupRestServerTest {
     assertTrue(configJson.getAsJsonObject(TEXT_CONFIG).has("schema_version"));
   }
 
+  @Test
+  public void restServerShowRuntimeStateUsesTextByDefaultAndJsonWhenRequested() throws Exception {
+    server = new BringupRestServer(0, new TestCallbacks());
+    server.start();
+    HttpClient client = HttpClient.newHttpClient();
+
+    JsonObject connect = new JsonObject();
+    connect.addProperty(TEXT_CLIENT_ID, CLIENT_A);
+    HttpResponse<String> connectResponse =
+        client.send(post("/session/connect", connect), HttpResponse.BodyHandlers.ofString());
+    assertEquals(HTTP_OK, connectResponse.statusCode());
+
+    long textCommandId = submitCommand(client, CLIENT_A, "showRuntimeState", null);
+    JsonArray textChunks = commandOutputChunks(client, textCommandId, CLIENT_A);
+    assertTrue(textChunks.size() > 0);
+    assertEquals(
+        "runtimeStateText",
+        textChunks.get(0).getAsJsonObject().get(TEXT_OUTPUT).getAsString());
+
+    JsonObject args = new JsonObject();
+    args.addProperty(TEXT_JSON, true);
+    long jsonCommandId = submitCommand(client, CLIENT_A, "showRuntimeState", args);
+    JsonArray jsonChunks = commandOutputChunks(client, jsonCommandId, CLIENT_A);
+    assertTrue(jsonChunks.size() > 0);
+    JsonObject runtimeStateJson =
+        GSON.fromJson(
+            jsonChunks.get(0).getAsJsonObject().get(TEXT_OUTPUT).getAsString(),
+            JsonObject.class);
+    assertEquals(STATUS_FINISHED, runtimeStateJson.get(TEXT_STATUS).getAsString());
+  }
+
   private HttpRequest post(String path, JsonObject body) {
     return HttpRequest.newBuilder(baseUri(path))
         .header("Content-Type", "application/json")
@@ -127,6 +161,33 @@ public final class BringupRestServerTest {
 
   private URI baseUri(String path) {
     return URI.create("http://127.0.0.1:" + server.getBoundPort() + path);
+  }
+
+  private long submitCommand(HttpClient client, String clientId, String name, JsonObject args)
+      throws IOException, InterruptedException {
+    JsonObject submit = new JsonObject();
+    submit.addProperty(TEXT_CLIENT_ID, clientId);
+    submit.addProperty(TEXT_REQUEST_ID, REQUEST_ID + (++requestCounter));
+    submit.addProperty(TEXT_NAME, name);
+    if (args != null) {
+      submit.add("args", args);
+    }
+    HttpResponse<String> submitResponse =
+        client.send(post("/commands", submit), HttpResponse.BodyHandlers.ofString());
+    assertEquals(HTTP_ACCEPTED, submitResponse.statusCode());
+    JsonObject submitJson = GSON.fromJson(submitResponse.body(), JsonObject.class);
+    return submitJson.get(TEXT_COMMAND_ID).getAsLong();
+  }
+
+  private JsonArray commandOutputChunks(HttpClient client, long commandId, String clientId)
+      throws IOException, InterruptedException {
+    HttpResponse<String> outputResponse =
+        client.send(
+            get("/commands/" + commandId + "/output?clientId=" + clientId),
+            HttpResponse.BodyHandlers.ofString());
+    assertEquals(HTTP_OK, outputResponse.statusCode());
+    JsonObject outputJson = GSON.fromJson(outputResponse.body(), JsonObject.class);
+    return outputJson.getAsJsonArray(TEXT_CHUNKS);
   }
 
   private static final class TestCallbacks implements BringupRestServer.RestCallbacks {
@@ -161,6 +222,24 @@ public final class BringupRestServerTest {
         String name,
         String argsJson,
         String clientId) {
+      JsonObject args = argsJson == null || argsJson.isBlank()
+          ? new JsonObject()
+          : GSON.fromJson(argsJson, JsonObject.class);
+      boolean wantsJson = args.has(TEXT_JSON) && args.get(TEXT_JSON).getAsBoolean();
+      if (COMMAND_SHOW_DEVICES.equals(name)) {
+        return frc.robot.BridgeUiCommandHandler.RestCommandResult.finished(
+            true,
+            "OK",
+            wantsJson ? "" : "devicesText",
+            wantsJson ? GSON.toJson(buildDevicesJson()) : "");
+      }
+      if ("showRuntimeState".equals(name)) {
+        return frc.robot.BridgeUiCommandHandler.RestCommandResult.finished(
+            true,
+            "OK",
+            wantsJson ? "" : "runtimeStateText",
+            wantsJson ? GSON.toJson(buildRuntimeStateJson()) : "");
+      }
       return null;
     }
 
