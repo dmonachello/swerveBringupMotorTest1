@@ -617,6 +617,13 @@ class LiveNode:
 
 
 RIGHT_CLICK_BUTTON = "<Button-3>"
+MOUSEWHEEL_EVENT = "<MouseWheel>"
+SCROLL_UP_BUTTON = "<Button-4>"
+SCROLL_DOWN_BUTTON = "<Button-5>"
+SCROLL_UNITS = "units"
+SCROLL_STEP_FORWARD = 1
+SCROLL_STEP_BACKWARD = -1
+MOUSEWHEEL_DELTA_UNIT = 120
 
 
 def _load_profiles_payload() -> Tuple[Optional[Dict[str, object]], str]:
@@ -1152,6 +1159,8 @@ class LiveTopologyView(ttk.Frame):
 
             rows_frame.bind("<Configure>", _sync_active_group_scrollregion)
             rows_canvas.bind("<Configure>", _sync_active_group_rows_width)
+            self._bind_vertical_mousewheel(rows_canvas, rows_canvas)
+            self._bind_vertical_mousewheel(rows_frame, rows_canvas)
             self._active_group_rows_canvas = rows_canvas
             self._active_group_rows_frame = rows_frame
             ttk.Label(
@@ -1259,6 +1268,50 @@ class LiveTopologyView(ttk.Frame):
             self._dio_links = []
         self._bridge_groups = parse_bridge_groups(payload, self._profile_name)
         self._redraw()
+
+    def _bind_vertical_mousewheel(self, widget: tk.Widget, canvas: tk.Canvas) -> None:
+        """
+        NAME
+            _bind_vertical_mousewheel - Route wheel scrolling from one widget into a target canvas.
+        """
+        widget.bind(
+            MOUSEWHEEL_EVENT,
+            lambda event, target=canvas: self._on_vertical_mousewheel(event, target),
+        )
+        widget.bind(
+            SCROLL_UP_BUTTON,
+            lambda event, target=canvas: self._on_vertical_scroll_step(event, target, SCROLL_STEP_BACKWARD),
+        )
+        widget.bind(
+            SCROLL_DOWN_BUTTON,
+            lambda event, target=canvas: self._on_vertical_scroll_step(event, target, SCROLL_STEP_FORWARD),
+        )
+
+    def _on_vertical_mousewheel(self, event: tk.Event, canvas: tk.Canvas) -> str:
+        """
+        NAME
+            _on_vertical_mousewheel - Scroll one canvas vertically from a standard mouse wheel event.
+        """
+        delta = int(getattr(event, "delta", 0))
+        if delta == 0:
+            return EMPTY_STRING
+        steps = max(SCROLL_STEP_FORWARD, abs(delta) // MOUSEWHEEL_DELTA_UNIT)
+        direction = SCROLL_STEP_BACKWARD if delta > 0 else SCROLL_STEP_FORWARD
+        canvas.yview_scroll(direction * steps, SCROLL_UNITS)
+        return "break"
+
+    def _on_vertical_scroll_step(
+        self,
+        _event: tk.Event,
+        canvas: tk.Canvas,
+        direction: int,
+    ) -> str:
+        """
+        NAME
+            _on_vertical_scroll_step - Scroll one canvas vertically from a button-based wheel event.
+        """
+        canvas.yview_scroll(direction, SCROLL_UNITS)
+        return "break"
 
     def set_show_groups(self, enabled: bool) -> None:
         """
