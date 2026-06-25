@@ -38,7 +38,6 @@ from .bridge_ops import (
     download_current_config,
     disconnect,
     lifecycle_activate,
-    lifecycle_deactivate,
     lifecycle_deactivate_active,
     push_config,
     send_command,
@@ -73,6 +72,7 @@ from tools.common.profile_constants import KEY_DEVICE_TYPE, KEY_ID, KEY_LABEL as
 from tools.common.profile_constants import KEY_ENABLED
 from tools.common.profile_constants import KEY_TYPE
 from tools.common.robot_test_dsl import (
+    compile_source,
     copy_external_library_test_into_root_payload,
     create_blank_test_in_root_payload,
     copy_test_into_root_payload,
@@ -192,13 +192,21 @@ ACTIVE_MANUAL_RUNTIME_STATE_RATE_HZ = 10.0
 DEFAULT_RUNTIME_STATE_RATE_TEXT = "2"
 BUTTON_LIFECYCLE_ACTIVATE = "Lifecycle Activate"
 BUTTON_LIFECYCLE_DEACTIVATE = "Lifecycle Deactivate"
+BUTTON_ACTIVATE_GROUP = "Activate Group"
+BUTTON_DEACTIVATE_GROUP = "Deactivate Group"
 BUTTON_PUSH_CONFIG = "Push Config"
 BUTTON_DOWNLOAD_CONFIG = "Download Current Config"
 BUTTON_SHOW_RUNTIME_STATE = "Show Runtime State"
 BUTTON_SHOW_LIFECYCLE_STATE = "Show Lifecycle State"
+GROUP_SOURCE_MANUAL = "manual"
+GROUP_SOURCE_SELECTED_TEST = "selected test"
+GROUP_SOURCE_LABEL_PREFIX = "Active Group Source: "
+GROUP_SOURCE_LABEL_MANUAL = GROUP_SOURCE_LABEL_PREFIX + GROUP_SOURCE_MANUAL
+GROUP_SOURCE_LABEL_SELECTED_TEST = GROUP_SOURCE_LABEL_PREFIX + GROUP_SOURCE_SELECTED_TEST
 OUTPUT_NOT_CONNECTED = "Not connected: command blocked."
 OUTPUT_BUSY = "Busy: wait for current command to finish."
 OUTPUT_NO_PROFILE = "No profile selected."
+OUTPUT_NO_SELECTED_TEST = "no selected test"
 OUTPUT_PUSH_CANCELLED = "Config push cancelled."
 OUTPUT_DOWNLOAD_CANCELLED = "Config download cancelled."
 OUTPUT_PUSH_START_FMT = "PUSH {path} profile={profile}"
@@ -208,6 +216,7 @@ OUTPUT_RUNTIME_DEACTIVATE = "CMD runtimeDeactivate"
 OUTPUT_LIFECYCLE_ACTIVATE_FMT = "CMD lifecycleActivate \"{label}\" mode={mode}"
 OUTPUT_LIFECYCLE_DEACTIVATE_FMT = "CMD lifecycleDeactivate \"{label}\""
 OUTPUT_LIFECYCLE_DEACTIVATE_ACTIVE = "CMD lifecycleDeactivateActive"
+OUTPUT_GROUP_REPLACE_FMT = "CMD groupReplaceMembers \"{group}\" members={count}"
 OUTPUT_SELECTED_PROFILE_PREFIX = "Selected profile: "
 OUTPUT_GROUP_RUN_FMT = "CMD groupRunTest \"{group}\""
 OUTPUT_OWNER_REQUIRED = "Owning control client required. Use Reconnect UI Session to reclaim control."
@@ -673,6 +682,9 @@ TEST_LIBRARY_BUTTON_COPY_PROFILE = "Copy To Profile"
 TEST_LIBRARY_BUTTON_VALIDATE = "Validate Profile Tests"
 TEST_LIBRARY_BUTTON_INFO = "Tests Info"
 TEST_LIBRARY_BUTTON_OVERVIEW = "Tests Overview"
+TEST_LIBRARY_BUTTON_STATE = "State"
+TEST_LIBRARY_BUTTON_SOURCE = "Test Source"
+TEST_LIBRARY_BUTTON_PRINT_NEXT = "Print Next"
 TEST_LIBRARY_BUTTON_RUN_SELECTED = "Run Selected"
 TEST_LIBRARY_BUTTON_RUN_ALL = "Run All"
 TEST_LIBRARY_BUTTON_NEXT = "Test Next"
@@ -684,11 +696,48 @@ TEST_LIBRARY_STATUS_FMT = (
     "Profile tests: {profile_count} | Runnable: {runnable_count} | "
     "Config library: {config_count} | Global library: {global_count}"
 )
-TEST_LIBRARY_SELECTION_LABEL = "Selected Test"
+TEST_LIBRARY_SELECTION_LABEL = "Current Test"
 TEST_LIBRARY_RUNNING_DEFAULT = "Running: (none)"
+TEST_LIBRARY_LAST_RESULT_DEFAULT = "Last Result: (none)"
+TEST_LIBRARY_STATUS_INACTIVE_PREFIX = "selected test inactive - "
+TEST_LIBRARY_STATUS_READY = "active-group active - ready to run"
+TEST_LIBRARY_STATUS_NO_SELECTED_TEST = TEST_LIBRARY_STATUS_INACTIVE_PREFIX + OUTPUT_NO_SELECTED_TEST
+TEST_LIBRARY_STATUS_LOADED_NOT_ACTIVATED = "active-group loaded from selected test - not activated"
+TEST_LIBRARY_STATUS_MANUAL_RESTORED = "manual active-group restored - not activated"
+TEST_LIBRARY_LOCAL_SCOPE_PROFILE = "profile"
+TEST_LIBRARY_LOCAL_SCOPE_CONFIG = "config"
+TEST_LIBRARY_LOCAL_SCOPE_GLOBAL = "global"
+TEST_SCOPE_PANEL_TITLE = "Test State"
+TEST_SCOPE_PANEL_READY_HEADLINE = "READY TO RUN"
+TEST_SCOPE_PANEL_INACTIVE_HEADLINE = "NOT RUNNABLE"
+TEST_SCOPE_PANEL_NO_SELECTION_HEADLINE = "NO TEST SELECTED"
+TEST_SCOPE_PANEL_READY_BG = "#dcfce7"
+TEST_SCOPE_PANEL_READY_FG = "#166534"
+TEST_SCOPE_PANEL_INACTIVE_BG = "#fee2e2"
+TEST_SCOPE_PANEL_INACTIVE_FG = "#991b1b"
+TEST_SCOPE_PANEL_NEUTRAL_BG = "#e5e7eb"
+TEST_SCOPE_PANEL_NEUTRAL_FG = "#374151"
+TEST_SCOPE_PANEL_BORDER = "#cbd5e1"
+TEST_SCOPE_PANEL_WRAP = 320
+TEST_SCOPE_PANEL_PAD_X = 12
+TEST_SCOPE_PANEL_PAD_Y = 8
+TEST_SCOPE_PANEL_HEADLINE_FONT = ("Segoe UI", 11, "bold")
+TEST_SCOPE_PANEL_DETAIL_FONT = ("Segoe UI", 10, "normal")
+TEST_RESULT_PASS_FG = "#166534"
+TEST_RESULT_FAIL_FG = "#991b1b"
+TEST_RESULT_RUNNING_FG = "#1d4ed8"
+TEST_RESULT_NEUTRAL_FG = "#374151"
+TEST_ACTIVE_GROUP_TITLE = "Active Group"
+TEST_ACTIVE_GROUP_STATUS_LOCKED = "locked"
+TEST_ACTIVE_GROUP_STATUS_INVALID = "invalid"
+TEST_ACTIVE_GROUP_STATUS_NOT_ACTIVATED = "not instantiated"
+TEST_ACTIVE_GROUP_STATUS_ENABLED = "enabled"
+TEST_ACTIVE_GROUP_PANEL_EMPTY = "No test-owned active-group members."
+TEST_ACTIVE_GROUP_SINGLETON_LABELS = {"controller0", "roborio", "pdp"}
 TEST_LIBRARY_NOTE_TEXT = (
-    "The Tests tab has three scopes: external Global Library, config-shared Config Library, "
-    "and selected-profile Profile Tests. Use Push Config to make config/profile changes available on the robot."
+    "The Tests tab has three sources: external Global Library, config-shared Config Library, "
+    "and selected-profile Profile Tests. Selecting a test loads active-group from that DSL test. "
+    "Use Push Config to make config/profile changes available on the robot."
 )
 TEST_LIBRARY_SET_NONE = "(none)"
 TEST_LIBRARY_NAME_NEW_FMT = "{profile}_new_test"
@@ -747,8 +796,11 @@ TEST_SOURCE_RESULTS_GEOMETRY = "720x280"
 TEST_SOURCE_RESULTS_CLOSE = "Close"
 TEST_SOURCE_LINE_NUMBER_WIDTH = 5
 HIDDEN_LEFT_RAIL_COMMANDS = {
+    "printState",
     "printTestsInfo",
     "printTestsOverview",
+    "printSelectedTestSource",
+    "printNextTest",
     "runAll",
     "runTest",
     "testNext",
@@ -756,14 +808,24 @@ HIDDEN_LEFT_RAIL_COMMANDS = {
     "toggleEnabled",
 }
 TEST_ACTIVITY_COMMANDS = {
+    "printstate",
     "printtestsinfo",
     "printtestsoverview",
+    "printselectedtestsource",
+    "printnexttest",
     "selecttestbyname",
     "runall",
+    "runalltests",
     "runtest",
     "testnext",
     "testprev",
+    "selecttestnext",
+    "selecttestprev",
     "toggleenabled",
+    "groupreplacemembers",
+    "lifecycleactivate",
+    "lifecycledeactivateactive",
+    "showlifecyclestate",
 }
 
 
@@ -1380,6 +1442,7 @@ class BringupControlUI(tk.Tk):
         self._runtime_event_notice_level = "warn"
         self._runtime_state_path: Optional[str] = None
         self._runtime_state_path_mtime: Optional[float] = None
+        self._latest_runtime_state_payload: Dict[str, Any] = {}
         self._latest_runtime_devices: Dict[str, Dict[str, Any]] = {}
         self._presence_overrides_file: Dict[str, str] = {}
         self._presence_timeline: List[Dict[str, Any]] = []
@@ -1409,6 +1472,12 @@ class BringupControlUI(tk.Tk):
         self._manual_test_observations: Dict[str, Dict[str, Any]] = {}
         self._profile_devices: Dict[str, Dict[str, Any]] = {}
         self._test_profile_devices: Dict[str, Dict[str, Any]] = {}
+        self._remembered_manual_active_group_members: List[Dict[str, Any]] = []
+        self._tests_active_group_rows: List[Dict[str, Any]] = []
+        self._tests_active_group_membership_key: Tuple[str, ...] = tuple()
+        self._group_owner_mode = GROUP_SOURCE_MANUAL
+        self._last_right_tab_text = NT_VALUE_EMPTY
+        self._pending_tests_boundary_transition: Optional[Tuple[str, str]] = None
         self._robot_selected_profile = PROFILE_NONE
         self._robot_active_runtime_profile = PROFILE_NONE
         self._last_profile_context = PROFILE_NONE
@@ -1525,43 +1594,30 @@ class BringupControlUI(tk.Tk):
         ttk.Button(
             header, text=BUTTON_SHOW_RUNTIME_STATE, command=self._show_runtime_state_from_ui
         ).pack(side="left", padx=(6, 0))
-        ttk.Button(
-            header, text=BUTTON_LIFECYCLE_ACTIVATE, command=self._lifecycle_activate_from_ui
-        ).pack(side="left", padx=(10, 0))
-        ttk.Button(
-            header, text=BUTTON_LIFECYCLE_DEACTIVATE, command=self._lifecycle_deactivate_from_ui
-        ).pack(side="left", padx=(6, 0))
+        activate_scope_button = ttk.Button(
+            header, text=BUTTON_ACTIVATE_GROUP, command=self._activate_scope_from_ui
+        )
+        activate_scope_button.pack(side="left", padx=(10, 0))
+        self._activate_scope_button = activate_scope_button
+        deactivate_scope_button = ttk.Button(
+            header, text=BUTTON_DEACTIVATE_GROUP, command=self._deactivate_scope_from_ui
+        )
+        deactivate_scope_button.pack(side="left", padx=(6, 0))
+        self._deactivate_scope_button = deactivate_scope_button
         ttk.Button(
             header, text=BUTTON_SHOW_LIFECYCLE_STATE, command=self._show_lifecycle_state_from_ui
         ).pack(side="left", padx=(6, 0))
+        self._scope_context_var = tk.StringVar(value=GROUP_SOURCE_LABEL_MANUAL)
+        ttk.Label(
+            header,
+            textvariable=self._scope_context_var,
+            foreground="#374151",
+        ).pack(side="left", padx=(12, 0))
 
         self._selected_test_var = tk.StringVar(value=tests[0])
         self._running_text_var = tk.StringVar(value=TEST_LIBRARY_RUNNING_DEFAULT)
-        test_header_frame = ttk.Frame(header)
-        test_header_frame.pack(side="left", padx=(16, 0))
-        self._test_header_frame = test_header_frame
-        ttk.Label(test_header_frame, text=TEST_LIBRARY_SELECTION_LABEL).pack(
-            side="left", padx=(0, 4)
-        )
-        test_box = ttk.Combobox(
-            test_header_frame,
-            values=tests,
-            state="readonly",
-            width=26,
-            textvariable=self._selected_test_var,
-        )
-        test_box.bind("<<ComboboxSelected>>", self._on_test_selected)
-        self._test_box = test_box
-        self._last_selected_test = test_box.get()
-        test_box.pack(side="left")
-
-        running = ttk.Label(
-            test_header_frame,
-            textvariable=self._running_text_var,
-            foreground="#374151",
-        )
-        running.pack(side="left", padx=(16, 4))
-        self._running_label = running
+        self._last_result_text_var = tk.StringVar(value=TEST_LIBRARY_LAST_RESULT_DEFAULT)
+        self._last_selected_test = str(self._selected_test_var.get() or "").strip()
         wall_clock_frame = ttk.Frame(header)
         wall_clock_frame.pack(side="left", padx=(12, 0))
         ttk.Label(wall_clock_frame, text=LIVE_CLOCK_LABEL).pack(side="left", padx=(0, 4))
@@ -1657,6 +1713,7 @@ class BringupControlUI(tk.Tk):
         notebook.bind("<<NotebookTabChanged>>", self._on_right_notebook_changed)
         self._apply_visibility_tab_pref()
         self._sync_test_selection_visibility()
+        self._last_right_tab_text = self._current_right_tab_text()
 
     def _build_live_panel(self, parent: tk.Widget) -> None:
         """
@@ -1795,40 +1852,99 @@ class BringupControlUI(tk.Tk):
         execution_toolbar = ttk.Frame(container)
         execution_toolbar.pack(fill="x", pady=(0, 8))
         for label, command in [
+            (TEST_LIBRARY_BUTTON_STATE, "printState"),
             (TEST_LIBRARY_BUTTON_INFO, "printTestsInfo"),
             (TEST_LIBRARY_BUTTON_OVERVIEW, "printTestsOverview"),
+            (TEST_LIBRARY_BUTTON_SOURCE, "printSelectedTestSource"),
+            (TEST_LIBRARY_BUTTON_PRINT_NEXT, "printNextTest"),
             (TEST_LIBRARY_BUTTON_RUN_SELECTED, "runTest"),
-            (TEST_LIBRARY_BUTTON_RUN_ALL, "runAll"),
-            (TEST_LIBRARY_BUTTON_NEXT, "testNext"),
-            (TEST_LIBRARY_BUTTON_PREV, "testPrev"),
+            (TEST_LIBRARY_BUTTON_RUN_ALL, "runAllTests"),
+            (TEST_LIBRARY_BUTTON_NEXT, "selectTestNext"),
+            (TEST_LIBRARY_BUTTON_PREV, "selectTestPrev"),
             (TEST_LIBRARY_BUTTON_TOGGLE, "toggleEnabled"),
         ]:
-            ttk.Button(
+            button = ttk.Button(
                 execution_toolbar,
                 text=label,
                 command=(lambda c=command: self._on_action(c)),
-            ).pack(side="left", padx=(0, 8))
+            )
+            button.pack(side="left", padx=(0, 8))
+            if command == "runTest":
+                self._tests_run_selected_button = button
         selection_toolbar = ttk.Frame(container)
         selection_toolbar.pack(fill="x", pady=(0, 8))
-        ttk.Label(selection_toolbar, text=TEST_LIBRARY_SELECTION_LABEL).pack(
+        selection_left = ttk.Frame(selection_toolbar)
+        selection_left.pack(side="left", fill="x", expand=True)
+        ttk.Label(selection_left, text=TEST_LIBRARY_SELECTION_LABEL).pack(
             side="left", padx=(0, 4)
         )
-        current_test_values = list(self._test_box.cget("values")) if hasattr(self, "_test_box") else []
-        tests_tab_test_box = ttk.Combobox(
-            selection_toolbar,
-            values=current_test_values,
-            state="readonly",
-            width=26,
+        current_test_label = ttk.Label(
+            selection_left,
             textvariable=self._selected_test_var,
+            foreground=TEST_LIBRARY_STATUS_COLOR,
+            width=28,
+            anchor="w",
         )
-        tests_tab_test_box.bind("<<ComboboxSelected>>", self._on_test_selected)
-        tests_tab_test_box.pack(side="left")
-        self._tests_tab_test_box = tests_tab_test_box
+        current_test_label.pack(side="left")
+        self._tests_tab_current_test_label = current_test_label
         ttk.Label(
-            selection_toolbar,
+            selection_left,
             textvariable=self._running_text_var,
             foreground=TEST_LIBRARY_STATUS_COLOR,
         ).pack(side="left", padx=(16, 4))
+        self._last_result_label = ttk.Label(
+            selection_left,
+            textvariable=self._last_result_text_var,
+            foreground=TEST_RESULT_NEUTRAL_FG,
+        )
+        self._last_result_label.pack(side="left", padx=(16, 4))
+        self._selected_test_scope_headline_var = tk.StringVar(
+            value=TEST_SCOPE_PANEL_NO_SELECTION_HEADLINE
+        )
+        self._selected_test_scope_status_var = tk.StringVar(
+            value=TEST_LIBRARY_STATUS_NO_SELECTED_TEST
+        )
+        status_panel = tk.Frame(
+            selection_toolbar,
+            bg=TEST_SCOPE_PANEL_NEUTRAL_BG,
+            highlightbackground=TEST_SCOPE_PANEL_BORDER,
+            highlightthickness=1,
+            bd=0,
+            padx=TEST_SCOPE_PANEL_PAD_X,
+            pady=TEST_SCOPE_PANEL_PAD_Y,
+        )
+        status_panel.pack(side="right", anchor="e")
+        self._selected_test_scope_panel = status_panel
+        self._selected_test_scope_title_label = tk.Label(
+            status_panel,
+            text=TEST_SCOPE_PANEL_TITLE,
+            bg=TEST_SCOPE_PANEL_NEUTRAL_BG,
+            fg=TEST_SCOPE_PANEL_NEUTRAL_FG,
+            anchor="w",
+            font=TEST_SCOPE_PANEL_DETAIL_FONT,
+        )
+        self._selected_test_scope_title_label.pack(anchor="w")
+        self._selected_test_scope_headline_label = tk.Label(
+            status_panel,
+            textvariable=self._selected_test_scope_headline_var,
+            bg=TEST_SCOPE_PANEL_NEUTRAL_BG,
+            fg=TEST_SCOPE_PANEL_NEUTRAL_FG,
+            anchor="w",
+            justify="left",
+            font=TEST_SCOPE_PANEL_HEADLINE_FONT,
+        )
+        self._selected_test_scope_headline_label.pack(anchor="w", pady=(2, 0))
+        self._selected_test_scope_detail_label = tk.Label(
+            status_panel,
+            textvariable=self._selected_test_scope_status_var,
+            bg=TEST_SCOPE_PANEL_NEUTRAL_BG,
+            fg=TEST_SCOPE_PANEL_NEUTRAL_FG,
+            anchor="w",
+            justify="left",
+            wraplength=TEST_SCOPE_PANEL_WRAP,
+            font=TEST_SCOPE_PANEL_DETAIL_FONT,
+        )
+        self._selected_test_scope_detail_label.pack(anchor="w", pady=(2, 0))
         self._test_library_status_var = tk.StringVar(value=TEST_LIBRARY_STATUS_EMPTY)
         ttk.Label(
             container,
@@ -1855,10 +1971,12 @@ class BringupControlUI(tk.Tk):
         config_frame = ttk.LabelFrame(columns, text=TEST_LIBRARY_CONFIG_TITLE, padding=8)
         profile_frame = ttk.LabelFrame(columns, text=TEST_LIBRARY_PROFILE_TITLE, padding=8)
         devices_frame = ttk.LabelFrame(columns, text=TEST_LIBRARY_DEVICES_TITLE, padding=8)
+        active_group_frame = ttk.LabelFrame(columns, text=TEST_ACTIVE_GROUP_TITLE, padding=8)
         columns.add(global_frame, weight=1)
         columns.add(config_frame, weight=1)
         columns.add(profile_frame, weight=1)
         columns.add(devices_frame, weight=1)
+        columns.add(active_group_frame, weight=1)
 
         global_body = ttk.Frame(global_frame)
         global_body.pack(fill="both", expand=True)
@@ -1925,10 +2043,29 @@ class BringupControlUI(tk.Tk):
         devices_table.configure(yscrollcommand=devices_scroll.set)
         self._test_library_devices_table = devices_table
         devices_table.bind("<Double-1>", self._on_test_library_device_double_click)
+        active_group_body = ttk.Frame(active_group_frame)
+        active_group_body.pack(fill="both", expand=True)
+        active_group_list = tk.Listbox(
+            active_group_body,
+            exportselection=False,
+            height=TEST_LIBRARY_LISTBOX_HEIGHT,
+        )
+        active_group_list.pack(side="left", fill="both", expand=True)
+        active_group_scroll = ttk.Scrollbar(active_group_body, command=active_group_list.yview)
+        active_group_scroll.pack(side="right", fill="y")
+        active_group_list.configure(yscrollcommand=active_group_scroll.set)
+        self._tests_active_group_list = active_group_list
         lower_notebook = ttk.Notebook(activity_area)
         lower_notebook.pack(fill="both", expand=True, pady=(8, 0))
         results_frame = ttk.Frame(lower_notebook, padding=8)
         lower_notebook.add(results_frame, text=TEST_ACTIVITY_TAB_LABEL)
+        results_header = ttk.Frame(results_frame)
+        results_header.pack(fill="x", pady=(0, 8))
+        ttk.Button(
+            results_header,
+            text="Clear Output",
+            command=self._clear_test_output,
+        ).pack(side="right")
         results_body = ttk.Frame(results_frame)
         results_body.pack(fill="both", expand=True)
         self._test_output = tk.Text(
@@ -2326,7 +2463,7 @@ class BringupControlUI(tk.Tk):
         NAME
             _current_right_tab_text - Return the visible label of the active right-side notebook tab.
         """
-        notebook = getattr(self, "_right_notebook", None)
+        notebook = self.__dict__.get("_right_notebook")
         if notebook is None:
             return NT_VALUE_EMPTY
         try:
@@ -2344,12 +2481,45 @@ class BringupControlUI(tk.Tk):
         """
         return self._current_right_tab_text() == EVIDENCE_TAB_LABEL
 
+    def _scope_context_kind(self) -> str:
+        """
+        NAME
+            _scope_context_kind - Return the shared top-bar scope context for the active tab.
+        """
+        if self._current_right_tab_text() == TEST_LIBRARY_TAB_LABEL:
+            return GROUP_SOURCE_SELECTED_TEST
+        return GROUP_SOURCE_MANUAL
+
+    def _refresh_scope_context_label(self) -> None:
+        """
+        NAME
+            _refresh_scope_context_label - Refresh the top-bar scope context label.
+        """
+        label_var = self.__dict__.get("_scope_context_var")
+        if label_var is None:
+            return
+        if self._scope_context_kind() == GROUP_SOURCE_SELECTED_TEST:
+            label_var.set(GROUP_SOURCE_LABEL_SELECTED_TEST)
+            return
+        label_var.set(GROUP_SOURCE_LABEL_MANUAL)
+
     def _on_right_notebook_changed(self, _event: tk.Event) -> None:
         """
         NAME
             _on_right_notebook_changed - React to right-side tab changes.
         """
+        previous_tab = self._last_right_tab_text
+        current_tab = self._current_right_tab_text()
+        if {previous_tab, current_tab} == {TEST_LIBRARY_TAB_LABEL, "Live Topology"} or (
+            previous_tab == TEST_LIBRARY_TAB_LABEL and current_tab != TEST_LIBRARY_TAB_LABEL
+        ) or (
+            previous_tab != TEST_LIBRARY_TAB_LABEL and current_tab == TEST_LIBRARY_TAB_LABEL
+        ):
+            self._handle_tests_boundary_transition(previous_tab, current_tab)
+        self._last_right_tab_text = current_tab
         self._sync_test_selection_visibility()
+        self._refresh_scope_context_label()
+        self._refresh_selected_test_scope_status()
         if self._evidence_tab_active():
             self._refresh_evidence_view()
 
@@ -2361,13 +2531,302 @@ class BringupControlUI(tk.Tk):
         frame = getattr(self, "_test_header_frame", None)
         if frame is None:
             return
-        tests_tab_active = self._current_right_tab_text() == TEST_LIBRARY_TAB_LABEL
-        if tests_tab_active:
-            if frame.winfo_manager():
-                frame.pack_forget()
+        if frame.winfo_manager():
+            frame.pack_forget()
+
+    def _apply_selected_test_name_from_ui(self, name: str) -> None:
+        """
+        NAME
+            _apply_selected_test_name_from_ui - Make one UI-selected test authoritative for editor, activation, and run actions.
+        """
+        selected_name = str(name or "").strip()
+        if not selected_name or selected_name == PROFILE_NONE:
             return
-        if not frame.winfo_manager():
-            frame.pack(side="left", padx=(16, 0), before=self._wall_clock_frame)
+        self._selected_test_var.set(selected_name)
+        tests_tab_active = self._current_right_tab_text() == TEST_LIBRARY_TAB_LABEL
+        if not tests_tab_active:
+            self._refresh_selected_test_scope_status()
+            return
+        if not self._tcp_connected:
+            self._refresh_selected_test_scope_status()
+            return
+        if self._tracker.is_pending():
+            self._refresh_selected_test_scope_status()
+            return
+        if selected_name == self._last_selected_test:
+            self._refresh_selected_test_scope_status()
+            return
+        self._last_selected_test = selected_name
+        ts = timestamp_hms()
+        self._append_output(f'{ts} CMD selectTestByName "{selected_name}"')
+        self._append_test_output(f'{ts} CMD selectTestByName "{selected_name}"')
+        self._last_cmd = ("selectTestByName", {"name": selected_name})
+        if not self._send_and_wait("selectTestByName", {"name": selected_name}):
+            return
+        previous_key = self._tests_active_group_membership_key
+        self._load_selected_test_into_active_group(force_replace=False)
+        if self._tests_active_group_membership_key == previous_key:
+            self._refresh_selected_test_scope_status()
+
+    def _handle_tests_boundary_transition(self, previous_tab: str, current_tab: str) -> None:
+        """
+        NAME
+            _handle_tests_boundary_transition - Apply V2 deactivate/clear/restore behavior when crossing Tests and non-Tests.
+        """
+        previous_is_tests = previous_tab == TEST_LIBRARY_TAB_LABEL
+        current_is_tests = current_tab == TEST_LIBRARY_TAB_LABEL
+        if previous_is_tests == current_is_tests:
+            return
+        if not self._tcp_connected:
+            return
+        if self._tracker.is_pending():
+            self._pending_tests_boundary_transition = (previous_tab, current_tab)
+            return
+        self._pending_tests_boundary_transition = None
+        if previous_is_tests:
+            self._deactivate_group_blocking()
+            self._restore_manual_active_group_members()
+            self._group_owner_mode = GROUP_SOURCE_MANUAL
+            return
+        self._remembered_manual_active_group_members = self._runtime_active_group_members()
+        self._deactivate_group_blocking()
+        self._load_selected_test_into_active_group(force_replace=True)
+        self._group_owner_mode = GROUP_SOURCE_SELECTED_TEST
+
+    def _runtime_active_group_payload(self) -> Dict[str, Any]:
+        """
+        NAME
+            _runtime_active_group_payload - Return the latest runtime active-group payload when present.
+        """
+        groups = self._latest_runtime_state_payload_groups()
+        for group in groups:
+            if str(group.get("name", "")).strip().lower() == GROUP_ACTIVE_NAME:
+                return dict(group)
+        return {}
+
+    def _latest_runtime_state_payload_groups(self) -> List[Dict[str, Any]]:
+        """
+        NAME
+            _latest_runtime_state_payload_groups - Return the latest runtime-state groups list.
+        """
+        payload = getattr(self, "_latest_runtime_state_payload", {})
+        groups = payload.get("groups") if isinstance(payload, dict) else None
+        return list(groups) if isinstance(groups, list) else []
+
+    def _runtime_active_group_members(self) -> List[Dict[str, Any]]:
+        """
+        NAME
+            _runtime_active_group_members - Return ordered active-group member rows from runtime state.
+        """
+        members = self._runtime_active_group_payload().get(GROUP_KEY_MEMBERS)
+        rows: List[Dict[str, Any]] = []
+        if isinstance(members, list):
+            for member in members:
+                if not isinstance(member, dict):
+                    continue
+                label = str(member.get(GROUP_MEMBER_KEY_LABEL, "")).strip()
+                if not label:
+                    continue
+                rows.append({"label": label, "enabled": bool(member.get(KEY_ENABLED, True))})
+        return rows
+
+    def _send_and_wait(self, command: str, args: Dict[str, Any]) -> bool:
+        """
+        NAME
+            _send_and_wait - Send one tracked command and block briefly until its OUT event arrives.
+        """
+        seq = send_tracked_command(
+            self._session,
+            self._tracker,
+            command,
+            args,
+            sender=lambda session, command_name, command_args: send_command(session, command_name, command_args),
+            now=time.time(),
+        )
+        if seq is None:
+            return False
+        self._last_sent_seq = seq
+        deadline = time.time() + 2.0
+        while time.time() < deadline:
+            events = self._session.poll_events()
+            if not events:
+                self.update_idletasks()
+                time.sleep(0.02)
+                continue
+            for event in events:
+                self._handle_tcp_response(event)
+                if int(event.seq) == int(seq) and event.type == "out":
+                    return True
+        self._tracker.clear_pending()
+        self._append_output("TIMEOUT waiting for ACK/OUT.")
+        return False
+
+    def _deactivate_group_blocking(self) -> bool:
+        """
+        NAME
+            _deactivate_group_blocking - Deactivate the currently active group and treat inactive as a harmless no-op.
+        """
+        ts = timestamp_hms()
+        self._append_output(f"{ts} {OUTPUT_LIFECYCLE_DEACTIVATE_ACTIVE}")
+        self._last_cmd = ("lifecycleDeactivateActive", {})
+        ok = self._send_and_wait("lifecycleDeactivateActive", {})
+        if not ok:
+            return False
+        return True
+
+    def _replace_active_group_members(self, members: List[Dict[str, Any]]) -> bool:
+        """
+        NAME
+            _replace_active_group_members - Replace robot active-group membership with one ordered row list.
+        """
+        payload = [{"label": str(member.get("label", "")).strip(), "enabled": bool(member.get("enabled", True))}
+                   for member in members if str(member.get("label", "")).strip()]
+        ts = timestamp_hms()
+        self._append_output(
+            f"{ts} {OUTPUT_GROUP_REPLACE_FMT.format(group=GROUP_ACTIVE_NAME, count=len(payload))}"
+        )
+        self._last_cmd = ("groupReplaceMembers", {"group": GROUP_ACTIVE_NAME, "members": payload})
+        return self._send_and_wait(
+            "groupReplaceMembers",
+            {"group": GROUP_ACTIVE_NAME, "members": payload},
+        )
+
+    def _selected_test_required_rows(self) -> List[Dict[str, Any]]:
+        """
+        NAME
+            _selected_test_required_rows - Build ordered Tests-tab active-group rows from the selected local DSL declaration.
+        """
+        selected_name = str(self._selected_test_var.get() or "").strip()
+        required_devices = self._selected_test_declared_required_devices(selected_name)
+        test_profile_devices = self.__dict__.get("_test_profile_devices", {})
+        profile_devices = self.__dict__.get("_profile_devices", {})
+        rows: List[Dict[str, Any]] = []
+        for label in required_devices:
+            clean_label = str(label).strip()
+            if not clean_label:
+                continue
+            key = clean_label.lower()
+            known_to_tests = isinstance(test_profile_devices, dict) and key in test_profile_devices
+            known_to_profile = isinstance(profile_devices, dict) and key in profile_devices
+            invalid = not (known_to_tests or known_to_profile)
+            rows.append(
+                {
+                    "label": clean_label,
+                    "enabled": True,
+                    "locked": key in TEST_ACTIVE_GROUP_SINGLETON_LABELS or clean_label in ("lmtSw0",),
+                    "invalid": invalid,
+                    "reason": "missing resource/device - " + clean_label if invalid else "",
+                }
+            )
+        return rows
+
+    def _selected_test_declared_required_devices(self, selected_name: str) -> List[str]:
+        """
+        NAME
+            _selected_test_declared_required_devices - Return declared device labels for the selected local DSL test.
+        """
+        clean_name = str(selected_name or "").strip()
+        if not clean_name or clean_name == PROFILE_NONE:
+            return []
+        try:
+            payload = LocalConfigQueryService().load_canonical_payload()
+            store = robot_test_dsl_store_from_root_payload(payload)
+        except Exception:
+            return []
+        tests_by_name = getattr(store, "tests_by_name", {})
+        entry = tests_by_name.get(clean_name) if isinstance(tests_by_name, dict) else None
+        normalized = getattr(entry, "normalized", None)
+        if normalized is None and clean_name in list_external_library_test_names():
+            try:
+                normalized = compile_source(clean_name, read_external_library_test_source(clean_name))
+            except Exception:
+                normalized = None
+        devices = getattr(normalized, "devices", None)
+        required_devices: List[str] = []
+        if isinstance(devices, list):
+            for device_ref in devices:
+                label = str(getattr(device_ref, "name", "") or "").strip()
+                if label:
+                    required_devices.append(label)
+        return required_devices
+
+    def _runtime_device_for_label(self, label: object) -> Dict[str, Any]:
+        """
+        NAME
+            _runtime_device_for_label - Return the latest runtime device payload for one label.
+        """
+        clean_label = str(label or NT_VALUE_EMPTY).strip().lower()
+        latest_runtime_devices = self.__dict__.get("_latest_runtime_devices", {})
+        if not clean_label or not isinstance(latest_runtime_devices, dict):
+            return {}
+        device = latest_runtime_devices.get(clean_label, {})
+        return dict(device) if isinstance(device, dict) else {}
+
+    def _tests_active_group_membership_key_for_rows(
+        self,
+        rows: List[Dict[str, Any]],
+    ) -> Tuple[str, ...]:
+        """
+        NAME
+            _tests_active_group_membership_key_for_rows - Normalize one Tests-tab group row list for change detection.
+        """
+        return tuple(str(row.get("label", "")).strip().lower() for row in rows if str(row.get("label", "")).strip())
+
+    def _load_selected_test_into_active_group(self, force_replace: bool = False) -> None:
+        """
+        NAME
+            _load_selected_test_into_active_group - Rebuild active-group from the selected DSL test while in Tests.
+        """
+        rows = self._selected_test_required_rows()
+        membership_key = self._tests_active_group_membership_key_for_rows(rows)
+        changed = membership_key != self._tests_active_group_membership_key
+        if not force_replace and not changed:
+            self._tests_active_group_rows = rows
+            self._refresh_tests_active_group_panel()
+            return
+        self._tests_active_group_rows = rows
+        self._tests_active_group_membership_key = membership_key
+        if changed and self._active_group_is_currently_active():
+            self._deactivate_group_blocking()
+        valid_members = [
+            {"label": row["label"], "enabled": True}
+            for row in rows
+            if not bool(row.get("invalid"))
+        ]
+        if self._tcp_connected and not self._tracker.is_pending():
+            self._replace_active_group_members(valid_members)
+            self.after_idle(self._request_runtime_state_refresh)
+        self._set_runtime_event_notice(TEST_LIBRARY_STATUS_LOADED_NOT_ACTIVATED, "info")
+        self._refresh_tests_active_group_panel()
+
+    def _restore_manual_active_group_members(self) -> None:
+        """
+        NAME
+            _restore_manual_active_group_members - Restore the remembered manual active-group membership after leaving Tests.
+        """
+        members = list(self.__dict__.get("_remembered_manual_active_group_members", []))
+        if self._tcp_connected and not self._tracker.is_pending():
+            self._replace_active_group_members(members)
+            self.after_idle(self._request_runtime_state_refresh)
+        self._set_runtime_event_notice(TEST_LIBRARY_STATUS_MANUAL_RESTORED, "info")
+        self._refresh_selected_test_scope_status()
+
+    def _active_group_is_currently_active(self) -> bool:
+        """
+        NAME
+            _active_group_is_currently_active - Return whether runtime currently shows an active controlled session for active-group.
+        """
+        if self.__dict__.get("_controlled_lifecycle_active_known") is not True:
+            return False
+        latest_runtime_devices = self.__dict__.get("_latest_runtime_devices", {})
+        if not isinstance(latest_runtime_devices, dict):
+            return False
+        for device in latest_runtime_devices.values():
+            if not isinstance(device, dict):
+                continue
+            if str(device.get("activeGroupLabel", "")).strip().lower() == GROUP_ACTIVE_NAME:
+                return True
+        return False
 
     def _build_visibility_ctre_raw_table_widget(self, parent: tk.Widget) -> ttk.Treeview:
         """
@@ -5693,6 +6152,7 @@ class BringupControlUI(tk.Tk):
         if hasattr(self, "_test_library_config_list"):
             self._test_library_config_list.selection_clear(0, tk.END)
         self._load_selected_test_source()
+        self._apply_selected_test_name_from_ui(self._selected_test_library_global_name())
 
     def _on_test_library_config_selected(self, _event=None) -> None:
         """
@@ -5709,6 +6169,8 @@ class BringupControlUI(tk.Tk):
         if hasattr(self, "_test_library_profile_list"):
             self._test_library_profile_list.selection_clear(0, tk.END)
         self._load_selected_test_source()
+        test_name, _scope = self._selected_test_library_entry()
+        self._apply_selected_test_name_from_ui(test_name)
 
     def _on_test_library_profile_selected(self, _event=None) -> None:
         """
@@ -5725,6 +6187,8 @@ class BringupControlUI(tk.Tk):
         if hasattr(self, "_test_library_config_list"):
             self._test_library_config_list.selection_clear(0, tk.END)
         self._load_selected_test_source()
+        test_name, _scope = self._selected_test_library_entry()
+        self._apply_selected_test_name_from_ui(test_name)
 
     def _load_selected_test_source(self) -> None:
         """
@@ -6486,24 +6950,30 @@ class BringupControlUI(tk.Tk):
         NAME
             _append_output - Append a line to the output log.
         """
-        self._lines.append(line)
-        if len(self._lines) > self._max_lines:
-            self._lines = self._lines[-self._max_lines :]
-        self._render_log_lines(self._output, self._lines)
+        lines = self.__dict__.get("_lines")
+        if lines is None:
+            lines = []
+            self._lines = lines
+        lines.append(line)
+        max_lines = int(self.__dict__.get("_max_lines", 200))
+        if len(lines) > max_lines:
+            self._lines = lines[-max_lines:]
+        self._render_log_lines(self.__dict__.get("_output"), self._lines)
 
     def _append_test_output(self, line: str) -> None:
         """
         NAME
             _append_test_output - Append a line to the Tests-tab activity log.
         """
-        lines = getattr(self, "_test_lines", None)
+        lines = self.__dict__.get("_test_lines")
         if lines is None:
             lines = []
             self._test_lines = lines
         lines.append(line)
-        if len(lines) > self._max_lines:
-            self._test_lines = lines[-self._max_lines :]
-        self._render_log_lines(getattr(self, "_test_output", None), self._test_lines)
+        max_lines = int(self.__dict__.get("_max_lines", 200))
+        if len(lines) > max_lines:
+            self._test_lines = lines[-max_lines:]
+        self._render_log_lines(self.__dict__.get("_test_output"), self._test_lines)
 
     def _render_log_lines(self, widget: Optional[tk.Text], lines: List[str]) -> None:
         """
@@ -6692,6 +7162,19 @@ class BringupControlUI(tk.Tk):
         self._output.configure(state="normal")
         self._output.delete("1.0", "end")
         self._output.configure(state="disabled")
+
+    def _clear_test_output(self) -> None:
+        """
+        NAME
+            _clear_test_output - Clear the Tests-tab activity log.
+        """
+        self._test_lines = []
+        test_output = getattr(self, "_test_output", None)
+        if test_output is None:
+            return
+        test_output.configure(state="normal")
+        test_output.delete("1.0", "end")
+        test_output.configure(state="disabled")
 
     def _next_seq(self) -> int:
         """
@@ -6948,36 +7431,215 @@ class BringupControlUI(tk.Tk):
         NAME
             _on_test_selected - Send selectTestByName when dropdown changes.
         """
-        if not self._test_selection_boxes():
-            return
-        if not self._tcp_connected:
-            self._append_output("Not connected: selection blocked.")
-            self._append_test_output("Not connected: selection blocked.")
-            return
-        if self._tracker.is_pending():
-            self._append_output("Busy: wait for current command to finish.")
-            self._append_test_output("Busy: wait for current command to finish.")
-            return
         name = str(self._selected_test_var.get() or "").strip()
-        if not name or name == "(none)":
+        self._apply_selected_test_name_from_ui(name)
+
+    def _clear_test_selection_ui(self) -> None:
+        """
+        NAME
+            _clear_test_selection_ui - Clear selected-test UI state without mutating library contents.
+        """
+        self._selected_test_var.set(PROFILE_NONE)
+        self._last_selected_test = PROFILE_NONE
+        for attr_name in (
+            "_test_library_global_list",
+            "_test_library_config_list",
+            "_test_library_profile_list",
+        ):
+            listbox = getattr(self, attr_name, None)
+            if listbox is not None:
+                listbox.selection_clear(0, tk.END)
+        self._refresh_selected_test_scope_status()
+
+    def _selected_test_inactive_reason(self) -> str:
+        """
+        NAME
+            _selected_test_inactive_reason - Return the current selected-test readiness blocker.
+        """
+        selected_name = str(self._selected_test_var.get() or "").strip()
+        if not selected_name or selected_name == PROFILE_NONE:
+            return OUTPUT_NO_SELECTED_TEST
+        rows = list(self.__dict__.get("_tests_active_group_rows", []))
+        invalid_labels = [str(row.get("label", "")).strip() for row in rows if bool(row.get("invalid"))]
+        if invalid_labels:
+            return "missing resource/device - " + invalid_labels[0]
+        if not self._active_group_is_currently_active():
+            return TEST_LIBRARY_STATUS_LOADED_NOT_ACTIVATED
+        row = self._selected_test_row(selected_name)
+        if not isinstance(row, dict):
+            return "required devices unavailable"
+        blocked_reason = str(row.get("blockedReason", "") or "").strip()
+        if blocked_reason:
+            return blocked_reason
+        runnable_now = row.get("runnableNow")
+        if isinstance(runnable_now, bool):
+            return "" if runnable_now else "required devices unavailable"
+        return ""
+
+    def _selected_test_row(self, selected_name: str) -> Optional[Dict[str, Any]]:
+        """
+        NAME
+            _selected_test_row - Return the robot-published metadata row for one selected test.
+        """
+        if self._tests_table is None or not selected_name:
+            return None
+        total = int(self._tests_table.getEntry("totalCount").getDouble(0.0))
+        rows = self._tests_table.getSubTable("rows")
+        for i in range(total):
+            row = rows.getSubTable(str(i))
+            row_name = str(row.getEntry("name").getString("") or "").strip()
+            if row_name != selected_name:
+                continue
+            raw_required = str(row.getEntry("requiredDevices").getString("") or "").strip()
+            required_devices = (
+                [part.strip() for part in raw_required.split(",") if part.strip()]
+                if raw_required
+                else []
+            )
+            return {
+                "requiredDevices": required_devices,
+                "runnableNow": row.getEntry("runnableNow").getBoolean(False),
+                "blockedReason": str(row.getEntry("blockedReason").getString("") or "").strip(),
+            }
+        return None
+
+    def _selected_test_ready(self) -> bool:
+        """
+        NAME
+            _selected_test_ready - Return whether the current selected test is ready to run.
+        """
+        return self._selected_test_inactive_reason() == ""
+
+    def _refresh_test_result_status(self) -> None:
+        """
+        NAME
+            _refresh_test_result_status - Refresh the visible last-result summary in the Tests header.
+        """
+        result_var = self.__dict__.get("_last_result_text_var")
+        result_label = self.__dict__.get("_last_result_label")
+        if result_var is None:
             return
-        if name == self._last_selected_test:
+        result_text = TEST_LIBRARY_LAST_RESULT_DEFAULT
+        result_color = TEST_RESULT_NEUTRAL_FG
+        if self._tests_table is not None:
+            run_state = str(self._tests_table.getEntry("runState").getString("") or "").strip()
+            run_test = str(self._tests_table.getEntry("runTest").getString("") or "").strip()
+            run_result = str(self._tests_table.getEntry("runResult").getString("") or "").strip()
+            run_message = str(self._tests_table.getEntry("runMessage").getString("") or "").strip()
+            if run_state == "running" and run_test:
+                result_text = f"Last Result: RUNNING - {run_test}"
+                result_color = TEST_RESULT_RUNNING_FG
+            elif run_state == "passed" and run_test:
+                detail = run_message or run_test
+                result_text = f"Last Result: PASS - {detail}"
+                result_color = TEST_RESULT_PASS_FG
+            elif run_state == "failed" and run_test:
+                detail = run_message or run_test
+                result_text = f"Last Result: FAIL - {detail}"
+                result_color = TEST_RESULT_FAIL_FG
+            elif run_state in ("blocked", "aborted", "interrupted"):
+                detail = run_message or run_test or run_state.upper()
+                result_text = f"Last Result: {run_state.upper()} - {detail}"
+                result_color = TEST_RESULT_FAIL_FG
+            elif run_result and run_test:
+                result_text = f"Last Result: {run_result} - {run_test}"
+                result_color = (
+                    TEST_RESULT_PASS_FG
+                    if run_result.upper() == "PASS"
+                    else TEST_RESULT_FAIL_FG
+                )
+        result_var.set(result_text)
+        if result_label is not None:
+            result_label.configure(foreground=result_color)
+
+    def _refresh_tests_active_group_panel(self) -> None:
+        """
+        NAME
+            _refresh_tests_active_group_panel - Render the Tests-tab read-only active-group rows.
+        """
+        listbox = getattr(self, "_tests_active_group_list", None)
+        if listbox is None:
             return
-        self._last_selected_test = name
-        ts = timestamp_hms()
-        self._append_output(f"{ts} CMD selectTestByName \"{name}\"")
-        self._append_test_output(f"{ts} CMD selectTestByName \"{name}\"")
-        self._last_cmd = ("selectTestByName", {"name": name})
-        seq = send_tracked_command(
-            self._session,
-            self._tracker,
-            "selectTestByName",
-            {"name": name},
-            sender=lambda session, _command_name, _command_args: select_test_by_name(session, name),
-            now=time.time(),
-        )
-        if seq is not None:
-            self._last_sent_seq = seq
+        listbox.delete(0, tk.END)
+        rows = list(self.__dict__.get("_tests_active_group_rows", []))
+        if not rows:
+            listbox.insert(tk.END, TEST_ACTIVE_GROUP_PANEL_EMPTY)
+            return
+        group_active = self._active_group_is_currently_active()
+        for row in rows:
+            label = str(row.get("label", "")).strip()
+            if not label:
+                continue
+            statuses = [TEST_ACTIVE_GROUP_STATUS_ENABLED]
+            if bool(row.get("locked")):
+                statuses.append(TEST_ACTIVE_GROUP_STATUS_LOCKED)
+            if bool(row.get("invalid")):
+                statuses.append(TEST_ACTIVE_GROUP_STATUS_INVALID)
+            runtime_device = self._runtime_device_for_label(label)
+            instantiated = False
+            if runtime_device:
+                if bool(runtime_device.get("instantiated", False)):
+                    instantiated = True
+                elif str(label).strip().lower() in TEST_ACTIVE_GROUP_SINGLETON_LABELS:
+                    instantiated = bool(runtime_device.get("testable", False))
+            statuses.append(
+                "instantiated" if group_active and instantiated else TEST_ACTIVE_GROUP_STATUS_NOT_ACTIVATED
+            )
+            reason = str(row.get("reason", "")).strip()
+            line = f"{label} | " + " | ".join(statuses)
+            if reason:
+                line += f" | {reason}"
+            listbox.insert(tk.END, line)
+
+    def _refresh_selected_test_scope_status(self) -> None:
+        """
+        NAME
+            _refresh_selected_test_scope_status - Refresh the Tests-tab selected-test readiness label.
+        """
+        status_var = self.__dict__.get("_selected_test_scope_status_var")
+        headline_var = self.__dict__.get("_selected_test_scope_headline_var")
+        if status_var is None:
+            return
+        panel_bg = TEST_SCOPE_PANEL_NEUTRAL_BG
+        panel_fg = TEST_SCOPE_PANEL_NEUTRAL_FG
+        inactive_reason = self._selected_test_inactive_reason()
+        if inactive_reason:
+            status_var.set(TEST_LIBRARY_STATUS_INACTIVE_PREFIX + inactive_reason)
+            if headline_var is not None:
+                if inactive_reason == OUTPUT_NO_SELECTED_TEST:
+                    headline_var.set(TEST_SCOPE_PANEL_NO_SELECTION_HEADLINE)
+                else:
+                    headline_var.set(TEST_SCOPE_PANEL_INACTIVE_HEADLINE)
+            if inactive_reason == OUTPUT_NO_SELECTED_TEST:
+                panel_bg = TEST_SCOPE_PANEL_NEUTRAL_BG
+                panel_fg = TEST_SCOPE_PANEL_NEUTRAL_FG
+            else:
+                panel_bg = TEST_SCOPE_PANEL_INACTIVE_BG
+                panel_fg = TEST_SCOPE_PANEL_INACTIVE_FG
+        else:
+            status_var.set(TEST_LIBRARY_STATUS_READY)
+            if headline_var is not None:
+                headline_var.set(TEST_SCOPE_PANEL_READY_HEADLINE)
+            panel_bg = TEST_SCOPE_PANEL_READY_BG
+            panel_fg = TEST_SCOPE_PANEL_READY_FG
+        self._apply_selected_test_scope_panel_colors(panel_bg, panel_fg)
+
+    def _apply_selected_test_scope_panel_colors(self, background: str, foreground: str) -> None:
+        """
+        NAME
+            _apply_selected_test_scope_panel_colors - Apply the current Tests-tab scope status panel colors.
+        """
+        panel = self.__dict__.get("_selected_test_scope_panel")
+        if panel is not None:
+            panel.configure(bg=background, highlightbackground=TEST_SCOPE_PANEL_BORDER)
+        for attr_name in (
+            "_selected_test_scope_title_label",
+            "_selected_test_scope_headline_label",
+            "_selected_test_scope_detail_label",
+        ):
+            label = self.__dict__.get(attr_name)
+            if label is not None:
+                label.configure(bg=background, fg=foreground)
 
     def _selected_real_profile(self) -> str:
         """
@@ -7104,11 +7766,6 @@ class BringupControlUI(tk.Tk):
         self._refresh_tests_for_profile(profile_name)
         self._refresh_test_library_view(profile_name)
         self._select_test_library_profile_name(test_name)
-        if hasattr(self, "_test_box"):
-            values = list(self._test_box.cget("values"))
-            if test_name in values:
-                self._test_box.set(test_name)
-                self._last_selected_test = test_name
         if outcome.ok():
             self._append_output(DSL_IMPORT_SAVED_FMT)
             self._append_test_output(DSL_IMPORT_SAVED_FMT)
@@ -7183,11 +7840,6 @@ class BringupControlUI(tk.Tk):
                 self._append_test_output(line)
         self._refresh_tests_for_profile(profile_name)
         self._refresh_test_library_view(profile_name)
-        if hasattr(self, "_test_box"):
-            values = list(self._test_box.cget("values"))
-            if test_name in values:
-                self._test_box.set(test_name)
-                self._last_selected_test = test_name
         self._select_test_library_profile_name(test_name)
         if outcome.ok():
             self._append_output(DSL_CREATE_SAVED_FMT)
@@ -7276,11 +7928,6 @@ class BringupControlUI(tk.Tk):
             self._select_test_library_config_name(target_name)
         else:
             self._select_test_library_profile_name(target_name)
-        if hasattr(self, "_test_box"):
-            values = list(self._test_box.cget("values"))
-            if target_name in values:
-                self._test_box.set(target_name)
-                self._last_selected_test = target_name
         self._append_output(DSL_RENAME_SAVED_FMT)
         self._append_test_output(DSL_RENAME_SAVED_FMT)
 
@@ -7687,11 +8334,6 @@ class BringupControlUI(tk.Tk):
         self._refresh_tests_for_profile(profile_name)
         self._refresh_test_library_view(profile_name)
         self._select_test_library_profile_name(target_name)
-        if hasattr(self, "_test_box"):
-            values = list(self._test_box.cget("values"))
-            if target_name in values:
-                self._test_box.set(target_name)
-                self._last_selected_test = target_name
         if outcome.ok():
             self._append_output(DSL_COPY_SAVED_FMT)
             self._append_test_output(DSL_COPY_SAVED_FMT)
@@ -7823,10 +8465,10 @@ class BringupControlUI(tk.Tk):
         """
         self._on_action(CMD_SHOW_RUNTIME_STATE)
 
-    def _lifecycle_activate_from_ui(self) -> None:
+    def _activate_scope_from_ui(self) -> None:
         """
         NAME
-            _lifecycle_activate_from_ui - Activate the controlled lifecycle for active-group in read-only mode.
+            _activate_scope_from_ui - Activate active-group from the current context.
         """
         if not self._tcp_connected:
             self._append_output(OUTPUT_NOT_CONNECTED)
@@ -7834,8 +8476,8 @@ class BringupControlUI(tk.Tk):
         if self._tracker.is_pending():
             self._append_output(OUTPUT_BUSY)
             return
-        label = GROUP_ACTIVE_NAME
         mode = LIFECYCLE_DEFAULT_MODE
+        label = GROUP_ACTIVE_NAME
         args = {PROFILE_KEY_LABEL: label, "mode": mode}
         self._append_output(
             f"{timestamp_hms()} {OUTPUT_LIFECYCLE_ACTIVATE_FMT.format(label=label, mode=mode)}"
@@ -7852,10 +8494,17 @@ class BringupControlUI(tk.Tk):
         if seq is not None:
             self._last_sent_seq = seq
 
-    def _lifecycle_deactivate_from_ui(self) -> None:
+    def _lifecycle_activate_from_ui(self) -> None:
         """
         NAME
-            _lifecycle_deactivate_from_ui - Deactivate the controlled lifecycle session for active-group.
+            _lifecycle_activate_from_ui - Compatibility wrapper for shared top-bar scope activation.
+        """
+        self._activate_scope_from_ui()
+
+    def _deactivate_scope_from_ui(self) -> None:
+        """
+        NAME
+            _deactivate_scope_from_ui - Deactivate the current active-group session from the top bar.
         """
         if not self._tcp_connected:
             self._append_output(OUTPUT_NOT_CONNECTED)
@@ -7863,22 +8512,27 @@ class BringupControlUI(tk.Tk):
         if self._tracker.is_pending():
             self._append_output(OUTPUT_BUSY)
             return
-        label = GROUP_ACTIVE_NAME
-        args = {PROFILE_KEY_LABEL: label}
-        self._append_output(
-            f"{timestamp_hms()} {OUTPUT_LIFECYCLE_DEACTIVATE_FMT.format(label=label)}"
-        )
-        self._last_cmd = ("lifecycleDeactivate", args)
+        self._append_output(f"{timestamp_hms()} {OUTPUT_LIFECYCLE_DEACTIVATE_ACTIVE}")
+        self._last_cmd = ("lifecycleDeactivateActive", {})
         seq = send_tracked_command(
             self._session,
             self._tracker,
-            "lifecycleDeactivate",
-            args,
-            sender=lambda session, _command_name, _command_args: lifecycle_deactivate(session, label),
+            "lifecycleDeactivateActive",
+            {},
+            sender=lambda session, _command_name, _command_args: lifecycle_deactivate_active(
+                session
+            ),
             now=time.time(),
         )
         if seq is not None:
             self._last_sent_seq = seq
+
+    def _lifecycle_deactivate_from_ui(self) -> None:
+        """
+        NAME
+            _lifecycle_deactivate_from_ui - Compatibility wrapper for shared top-bar scope deactivation.
+        """
+        self._deactivate_scope_from_ui()
 
     def _lifecycle_deactivate_active_from_ui(self) -> None:
         """
@@ -7911,11 +8565,15 @@ class BringupControlUI(tk.Tk):
         """
         if not self._tcp_connected:
             self._append_output(OUTPUT_NOT_CONNECTED)
+            self._append_test_output(OUTPUT_NOT_CONNECTED)
             return
         if self._tracker.is_pending():
             self._append_output(OUTPUT_BUSY)
+            self._append_test_output(OUTPUT_BUSY)
             return
-        self._append_output(f"{timestamp_hms()} CMD {CMD_SHOW_LIFECYCLE_STATE}")
+        command_line = f"{timestamp_hms()} CMD {CMD_SHOW_LIFECYCLE_STATE}"
+        self._append_output(command_line)
+        self._append_test_output(command_line)
         self._last_cmd = (CMD_SHOW_LIFECYCLE_STATE, {})
         seq = send_tracked_command(
             self._session,
@@ -8091,6 +8749,7 @@ class BringupControlUI(tk.Tk):
                 if run_all:
                     running += " [run all]"
             self._running_text_var.set(f"Running: {running}")
+            self._refresh_test_result_status()
         if self._is_connected is not None:
             try:
                 nt_connected = bool(self._is_connected())
@@ -8295,6 +8954,7 @@ class BringupControlUI(tk.Tk):
         NAME
             _apply_runtime_state_payload - Apply live runtime-state JSON.
         """
+        self._latest_runtime_state_payload = dict(payload or {})
         latest_runtime_devices: Dict[str, Dict[str, Any]] = {}
         runtime_active = payload.get("runtimeActive")
         if isinstance(runtime_active, bool):
@@ -8393,6 +9053,8 @@ class BringupControlUI(tk.Tk):
         changed = False
         for live_view in live_views:
             changed = live_view.update_runtime_state(payload) or changed
+        self._refresh_tests_active_group_panel()
+        self._refresh_selected_test_scope_status()
         self._refresh_evidence_view()
         if changed:
             self._runtime_state_backoff = 1.0
@@ -8549,11 +9211,17 @@ class BringupControlUI(tk.Tk):
         if msg_type in ("ack", "out") and (name.lower() == "uipolllog" or seq_match):
             if msg_type == "out":
                 text = event.text
+                mirror_to_test = False
+                last_cmd = self.__dict__.get("_last_cmd")
+                if isinstance(last_cmd, tuple) and last_cmd:
+                    mirror_to_test = self._is_test_activity_command(str(last_cmd[0]))
                 if text:
                     for line in text.splitlines():
                         if self._should_skip_out_line(line):
                             continue
                         self._append_output(line)
+                        if mirror_to_test:
+                            self._append_test_output(line)
                 self._log_poll_inflight = False
                 self._log_poll_seq = None
             elif msg_type == "ack":
@@ -8617,7 +9285,7 @@ class BringupControlUI(tk.Tk):
                 text,
             )
             command_lower = str(name or NT_VALUE_EMPTY).strip().lower()
-            if command_lower in ACTIVE_GROUP_RESULT_COMMANDS:
+            if command_lower in ACTIVE_GROUP_RESULT_COMMANDS or command_lower == "groupreplacemembers":
                 self._apply_runtime_group_command_payload(data)
             if name == "uiHandshake" and isinstance(data, dict):
                 min_next = data.get("minNextSeq")
@@ -8642,6 +9310,9 @@ class BringupControlUI(tk.Tk):
         if msg_type in ("ack", "out"):
             self._tracker.handle_event(event)
             command_lower = str(event.name or "").strip().lower()
+            if command_lower == "deactivateselectedtestdevices" and msg_type == "ack":
+                if str(event.status or "").strip().lower() == "ok":
+                    self._clear_test_selection_ui()
             if command_lower == "activepresenceprobe":
                 self._evidence_probe_pending = False
                 seq_value = int(event.seq)
@@ -8654,8 +9325,13 @@ class BringupControlUI(tk.Tk):
                 "runtimedeactivate",
                 "activeadd",
                 "activenext",
+                "lifecycleactivate",
+                "lifecycledeactivateactive",
                 "groupadddevice",
                 "groupremovedevice",
+                "groupreplacemembers",
+                "activateselectedtestdevices",
+                "deactivateselectedtestdevices",
                 "manualdevicedutyset",
                 "manualdevicedutyclear",
                 "manualgroupdutyset",
@@ -8663,6 +9339,16 @@ class BringupControlUI(tk.Tk):
                 "activepresenceprobe",
             }:
                 self.after_idle(self._request_runtime_state_refresh)
+            if not self._tracker.is_pending():
+                pending_transition = self.__dict__.get("_pending_tests_boundary_transition")
+                if pending_transition:
+                    self._pending_tests_boundary_transition = None
+                    previous_tab, current_tab = pending_transition
+                    self.after_idle(
+                        lambda prev=previous_tab, curr=current_tab: self._handle_tests_boundary_transition(
+                            prev, curr
+                        )
+                    )
 
     def _apply_live_runtime_notice_from_ack(
         self,
@@ -8702,7 +9388,14 @@ class BringupControlUI(tk.Tk):
         elif command == "lifecycleactivate" and state == "ok":
             self._controlled_lifecycle_active_known = True
             self._clear_runtime_event_notice()
-        elif command in {"lifecycledeactivate", "lifecycledeactivateactive"} and state == "ok":
+        elif command == "activateselectedtestdevices" and state == "ok":
+            self._controlled_lifecycle_active_known = True
+            self._clear_runtime_event_notice()
+        elif command in {
+            "lifecycledeactivate",
+            "lifecycledeactivateactive",
+            "deactivateselectedtestdevices",
+        } and state == "ok":
             self._controlled_lifecycle_active_known = False
             self._clear_runtime_event_notice()
 
@@ -8711,6 +9404,8 @@ class BringupControlUI(tk.Tk):
         NAME
             _update_action_enabled - Enable/disable UI actions based on state.
         """
+        self._refresh_scope_context_label()
+        self._refresh_selected_test_scope_status()
         allow = (
             self._tcp_connected
             and self._handshake_done
@@ -8730,6 +9425,32 @@ class BringupControlUI(tk.Tk):
             )
         for box in self._test_selection_boxes():
             box.configure(state=state)
+        activate_scope_button = getattr(self, "_activate_scope_button", None)
+        if activate_scope_button is not None:
+            activate_allowed = allow
+            if (
+                activate_allowed
+                and self._scope_context_kind() == GROUP_SOURCE_SELECTED_TEST
+                and str(self._selected_test_var.get() or "").strip() in ("", PROFILE_NONE)
+            ):
+                activate_allowed = False
+            if activate_allowed and self._scope_context_kind() == GROUP_SOURCE_SELECTED_TEST:
+                tests_active_group_rows = self.__dict__.get("_tests_active_group_rows", [])
+                activate_allowed = not any(
+                    bool(row.get("invalid")) for row in tests_active_group_rows
+                )
+            activate_scope_button.state(
+                ["!disabled"] if activate_allowed else ["disabled"]
+            )
+        deactivate_scope_button = getattr(self, "_deactivate_scope_button", None)
+        if deactivate_scope_button is not None:
+            deactivate_scope_button.state(["!disabled"] if allow else ["disabled"])
+        run_selected_button = getattr(self, "_tests_run_selected_button", None)
+        if run_selected_button is not None:
+            run_selected_allowed = allow and self._selected_test_ready()
+            run_selected_button.state(
+                ["!disabled"] if run_selected_allowed else ["disabled"]
+            )
         if self._reset_button is not None:
             self._reset_button.state(["!disabled"] if self._tcp_connected else ["disabled"])
 
@@ -8845,43 +9566,31 @@ class BringupControlUI(tk.Tk):
     def _sync_test_dropdown_values(self, names: List[str]) -> None:
         """
         NAME
-            _sync_test_dropdown_values - Replace selected-test dropdown values from one authoritative source.
+            _sync_test_dropdown_values - Track the authoritative set of robot-known test names.
         """
-        test_boxes = self._test_selection_boxes()
-        if not test_boxes:
-            return
         values = [str(name).strip() for name in names if str(name).strip()]
+        current_selection = str(self._selected_test_var.get() or "").strip()
         if not values:
             values = [PROFILE_NONE]
-        current_values = list(test_boxes[0].cget("values"))
-        if current_values == values:
-            return
-        current_selection = str(self._selected_test_var.get() or "").strip()
-        for box in test_boxes:
-            box["values"] = values
-        if current_selection in values:
-            self._selected_test_var.set(current_selection)
-            self._last_selected_test = current_selection
-            return
-        self._selected_test_var.set(values[0])
-        self._last_selected_test = values[0]
+        self._known_test_names = values
+        if not current_selection:
+            self._selected_test_var.set(values[0])
+            self._last_selected_test = values[0]
 
     def _sync_test_selection(self, name: str) -> None:
         """
         NAME
-            _sync_test_selection - Update dropdown to match robot selection.
+            _sync_test_selection - Update the authoritative current-test selection from robot state.
         """
-        test_boxes = self._test_selection_boxes()
-        if not test_boxes:
-            return
         if not name or name == "(none)":
-            return
-        if name not in list(test_boxes[0].cget("values")):
             return
         if name == str(self._selected_test_var.get() or "").strip():
             return
         self._last_selected_test = name
         self._selected_test_var.set(name)
+        if self._current_right_tab_text() == TEST_LIBRARY_TAB_LABEL:
+            self._load_selected_test_into_active_group(force_replace=False)
+        self._refresh_selected_test_scope_status()
 
     def _handle_close(self) -> None:
         """

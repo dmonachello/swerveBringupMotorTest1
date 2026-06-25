@@ -291,6 +291,8 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_TESTS_TYPE = "type";
   private static final String JSON_KEY_TESTS_STATUS = "status";
   private static final String JSON_KEY_TESTS_REQUIRED_DEVICES = "requiredDevices";
+  private static final String JSON_KEY_TESTS_RUNNABLE_NOW = "runnableNow";
+  private static final String JSON_KEY_TESTS_BLOCKED_REASON = "blockedReason";
   private static final String JSON_KEY_TESTS_RUN = "run";
   private static final String JSON_KEY_RUN_ID = "runId";
   private static final String JSON_KEY_RUN_STATE = "state";
@@ -301,6 +303,14 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_RUN_STARTED_AT_MS = "startedAtMs";
   private static final String JSON_KEY_RUN_FINISHED_AT_MS = "finishedAtMs";
   private static final String JSON_KEY_RUN_DETAILS = "details";
+  private static final String TESTS_ENTRY_RUN_ID = "runId";
+  private static final String TESTS_ENTRY_RUN_STATE = "runState";
+  private static final String TESTS_ENTRY_RUN_TEST = "runTest";
+  private static final String TESTS_ENTRY_RUN_RESULT = "runResult";
+  private static final String TESTS_ENTRY_RUN_STATUS = "runStatus";
+  private static final String TESTS_ENTRY_RUN_MESSAGE = "runMessage";
+  private static final String TESTS_ENTRY_RUN_STARTED_AT_MS = "runStartedAtMs";
+  private static final String TESTS_ENTRY_RUN_FINISHED_AT_MS = "runFinishedAtMs";
   private static final String JSON_KEY_SOURCES = "sources";
   private static final String JSON_KEY_SOURCES_NAME = "name";
   private static final String JSON_KEY_SOURCES_PATH = "path";
@@ -1009,17 +1019,43 @@ public class BridgeUiCommandHandler {
           public frc.robot.diag.lifecycle.activation.ActivationResult activateLifecycle(
               String label,
               frc.robot.diag.lifecycle.activation.ActivationMode mode) {
-            return runtime.activateControlledBringupLifecycle(label, mode);
+            frc.robot.diag.lifecycle.activation.ActivationResult result =
+                runtime.activateControlledBringupLifecycle(label, mode);
+            BridgeUiCommandHandler.this.publishTestsOverview(core().buildTestsOverview());
+            return result;
+          }
+
+          @Override
+          public frc.robot.diag.lifecycle.activation.ActivationResult activateSelectedTestDevices(
+              frc.robot.diag.lifecycle.activation.ActivationMode mode) {
+            frc.robot.diag.lifecycle.activation.ActivationResult result =
+                runtime.activateSelectedTestDevices(mode);
+            BridgeUiCommandHandler.this.publishTestsOverview(core().buildTestsOverview());
+            return result;
           }
 
           @Override
           public frc.robot.diag.lifecycle.activation.DeactivateResult deactivateLifecycle(String label) {
-            return runtime.deactivateControlledBringupLifecycle(label);
+            frc.robot.diag.lifecycle.activation.DeactivateResult result =
+                runtime.deactivateControlledBringupLifecycle(label);
+            BridgeUiCommandHandler.this.publishTestsOverview(core().buildTestsOverview());
+            return result;
+          }
+
+          @Override
+          public frc.robot.diag.lifecycle.activation.DeactivateResult deactivateSelectedTestDevices() {
+            frc.robot.diag.lifecycle.activation.DeactivateResult result =
+                runtime.deactivateSelectedTestDevices();
+            BridgeUiCommandHandler.this.publishTestsOverview(core().buildTestsOverview());
+            return result;
           }
 
           @Override
           public frc.robot.diag.lifecycle.activation.DeactivateResult deactivateActiveLifecycle() {
-            return runtime.deactivateActiveControlledBringupLifecycle();
+            frc.robot.diag.lifecycle.activation.DeactivateResult result =
+                runtime.deactivateActiveControlledBringupLifecycle();
+            BridgeUiCommandHandler.this.publishTestsOverview(core().buildTestsOverview());
+            return result;
           }
 
           @Override
@@ -1871,6 +1907,7 @@ public class BridgeUiCommandHandler {
       case "printTestsOverview":
       case "selectTestByName":
       case "showTests":
+      case "groupReplaceMembers":
       case CMD_MANUAL_GROUP_DUTY_SET:
       case CMD_MANUAL_GROUP_DUTY_CLEAR:
       case "deviceOverrideInstantiate":
@@ -2719,6 +2756,7 @@ public class BridgeUiCommandHandler {
       case "groupDelete":
       case "groupAddDevice":
       case "groupRemoveDevice":
+      case "groupReplaceMembers":
       case "groupMemberEnable":
       case "groupMemberDisable":
       case "groupMemberToggle":
@@ -3680,6 +3718,10 @@ public class BridgeUiCommandHandler {
       obj.addProperty(JSON_KEY_TESTS_SELECTED, row.selected);
       obj.addProperty(JSON_KEY_TESTS_TYPE, row.type != null ? row.type : TEXT_EMPTY);
       obj.addProperty(JSON_KEY_TESTS_STATUS, row.status != null ? row.status : TEXT_EMPTY);
+      obj.addProperty(JSON_KEY_TESTS_RUNNABLE_NOW, row.runnableNow);
+      obj.addProperty(
+          JSON_KEY_TESTS_BLOCKED_REASON,
+          row.blockedReason != null ? row.blockedReason : TEXT_EMPTY);
       JsonArray requiredDevices = new JsonArray();
       if (row.requiredDevices != null) {
         for (String label : row.requiredDevices) {
@@ -4635,6 +4677,7 @@ public class BridgeUiCommandHandler {
     testsTable.getEntry("activeName").setString(core().getActiveBringupTestName());
     testsTable.getEntry("activeStatus").setString(core().getActiveBringupTestStatus());
     testsTable.getEntry("runAllActive").setBoolean(core().isRunAllActive());
+    publishTestsRunSnapshot(overview.run);
     NetworkTable rowsTable = testsTable.getSubTable("rows");
     int count = overview.rows.size();
     for (int i = 0; i < count; i++) {
@@ -4646,6 +4689,8 @@ public class BridgeUiCommandHandler {
       rowTable.getEntry("selected").setBoolean(row.selected);
       rowTable.getEntry("type").setString(row.type != null ? row.type : "");
       rowTable.getEntry("status").setString(row.status != null ? row.status : "");
+      rowTable.getEntry("runnableNow").setBoolean(row.runnableNow);
+      rowTable.getEntry("blockedReason").setString(row.blockedReason != null ? row.blockedReason : "");
       String requiredDevices =
           (row.requiredDevices == null || row.requiredDevices.isEmpty())
               ? ""
@@ -4660,6 +4705,8 @@ public class BridgeUiCommandHandler {
       rowTable.getEntry("selected").setBoolean(false);
       rowTable.getEntry("type").setString("");
       rowTable.getEntry("status").setString("");
+      rowTable.getEntry("runnableNow").setBoolean(false);
+      rowTable.getEntry("blockedReason").setString("");
       rowTable.getEntry("requiredDevices").setString("");
     }
     lastTestsCount = count;
@@ -4678,6 +4725,35 @@ public class BridgeUiCommandHandler {
     testsTable.getEntry("activeName").setString(core().getActiveBringupTestName());
     testsTable.getEntry("activeStatus").setString(core().getActiveBringupTestStatus());
     testsTable.getEntry("runAllActive").setBoolean(core().isRunAllActive());
+    publishTestsRunSnapshot(core().getLatestTestRunSnapshot());
+  }
+
+  /**
+   * NAME
+   *   publishTestsRunSnapshot - Publish the latest test-run snapshot to NetworkTables.
+   *
+   * PARAMETERS
+   *   run - Snapshot to publish.
+   *
+   * SIDE EFFECTS
+   *   Writes flat run status fields under bringup/tests.
+   */
+  private void publishTestsRunSnapshot(BringupCore.TestRunSnapshot run) {
+    BringupCore.TestRunSnapshot snapshot =
+        run != null ? run : BringupCore.TestRunSnapshot.idle();
+    testsTable.getEntry(TESTS_ENTRY_RUN_ID).setNumber(snapshot.runId);
+    testsTable.getEntry(TESTS_ENTRY_RUN_STATE)
+        .setString(snapshot.state != null ? snapshot.state : TEXT_EMPTY);
+    testsTable.getEntry(TESTS_ENTRY_RUN_TEST)
+        .setString(snapshot.test != null ? snapshot.test : TEXT_EMPTY);
+    testsTable.getEntry(TESTS_ENTRY_RUN_RESULT)
+        .setString(snapshot.result != null ? snapshot.result : TEXT_EMPTY);
+    testsTable.getEntry(TESTS_ENTRY_RUN_STATUS)
+        .setString(snapshot.status != null ? snapshot.status : TEXT_EMPTY);
+    testsTable.getEntry(TESTS_ENTRY_RUN_MESSAGE)
+        .setString(snapshot.message != null ? snapshot.message : TEXT_EMPTY);
+    testsTable.getEntry(TESTS_ENTRY_RUN_STARTED_AT_MS).setNumber(snapshot.startedAtMs);
+    testsTable.getEntry(TESTS_ENTRY_RUN_FINISHED_AT_MS).setNumber(snapshot.finishedAtMs);
   }
 
   //@SuppressWarnings("removal")

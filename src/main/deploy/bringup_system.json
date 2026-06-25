@@ -264,8 +264,8 @@
       "terminator": true
     }
   ],
-  "data_version": "2026-06-19_202704",
-  "data_hash": "f524d42c0a96fbb9edecb3a1689a8199ec71b36593da59b1cbb23194c96878ff",
+  "data_version": "2026-06-25_164033",
+  "data_hash": "e81e351c4e5aa80b954e9491f28aa1362313e122e9340aa9ba0d417a759e8fb5",
   "default_profile": "2026_no_swyfts",
   "bridgeConfig": {
     "schemaVersion": 2,
@@ -1480,8 +1480,8 @@
         "runnable": true
       },
       "falcon9_to_limit": {
-        "source": "test \"falcon9_to_limit\"\n\ndevice \"FALCON 9\"\ndevice \"lmtSw0\"\n\nmain:\n\tset \"FALCON 9\".output_percent_cmd = 0.20\n\n\n\tabort \"FALCON 9\".current_actual > 40\n\n\tsuccess lmtSw0.pressed\n\n\n\n",
-        "sourceHash": "42f07decbf66d269b7cff20047e2e4fc9068b0bd821b51537be1b6beb5101e7c",
+        "source": "test \"falcon9_to_limit\"\n\ndevice \"FALCON 9\"\ndevice \"lmtSw0\"\n\nmain:\n\tset \"FALCON 9\".output_percent_cmd = 0.20\n\n\n\tabort \"FALCON 9\".current_actual > 40\n\n\tsuccess lmtSw0.pressed\n\n# intentionally not doing a timeout\n\n\n",
+        "sourceHash": "44a9701ed225c2112494ce393f14e91620aa9ce1a628415426e4663782762e8b",
         "normalized": {
           "name": "falcon9_to_limit",
           "devices": [

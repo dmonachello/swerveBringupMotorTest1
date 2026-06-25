@@ -119,10 +119,21 @@ public final class LifecycleProfileTopologyAdapter {
 
     public static void syncRuntimeGroups(
             GroupCatalog groupCatalog, List<BridgeGroupManager.Group> runtimeGroups) {
+        syncRuntimeGroups(groupCatalog, runtimeGroups, List.of());
+    }
+
+    public static void syncRuntimeGroups(
+            GroupCatalog groupCatalog,
+            List<BridgeGroupManager.Group> runtimeGroups,
+            List<String> preservedDynamicLabels) {
         if (groupCatalog == null) {
             return;
         }
         Set<String> runtimeLabels = new LinkedHashSet<>();
+        Set<String> preservedLabels = new LinkedHashSet<>();
+        if (preservedDynamicLabels != null) {
+            preservedLabels.addAll(preservedDynamicLabels);
+        }
         if (runtimeGroups != null) {
             for (BridgeGroupManager.Group runtimeGroup : runtimeGroups) {
                 if (runtimeGroup == null
@@ -145,6 +156,9 @@ public final class LifecycleProfileTopologyAdapter {
 
         for (GroupRecord groupRecord : groupCatalog.groupRecords()) {
             if (groupRecord.kind() != GroupKind.DYNAMIC) {
+                continue;
+            }
+            if (preservedLabels.contains(groupRecord.label())) {
                 continue;
             }
             if (!runtimeLabels.contains(groupRecord.label())) {

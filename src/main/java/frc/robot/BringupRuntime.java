@@ -3,6 +3,7 @@ package frc.robot;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import edu.wpi.first.networktables.NetworkTable;
+import edu.wpi.first.wpilibj.DriverStation;
 import frc.robot.diag.lifecycle.activation.ActivationMode;
 import frc.robot.diag.lifecycle.activation.ActivationResult;
 import frc.robot.diag.lifecycle.activation.ActivationSession;
@@ -31,6 +32,11 @@ public final class BringupRuntime {
   private static final String COMMAND_RUN_TEST = "runTest";
   private static final String GROUP_ACTIVE = "active-group";
   private static final String GROUP_DEFAULT = "defaultGroup";
+  private static final String SCOPE_LABEL_SELECTED_TEST_PREFIX = "selected-test:";
+  private static final String TYPE_PDH = "PDH";
+  private static final String TYPE_PDP = "PDP";
+  private static final String TYPE_ROBORIO = "roboRIO";
+  private static final String TYPE_XBOX_CONTROLLER = "xboxController";
   private static final String TEXT_EMPTY = "";
   private static final double BINDING_VALUE_ANALOG = 0.0;
   private static final String JSON_KEY_AVAILABLE = "available";
@@ -71,6 +77,12 @@ public final class BringupRuntime {
   private static final String TEXT_NONE = "(none)";
   private static final String ERROR_CONTROLLED_LIFECYCLE_UNAVAILABLE =
       "Controlled lifecycle runtime unavailable.";
+  private static final String ERROR_NO_SELECTED_TEST = "no selected test";
+  private static final String ERROR_WRONG_SCOPE_OWNER_PREFIX = "wrong scope owner - ";
+  private static final String ERROR_WRONG_SCOPE_OWNER_ACTIVE_GROUP = "active-group is active";
+  private static final String ERROR_WRONG_SCOPE_OWNER_NO_ACTIVE_SCOPE = "no active scope";
+  private static final long PERIODIC_LIFECYCLE_REFRESH_ENABLED_MS = 250L;
+  private static final long PERIODIC_LIFECYCLE_REFRESH_DISABLED_MS = 1000L;
 
   private final CanBusHealth canHealth;
   private final NetworkTable diagTable;
@@ -82,6 +94,7 @@ public final class BringupRuntime {
   private final DeviceLifecycleRegistry deviceLifecycle = new DeviceLifecycleRegistry();
   private LifecycleCatalogBundle controlledBringupLifecycle;
   private ControlledBringupLifecycleRuntime controlledBringupLifecycleRuntime;
+  private long lastPeriodicLifecycleRefreshMs = Long.MIN_VALUE;
 
   private BringupCore core;
   private DiagnosticsReporter diagnostics;
@@ -196,6 +209,71 @@ public final class BringupRuntime {
 
   /**
    * NAME
+   *   activateSelectedTestDevices - Reconcile lifecycle scope to the currently selected test.
+   *
+   * PARAMETERS
+   *   mode - Requested activation mode.
+   *
+   * RETURNS
+   *   Activation result for the transient selected-test lifecycle scope.
+   */
+  public ActivationResult activateSelectedTestDevices(ActivationMode mode) {
+    synchronizeControlledBringupLifecycleGroups();
+    ControlledBringupLifecycleRuntime lifecycleRuntime = controlledBringupLifecycleRuntime;
+    String selectedTestName = selectedBringupTestName();
+    if (selectedTestName.isBlank()) {
+      return new ActivationResult(
+          false,
+          buildSelectedTestScopeLabel(TEXT_EMPTY),
+          null,
+          mode,
+          List.of(),
+          List.of(),
+          List.of(),
+          currentLifecycleState(),
+          ERROR_NO_SELECTED_TEST,
+          ERROR_NO_SELECTED_TEST);
+    }
+    if (lifecycleRuntime == null) {
+      return new ActivationResult(
+          false,
+          buildSelectedTestScopeLabel(selectedTestName),
+          null,
+          mode,
+          List.of(),
+          List.of(),
+          List.of(),
+          LifecycleState.INACTIVE,
+          ERROR_CONTROLLED_LIFECYCLE_UNAVAILABLE,
+          ERROR_CONTROLLED_LIFECYCLE_UNAVAILABLE);
+    }
+    if (lifecycleRuntime.activationManager().getActiveSession().isPresent()) {
+      DeactivateResult deactivateResult = lifecycleRuntime.activationManager().deactivateActive();
+      if (!deactivateResult.success()) {
+        refreshDeviceLifecycle(System.currentTimeMillis());
+        return new ActivationResult(
+            false,
+            buildSelectedTestScopeLabel(selectedTestName),
+            deactivateResult.sessionId(),
+            mode,
+            List.of(),
+            List.of(),
+            List.of(),
+            currentLifecycleState(),
+            deactivateResult.errorCode(),
+            deactivateResult.errorMessage());
+      }
+    }
+    String scopeLabel = buildSelectedTestScopeLabel(selectedTestName);
+    List<String> requiredDevices = selectedBringupTestRequiredDevices();
+    ensureDynamicLifecycleGroup(scopeLabel, requiredDevices);
+    ActivationResult result = lifecycleRuntime.activationManager().activate(scopeLabel, mode);
+    refreshDeviceLifecycle(System.currentTimeMillis());
+    return result;
+  }
+
+  /**
+   * NAME
    *   deactivateControlledBringupLifecycle - Deactivate the lifecycle session matching one label.
    *
    * PARAMETERS
@@ -242,8 +320,55 @@ public final class BringupRuntime {
           ERROR_CONTROLLED_LIFECYCLE_UNAVAILABLE,
           ERROR_CONTROLLED_LIFECYCLE_UNAVAILABLE);
     }
+    if (lifecycleRuntime.activationManager().lifecycleState() == LifecycleState.INACTIVE) {
+      return new DeactivateResult(
+          true,
+          GROUP_ACTIVE,
+          null,
+          List.of(),
+          LifecycleState.INACTIVE,
+          null,
+          null);
+    }
     DeactivateResult result = lifecycleRuntime.activationManager().deactivateActive();
     refreshDeviceLifecycle(System.currentTimeMillis());
+    return result;
+  }
+
+  /**
+   * NAME
+   *   deactivateSelectedTestDevices - Deactivate the current selected-test-owned lifecycle scope.
+   *
+   * RETURNS
+   *   Deactivation result or a wrong-owner failure when manual scope owns runtime.
+   */
+  public DeactivateResult deactivateSelectedTestDevices() {
+    synchronizeControlledBringupLifecycleGroups();
+    ControlledBringupLifecycleRuntime lifecycleRuntime = controlledBringupLifecycleRuntime;
+    if (lifecycleRuntime == null) {
+      return new DeactivateResult(
+          false,
+          null,
+          null,
+          List.of(),
+          LifecycleState.INACTIVE,
+          ERROR_CONTROLLED_LIFECYCLE_UNAVAILABLE,
+          ERROR_CONTROLLED_LIFECYCLE_UNAVAILABLE);
+    }
+    String activeLabel = activeLifecycleRequestedLabel();
+    if (!isSelectedTestScopeLabel(activeLabel)) {
+      return new DeactivateResult(
+          false,
+          activeLabel,
+          null,
+          List.of(),
+          currentLifecycleState(),
+          ERROR_WRONG_SCOPE_OWNER_PREFIX + activeScopeOwnerText(activeLabel),
+          ERROR_WRONG_SCOPE_OWNER_PREFIX + activeScopeOwnerText(activeLabel));
+    }
+    DeactivateResult result = lifecycleRuntime.activationManager().deactivateActive();
+    refreshDeviceLifecycle(System.currentTimeMillis());
+    cleanupInactiveSelectedTestLifecycleGroups();
     return result;
   }
 
@@ -476,7 +601,14 @@ public final class BringupRuntime {
       devices = activeDevices;
     }
     sampledTelemetry.sampleDevices(devices, nowMs);
-    refreshDeviceLifecycle(nowMs);
+    long refreshPeriodMs = DriverStation.isEnabled()
+        ? PERIODIC_LIFECYCLE_REFRESH_ENABLED_MS
+        : PERIODIC_LIFECYCLE_REFRESH_DISABLED_MS;
+    if (lastPeriodicLifecycleRefreshMs == Long.MIN_VALUE
+        || (nowMs - lastPeriodicLifecycleRefreshMs) >= refreshPeriodMs) {
+      refreshDeviceLifecycle(nowMs);
+      lastPeriodicLifecycleRefreshMs = nowMs;
+    }
   }
 
   /**
@@ -869,13 +1001,110 @@ public final class BringupRuntime {
       return;
     }
     LifecycleProfileTopologyAdapter.syncRuntimeGroups(
-        controlledBringupLifecycle.groupCatalog(), bridgeGroups.getGroups());
+        controlledBringupLifecycle.groupCatalog(),
+        bridgeGroups.getGroups(),
+        preservedDynamicLifecycleLabels());
   }
 
   private void ensureLifecycleRuntimeGroupsDefined() {
     if (bridgeGroups.getGroup(GROUP_ACTIVE) == null) {
       bridgeGroups.createGroup(GROUP_ACTIVE);
     }
+  }
+
+  private List<String> preservedDynamicLifecycleLabels() {
+    String activeLabel = activeLifecycleRequestedLabel();
+    if (!isSelectedTestScopeLabel(activeLabel)) {
+      return List.of();
+    }
+    return List.of(activeLabel);
+  }
+
+  private void ensureDynamicLifecycleGroup(String label, List<String> memberLabels) {
+    if (controlledBringupLifecycle == null || label == null || label.isBlank()) {
+      return;
+    }
+    if (!controlledBringupLifecycle.groupCatalog().hasGroupLabel(label)) {
+      controlledBringupLifecycle.groupCatalog().createDynamicGroup(label);
+    }
+    controlledBringupLifecycle.groupCatalog().setDynamicGroupMembers(label, memberLabels);
+  }
+
+  private void cleanupInactiveSelectedTestLifecycleGroups() {
+    if (controlledBringupLifecycle == null) {
+      return;
+    }
+    for (frc.robot.diag.lifecycle.groups.GroupRecord groupRecord
+        : controlledBringupLifecycle.groupCatalog().groupRecords()) {
+      if (groupRecord == null || !isSelectedTestScopeLabel(groupRecord.label())) {
+        continue;
+      }
+      if (groupRecord.state() == frc.robot.diag.lifecycle.groups.GroupState.INACTIVE) {
+        controlledBringupLifecycle.groupCatalog().deleteDynamicGroup(groupRecord.label());
+      }
+    }
+  }
+
+  private String selectedBringupTestName() {
+    if (core == null) {
+      return TEXT_EMPTY;
+    }
+    String selectedName = core.getSelectedBringupTestName();
+    return selectedName != null ? selectedName.trim() : TEXT_EMPTY;
+  }
+
+  private List<String> selectedBringupTestRequiredDevices() {
+    if (core == null) {
+      return List.of();
+    }
+    BringupCore.TestsOverview overview = core.buildTestsOverview();
+    if (overview == null || overview.rows == null) {
+      return List.of();
+    }
+    for (BringupCore.TestRow row : overview.rows) {
+      if (row != null && row.selected && row.requiredDevices != null) {
+        return List.copyOf(row.requiredDevices);
+      }
+    }
+    return List.of();
+  }
+
+  private String buildSelectedTestScopeLabel(String testName) {
+    return SCOPE_LABEL_SELECTED_TEST_PREFIX + safeText(testName);
+  }
+
+  private static boolean isSelectedTestScopeLabel(String label) {
+    return label != null && label.startsWith(SCOPE_LABEL_SELECTED_TEST_PREFIX);
+  }
+
+  private String activeLifecycleRequestedLabel() {
+    ControlledBringupLifecycleRuntime lifecycleRuntime = controlledBringupLifecycleRuntime;
+    if (lifecycleRuntime == null) {
+      return TEXT_EMPTY;
+    }
+    return lifecycleRuntime
+        .activationManager()
+        .getActiveSession()
+        .map(ActivationSession::requestedLabel)
+        .orElse(TEXT_EMPTY);
+  }
+
+  private LifecycleState currentLifecycleState() {
+    ControlledBringupLifecycleRuntime lifecycleRuntime = controlledBringupLifecycleRuntime;
+    if (lifecycleRuntime == null) {
+      return LifecycleState.INACTIVE;
+    }
+    return lifecycleRuntime.activationManager().lifecycleState();
+  }
+
+  private String activeScopeOwnerText(String activeLabel) {
+    if (activeLabel == null || activeLabel.isBlank()) {
+      return ERROR_WRONG_SCOPE_OWNER_NO_ACTIVE_SCOPE;
+    }
+    if (GROUP_ACTIVE.equals(activeLabel)) {
+      return ERROR_WRONG_SCOPE_OWNER_ACTIVE_GROUP;
+    }
+    return activeLabel + " is active";
   }
 
   /**
@@ -1002,25 +1231,36 @@ public final class BringupRuntime {
       if (entry == null || entry.label == null || entry.label.isBlank()) {
         continue;
       }
+      boolean singletonSupport = isLifecycleSingletonEntry(entry);
+      if (singletonSupport) {
+        ensureSingletonLifecycleDeviceCreated(entry.label);
+      }
       frc.robot.diag.lifecycle.runtime.DeviceRuntimeState controlledState =
           controlledLifecycleRuntimeStateForLabel(entry.label);
       inScopeByLabel.put(
           entry.label.trim().toLowerCase(),
-          resolveLifecycleDeviceInScope(runtimeActive, controlledLifecycleActive, controlledState));
+          singletonSupport
+              || resolveLifecycleDeviceInScope(
+                  runtimeActive, controlledLifecycleActive, controlledState));
     }
     if (core != null) {
       for (BringupUtil.DeviceEntry entry : entries) {
         if (entry == null || entry.label == null || entry.label.isBlank()) {
           continue;
         }
+        boolean singletonSupport = isLifecycleSingletonEntry(entry);
         frc.robot.devices.DeviceUnit device = core.findDeviceByLabel(entry.label);
         frc.robot.diag.lifecycle.runtime.DeviceRuntimeState controlledState =
             controlledLifecycleRuntimeStateForLabel(entry.label);
         String normalized = entry.label.trim().toLowerCase();
         boolean instantiated = device != null && device.isCreated();
         instantiatedByLabel.put(normalized, instantiated);
-        if (!shouldCaptureLifecycleSnapshot(
-            runtimeActive, controlledLifecycleActive, instantiated, controlledState)) {
+        boolean shouldCapture =
+            singletonSupport
+                ? instantiated
+                : shouldCaptureLifecycleSnapshot(
+                    runtimeActive, controlledLifecycleActive, instantiated, controlledState);
+        if (!shouldCapture) {
           continue;
         }
         frc.robot.diag.snapshots.DeviceSnapshot snapshot =
@@ -1033,6 +1273,21 @@ public final class BringupRuntime {
       }
     }
     deviceLifecycle.refresh(entries, snapshotsByLabel, instantiatedByLabel, inScopeByLabel, nowMs);
+  }
+
+  private void ensureSingletonLifecycleDeviceCreated(String label) {
+    if (core == null || label == null || label.isBlank()) {
+      return;
+    }
+    frc.robot.devices.DeviceUnit device = core.findDeviceByLabel(label);
+    if (device == null || device.isCreated()) {
+      return;
+    }
+    try {
+      device.ensureCreated();
+    } catch (RuntimeException ex) {
+      // Leave lifecycle publication to report the device as unavailable.
+    }
   }
 
   static boolean resolveLifecycleDeviceInScope(
@@ -1118,6 +1373,17 @@ public final class BringupRuntime {
       return TEXT_EMPTY;
     }
     return normalized;
+  }
+
+  static boolean isLifecycleSingletonEntry(BringupUtil.DeviceEntry entry) {
+    if (entry == null || entry.type == null) {
+      return false;
+    }
+    String type = entry.type.trim();
+    return TYPE_PDH.equalsIgnoreCase(type)
+        || TYPE_PDP.equalsIgnoreCase(type)
+        || TYPE_ROBORIO.equalsIgnoreCase(type)
+        || TYPE_XBOX_CONTROLLER.equalsIgnoreCase(type);
   }
 
   private void replaceCore() {

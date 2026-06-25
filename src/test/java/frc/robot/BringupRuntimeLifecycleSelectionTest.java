@@ -166,4 +166,21 @@ class BringupRuntimeLifecycleSelectionTest {
     assertTrue(groups.hasDevice("defaultGroup", "SPARKMAX/NEO 25"));
     assertNotNull(groups.getGroup("active-group"));
   }
+
+  @Test
+  void lifecycleSingletonEntryTreatsControllerAndInfrastructureAsPreservedSupport() {
+    BringupUtil.DeviceEntry controller =
+        new BringupUtil.DeviceEntry(
+            0, 9, 1, "USB", "Microsoft", "xboxController", "controller0", null, null, null, null);
+    BringupUtil.DeviceEntry pdp =
+        new BringupUtil.DeviceEntry(
+            20, 4, 8, "CAN", "CTRE", "PDP", "pdp", null, null, null, null);
+    BringupUtil.DeviceEntry limitSwitch =
+        new BringupUtil.DeviceEntry(
+            0, 1, 0, "DIO", "NI", "limitSwitch", "lmtSw0", null, null, null, null);
+
+    assertTrue(BringupRuntime.isLifecycleSingletonEntry(controller));
+    assertTrue(BringupRuntime.isLifecycleSingletonEntry(pdp));
+    assertFalse(BringupRuntime.isLifecycleSingletonEntry(limitSwitch));
+  }
 }

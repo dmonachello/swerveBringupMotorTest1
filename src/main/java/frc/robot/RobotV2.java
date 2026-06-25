@@ -104,7 +104,6 @@ public class RobotV2 extends TimedRobot {
   private static final String DEFAULT_GROUP_NAME = "defaultGroup";
   private static final String MESSAGE_SELECTED_PROFILE_STAGE_FAILED_PREFIX =
       "Failed to stage selected profile for incremental bringup: ";
-
   /**
    * NAME
    *   robotInit - One-time robot initialization.
@@ -208,6 +207,7 @@ public class RobotV2 extends TimedRobot {
       boolean xboxConnected = controller0 != null && DriverStation.isJoystickConnected(0);
       uiHandler.updateSafety(xboxConnected);
       uiHandler.publishUiRobotState();
+      uiHandler.publishTestsSelectionStatus();
     }
     frc.robot.diag.app.AppStatusTracker.recordLoop();
   }
@@ -301,9 +301,6 @@ public class RobotV2 extends TimedRobot {
       bridgeGroups().applyBindings(inputs, core(), bridgeSelected());
     }
 
-    if (uiHandler != null) {
-      uiHandler.publishTestsSelectionStatus();
-    }
   }
 
   private static boolean isActuationRequested(double neoSpeed, double krakenSpeed) {

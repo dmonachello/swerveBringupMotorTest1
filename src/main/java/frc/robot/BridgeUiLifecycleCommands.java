@@ -22,6 +22,8 @@ final class BridgeUiLifecycleCommands implements BridgeUiCommandDispatcher.Comma
   private static final String CMD_LIFECYCLE_DEACTIVATE = "lifecycleDeactivate";
   private static final String CMD_LIFECYCLE_DEACTIVATE_ACTIVE = "lifecycleDeactivateActive";
   private static final String CMD_SHOW_LIFECYCLE_STATE = "showLifecycleState";
+  private static final String CMD_ACTIVATE_SELECTED_TEST_DEVICES = "activateSelectedTestDevices";
+  private static final String CMD_DEACTIVATE_SELECTED_TEST_DEVICES = "deactivateSelectedTestDevices";
 
   private static final String ARG_LABEL = "label";
   private static final String ARG_MODE = "mode";
@@ -31,6 +33,15 @@ final class BridgeUiLifecycleCommands implements BridgeUiCommandDispatcher.Comma
   private static final String TEXT_ACTIVATED_FMT = "Lifecycle activated: %s";
   private static final String TEXT_DEACTIVATED_FMT = "Lifecycle deactivated: %s";
   private static final String TEXT_DEACTIVATED_ACTIVE = "Lifecycle deactivated active session.";
+  private static final String TEXT_SELECTED_TEST_SCOPE_ACTIVE =
+      "active-group active - ready to run";
+  private static final String TEXT_SELECTED_ACTIVE_GROUP_SCOPE_ACTIVE =
+      "active-group active - ready to run";
+  private static final String TEXT_SCOPE_DEACTIVATED = "group deactivated";
+  private static final String TEXT_GROUP_ALREADY_INACTIVE =
+      "Group already inactive. Nothing changed.";
+  private static final String TEXT_ACTIVE_GROUP_LABEL = "active-group";
+  private static final String TEXT_SELECTED_TEST_SCOPE_LABEL_PREFIX = "selected-test:";
   private static final String TEXT_REQUIRED_ACTIVATE_LABEL =
       "lifecycleActivate requires args.label.";
   private static final String TEXT_REQUIRED_DEACTIVATE_LABEL =
@@ -61,6 +72,8 @@ final class BridgeUiLifecycleCommands implements BridgeUiCommandDispatcher.Comma
       CMD_LIFECYCLE_ACTIVATE,
       CMD_LIFECYCLE_DEACTIVATE,
       CMD_LIFECYCLE_DEACTIVATE_ACTIVE,
+      CMD_ACTIVATE_SELECTED_TEST_DEVICES,
+      CMD_DEACTIVATE_SELECTED_TEST_DEVICES,
       CMD_SHOW_LIFECYCLE_STATE);
 
   /**
@@ -78,7 +91,11 @@ final class BridgeUiLifecycleCommands implements BridgeUiCommandDispatcher.Comma
 
     ActivationResult activateLifecycle(String label, ActivationMode mode);
 
+    ActivationResult activateSelectedTestDevices(ActivationMode mode);
+
     DeactivateResult deactivateLifecycle(String label);
+
+    DeactivateResult deactivateSelectedTestDevices();
 
     DeactivateResult deactivateActiveLifecycle();
 
@@ -116,6 +133,12 @@ final class BridgeUiLifecycleCommands implements BridgeUiCommandDispatcher.Comma
       case CMD_LIFECYCLE_DEACTIVATE_ACTIVE:
         executeLifecycleDeactivateActive(result);
         break;
+      case CMD_ACTIVATE_SELECTED_TEST_DEVICES:
+        executeActivateSelectedTestDevices(args, result);
+        break;
+      case CMD_DEACTIVATE_SELECTED_TEST_DEVICES:
+        executeDeactivateSelectedTestDevices(result);
+        break;
       case CMD_SHOW_LIFECYCLE_STATE:
         executeShowLifecycleState(args, result);
         break;
@@ -149,7 +172,27 @@ final class BridgeUiLifecycleCommands implements BridgeUiCommandDispatcher.Comma
     ActivationResult activation = dependencies.activateLifecycle(label, mode);
     result.ok = activation.success();
     result.message = activation.success()
-        ? String.format(TEXT_ACTIVATED_FMT, activation.requestedLabel())
+        ? successActivateMessage(activation.requestedLabel())
+        : selectLifecycleErrorMessage(activation.errorCode(), activation.errorMessage());
+    result.outText = result.message;
+    result.outJson = buildActivationPayload(activation).toString();
+  }
+
+  private void executeActivateSelectedTestDevices(JsonObject args, BridgeUiCommandResult result) {
+    if (!dependencies.isRuntimeActivationAllowed()) {
+      result.ok = false;
+      result.message = TEXT_ACTIVATE_BLOCKED_DISABLED;
+      result.outText = result.message;
+      return;
+    }
+    ActivationMode mode = parseMode(args, result);
+    if (mode == null) {
+      return;
+    }
+    ActivationResult activation = dependencies.activateSelectedTestDevices(mode);
+    result.ok = activation.success();
+    result.message = activation.success()
+        ? TEXT_SELECTED_TEST_SCOPE_ACTIVE
         : selectLifecycleErrorMessage(activation.errorCode(), activation.errorMessage());
     result.outText = result.message;
     result.outJson = buildActivationPayload(activation).toString();
@@ -166,17 +209,28 @@ final class BridgeUiLifecycleCommands implements BridgeUiCommandDispatcher.Comma
     DeactivateResult deactivation = dependencies.deactivateLifecycle(label);
     result.ok = deactivation.success();
     result.message = deactivation.success()
-        ? String.format(TEXT_DEACTIVATED_FMT, deactivation.requestedLabel())
+        ? successDeactivateMessage(deactivation.requestedLabel())
         : selectLifecycleErrorMessage(deactivation.errorCode(), deactivation.errorMessage());
     result.outText = result.message;
     result.outJson = buildDeactivatePayload(OPERATION_DEACTIVATE, deactivation).toString();
+  }
+
+  private void executeDeactivateSelectedTestDevices(BridgeUiCommandResult result) {
+    DeactivateResult deactivation = dependencies.deactivateSelectedTestDevices();
+    result.ok = deactivation.success();
+    result.message = deactivation.success()
+        ? successDeactivateActiveMessage(deactivation)
+        : selectLifecycleErrorMessage(deactivation.errorCode(), deactivation.errorMessage());
+    result.outText = result.message;
+    result.outJson =
+        buildDeactivatePayload(OPERATION_DEACTIVATE_ACTIVE, deactivation).toString();
   }
 
   private void executeLifecycleDeactivateActive(BridgeUiCommandResult result) {
     DeactivateResult deactivation = dependencies.deactivateActiveLifecycle();
     result.ok = deactivation.success();
     result.message = deactivation.success()
-        ? TEXT_DEACTIVATED_ACTIVE
+        ? successDeactivateActiveMessage(deactivation)
         : selectLifecycleErrorMessage(deactivation.errorCode(), deactivation.errorMessage());
     result.outText = result.message;
     result.outJson = buildDeactivatePayload(OPERATION_DEACTIVATE_ACTIVE, deactivation).toString();
@@ -258,6 +312,35 @@ final class BridgeUiLifecycleCommands implements BridgeUiCommandDispatcher.Comma
       return errorCode;
     }
     return "";
+  }
+
+  private String successActivateMessage(String requestedLabel) {
+    if (TEXT_ACTIVE_GROUP_LABEL.equals(requestedLabel)) {
+      return TEXT_SELECTED_ACTIVE_GROUP_SCOPE_ACTIVE;
+    }
+    if (requestedLabel != null && requestedLabel.startsWith(TEXT_SELECTED_TEST_SCOPE_LABEL_PREFIX)) {
+      return TEXT_SELECTED_TEST_SCOPE_ACTIVE;
+    }
+    return String.format(TEXT_ACTIVATED_FMT, requestedLabel);
+  }
+
+  private String successDeactivateActiveMessage(DeactivateResult deactivation) {
+    if (deactivation == null) {
+      return TEXT_SCOPE_DEACTIVATED;
+    }
+    if (deactivation.deactivatedDeviceLabels() == null || deactivation.deactivatedDeviceLabels().isEmpty()) {
+      return TEXT_GROUP_ALREADY_INACTIVE;
+    }
+    return TEXT_SCOPE_DEACTIVATED;
+  }
+
+  private String successDeactivateMessage(String requestedLabel) {
+    if (TEXT_ACTIVE_GROUP_LABEL.equals(requestedLabel)
+        || (requestedLabel != null
+            && requestedLabel.startsWith(TEXT_SELECTED_TEST_SCOPE_LABEL_PREFIX))) {
+      return TEXT_SCOPE_DEACTIVATED;
+    }
+    return String.format(TEXT_DEACTIVATED_FMT, requestedLabel);
   }
 
   private String safeText(String value) {

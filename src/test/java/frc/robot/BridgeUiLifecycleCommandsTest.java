@@ -19,6 +19,10 @@ class BridgeUiLifecycleCommandsTest {
   private static final String CMD_LIFECYCLE_DEACTIVATE_ACTIVE =
       "lifecycleDeactivateActive";
   private static final String CMD_SHOW_LIFECYCLE_STATE = "showLifecycleState";
+  private static final String CMD_ACTIVATE_SELECTED_TEST_DEVICES =
+      "activateSelectedTestDevices";
+  private static final String CMD_DEACTIVATE_SELECTED_TEST_DEVICES =
+      "deactivateSelectedTestDevices";
   private static final String LABEL_DRIVE = "front_left_drive";
 
   @Test
@@ -142,7 +146,105 @@ class BridgeUiLifecycleCommandsTest {
 
     assertTrue(result.ok);
     assertTrue(deps.deactivateActiveCalled);
-    assertEquals("Lifecycle deactivated active session.", result.message);
+    assertEquals("group deactivated", result.message);
+  }
+
+  @Test
+  void lifecycleActivateForActiveGroupUsesScopeReadyMessage() {
+    LifecycleDeps deps = new LifecycleDeps();
+    deps.runtimeActivationAllowed = true;
+    deps.activationResult =
+        new ActivationResult(
+            true,
+            "active-group",
+            "session-1",
+            ActivationMode.READ_ONLY,
+            List.of("FALCON 9"),
+            List.of("FALCON 9"),
+            List.of(),
+            LifecycleState.ACTIVE,
+            null,
+            null);
+    BridgeUiLifecycleCommands commands = new BridgeUiLifecycleCommands(deps);
+    JsonObject args = new JsonObject();
+    args.addProperty("label", "active-group");
+
+    BridgeUiCommandResult result =
+        commands.execute(ingress(CMD_LIFECYCLE_ACTIVATE, args), 0.0, false);
+
+    assertTrue(result.ok);
+    assertEquals("active-group active - ready to run", result.message);
+  }
+
+  @Test
+  void activateSelectedTestDevicesUsesSelectedTestPath() {
+    LifecycleDeps deps = new LifecycleDeps();
+    deps.runtimeActivationAllowed = true;
+    deps.activationResult =
+        new ActivationResult(
+            true,
+            "selected-test:testA",
+            "session-1",
+            ActivationMode.READ_ONLY,
+            List.of("SPARKMAX/NEO 25"),
+            List.of("SPARKMAX/NEO 25"),
+            List.of(),
+            LifecycleState.ACTIVE,
+            null,
+            null);
+    BridgeUiLifecycleCommands commands = new BridgeUiLifecycleCommands(deps);
+
+    BridgeUiCommandResult result =
+        commands.execute(
+            ingress(CMD_ACTIVATE_SELECTED_TEST_DEVICES, new JsonObject()), 0.0, false);
+
+    assertTrue(result.ok);
+    assertTrue(deps.activateSelectedTestDevicesCalled);
+    assertEquals("active-group active - ready to run", result.message);
+  }
+
+  @Test
+  void deactivateSelectedTestDevicesUsesSelectedTestPath() {
+    LifecycleDeps deps = new LifecycleDeps();
+    deps.deactivateResult =
+        new DeactivateResult(
+            true,
+            "selected-test:testA",
+            "session-1",
+            List.of("SPARKMAX/NEO 25"),
+            LifecycleState.INACTIVE,
+            null,
+            null);
+    BridgeUiLifecycleCommands commands = new BridgeUiLifecycleCommands(deps);
+
+    BridgeUiCommandResult result =
+        commands.execute(
+            ingress(CMD_DEACTIVATE_SELECTED_TEST_DEVICES, new JsonObject()), 0.0, false);
+
+    assertTrue(result.ok);
+    assertTrue(deps.deactivateSelectedTestDevicesCalled);
+    assertEquals("group deactivated", result.message);
+  }
+
+  @Test
+  void lifecycleDeactivateActiveAlreadyInactiveReturnsReminder() {
+    LifecycleDeps deps = new LifecycleDeps();
+    deps.deactivateResult =
+        new DeactivateResult(
+            true,
+            "active-group",
+            null,
+            List.of(),
+            LifecycleState.INACTIVE,
+            null,
+            null);
+    BridgeUiLifecycleCommands commands = new BridgeUiLifecycleCommands(deps);
+
+    BridgeUiCommandResult result =
+        commands.execute(ingress(CMD_LIFECYCLE_DEACTIVATE_ACTIVE, new JsonObject()), 0.0, false);
+
+    assertTrue(result.ok);
+    assertEquals("Group already inactive. Nothing changed.", result.message);
   }
 
   @Test
@@ -180,6 +282,8 @@ class BridgeUiLifecycleCommandsTest {
     private ActivationMode activatedMode;
     private String deactivatedLabel;
     private boolean deactivateActiveCalled;
+    private boolean activateSelectedTestDevicesCalled;
+    private boolean deactivateSelectedTestDevicesCalled;
     private boolean runtimeActivationAllowed;
     private ActivationResult activationResult =
         new ActivationResult(
@@ -247,8 +351,21 @@ class BridgeUiLifecycleCommandsTest {
     }
 
     @Override
+    public ActivationResult activateSelectedTestDevices(ActivationMode mode) {
+      activateSelectedTestDevicesCalled = true;
+      activatedMode = mode;
+      return activationResult;
+    }
+
+    @Override
     public DeactivateResult deactivateLifecycle(String label) {
       deactivatedLabel = label;
+      return deactivateResult;
+    }
+
+    @Override
+    public DeactivateResult deactivateSelectedTestDevices() {
+      deactivateSelectedTestDevicesCalled = true;
       return deactivateResult;
     }
 

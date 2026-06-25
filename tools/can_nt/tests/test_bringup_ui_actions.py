@@ -20,6 +20,7 @@ from tools.can_nt.bringup_ui import (
     INVENTORY_KEY_SOURCE,
     KEY_TYPE,
     PROFILE_NONE,
+    TEST_ACTIVITY_COMMANDS,
     TEST_SOURCE_COMPLETION_MODE_CLEAR,
     TEST_SOURCE_COMPLETION_MODE_NONE,
     TEST_SOURCE_COMPLETION_MODE_READ,
@@ -70,6 +71,7 @@ class _StringVarStub:
 class _ComboBoxStub:
     def __init__(self, values=()) -> None:
         self._values = tuple(values)
+        self._state = "normal"
 
     def cget(self, key: str):
         if key == "values":
@@ -80,6 +82,35 @@ class _ComboBoxStub:
         if key != "values":
             raise KeyError(key)
         self._values = tuple(value)
+
+    def configure(self, **kwargs) -> None:
+        if "state" in kwargs:
+            self._state = kwargs["state"]
+
+
+class _ButtonStub:
+    def __init__(self) -> None:
+        self.disabled = False
+
+    def state(self, states) -> None:
+        self.disabled = "disabled" in tuple(states)
+
+
+class _LabelStub:
+    def __init__(self) -> None:
+        self.foreground = None
+
+    def configure(self, **kwargs) -> None:
+        if "foreground" in kwargs:
+            self.foreground = kwargs["foreground"]
+
+
+class _ListboxStub:
+    def __init__(self) -> None:
+        self.cleared = False
+
+    def selection_clear(self, *_args) -> None:
+        self.cleared = True
 
 
 class _EntryStub:
@@ -173,6 +204,21 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         for hidden_command in HIDDEN_LEFT_RAIL_COMMANDS:
             self.assertNotIn(hidden_command, flattened)
 
+    def test_test_source_command_hidden_from_left_rail_but_tracked_in_tests_activity(self) -> None:
+        self.assertIn("printSelectedTestSource", HIDDEN_LEFT_RAIL_COMMANDS)
+        self.assertIn("printselectedtestsource", TEST_ACTIVITY_COMMANDS)
+
+    def test_print_next_command_hidden_from_left_rail_but_tracked_in_tests_activity(self) -> None:
+        self.assertIn("printNextTest", HIDDEN_LEFT_RAIL_COMMANDS)
+        self.assertIn("printnexttest", TEST_ACTIVITY_COMMANDS)
+
+    def test_state_command_hidden_from_left_rail_but_tracked_in_tests_activity(self) -> None:
+        self.assertIn("printState", HIDDEN_LEFT_RAIL_COMMANDS)
+        self.assertIn("printstate", TEST_ACTIVITY_COMMANDS)
+
+    def test_show_lifecycle_state_is_tracked_in_tests_activity(self) -> None:
+        self.assertIn("showlifecyclestate", TEST_ACTIVITY_COMMANDS)
+
     def test_load_tests_from_dsl_store_prefers_profile_test_set(self) -> None:
         payload = {
             "default_profile": "home",
@@ -215,6 +261,8 @@ class BringupUiActionMetadataTests(unittest.TestCase):
 
         self.assertTrue(ui._is_test_activity_command("runTest"))
         self.assertTrue(ui._is_test_activity_command("printTestsOverview"))
+        self.assertTrue(ui._is_test_activity_command("lifecycleActivate"))
+        self.assertTrue(ui._is_test_activity_command("groupReplaceMembers"))
         self.assertFalse(ui._is_test_activity_command("runtimeActivate"))
 
     def test_selected_test_library_entry_prefers_profile_selection(self) -> None:
@@ -235,7 +283,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
 
         self.assertEqual(("profile_a", "profile"), ui._selected_test_library_entry())
 
-    def test_robot_tests_table_replaces_selected_test_dropdown_values(self) -> None:
+    def test_robot_tests_table_tracks_robot_known_test_names(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
         ui._selected_test_var = _StringVarStub("local_only_test")
         ui._last_selected_test = "local_only_test"
@@ -257,9 +305,121 @@ class BringupUiActionMetadataTests(unittest.TestCase):
 
         ui._sync_test_dropdown_values(ui._resolve_test_names_from_rows())
 
-        self.assertEqual(("robot_test_a", "robot_test_b"), ui._test_box.cget("values"))
-        self.assertEqual(("robot_test_a", "robot_test_b"), ui._tests_tab_test_box.cget("values"))
-        self.assertEqual("robot_test_a", ui._selected_test_var.get())
+        self.assertEqual(["robot_test_a", "robot_test_b"], ui._known_test_names)
+        self.assertEqual("local_only_test", ui._selected_test_var.get())
+
+    def test_sync_test_dropdown_values_preserves_none_selection(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._selected_test_var = _StringVarStub(PROFILE_NONE)
+        ui._last_selected_test = PROFILE_NONE
+        ui._test_box = _ComboBoxStub(("robot_test_a",))
+        ui._tests_tab_test_box = _ComboBoxStub(("robot_test_a",))
+
+        ui._sync_test_dropdown_values(["robot_test_a", "robot_test_b"])
+
+        self.assertEqual(["robot_test_a", "robot_test_b"], ui._known_test_names)
+        self.assertEqual(PROFILE_NONE, ui._selected_test_var.get())
+
+    def test_scope_context_uses_tests_tab_when_selected(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._current_right_tab_text = lambda: "Tests"
+
+        self.assertEqual("selected test", ui._scope_context_kind())
+
+    def test_selected_test_inactive_reason_uses_loaded_not_activated_text(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._selected_test_var = _StringVarStub("falcon9_move_150_rotations")
+        ui._tests_active_group_rows = [{"label": "FALCON 9", "enabled": True, "invalid": False}]
+        ui._controlled_lifecycle_active_known = False
+        ui._latest_runtime_devices = {}
+        ui._tests_table = _SubTableStub(
+            entries={"totalCount": "1"},
+            rows={
+                "rows": _SubTableStub(
+                    rows={
+                        "0": _SubTableStub(
+                            entries={
+                                "name": "falcon9_move_150_rotations",
+                                "requiredDevices": "FALCON 9",
+                                "runnableNow": False,
+                                "blockedReason": "",
+                            }
+                        )
+                    }
+                )
+            },
+        )
+        ui._active_group_is_currently_active = lambda: False
+
+        self.assertEqual(
+            "active-group loaded from selected test - not activated",
+            ui._selected_test_inactive_reason(),
+        )
+
+    def test_selected_test_inactive_reason_reports_invalid_device_first(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._selected_test_var = _StringVarStub("falcon9_to_limit")
+        ui._tests_active_group_rows = [
+            {"label": "FALCON 9", "enabled": True, "invalid": False},
+            {"label": "lmtSw0", "enabled": True, "invalid": True},
+        ]
+
+        self.assertEqual(
+            "missing resource/device - lmtSw0",
+            ui._selected_test_inactive_reason(),
+        )
+
+    def test_selected_test_required_rows_uses_test_profile_devices_for_controller_validation(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._selected_test_var = _StringVarStub("test_minimal_25_9_spark25_leftY")
+        ui._test_profile_devices = {
+            "sparkmax/neo 25": {"label": "SPARKMAX/NEO 25"},
+            "controller0": {"label": "controller0"},
+        }
+        ui._profile_devices = {}
+        ui._tests_table = _SubTableStub(
+            entries={"totalCount": "1"},
+            rows={
+                "rows": _SubTableStub(
+                    rows={
+                        "0": _SubTableStub(
+                            entries={
+                                "name": "test_minimal_25_9_spark25_leftY",
+                                "requiredDevices": "SPARKMAX/NEO 25,controller0",
+                                "runnableNow": False,
+                                "blockedReason": "",
+                            }
+                        )
+                    }
+                )
+            },
+        )
+
+        rows = ui._selected_test_required_rows()
+
+        self.assertEqual(2, len(rows))
+        self.assertFalse(rows[0]["invalid"])
+        self.assertFalse(rows[1]["invalid"])
+
+    def test_clear_test_selection_ui_clears_current_test_and_lists(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._selected_test_var = _StringVarStub("robot_test_a")
+        ui._last_selected_test = "robot_test_a"
+        ui._test_box = _ComboBoxStub(("robot_test_a", "robot_test_b"))
+        ui._tests_tab_test_box = _ComboBoxStub(("robot_test_a", "robot_test_b"))
+        ui._test_library_global_list = _ListboxStub()
+        ui._test_library_config_list = _ListboxStub()
+        ui._test_library_profile_list = _ListboxStub()
+        ui._selected_test_scope_status_var = _StringVarStub("")
+        ui._latest_runtime_devices = {}
+        ui._tests_table = None
+
+        ui._clear_test_selection_ui()
+
+        self.assertEqual(PROFILE_NONE, ui._selected_test_var.get())
+        self.assertTrue(ui._test_library_global_list.cleared)
+        self.assertTrue(ui._test_library_config_list.cleared)
+        self.assertTrue(ui._test_library_profile_list.cleared)
 
     def test_sync_test_dropdown_keeps_robot_selected_name_when_rows_are_empty(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
@@ -276,9 +436,327 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._sync_test_dropdown_values(names)
         ui._sync_test_selection(selected_name)
 
-        self.assertEqual((selected_name,), ui._test_box.cget("values"))
-        self.assertEqual((selected_name,), ui._tests_tab_test_box.cget("values"))
+        self.assertEqual([selected_name], ui._known_test_names)
         self.assertEqual(selected_name, ui._selected_test_var.get())
+
+    def test_selected_test_inactive_reason_uses_robot_blocked_reason(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._selected_test_var = _StringVarStub("spark25_leftY")
+        ui._active_group_is_currently_active = lambda: True
+        ui._tests_table = _SubTableStub(
+            entries={"totalCount": "1"},
+            rows={
+                "rows": _SubTableStub(
+                    rows={
+                        "0": _SubTableStub(
+                            entries={
+                                "name": "spark25_leftY",
+                                "runnableNow": False,
+                                "blockedReason": "missing resource/device - controller0",
+                                "requiredDevices": "SPARKMAX/NEO 25,controller0",
+                            }
+                        )
+                    }
+                )
+            },
+        )
+
+        self.assertEqual(
+            "missing resource/device - controller0",
+            ui._selected_test_inactive_reason(),
+        )
+
+    def test_selected_test_ready_uses_robot_runnable_now(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._selected_test_var = _StringVarStub("mtrs_limit")
+        ui._active_group_is_currently_active = lambda: True
+        ui._tests_table = _SubTableStub(
+            entries={"totalCount": "1"},
+            rows={
+                "rows": _SubTableStub(
+                    rows={
+                        "0": _SubTableStub(
+                            entries={
+                                "name": "mtrs_limit",
+                                "runnableNow": True,
+                                "blockedReason": "",
+                                "requiredDevices": "FALCON 9,lmtSw0,SPARKMAX/NEO 25",
+                            }
+                        )
+                    }
+                )
+            },
+        )
+
+        self.assertTrue(ui._selected_test_ready())
+
+    def test_selected_test_required_rows_uses_local_dsl_declaration_not_robot_rows(self) -> None:
+        class _DeviceRef:
+            def __init__(self, name: str) -> None:
+                self.name = name
+
+        class _Normalized:
+            def __init__(self, devices) -> None:
+                self.devices = devices
+
+        class _Entry:
+            def __init__(self, normalized) -> None:
+                self.normalized = normalized
+
+        class _Store:
+            def __init__(self) -> None:
+                self.tests_by_name = {
+                    "falcon9_to_limit": _Entry(
+                        _Normalized([_DeviceRef("FALCON 9"), _DeviceRef("lmtSw0")])
+                    )
+                }
+
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._selected_test_var = _StringVarStub("falcon9_to_limit")
+        ui._tests_table = _SubTableStub(
+            entries={"totalCount": "1"},
+            rows={
+                "rows": _SubTableStub(
+                    rows={
+                        "0": _SubTableStub(
+                            entries={
+                                "name": "falcon9_to_limit",
+                                "requiredDevices": "",
+                                "runnableNow": False,
+                                "blockedReason": "",
+                            }
+                        )
+                    }
+                )
+            },
+        )
+        ui._test_profile_devices = {
+            "falcon 9": {"label": "FALCON 9"},
+            "lmtsw0": {"label": "lmtSw0"},
+        }
+        ui._profile_devices = {}
+
+        with patch("tools.can_nt.bringup_ui.LocalConfigQueryService") as service_cls, patch(
+            "tools.can_nt.bringup_ui.robot_test_dsl_store_from_root_payload",
+            return_value=_Store(),
+        ):
+            service_cls.return_value.load_canonical_payload.return_value = {"dslTests": {}}
+            rows = ui._selected_test_required_rows()
+
+        self.assertEqual(["FALCON 9", "lmtSw0"], [row["label"] for row in rows])
+
+    def test_update_action_enabled_disables_run_selected_but_not_activate_scope(self) -> None:
+        class _Tracker:
+            def is_pending(self) -> bool:
+                return False
+
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._tcp_connected = True
+        ui._handshake_done = True
+        ui._state_stale = False
+        ui._tracker = _Tracker()
+        ui._refresh_scope_context_label = lambda: None
+        ui._refresh_selected_test_scope_status = lambda: None
+        ui._action_buttons = []
+        ui._action_buttons_by_command = {}
+        ui._host_local_action_enabled = lambda _command: True
+        ui._selected_test_var = _StringVarStub("falcon9_move_150_rotations")
+        ui._test_box = _ComboBoxStub(("falcon9_move_150_rotations",))
+        ui._tests_tab_test_box = _ComboBoxStub(("falcon9_move_150_rotations",))
+        ui._activate_scope_button = _ButtonStub()
+        ui._deactivate_scope_button = _ButtonStub()
+        ui._tests_run_selected_button = _ButtonStub()
+        ui._reset_button = None
+        ui._current_right_tab_text = lambda: "Tests"
+        ui._tests_table = _SubTableStub(
+            entries={"totalCount": "1"},
+            rows={
+                "rows": _SubTableStub(
+                    rows={
+                        "0": _SubTableStub(
+                            entries={
+                                "name": "falcon9_move_150_rotations",
+                                "runnableNow": False,
+                                "blockedReason": "missing resource/device - FALCON 9",
+                                "requiredDevices": "FALCON 9",
+                            }
+                        )
+                    }
+                )
+            },
+        )
+
+        ui._update_action_enabled()
+
+        self.assertFalse(ui._activate_scope_button.disabled)
+        self.assertTrue(ui._tests_run_selected_button.disabled)
+
+    def test_refresh_test_result_status_surfaces_pass_result_in_tests_header(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._last_result_text_var = _StringVarStub("")
+        ui._last_result_label = _LabelStub()
+        ui._tests_table = _SubTableStub(
+            entries={
+                "runState": "passed",
+                "runTest": "falcon9_to_limit",
+                "runResult": "PASS",
+                "runMessage": "success success_1: success lmtSw0.pressed",
+            }
+        )
+
+        ui._refresh_test_result_status()
+
+        self.assertEqual(
+            "Last Result: PASS - success success_1: success lmtSw0.pressed",
+            ui._last_result_text_var.get(),
+        )
+        self.assertEqual("#166534", ui._last_result_label.foreground)
+
+    def test_ui_poll_log_mirrors_print_state_report_lines_into_test_activity(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._log_poll_seq = 41
+        ui._log_poll_inflight = True
+        ui._last_cmd = ("printState", {})
+        ui._recent_out_lines = {}
+        ui._out_dedupe_window = 1.0
+        output_lines = []
+        test_lines = []
+        ui._append_output = output_lines.append
+        ui._append_test_output = test_lines.append
+        ui._runtime_state_pending_seq = None
+        ui._is_handshake_required = lambda _event: False
+        ui._handle_handshake_required = lambda: None
+        ui._is_owner_required = lambda _event: False
+        ui._handle_owner_required = lambda: None
+        ui._notify_ui_failure = lambda *_args, **_kwargs: None
+        ui._tracker = type("TrackerStub", (), {"handle_event": staticmethod(lambda _event: None)})()
+        ui._apply_runtime_group_command_payload = lambda _data: None
+        ui._apply_robot_profile_context_from_command_event = lambda *_args: None
+        ui._remember_out_line = lambda _line: None
+
+        ui._handle_tcp_response(
+            BridgeEvent(
+                type="out",
+                seq=41,
+                name="uiPollLog",
+                status="ok",
+                message="",
+                text="Test #2: falcon9_to_limit\nTest result #2: falcon9_to_limit = PASS",
+                json_text="",
+                ts=0.0,
+                session_id="",
+                state={},
+                raw={},
+            )
+        )
+
+        self.assertEqual(
+            [
+                "Test #2: falcon9_to_limit",
+                "Test result #2: falcon9_to_limit = PASS",
+            ],
+            output_lines,
+        )
+        self.assertEqual(output_lines, test_lines)
+        self.assertFalse(ui._log_poll_inflight)
+        self.assertIsNone(ui._log_poll_seq)
+
+    def test_activate_scope_from_tests_uses_active_group_lifecycle_path(self) -> None:
+        class _Tracker:
+            def is_pending(self) -> bool:
+                return False
+
+        ui = BringupControlUI.__new__(BringupControlUI)
+        lines = []
+        ui._tcp_connected = True
+        ui._tracker = _Tracker()
+        ui._session = object()
+        ui._last_sent_seq = None
+        ui._append_output = lines.append
+        ui._selected_test_var = _StringVarStub("falcon9_move_150_rotations")
+        ui._current_right_tab_text = lambda: "Tests"
+
+        with patch("tools.can_nt.bringup_ui.send_tracked_command", return_value=31):
+            ui._activate_scope_from_ui()
+
+        self.assertEqual(ui._last_cmd[0], "lifecycleActivate")
+        self.assertEqual(ui._last_cmd[1]["label"], GROUP_ACTIVE_NAME)
+        self.assertEqual(ui._last_cmd[1]["mode"], "READ_ONLY")
+        self.assertEqual(ui._last_sent_seq, 31)
+        self.assertTrue(any("lifecycleActivate" in line for line in lines))
+
+    def test_clear_test_output_clears_activity_widget(self) -> None:
+        class _TextStub:
+            def __init__(self) -> None:
+                self.deleted = False
+                self.states = []
+
+            def configure(self, **kwargs) -> None:
+                self.states.append(kwargs.get("state"))
+
+            def delete(self, _start: str, _end: str) -> None:
+                self.deleted = True
+
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._test_lines = ["a", "b"]
+        ui._test_output = _TextStub()
+
+        ui._clear_test_output()
+
+        self.assertEqual([], ui._test_lines)
+        self.assertTrue(ui._test_output.deleted)
+        self.assertEqual(["normal", "disabled"], ui._test_output.states)
+
+    def test_handle_tests_boundary_transition_into_tests_remembers_manual_group(self) -> None:
+        class _Tracker:
+            def is_pending(self) -> bool:
+                return False
+
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._tcp_connected = True
+        ui._tracker = _Tracker()
+        ui._runtime_active_group_members = lambda: [{"label": "FALCON 9", "enabled": True}]
+        calls = []
+        ui._deactivate_group_blocking = lambda: calls.append("deactivate") or True
+        ui._load_selected_test_into_active_group = lambda force_replace=False: calls.append(
+            ("load", force_replace)
+        )
+
+        ui._handle_tests_boundary_transition("Live Topology", "Tests")
+
+        self.assertEqual([{"label": "FALCON 9", "enabled": True}], ui._remembered_manual_active_group_members)
+        self.assertEqual(["deactivate", ("load", True)], calls)
+
+    def test_handle_tests_boundary_transition_leaving_tests_restores_manual_group(self) -> None:
+        class _Tracker:
+            def is_pending(self) -> bool:
+                return False
+
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._tcp_connected = True
+        ui._tracker = _Tracker()
+        ui._remembered_manual_active_group_members = [{"label": "SPARKMAX/NEO 25", "enabled": True}]
+        calls = []
+        ui._deactivate_group_blocking = lambda: calls.append("deactivate") or True
+        ui._restore_manual_active_group_members = lambda: calls.append("restore")
+
+        ui._handle_tests_boundary_transition("Tests", "Live Topology")
+
+        self.assertEqual(["deactivate", "restore"], calls)
+
+    def test_handle_tests_boundary_transition_defers_while_command_pending(self) -> None:
+        class _Tracker:
+            def is_pending(self) -> bool:
+                return True
+
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._tcp_connected = True
+        ui._tracker = _Tracker()
+        ui._pending_tests_boundary_transition = None
+
+        ui._handle_tests_boundary_transition("Live Topology", "Tests")
+
+        self.assertEqual(("Live Topology", "Tests"), ui._pending_tests_boundary_transition)
 
     def test_on_test_source_key_release_rechecks_completion_every_time(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
@@ -447,10 +925,10 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         with patch("tools.can_nt.bringup_ui.send_tracked_command", return_value=22):
             ui._lifecycle_deactivate_from_ui()
 
-        self.assertEqual(ui._last_cmd[0], "lifecycleDeactivate")
-        self.assertEqual(ui._last_cmd[1]["label"], GROUP_ACTIVE_NAME)
+        self.assertEqual(ui._last_cmd[0], "lifecycleDeactivateActive")
+        self.assertEqual(ui._last_cmd[1], {})
         self.assertEqual(ui._last_sent_seq, 22)
-        self.assertTrue(any("lifecycleDeactivate" in line for line in lines))
+        self.assertTrue(any("lifecycleDeactivateActive" in line for line in lines))
 
     def test_show_lifecycle_state_from_ui_uses_lifecycle_show_command(self) -> None:
         class _Tracker:

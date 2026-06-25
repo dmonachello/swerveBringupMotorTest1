@@ -1209,6 +1209,17 @@ public final class BringupCore {
 
   /**
    * NAME
+   *   getLatestTestRunSnapshot - Return the latest recorded test-run snapshot.
+   *
+   * RETURNS
+   *   Copy of the latest run snapshot, or an idle snapshot when none exists.
+   */
+  public TestRunSnapshot getLatestTestRunSnapshot() {
+    return latestTestRun != null ? latestTestRun.copy() : TestRunSnapshot.idle();
+  }
+
+  /**
+   * NAME
    *   toggleSelectedBringupTestEnabled - Toggle enable state for selected test.
    *
    * RETURNS
@@ -1271,6 +1282,9 @@ public final class BringupCore {
       row.status = test.getStatus();
       row.requiredDevices = test.getRequiredDeviceKeys();
       row.holdBinding = resolveHoldBinding(test);
+      String blockedReason = row.enabled ? testBlockReason(test) : MESSAGE_TEST_DISABLED + test.getName();
+      row.runnableNow = row.enabled && blockedReason == null;
+      row.blockedReason = blockedReason != null ? blockedReason : "";
       if (row.enabled) {
         enabledCount++;
       }
@@ -1383,6 +1397,8 @@ public final class BringupCore {
     public String status;
     public List<String> requiredDevices = new ArrayList<>();
     public String holdBinding;
+    public boolean runnableNow;
+    public String blockedReason = "";
   }
 
   /**

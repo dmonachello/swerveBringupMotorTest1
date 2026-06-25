@@ -110,6 +110,7 @@ public final class RobotLocalCommandRegistry {
   public static final String COMMAND_GROUP_DELETE = "groupDelete";
   public static final String COMMAND_GROUP_ADD_DEVICE = "groupAddDevice";
   public static final String COMMAND_GROUP_REMOVE_DEVICE = "groupRemoveDevice";
+  public static final String COMMAND_GROUP_REPLACE_MEMBERS = "groupReplaceMembers";
   public static final String COMMAND_GROUP_MEMBER_ENABLE = "groupMemberEnable";
   public static final String COMMAND_GROUP_MEMBER_DISABLE = "groupMemberDisable";
   public static final String COMMAND_GROUP_MEMBER_TOGGLE = "groupMemberToggle";
@@ -351,6 +352,7 @@ public final class RobotLocalCommandRegistry {
     register(rows, groupDefinition(COMMAND_GROUP_DELETE, "Group Delete", "Delete a group.", false, legacyUiGroup));
     register(rows, groupDefinition(COMMAND_GROUP_ADD_DEVICE, "Group Add Device", "Add a device to a group.", false, legacyUiGroup));
     register(rows, groupDefinition(COMMAND_GROUP_REMOVE_DEVICE, "Group Remove Device", "Remove a device from a group.", false, legacyUiGroup));
+    register(rows, groupDefinition(COMMAND_GROUP_REPLACE_MEMBERS, "Group Replace Members", "Replace all members of a group.", false, legacyUiGroup));
     register(rows, groupDefinition(COMMAND_GROUP_MEMBER_ENABLE, "Enable Member", "Enable a group member.", false, legacyUiGroup));
     register(rows, groupDefinition(COMMAND_GROUP_MEMBER_DISABLE, "Disable Member", "Disable a group member.", false, legacyUiGroup));
     register(rows, groupDefinition(COMMAND_GROUP_MEMBER_TOGGLE, "Toggle Member", "Toggle a group member.", false, legacyUiGroup));

@@ -58,9 +58,9 @@ Define the new operator-facing behavior.
 - A selected DSL test has a derived `requiredDevices` set.
 - A DSL test is runnable only when every required device is instantiated in the current controlled session.
 - A non-DSL manual workflow is runnable only when the instantiated controlled scope matches the apparent active-group-driven candidate scope closely enough to be safe and unambiguous.
-- The system adds an explicit lifecycle scope-preparation action:
+- The system adds an explicit scope-preparation action:
   - CLI: `activate selected-test-devices`
-  - UI: `Lifecycle Activate` from the `Tests` tab
+  - UI: `Activate Scope` from the `Tests` tab
 - This action prepares the controlled session for the currently visible source mode.
 - `Run Selected` uses the current instantiated controlled scope as-is.
 - `Run Selected` must never auto-reconfigure scope.
@@ -74,7 +74,7 @@ Make selected-test execution deterministic and non-surprising.
 
 - Entering the `Tests` tab must not change hardware state.
 - Selecting a different DSL test must not change hardware state.
-- `Lifecycle Activate` and `Lifecycle Deactivate` are the only `Tests`-tab actions that may reconfigure the controlled scope.
+- `Activate Scope` and `Deactivate Scope` are the only `Tests`-tab actions that may reconfigure the controlled scope.
 - `Run Selected` must not deactivate, instantiate, or reconcile devices automatically.
 - If the current controlled scope does not satisfy the selected test, `Run Selected` must block before motion and report the missing devices.
 
@@ -262,7 +262,7 @@ Allowed mutations:
 - editing `active-group.members`:
   - may change non-DSL `candidateDevices[]`
   - must not directly change `instantiatedDevices[]`
-- `Lifecycle Activate`:
+- `Activate Scope`:
   - may change `requiredDevices[]`
   - may change `instantiatedDevices[]`
   - may change `missingDevices[]`
@@ -271,7 +271,7 @@ Allowed mutations:
   - may change `lastReconciledSourceKind`
   - may change `lastReconciledSourceName`
   - may change `lastReconciledAt`
-- `Lifecycle Deactivate`:
+- `Deactivate Scope`:
   - may change `instantiatedDevices[]`
   - may change `missingDevices[]`
   - may change `scopeOwner`
@@ -377,7 +377,7 @@ Prevent tests from running when the screen and runtime tell inconsistent stories
 
 **Purpose**
 
-Define what `Lifecycle Activate` in the `Tests` tab and `activate selected-test-devices` in the CLI actually do.
+Define what `Activate Scope` in the `Tests` tab and `activate selected-test-devices` in the CLI actually do.
 
 When invoked for the currently selected test:
 
@@ -397,7 +397,7 @@ The action must not start the test.
 
 The action that triggers this reconciliation is explicit:
 
-- UI: `Lifecycle Activate` from the `Tests` tab
+- UI: `Activate Scope` from the shared top bar while the `Tests` tab is selected
 - CLI: `activate selected-test-devices`
 - merely selecting a test or viewing a tab must not reconcile runtime state
 
@@ -426,15 +426,15 @@ For manual/diagram-driven activation paths:
 
 **Purpose**
 
-Define what `Lifecycle Deactivate` does to runtime state versus candidate state.
+Define what `Deactivate Scope` does to runtime state versus candidate state.
 
 - Deactivation shuts down or deactivates all non-singleton `instantiatedDevices`.
 - Deactivation clears the active controlled session.
-- Deactivation does not clear the selected DSL test.
+- Deactivation clears selected-test UI selection state in the `Tests` tab.
 - Deactivation does not clear `active-group.members`.
 - Deactivation may leave singleton-preserved infrastructure instantiated according to policy.
 - After deactivation, a tab may still show its own `candidateDevices`, but runtime `instantiatedDevices` must reflect the deactivated state.
-- In the `Tests` tab, `Lifecycle Deactivate` is the explicit control that tears down the selected-test-owned instantiated scope.
+- In the `Tests` tab, `Deactivate Scope` is the explicit control that tears down the selected-test-owned instantiated scope.
 
 ## Cross-Mode Conflict Handling
 
@@ -496,15 +496,26 @@ Define how singleton devices behave during DSL-specific activation.
   - required test devices
   - preserved singleton infrastructure
 
-Examples of likely singleton infrastructure:
+Examples of preserved singleton infrastructure:
 
 - `roborio`
 - `pdp` or equivalent power device
+- `controller0`
 
 Examples of test-scoped support devices that are not automatically singleton-preserved unless policy says so:
 
-- `controller0`
 - `lmtSw0`
+
+Normative `controller0` rule:
+
+- `controller0` is preserved support infrastructure.
+- `controller0` is not part of `active-group` membership semantics.
+- `controller0` is not removed by `Deactivate Scope`.
+- `controller0` may still appear in a DSL test's declared or derived required set for readiness/explanation purposes.
+- A joystick or button DSL test must still report `controller0` in required-resource/readiness output.
+- However, `controller0` availability is not satisfied by test-specific instantiation churn; it is satisfied by preserved-support policy plus actual controller availability/readiness.
+- `Activate Scope` for a selected DSL test must not tear down `controller0` simply because another selected test does not reference it.
+- `Run Selected` may still block on `controller0` when the controller is unavailable, disconnected, or otherwise not usable by runtime policy.
 
 ## Repeated Runs
 
@@ -522,10 +533,10 @@ Keep the operator workflow efficient.
 
 Define the expected UI behavior in the `Tests` tab and in non-DSL tabs.
 
-`Tests`-tab lifecycle controls:
+`Tests`-tab shared controls:
 
-- `Lifecycle Activate`
-- `Lifecycle Deactivate`
+- `Activate Scope`
+- `Deactivate Scope`
 - `Open Scope State` or equivalent action to open the read-only scope-state pop-up window
 
 Add selected-test preflight status:
@@ -541,13 +552,13 @@ Add selected-test preflight status:
 
 `Run Selected` behavior:
 
-- enabled when the selected test exists
+- enabled only when the selected test is ready
 - if missing devices exist, robot-side execution returns a blocked result before motion
 - UI should display the blocked reason directly
 - `Run Selected` must not implicitly perform lifecycle activation or deactivation
 - `Run Selected` must block when visible state and robot-confirmed state are inconsistent in a way that could mislead the operator
 
-`Lifecycle Activate` behavior in the `Tests` tab:
+`Activate Scope` behavior in the `Tests` tab:
 
 - disabled when no selected test exists
 - sends the DSL-specific scope-preparation command
@@ -555,10 +566,11 @@ Add selected-test preflight status:
 - reconciles runtime `instantiatedDevices` to that candidate set
 - does not change `active-group`
 
-`Lifecycle Deactivate` behavior in the `Tests` tab:
+`Deactivate Scope` behavior in the `Tests` tab:
 
 - deactivates the selected-test-owned instantiated scope
-- does not clear the selected DSL test
+- clears the selected DSL test and related test-list selections
+- leaves the selected test not ready to run
 - does not clear `active-group`
 
 Non-DSL tab behavior:
@@ -599,10 +611,10 @@ Cross-mode UI behavior:
 - attempting a right-click/manual-duty action from a DSL-owned scope may require an explicit scope transition
 - attempting `Run Selected` from a manual-owned scope may require an explicit scope transition
 
-Suggested UI status line:
+Top-bar context line:
 
-- `Current scope owner: manual active-group`
-- `Current scope owner: selected test <name>`
+- `Scope Context: active-group`
+- `Scope Context: selected test`
 
 ## CLI Behavior
 
@@ -614,6 +626,12 @@ Add a new command:
 
 ```text
 activate selected-test-devices
+```
+
+Add the matching explicit deactivation command:
+
+```text
+deactivate selected-test-devices
 ```
 
 Optional future additive command:
@@ -741,7 +759,7 @@ Required devices:
 Workflow:
 
 1. Select the test.
-2. Click `Lifecycle Activate` from the `Tests` tab.
+2. Click `Activate Scope` from the `Tests` tab.
 3. The system activates the selected-test scope.
 4. Run the test repeatedly as needed.
 
@@ -778,7 +796,7 @@ New selected test requires:
 Behavior:
 
 - `Run Selected` blocks before motion
-- `Lifecycle Activate` re-prepares the scope for the new test
+- `Activate Scope` re-prepares the scope for the new test
 
 ### Example 3A: Shared List Interpretation
 
@@ -800,7 +818,7 @@ Behavior:
 
 - `availableDevices` is the broader profile device pool and does not imply use by the selected test
 - `Run Selected` blocks because `instantiatedDevices` does not satisfy `candidateDevices`
-- `Lifecycle Activate` reconciles runtime state to the test candidate set
+- `Activate Scope` reconciles runtime state to the test candidate set
 - after activation, non-singleton prior devices not in the test candidate set are removed
 
 ### Example 4: Switching Tabs Without Reconfiguration
@@ -848,11 +866,11 @@ Selected DSL test requires:
 - `SPARKMAX/NEO 25`
 - `controller0`
 
-After `Lifecycle Activate`:
+After `Activate Scope`:
 
 - `FALCON 9` is removed from the DSL controlled scope because it is not required and is not a preserved singleton
 - `SPARKMAX/NEO 25` remains
-- `controller0` is instantiated
+- `controller0` remains available according to preserved-support singleton policy
 - singleton infrastructure remains according to policy
 
 ### Example 7: Manual Candidate Refresh Outside Tests
@@ -868,7 +886,7 @@ Current `active-group.members`:
 
 Operator action:
 
-- add `controller0` in the active-group subpanel
+- add `controller0` in the active-group subpanel only if manual workflow explicitly wants it listed there
 
 Behavior:
 
@@ -890,8 +908,9 @@ Provide concrete completion conditions.
 - Re-running the same selected test does not require reactivation.
 - Running a different test with a compatible current scope succeeds without reactivation.
 - Running a different test with an incompatible scope blocks before motion and reports missing devices.
-- Support devices such as `controller0` and `lmtSw0` can be instantiated through the selected-test activation path.
-- Non-singleton devices not required by the selected DSL test are removed when `Lifecycle Activate` runs from the `Tests` tab.
+- Preserved support infrastructure such as `controller0` remains available across scope changes according to singleton policy.
+- Test-scoped support devices such as `lmtSw0` can be instantiated through the selected-test activation path.
+- Non-singleton devices not required by the selected DSL test are removed when `Activate Scope` runs from the `Tests` tab.
 - Cross-mode manual-vs-DSL conflicts are resolved only through explicit scope transition, never by silent tab-switch side effects.
 - A read-only scope-state pop-up window shows `Source`, `Scope Owner`, `Candidate Devices`, and `Instantiated Devices` from the shared model.
 
@@ -939,7 +958,7 @@ Record the main design tradeoffs.
 List additive follow-on ideas.
 
 - scope-state window as shrinkable panel or pop-out from the same shared model
-- `Lifecycle Activate` preview dialog before reconfiguring scope
+- `Activate Scope` preview dialog before reconfiguring scope
 - `Activate And Run` convenience action after the base workflow is stable
 - persistent recent selected-test scopes for repeated bench sessions
 - richer per-test UI badges for `Runnable`, `Blocked`, and `Missing Devices`

@@ -399,6 +399,54 @@ def lifecycle_deactivate_active(session: BridgeSession) -> Optional[int]:
     return _send(session, "lifecycleDeactivateActive", {})
 
 
+def activate_selected_test_devices(
+    session: BridgeSession, mode: str = "READ_ONLY"
+) -> Optional[int]:
+    """
+    NAME
+        activate_selected_test_devices - Activate the selected test's required lifecycle scope.
+    """
+    args = {"mode": str(mode).strip() or "READ_ONLY"}
+    return _send(session, "activateSelectedTestDevices", args)
+
+
+def deactivate_selected_test_devices(session: BridgeSession) -> Optional[int]:
+    """
+    NAME
+        deactivate_selected_test_devices - Deactivate the active selected-test lifecycle scope.
+    """
+    return _send(session, "deactivateSelectedTestDevices", {})
+
+
+def replace_group_members(
+    session: BridgeSession,
+    group: str,
+    members: List[Dict[str, Any]],
+) -> Optional[int]:
+    """
+    NAME
+        replace_group_members - Replace one runtime group's members with one ordered list.
+    """
+    payload_members: List[Dict[str, Any]] = []
+    for member in members:
+        if not isinstance(member, dict):
+            continue
+        label = str(member.get("label", "")).strip()
+        if not label:
+            continue
+        payload_members.append(
+            {
+                "label": label,
+                "enabled": bool(member.get("enabled", True)),
+            }
+        )
+    return _send(
+        session,
+        "groupReplaceMembers",
+        {"group": str(group).strip(), "members": payload_members},
+    )
+
+
 def profiles_reload(session: BridgeSession) -> Optional[int]:
     """
     NAME

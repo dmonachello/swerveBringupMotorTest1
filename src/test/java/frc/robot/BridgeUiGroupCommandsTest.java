@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import java.util.HashMap;
 import java.util.Map;
@@ -18,6 +19,7 @@ class BridgeUiGroupCommandsTest {
   private static final String CMD_GROUP_DELETE = "groupDelete";
   private static final String CMD_GROUP_ADD_DEVICE = "groupAddDevice";
   private static final String CMD_GROUP_REMOVE_DEVICE = "groupRemoveDevice";
+  private static final String CMD_GROUP_REPLACE_MEMBERS = "groupReplaceMembers";
   private static final String CMD_SHOW_DEVICE = "showDevice";
   private static final String CMD_SHOW_GROUPS = "showGroups";
   private static final String CMD_SHOW_RUNTIME_STATE = "showRuntimeState";
@@ -38,6 +40,8 @@ class BridgeUiGroupCommandsTest {
   private static final String MSG_GROUP_CREATED_PREFIX = "Group created: ";
   private static final String MSG_GROUP_EXISTS_PREFIX = "Group already exists: ";
   private static final String MSG_GROUP_DELETE_CONFIRM = "groupDelete requires confirm=true.";
+  private static final String MSG_GROUP_REPLACE_REQUIRES_GROUP =
+      "groupReplaceMembers requires args.group.";
   private static final String MSG_SHOW_DEVICE_REQUIRES = "showDevice requires args.name.";
   private static final String MSG_DEVICE_NOT_FOUND_PREFIX = "Device not found: ";
   private static final String MSG_MANUAL_DUTY_SCOPE_BLOCKED =
@@ -521,6 +525,104 @@ class BridgeUiGroupCommandsTest {
     assertTrue(result.ok);
     assertTrue(deps.bridgeGroups.hasDevice(GROUP_MOTORS, DEVICE_MOTOR_1));
     assertFalse(deps.bridgeGroups.hasDevice(GROUP_ACTIVE, DEVICE_MOTOR_1));
+  }
+
+  @Test
+  void groupReplaceMembersRebuildsActiveGroupMembership() {
+    TestDeps deps = new TestDeps();
+    deps.bridgeGroups.createGroup(GROUP_ACTIVE);
+    deps.bridgeGroups.addDevice(GROUP_ACTIVE, DEVICE_MOTOR_1, false);
+    deps.deviceByLabel.put(
+        DEVICE_MOTOR_1,
+        new BringupUtil.DeviceEntry(
+            DUTY_TEST_ID,
+            DUTY_TEST_MFG,
+            DUTY_TEST_DEVICE_TYPE,
+            "CAN",
+            DUTY_TEST_VENDOR,
+            DUTY_TEST_TYPE,
+            DEVICE_MOTOR_1,
+            DUTY_TEST_MOTOR,
+            null,
+            null,
+            null));
+    deps.deviceByLabel.put(
+        "lmtSw0",
+        new BringupUtil.DeviceEntry(
+            0,
+            1,
+            10,
+            "DIO",
+            "NI",
+            "limitSwitch",
+            "lmtSw0",
+            "limitSwitch",
+            null,
+            null,
+            null));
+    BridgeUiGroupCommands commands = new BridgeUiGroupCommands(deps);
+    JsonObject args = new JsonObject();
+    args.addProperty(KEY_GROUP, GROUP_ACTIVE);
+    JsonArray members = new JsonArray();
+    JsonObject member = new JsonObject();
+    member.addProperty("label", "lmtSw0");
+    member.addProperty("enabled", true);
+    members.add(member);
+    args.add("members", members);
+
+    BridgeUiCommandResult result =
+        commands.execute(ingress(CMD_GROUP_REPLACE_MEMBERS, args), 0.0, false);
+
+    assertTrue(result.ok);
+    assertFalse(deps.bridgeGroups.hasDevice(GROUP_ACTIVE, DEVICE_MOTOR_1));
+    assertTrue(deps.bridgeGroups.hasDevice(GROUP_ACTIVE, "lmtSw0"));
+  }
+
+  @Test
+  void groupReplaceMembersBlocksLockedActiveGroupEdit() {
+    TestDeps deps = new TestDeps();
+    deps.controlledLifecycleActive = true;
+    deps.bridgeGroups.createGroup(GROUP_ACTIVE);
+    deps.deviceByLabel.put(
+        DEVICE_MOTOR_1,
+        new BringupUtil.DeviceEntry(
+            DUTY_TEST_ID,
+            DUTY_TEST_MFG,
+            DUTY_TEST_DEVICE_TYPE,
+            "CAN",
+            DUTY_TEST_VENDOR,
+            DUTY_TEST_TYPE,
+            DEVICE_MOTOR_1,
+            DUTY_TEST_MOTOR,
+            null,
+            null,
+            null));
+    BridgeUiGroupCommands commands = new BridgeUiGroupCommands(deps);
+    JsonObject args = new JsonObject();
+    args.addProperty(KEY_GROUP, GROUP_ACTIVE);
+    JsonArray members = new JsonArray();
+    JsonObject member = new JsonObject();
+    member.addProperty("label", DEVICE_MOTOR_1);
+    members.add(member);
+    args.add("members", members);
+
+    BridgeUiCommandResult result =
+        commands.execute(ingress(CMD_GROUP_REPLACE_MEMBERS, args), 0.0, false);
+
+    assertFalse(result.ok);
+    assertEquals(MSG_ACTIVE_GROUP_LOCKED, result.message);
+  }
+
+  @Test
+  void groupReplaceMembersRequiresGroup() {
+    TestDeps deps = new TestDeps();
+    BridgeUiGroupCommands commands = new BridgeUiGroupCommands(deps);
+
+    BridgeUiCommandResult result =
+        commands.execute(ingress(CMD_GROUP_REPLACE_MEMBERS, new JsonObject()), 0.0, false);
+
+    assertFalse(result.ok);
+    assertEquals(MSG_GROUP_REPLACE_REQUIRES_GROUP, result.message);
   }
 
   private static BridgeUiIngressPolicy.Ingress ingress(String name, JsonObject args) {

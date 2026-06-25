@@ -22,6 +22,7 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
   private static final String CMD_GROUP_DELETE = "groupDelete";
   private static final String CMD_GROUP_ADD_DEVICE = "groupAddDevice";
   private static final String CMD_GROUP_REMOVE_DEVICE = "groupRemoveDevice";
+  private static final String CMD_GROUP_REPLACE_MEMBERS = "groupReplaceMembers";
   private static final String CMD_GROUP_MEMBER_ENABLE = "groupMemberEnable";
   private static final String CMD_GROUP_MEMBER_DISABLE = "groupMemberDisable";
   private static final String CMD_GROUP_MEMBER_TOGGLE = "groupMemberToggle";
@@ -73,6 +74,7 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
       CMD_GROUP_DELETE,
       CMD_GROUP_ADD_DEVICE,
       CMD_GROUP_REMOVE_DEVICE,
+      CMD_GROUP_REPLACE_MEMBERS,
       CMD_GROUP_MEMBER_ENABLE,
       CMD_GROUP_MEMBER_DISABLE,
       CMD_GROUP_MEMBER_TOGGLE,
@@ -313,6 +315,9 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
         break;
       case CMD_GROUP_REMOVE_DEVICE:
         executeGroupRemoveDevice(args, result, bridgeGroups);
+        break;
+      case CMD_GROUP_REPLACE_MEMBERS:
+        executeGroupReplaceMembers(args, result, bridgeGroups);
         break;
       case CMD_GROUP_MEMBER_ENABLE:
       case CMD_GROUP_MEMBER_DISABLE:
@@ -652,6 +657,83 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
     }
     result.message = "Member updated: " + deviceName;
     result.outText = result.message;
+  }
+
+  private void executeGroupReplaceMembers(
+      JsonObject args,
+      BridgeUiCommandResult result,
+      BridgeGroupManager bridgeGroups) {
+    String groupName = dependencies.parseUiArgString(args, "group");
+    if (groupName == null) {
+      result.ok = false;
+      result.message = "groupReplaceMembers requires args.group.";
+      return;
+    }
+    BridgeGroupManager.Group group = bridgeGroups.getGroup(groupName);
+    if (group == null) {
+      result.ok = false;
+      result.message = "Group not found: " + groupName;
+      return;
+    }
+    if (isActiveGroupLocked(groupName)) {
+      result.ok = false;
+      result.message = MESSAGE_ACTIVE_GROUP_LIFECYCLE_LOCKED;
+      return;
+    }
+    java.util.List<JsonObject> memberRows = new java.util.ArrayList<>();
+    if (args.has("members") && args.get("members").isJsonArray()) {
+      for (var element : args.getAsJsonArray("members")) {
+        if (element != null && element.isJsonObject()) {
+          memberRows.add(element.getAsJsonObject());
+        }
+      }
+    }
+    java.util.LinkedHashSet<String> desiredLabels = new java.util.LinkedHashSet<>();
+    java.util.Map<String, Boolean> enabledByLabel = new java.util.LinkedHashMap<>();
+    for (JsonObject member : memberRows) {
+      String deviceName = dependencies.parseUiArgString(member, "label");
+      if (deviceName == null || deviceName.isBlank()) {
+        result.ok = false;
+        result.message = "groupReplaceMembers requires each member to include label.";
+        return;
+      }
+      if (dependencies.findDeviceEntryByLabel(deviceName) == null) {
+        result.ok = false;
+        result.message = "Unknown device: " + deviceName;
+        return;
+      }
+      if (!desiredLabels.add(deviceName)) {
+        continue;
+      }
+      Boolean enabled = dependencies.parseUiArgBoolean(member, "enabled");
+      enabledByLabel.put(deviceName, enabled == null ? Boolean.TRUE : enabled);
+    }
+    java.util.List<String> existingLabels = new java.util.ArrayList<>();
+    for (BridgeGroupManager.MemberState member : group.members.values()) {
+      if (member != null && member.label != null && !member.label.isBlank()) {
+        existingLabels.add(member.label);
+      }
+    }
+    for (String existingLabel : existingLabels) {
+      if (!desiredLabels.contains(existingLabel)) {
+        bridgeGroups.removeDevice(groupName, existingLabel);
+      }
+    }
+    for (String desiredLabel : desiredLabels) {
+      if (!bridgeGroups.hasDevice(groupName, desiredLabel)) {
+        if (!bridgeGroups.addDevice(groupName, desiredLabel, false)) {
+          result.ok = false;
+          result.message = "Failed to add device to group: " + desiredLabel;
+          return;
+        }
+      }
+      bridgeGroups.setMemberEnabled(groupName, desiredLabel, enabledByLabel.getOrDefault(desiredLabel, Boolean.TRUE));
+    }
+    JsonObject info = new JsonObject();
+    info.add(JSON_KEY_GROUP, dependencies.buildGroupJson(bridgeGroups.getGroup(groupName)));
+    result.message = "Group members replaced: " + groupName;
+    result.outText = result.message;
+    result.outJson = info.toString();
   }
 
   private void executeGroupBind(
