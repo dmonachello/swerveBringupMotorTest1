@@ -5,6 +5,7 @@ NAME
 
 from __future__ import annotations
 
+import time
 import unittest
 from unittest.mock import patch
 
@@ -466,6 +467,143 @@ class BringupUiActionMetadataTests(unittest.TestCase):
             ui._selected_test_inactive_reason(),
         )
 
+    def test_format_selected_test_scope_status_detail_guides_activation(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+
+        self.assertEqual(
+            "This test has loaded its required devices into active-group. Press Activate Group, then run the test.",
+            ui._format_selected_test_scope_status_detail(
+                "active-group loaded from selected test - not activated"
+            ),
+        )
+
+    def test_format_selected_test_scope_status_detail_expands_missing_device_reason(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+
+        self.assertEqual(
+            "This test cannot run because a required profile device is missing: controller0",
+            ui._format_selected_test_scope_status_detail("missing resource/device - controller0"),
+        )
+
+    def test_build_evidence_probe_stats_text_reports_running_and_recent_completion(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._evidence_probe_pending = True
+        ui._evidence_last_probe_completed_at = 0.0
+        ui._evidence_probe_run_count = 0
+
+        self.assertEqual("Full Probe is running now.", ui._build_evidence_probe_stats_text())
+
+        ui._evidence_probe_pending = False
+        ui._evidence_last_probe_completed_at = time.time() - 5.0
+
+        self.assertIn(
+            "Last Full Probe completed",
+            ui._build_evidence_probe_stats_text(),
+        )
+
+    def test_build_evidence_probe_missing_text_distinguishes_session_without_device_result(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._evidence_last_probe_completed_at = time.time() - 4.0
+
+        self.assertEqual(
+            "This device was not part of the active runtime probe set when Full Probe ran.",
+            ui._build_evidence_probe_missing_text(None),
+        )
+        self.assertEqual(
+            "This device was not part of the active runtime probe set when Full Probe ran.",
+            ui._build_evidence_probe_missing_text({"instantiated": False}),
+        )
+        self.assertEqual(
+            "No device-specific full-probe result for this device.",
+            ui._build_evidence_probe_missing_text({"instantiated": True}),
+        )
+
+    def test_cache_active_probe_results_from_command_builds_runtime_attachment_shape(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._evidence_probe_results_by_label = {}
+
+        ui._cache_active_probe_results_from_command(
+            {
+                "devices": [
+                    {
+                        "label": "FALCON 9",
+                        "bucket": "present",
+                        "score": 95,
+                        "maxScore": 100,
+                        "message": "Device present: FALCON 9.",
+                        "status": "ok",
+                        "code": 1,
+                        "warnings": [],
+                        "errors": [],
+                        "evidence": [
+                            {"passed": False, "code": "STATUS_REFRESH_OK", "observedValue": "false"},
+                            {"passed": True, "code": "BUS_VOLTAGE_VALID", "observedValue": "12.1"},
+                        ],
+                    }
+                ]
+            }
+        )
+
+        attachment = ui._evidence_probe_results_by_label["falcon 9"]
+        self.assertEqual("activePresenceProbe", attachment["type"])
+        self.assertEqual("present", attachment["bucket"])
+        self.assertEqual(["STATUS_REFRESH_OK=false"], attachment["failedChecks"])
+
+    def test_apply_runtime_state_payload_merges_cached_active_probe_result_when_runtime_attachment_missing(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._latest_runtime_state_payload = {}
+        ui._runtime_active_known = False
+        ui._controlled_lifecycle_active_known = False
+        ui._robot_selected_profile = PROFILE_NONE
+        ui._robot_active_runtime_profile = PROFILE_NONE
+        ui._sync_diagnostic_profile_context = lambda reload_views=False: None
+        ui._latest_runtime_devices = {}
+        ui._manual_motion_checks = {}
+        ui._manual_test_observations = {}
+        ui._iter_live_views = lambda: []
+        ui._refresh_tests_active_group_panel = lambda: None
+        ui._refresh_selected_test_scope_status = lambda: None
+        ui._refresh_evidence_view = lambda: None
+        ui._runtime_state_backoff = 1.0
+        ui._runtime_state_idle_count = 0
+        ui._runtime_state_idle_pause_sec = 0.0
+        ui._runtime_state_pause_until = None
+        ui._evidence_probe_results_by_label = {
+            "falcon 9": {
+                "type": "activePresenceProbe",
+                "bucket": "present",
+                "score": 95,
+                "maxScore": 100,
+                "updatedAtMs": 123,
+                "failedChecks": [],
+                "warnings": [],
+                "errors": [],
+                "message": "Device present: FALCON 9.",
+                "status": "ok",
+                "code": 1,
+            }
+        }
+
+        ui._apply_runtime_state_payload(
+            {
+                "selectedProfile": "test_minimal_25_9",
+                "activeRuntimeProfile": "test_minimal_25_9",
+                "runtimeActive": True,
+                "controlledLifecycleActive": True,
+                "devices": [
+                    {
+                        "label": "FALCON 9",
+                        "instantiated": True,
+                        "attachments": [],
+                    }
+                ],
+            }
+        )
+
+        attachments = ui._latest_runtime_devices["falcon 9"]["attachments"]
+        self.assertEqual("activePresenceProbe", attachments[0]["type"])
+        self.assertEqual("present", attachments[0]["bucket"])
+
     def test_selected_test_ready_uses_robot_runnable_now(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
         ui._selected_test_var = _StringVarStub("mtrs_limit")
@@ -591,6 +729,41 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertFalse(ui._activate_scope_button.disabled)
         self.assertTrue(ui._tests_run_selected_button.disabled)
 
+    def test_update_action_enabled_disables_active_add_and_next_while_active_group_is_active(self) -> None:
+        class _Tracker:
+            def is_pending(self) -> bool:
+                return False
+
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._tcp_connected = True
+        ui._handshake_done = True
+        ui._state_stale = False
+        ui._tracker = _Tracker()
+        ui._refresh_scope_context_label = lambda: None
+        ui._refresh_selected_test_scope_status = lambda: None
+        ui._action_buttons = []
+        ui._action_buttons_by_command = {
+            "activeAdd": _ButtonStub(),
+            "activeNext": _ButtonStub(),
+            "printState": _ButtonStub(),
+        }
+        ui._host_local_action_enabled = lambda _command: True
+        ui._selected_test_var = _StringVarStub("falcon9_move_150_rotations")
+        ui._test_selection_boxes = lambda: []
+        ui._activate_scope_button = _ButtonStub()
+        ui._deactivate_scope_button = _ButtonStub()
+        ui._tests_run_selected_button = _ButtonStub()
+        ui._reset_button = None
+        ui._current_right_tab_text = lambda: "Live Topology"
+        ui._active_group_is_currently_active = lambda: True
+        ui._selected_test_ready = lambda: False
+
+        ui._update_action_enabled()
+
+        self.assertTrue(ui._action_buttons_by_command["activeAdd"].disabled)
+        self.assertTrue(ui._action_buttons_by_command["activeNext"].disabled)
+        self.assertFalse(ui._action_buttons_by_command["printState"].disabled)
+
     def test_refresh_test_result_status_surfaces_pass_result_in_tests_header(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
         ui._last_result_text_var = _StringVarStub("")
@@ -660,6 +833,120 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertEqual(output_lines, test_lines)
         self.assertFalse(ui._log_poll_inflight)
         self.assertIsNone(ui._log_poll_seq)
+
+    def test_ui_poll_log_mirrors_test_run_lines_into_test_activity_without_last_cmd_context(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._log_poll_seq = 52
+        ui._log_poll_inflight = True
+        ui._last_cmd = ("showRuntimeState", {})
+        ui._recent_out_lines = {}
+        ui._out_dedupe_window = 1.0
+        output_lines = []
+        test_lines = []
+        ui._append_output = output_lines.append
+        ui._append_test_output = test_lines.append
+        ui._runtime_state_pending_seq = None
+        ui._is_handshake_required = lambda _event: False
+        ui._handle_handshake_required = lambda: None
+        ui._is_owner_required = lambda _event: False
+        ui._handle_owner_required = lambda: None
+        ui._notify_ui_failure = lambda *_args, **_kwargs: None
+        ui._tracker = type("TrackerStub", (), {"handle_event": staticmethod(lambda _event: None)})()
+        ui._apply_runtime_group_command_payload = lambda _data: None
+        ui._apply_robot_profile_context_from_command_event = lambda *_args: None
+        ui._remember_out_line = lambda _line: None
+
+        ui._handle_tcp_response(
+            BridgeEvent(
+                type="out",
+                seq=52,
+                name="uiPollLog",
+                status="ok",
+                message="",
+                text=(
+                    "Test started #2: mtrs_limit\n"
+                    "Test #2: mtrs_limit\n"
+                    "Test result #2: mtrs_limit = PASS (success success_1: success lmtSw0.pressed) time=0.52s"
+                ),
+                json_text="",
+                ts=0.0,
+                session_id="",
+                state={},
+                raw={},
+            )
+        )
+
+        self.assertEqual(
+            [
+                "Test started #2: mtrs_limit",
+                "Test #2: mtrs_limit",
+                "Test result #2: mtrs_limit = PASS (success success_1: success lmtSw0.pressed) time=0.52s",
+            ],
+            output_lines,
+        )
+        self.assertEqual(output_lines, test_lines)
+        self.assertFalse(ui._log_poll_inflight)
+        self.assertIsNone(ui._log_poll_seq)
+
+    def test_active_presence_probe_ack_without_json_does_not_crash(self) -> None:
+        refresh_calls = []
+
+        class _Tracker:
+            def __init__(self) -> None:
+                self.events = []
+
+            def handle_event(self, event) -> None:
+                self.events.append(event)
+
+            def is_pending(self) -> bool:
+                return False
+
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._runtime_state_pending_seq = None
+        ui._is_handshake_required = lambda _event: False
+        ui._handle_handshake_required = lambda: None
+        ui._is_owner_required = lambda _event: False
+        ui._handle_owner_required = lambda: None
+        ui._notify_ui_failure = lambda *_args, **_kwargs: None
+        ui._append_output = lambda _line: None
+        ui._append_test_output = lambda _line: None
+        ui._apply_runtime_group_command_payload = lambda _data: None
+        ui._apply_robot_profile_context_from_command_event = lambda *_args: None
+        ui._remember_out_line = lambda _line: None
+        ui._cache_active_probe_results_from_command = lambda _data: refresh_calls.append("cache")
+        ui._refresh_evidence_view = lambda: refresh_calls.append("refresh")
+        ui.after_idle = lambda callback, *args, **kwargs: callback(*args, **kwargs)
+        ui._tracker = _Tracker()
+        ui._log_poll_seq = None
+        ui._log_poll_inflight = False
+        ui._last_cmd = ("activePresenceProbe", {})
+        ui._evidence_probe_pending = True
+        ui._evidence_last_probe_complete_seq = None
+        ui._evidence_probe_complete_count = 0
+        ui._evidence_last_probe_completed_at = None
+        ui._pending_tests_boundary_transition = None
+        ui._request_runtime_state_refresh = lambda: refresh_calls.append("runtime")
+
+        ui._handle_tcp_response(
+            BridgeEvent(
+                type="ack",
+                seq=136,
+                name="activePresenceProbe",
+                status="ok",
+                message="Probe completed with warnings.",
+                text="",
+                json_text="",
+                ts=0.0,
+                session_id="",
+                state={},
+                raw={},
+            )
+        )
+
+        self.assertFalse(ui._evidence_probe_pending)
+        self.assertEqual(1, ui._evidence_probe_complete_count)
+        self.assertIn("refresh", refresh_calls)
+        self.assertIn("runtime", refresh_calls)
 
     def test_activate_scope_from_tests_uses_active_group_lifecycle_path(self) -> None:
         class _Tracker:

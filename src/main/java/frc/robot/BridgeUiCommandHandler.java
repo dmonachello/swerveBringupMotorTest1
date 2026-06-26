@@ -1414,7 +1414,7 @@ public class BridgeUiCommandHandler {
 
           @Override
           public RobotLocalExecutionResult runActivePresenceProbe() {
-            if (!runtime.isRuntimeReady()) {
+            if (!isRuntimeEffectivelyActive()) {
               return RobotLocalExecutionResult.failed(MESSAGE_RUNTIME_INACTIVE_ACTIVATE);
             }
             ActiveDevicePresenceProbe.ProbeSessionResult session = runtime.runActivePresenceProbe();
@@ -2214,6 +2214,14 @@ public class BridgeUiCommandHandler {
 
   /**
    * NAME
+   *   isRuntimeEffectivelyActive - Return whether runtime-backed actions may use either legacy runtime or controlled lifecycle activation.
+   */
+  private boolean isRuntimeEffectivelyActive() {
+    return runtime.isRuntimeReady() || isControlledLifecycleActive();
+  }
+
+  /**
+   * NAME
    *   isControlledLifecycleDeviceActive - Return whether a device is active in the controlled session.
    */
   private boolean isControlledLifecycleDeviceActive(String label) {
@@ -2748,6 +2756,7 @@ public class BridgeUiCommandHandler {
       case "showDevice":
       case "showBindings":
       case "showSelectedDevice":
+      case "selectTestByName":
       case CMD_SHOW_TESTS:
       case CMD_SHOW_RUNTIME_STATE:
       case "showProfiles":
@@ -4302,8 +4311,25 @@ public class BridgeUiCommandHandler {
     if (label == null || label.isBlank()) {
       return null;
     }
+    BringupUtil.DeviceEntry entry = findDeviceEntryByLabel(label, BringupUtil.getActiveDevicesSorted());
+    if (entry != null) {
+      return entry;
+    }
+    return findDeviceEntryByLabel(label, BringupUtil.getSelectedDevicesSorted());
+  }
+
+  /**
+   * NAME
+   *   findDeviceEntryByLabel - Lookup one device entry by label from one candidate list.
+   */
+  private BringupUtil.DeviceEntry findDeviceEntryByLabel(
+      String label,
+      List<BringupUtil.DeviceEntry> devices) {
+    if (label == null || label.isBlank() || devices == null || devices.isEmpty()) {
+      return null;
+    }
     String needle = label.trim();
-    for (BringupUtil.DeviceEntry entry : BringupUtil.getActiveDevicesSorted()) {
+    for (BringupUtil.DeviceEntry entry : devices) {
       if (entry == null) {
         continue;
       }

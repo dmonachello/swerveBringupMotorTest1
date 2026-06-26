@@ -11,14 +11,14 @@ from hashlib import sha256
 from pathlib import Path
 from time import time
 
-BUILD_GIT_DESCRIBE = "controlled-bringup-lifecycle-handoff-2026-06-23-1-g59c52e9-dirty"
-BUILD_REVISION = "222"
-BUILD_WORKSPACE_REVISION = "64"
-BUILD_CODE_REVISION = "f40476c552a8"
-BUILD_GIT_SHA = "59c52e9"
+BUILD_GIT_DESCRIBE = "controlled-bringup-lifecycle-v2-2026-06-25-dirty"
+BUILD_REVISION = "223"
+BUILD_WORKSPACE_REVISION = "76"
+BUILD_CODE_REVISION = "f706dab451c0"
+BUILD_GIT_SHA = "db9b000"
 BUILD_GIT_BRANCH = "feature/controlled-bringup-lifecycle"
 BUILD_GIT_DIRTY = "dirty"
-BUILD_TIMESTAMP = "2026-06-24T09:58:49-04:00"
+BUILD_TIMESTAMP = "2026-06-25T17:02:17-04:00"
 
 BUILD_LABEL_REVISION = "build-revision"
 BUILD_LABEL_WORKSPACE_REVISION = "workspace-revision"

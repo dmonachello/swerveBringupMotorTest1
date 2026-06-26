@@ -68,6 +68,8 @@ public final class ActiveDevicePresenceProbe {
   private static final String TEXT_INVALID_TARGET = "Invalid probe target.";
   private static final String TEXT_UNSUPPORTED_MODEL_PREFIX = "Unsupported device model: ";
   private static final String TEXT_RUNTIME_DEVICE_MISSING = "Runtime device handle unavailable.";
+  private static final String TEXT_SNAPSHOT_NOT_ALLOWED =
+      "Device not in the active lifecycle snapshot scope.";
   private static final String TEXT_STATUS_NOT_OK = "One or more Phoenix status reads were not OK.";
   private static final String TEXT_STATUS_FORCE_ABSENT = "Phoenix status was stale or transmit failed.";
   private static final String TEXT_PD_WEAK = "Power-distribution API evidence was too weak for a confident absence call.";
@@ -186,10 +188,11 @@ public final class ActiveDevicePresenceProbe {
       }
       canCount++;
       DeviceUnit device = core.findDeviceByLabel(entry.label);
+      ProbeTarget target = resolveTarget(entry, device);
       if (!core.isLifecycleSnapshotAllowed(entry.label)) {
+        results.add(snapshotNotAllowed(target));
         continue;
       }
-      ProbeTarget target = resolveTarget(entry, device);
       if (MODEL_UNSUPPORTED.equals(target.model)) {
         unsupportedCount++;
         continue;
@@ -960,6 +963,16 @@ public final class ActiveDevicePresenceProbe {
     result.bucket = BUCKET_ABSENT;
     result.message = TEXT_RUNTIME_DEVICE_MISSING;
     result.errors.add(TEXT_RUNTIME_DEVICE_MISSING);
+    return result;
+  }
+
+  private ProbeDeviceResult snapshotNotAllowed(ProbeTarget target) {
+    ProbeDeviceResult result = baseResult(target);
+    result.code = StatusCatalogGenerated.SS__DEVICE__ABSENT;
+    result.status = statusForCode(result.code);
+    result.bucket = BUCKET_UNKNOWN;
+    result.message = TEXT_SNAPSHOT_NOT_ALLOWED;
+    result.errors.add(TEXT_SNAPSHOT_NOT_ALLOWED);
     return result;
   }
 

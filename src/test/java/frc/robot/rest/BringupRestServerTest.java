@@ -41,6 +41,7 @@ public final class BringupRestServerTest {
   private static final String TEXT_CONFIG = "config";
   private static final String TEXT_JSON = "json";
   private static final String STATUS_FINISHED = "FINISHED";
+  private static final String STATUS_FAILED = "FAILED";
   private static final int HTTP_OK = 200;
   private static final int HTTP_ACCEPTED = 202;
   private static final int HTTP_CONFLICT = 409;
@@ -80,7 +81,7 @@ public final class BringupRestServerTest {
     submit.addProperty(TEXT_NAME, COMMAND_SHOW_DEVICES);
     HttpResponse<String> submitResponse =
         client.send(post("/commands", submit), HttpResponse.BodyHandlers.ofString());
-    assertEquals(HTTP_ACCEPTED, submitResponse.statusCode());
+    assertEquals(HTTP_OK, submitResponse.statusCode());
     JsonObject submitJson = GSON.fromJson(submitResponse.body(), JsonObject.class);
     long commandId = submitJson.get(TEXT_COMMAND_ID).getAsLong();
 
@@ -148,6 +149,44 @@ public final class BringupRestServerTest {
     assertEquals(STATUS_FINISHED, runtimeStateJson.get(TEXT_STATUS).getAsString());
   }
 
+  @Test
+  public void restServerImmediateFailedCommandReturnsTerminalSubmitAndOutput() throws Exception {
+    server = new BringupRestServer(0, new TestCallbacks());
+    server.start();
+    HttpClient client = HttpClient.newHttpClient();
+
+    JsonObject connect = new JsonObject();
+    connect.addProperty(TEXT_CLIENT_ID, CLIENT_A);
+    HttpResponse<String> connectResponse =
+        client.send(post("/session/connect", connect), HttpResponse.BodyHandlers.ofString());
+    assertEquals(HTTP_OK, connectResponse.statusCode());
+
+    JsonObject submit = new JsonObject();
+    submit.addProperty(TEXT_CLIENT_ID, CLIENT_A);
+    submit.addProperty(TEXT_REQUEST_ID, REQUEST_ID + (++requestCounter));
+    submit.addProperty(TEXT_NAME, "failNow");
+    HttpResponse<String> submitResponse =
+        client.send(post("/commands", submit), HttpResponse.BodyHandlers.ofString());
+    assertEquals(HTTP_OK, submitResponse.statusCode());
+    JsonObject submitJson = GSON.fromJson(submitResponse.body(), JsonObject.class);
+    assertTrue(!submitJson.get("ok").getAsBoolean());
+    assertEquals(STATUS_FAILED, submitJson.get(TEXT_STATUS).getAsString());
+    assertTrue(submitJson.get("outputAvailable").getAsBoolean());
+
+    long commandId = submitJson.get(TEXT_COMMAND_ID).getAsLong();
+    HttpResponse<String> outputResponse =
+        client.send(
+            get("/commands/" + commandId + "/output?clientId=" + CLIENT_A),
+            HttpResponse.BodyHandlers.ofString());
+    assertEquals(HTTP_OK, outputResponse.statusCode());
+    JsonObject outputJson = GSON.fromJson(outputResponse.body(), JsonObject.class);
+    JsonArray chunks = outputJson.getAsJsonArray(TEXT_CHUNKS);
+    assertEquals(1, chunks.size());
+    assertEquals(
+        "Runtime inactive. Click Runtime Activate.",
+        chunks.get(0).getAsJsonObject().get(TEXT_OUTPUT).getAsString());
+  }
+
   private HttpRequest post(String path, JsonObject body) {
     return HttpRequest.newBuilder(baseUri(path))
         .header("Content-Type", "application/json")
@@ -174,7 +213,8 @@ public final class BringupRestServerTest {
     }
     HttpResponse<String> submitResponse =
         client.send(post("/commands", submit), HttpResponse.BodyHandlers.ofString());
-    assertEquals(HTTP_ACCEPTED, submitResponse.statusCode());
+    int submitStatus = submitResponse.statusCode();
+    assertTrue(submitStatus == HTTP_OK || submitStatus == HTTP_ACCEPTED);
     JsonObject submitJson = GSON.fromJson(submitResponse.body(), JsonObject.class);
     return submitJson.get(TEXT_COMMAND_ID).getAsLong();
   }
@@ -239,6 +279,13 @@ public final class BringupRestServerTest {
             "OK",
             wantsJson ? "" : "runtimeStateText",
             wantsJson ? GSON.toJson(buildRuntimeStateJson()) : "");
+      }
+      if ("failNow".equals(name)) {
+        return frc.robot.BridgeUiCommandHandler.RestCommandResult.finished(
+            false,
+            "Runtime inactive. Click Runtime Activate.",
+            "Runtime inactive. Click Runtime Activate.",
+            "");
       }
       return null;
     }

@@ -478,6 +478,9 @@ EVIDENCE_MANUAL_DIALOG_CANCEL = "Cancel"
 EVIDENCE_MANUAL_DIALOG_WIDTH = 320
 EVIDENCE_MANUAL_DIALOG_HEIGHT = 140
 EVIDENCE_PROBE_STATS_WAITING = "Updates only when Full Probe is run."
+EVIDENCE_PROBE_STATS_RUNNING = "Full Probe is running now."
+EVIDENCE_PROBE_STATS_LAST_COMPLETE_FMT = "Last Full Probe completed {age} ago."
+EVIDENCE_PROBE_STATS_RUN_COUNT_FMT = "Full Probe runs requested: {count}"
 EVIDENCE_MANUAL_OPERABILITY_WINDOW_SEC = 120.0
 EVIDENCE_MANUAL_IDENTITY_WINDOW_SEC = 900.0
 EVIDENCE_MOTION_CMD_THRESHOLD_DUTY = 0.15
@@ -580,6 +583,13 @@ EVIDENCE_PROBE_AGE_STALE = "stale"
 EVIDENCE_PROBE_NOTE_AGING = "Full-probe result is aging; lowering its weight."
 EVIDENCE_PROBE_NOTE_STALE = "Full-probe result is stale; using it only as historical evidence."
 EVIDENCE_PROBE_NOTE_ONE_SHOT = "Full Probe is a cached manual one-shot diagnostic result."
+EVIDENCE_PROBE_NO_DEVICE_RESULT = "No device-specific full-probe result for this device."
+EVIDENCE_PROBE_NOT_IN_RUNTIME_SET = (
+    "This device was not part of the active runtime probe set when Full Probe ran."
+)
+EVIDENCE_NOTE_PASSIVE_WITHOUT_PROBE_RESULT = (
+    "Passive CAN traffic is present, but Full Probe did not produce a device-specific result here."
+)
 ATTACHMENT_KEY_TYPE = "type"
 ATTACHMENT_TYPE_PRESENCE_CHECK = "presenceCheck"
 ATTACHMENT_TYPE_ACTIVE_PRESENCE_PROBE = "activePresenceProbe"
@@ -704,6 +714,21 @@ TEST_LIBRARY_STATUS_READY = "active-group active - ready to run"
 TEST_LIBRARY_STATUS_NO_SELECTED_TEST = TEST_LIBRARY_STATUS_INACTIVE_PREFIX + OUTPUT_NO_SELECTED_TEST
 TEST_LIBRARY_STATUS_LOADED_NOT_ACTIVATED = "active-group loaded from selected test - not activated"
 TEST_LIBRARY_STATUS_MANUAL_RESTORED = "manual active-group restored - not activated"
+TEST_SCOPE_DETAIL_NO_SELECTION = "Select a test from one of the library lists to load its devices into active-group."
+TEST_SCOPE_DETAIL_LOADED_NOT_ACTIVATED = (
+    "This test has loaded its required devices into active-group. "
+    "Press Activate Group, then run the test."
+)
+TEST_SCOPE_DETAIL_MANUAL_RESTORED = (
+    "The remembered manual active-group was restored after leaving Tests. "
+    "Press Activate Group before running manual actions."
+)
+TEST_SCOPE_DETAIL_MISSING_DEVICE_PREFIX = (
+    "This test cannot run because a required profile device is missing: "
+)
+TEST_SCOPE_DETAIL_REQUIRED_UNAVAILABLE = (
+    "This test cannot run because one or more required devices are not available."
+)
 TEST_LIBRARY_LOCAL_SCOPE_PROFILE = "profile"
 TEST_LIBRARY_LOCAL_SCOPE_CONFIG = "config"
 TEST_LIBRARY_LOCAL_SCOPE_GLOBAL = "global"
@@ -827,6 +852,12 @@ TEST_ACTIVITY_COMMANDS = {
     "lifecycledeactivateactive",
     "showlifecyclestate",
 }
+TEST_OUTPUT_PREFIX_STARTED = "Test started #"
+TEST_OUTPUT_PREFIX_STARTED_LEGACY = "Test started: "
+TEST_OUTPUT_PREFIX_NAME = "Test #"
+TEST_OUTPUT_PREFIX_RESULT = "Test result #"
+TEST_OUTPUT_PREFIX_RESULT_LEGACY = "Test result: "
+TEST_OUTPUT_PREFIX_RUN_ALL_COMPLETE = "Run-all complete."
 
 
 def _normalize_host_action_row(row: Dict[str, Any], default_source: str, default_kind: str) -> Dict[str, Any]:
@@ -1388,6 +1419,7 @@ class BringupControlUI(tk.Tk):
         self._evidence_probe_complete_count = 0
         self._evidence_last_probe_completed_at = 0.0
         self._evidence_last_probe_complete_seq: Optional[int] = None
+        self._evidence_probe_results_by_label: Dict[str, Dict[str, Any]] = {}
         self._last_selected_test = None
         self._last_sent_seq: Optional[int] = None
         self._nt_connected = False
@@ -4248,7 +4280,104 @@ class BringupControlUI(tk.Tk):
         NAME
             _build_evidence_probe_stats_text - Summarize active-probe session cadence for the Evidence inspector.
         """
+        if self._evidence_probe_pending:
+            return EVIDENCE_PROBE_STATS_RUNNING
+        completed_at = float(self.__dict__.get("_evidence_last_probe_completed_at", 0.0) or 0.0)
+        if completed_at > 0.0:
+            age_sec = max(0.0, time.time() - completed_at)
+            return EVIDENCE_PROBE_STATS_LAST_COMPLETE_FMT.format(
+                age=_format_age_seconds(age_sec)
+            )
+        run_count = int(self.__dict__.get("_evidence_probe_run_count", 0) or 0)
+        if run_count > 0:
+            return EVIDENCE_PROBE_STATS_RUN_COUNT_FMT.format(count=run_count)
         return EVIDENCE_PROBE_STATS_WAITING
+
+    def _build_evidence_probe_missing_text(self, runtime_device: Optional[Dict[str, Any]]) -> str:
+        """
+        NAME
+            _build_evidence_probe_missing_text - Explain why the selected device has no device-specific Full Probe result.
+        """
+        completed_at = float(self.__dict__.get("_evidence_last_probe_completed_at", 0.0) or 0.0)
+        if completed_at <= 0.0:
+            return "Not run yet"
+        if not isinstance(runtime_device, dict):
+            return EVIDENCE_PROBE_NOT_IN_RUNTIME_SET
+        if not bool(runtime_device.get("instantiated", False)):
+            return EVIDENCE_PROBE_NOT_IN_RUNTIME_SET
+        return EVIDENCE_PROBE_NO_DEVICE_RESULT
+
+    def _cache_active_probe_results_from_command(self, payload: Optional[Dict[str, Any]]) -> None:
+        """
+        NAME
+            _cache_active_probe_results_from_command - Cache per-device active probe results from one command JSON payload.
+        """
+        if not isinstance(payload, dict):
+            return
+        devices = payload.get("devices")
+        if not isinstance(devices, list):
+            return
+        updated_at_ms = int(time.time() * 1000.0)
+        cached: Dict[str, Dict[str, Any]] = {}
+        for device in devices:
+            if not isinstance(device, dict):
+                continue
+            label = str(device.get("label", "")).strip()
+            if not label:
+                continue
+            failed_checks: List[str] = []
+            evidence_rows = device.get("evidence")
+            if isinstance(evidence_rows, list):
+                for row in evidence_rows:
+                    if not isinstance(row, dict):
+                        continue
+                    if bool(row.get("passed")):
+                        continue
+                    code = str(row.get("code", "")).strip()
+                    observed = str(row.get("observedValue", "")).strip()
+                    if not code:
+                        continue
+                    failed_checks.append(f"{code}={observed}" if observed else code)
+            cached[label.lower()] = {
+                ATTACHMENT_KEY_TYPE: ATTACHMENT_TYPE_ACTIVE_PRESENCE_PROBE,
+                RUNTIME_PROBE_KEY_BUCKET: str(device.get("bucket", VIS_VALUE_UNKNOWN) or VIS_VALUE_UNKNOWN).strip(),
+                RUNTIME_PROBE_KEY_SCORE: device.get("score"),
+                RUNTIME_PROBE_KEY_MAX_SCORE: device.get("maxScore"),
+                RUNTIME_PROBE_KEY_UPDATED_AT_MS: updated_at_ms,
+                RUNTIME_PROBE_KEY_FAILED_CHECKS: failed_checks,
+                RUNTIME_PROBE_KEY_WARNINGS: list(device.get("warnings", []) or []),
+                RUNTIME_PROBE_KEY_ERRORS: list(device.get("errors", []) or []),
+                "message": str(device.get("message", "") or "").strip(),
+                "status": str(device.get("status", "") or "").strip(),
+                "code": device.get("code"),
+            }
+        if cached:
+            self._evidence_probe_results_by_label = cached
+
+    def _merge_cached_active_probe_results_into_runtime_devices(self) -> None:
+        """
+        NAME
+            _merge_cached_active_probe_results_into_runtime_devices - Fill missing runtime probe attachments from the last probe command result.
+        """
+        cached = self.__dict__.get("_evidence_probe_results_by_label")
+        runtime_devices = self.__dict__.get("_latest_runtime_devices")
+        if not isinstance(cached, dict) or not cached:
+            return
+        if not isinstance(runtime_devices, dict) or not runtime_devices:
+            return
+        for label_key, runtime_device in runtime_devices.items():
+            if not isinstance(runtime_device, dict):
+                continue
+            if _runtime_active_probe_attachment(runtime_device) is not None:
+                continue
+            cached_attachment = cached.get(str(label_key).strip().lower())
+            if not isinstance(cached_attachment, dict):
+                continue
+            attachments = runtime_device.get("attachments")
+            if not isinstance(attachments, list):
+                attachments = []
+                runtime_device["attachments"] = attachments
+            attachments.append(dict(cached_attachment))
 
     def _infer_device_evidence(
         self,
@@ -4550,7 +4679,7 @@ class BringupControlUI(tk.Tk):
             identity = EVIDENCE_STATUS_UNKNOWN
 
         if probe_bucket in (VIS_VALUE_UNKNOWN, "not_run") and passive_visible and not console_has_error:
-            notes.append("Passive CAN traffic present but no full-probe conclusion yet.")
+            notes.append(EVIDENCE_NOTE_PASSIVE_WITHOUT_PROBE_RESULT)
         if not notes:
             notes.append(EVIDENCE_NOTE_NONE)
 
@@ -4597,7 +4726,7 @@ class BringupControlUI(tk.Tk):
             )
         console_text = EVIDENCE_NOTE_SEPARATOR.join(console_events) if console_events else system_console.get("systemText", EVIDENCE_SOURCE_NONE)
         probe_stats_text = self._build_evidence_probe_stats_text()
-        probe_lines = ["Not run yet", probe_stats_text]
+        probe_lines = [self._build_evidence_probe_missing_text(runtime_device), probe_stats_text]
         if isinstance(probe_attachment, dict):
             failed_checks = _attachment_string_list(probe_attachment, RUNTIME_PROBE_KEY_FAILED_CHECKS)
             warnings = _attachment_string_list(probe_attachment, RUNTIME_PROBE_KEY_WARNINGS)
@@ -7089,6 +7218,25 @@ class BringupControlUI(tk.Tk):
         command = str(name or "").strip().lower()
         return command in TEST_ACTIVITY_COMMANDS
 
+    def _is_test_activity_output_line(self, line: object) -> bool:
+        """
+        NAME
+            _is_test_activity_output_line - Return true when one streamed output line belongs in the Tests-tab activity log.
+        """
+        text = str(line or "").strip()
+        if not text:
+            return False
+        return text.startswith(
+            (
+                TEST_OUTPUT_PREFIX_STARTED,
+                TEST_OUTPUT_PREFIX_STARTED_LEGACY,
+                TEST_OUTPUT_PREFIX_NAME,
+                TEST_OUTPUT_PREFIX_RESULT,
+                TEST_OUTPUT_PREFIX_RESULT_LEGACY,
+                TEST_OUTPUT_PREFIX_RUN_ALL_COMPLETE,
+            )
+        )
+
     def _remember_out_line(self, line: str) -> None:
         """
         NAME
@@ -7414,6 +7562,10 @@ class BringupControlUI(tk.Tk):
         self._append_output(f"{ts} CMD {command}")
         if self._is_test_activity_command(command):
             self._append_test_output(f"{ts} CMD {command}")
+        if str(command or "").strip().lower() == "activepresenceprobe":
+            self._evidence_probe_pending = True
+            self._evidence_probe_run_count += 1
+            self.after_idle(self._refresh_evidence_view)
         self._last_cmd = (command, args)
         seq = send_tracked_command(
             self._session,
@@ -7604,7 +7756,7 @@ class BringupControlUI(tk.Tk):
         panel_fg = TEST_SCOPE_PANEL_NEUTRAL_FG
         inactive_reason = self._selected_test_inactive_reason()
         if inactive_reason:
-            status_var.set(TEST_LIBRARY_STATUS_INACTIVE_PREFIX + inactive_reason)
+            status_var.set(self._format_selected_test_scope_status_detail(inactive_reason))
             if headline_var is not None:
                 if inactive_reason == OUTPUT_NO_SELECTED_TEST:
                     headline_var.set(TEST_SCOPE_PANEL_NO_SELECTION_HEADLINE)
@@ -7623,6 +7775,27 @@ class BringupControlUI(tk.Tk):
             panel_bg = TEST_SCOPE_PANEL_READY_BG
             panel_fg = TEST_SCOPE_PANEL_READY_FG
         self._apply_selected_test_scope_panel_colors(panel_bg, panel_fg)
+
+    def _format_selected_test_scope_status_detail(self, inactive_reason: str) -> str:
+        """
+        NAME
+            _format_selected_test_scope_status_detail - Convert one internal blocked reason into clearer operator guidance.
+        """
+        reason = str(inactive_reason or "").strip()
+        if not reason:
+            return TEST_LIBRARY_STATUS_READY
+        if reason == OUTPUT_NO_SELECTED_TEST:
+            return TEST_SCOPE_DETAIL_NO_SELECTION
+        if reason == TEST_LIBRARY_STATUS_LOADED_NOT_ACTIVATED:
+            return TEST_SCOPE_DETAIL_LOADED_NOT_ACTIVATED
+        if reason == TEST_LIBRARY_STATUS_MANUAL_RESTORED:
+            return TEST_SCOPE_DETAIL_MANUAL_RESTORED
+        if reason.startswith("missing resource/device - "):
+            missing = reason.split(" - ", 1)[1].strip()
+            return TEST_SCOPE_DETAIL_MISSING_DEVICE_PREFIX + missing
+        if reason == "required devices unavailable":
+            return TEST_SCOPE_DETAIL_REQUIRED_UNAVAILABLE
+        return TEST_LIBRARY_STATUS_INACTIVE_PREFIX + reason
 
     def _apply_selected_test_scope_panel_colors(self, background: str, foreground: str) -> None:
         """
@@ -8978,6 +9151,7 @@ class BringupControlUI(tk.Tk):
                 if label:
                     latest_runtime_devices[label.lower()] = device
         self._latest_runtime_devices = latest_runtime_devices
+        self._merge_cached_active_probe_results_into_runtime_devices()
         now_sec = time.time()
         for label_key, device in latest_runtime_devices.items():
             motion_entry = self._manual_motion_checks.get(label_key)
@@ -9180,6 +9354,7 @@ class BringupControlUI(tk.Tk):
         NAME
             _handle_tcp_response - Handle an inbound REST-session response payload.
         """
+        data = None
         msg_type = event.type
         name = event.name.strip()
         seq = event.seq
@@ -9220,7 +9395,7 @@ class BringupControlUI(tk.Tk):
                         if self._should_skip_out_line(line):
                             continue
                         self._append_output(line)
-                        if mirror_to_test:
+                        if mirror_to_test or self._is_test_activity_output_line(line):
                             self._append_test_output(line)
                 self._log_poll_inflight = False
                 self._log_poll_seq = None
@@ -9315,11 +9490,14 @@ class BringupControlUI(tk.Tk):
                     self._clear_test_selection_ui()
             if command_lower == "activepresenceprobe":
                 self._evidence_probe_pending = False
+                if isinstance(data, dict):
+                    self._cache_active_probe_results_from_command(data)
                 seq_value = int(event.seq)
                 if self._evidence_last_probe_complete_seq != seq_value:
                     self._evidence_last_probe_complete_seq = seq_value
                     self._evidence_probe_complete_count += 1
                     self._evidence_last_probe_completed_at = time.time()
+                    self.after_idle(self._refresh_evidence_view)
             if command_lower in {
                 "runtimeactivate",
                 "runtimedeactivate",
@@ -9419,6 +9597,9 @@ class BringupControlUI(tk.Tk):
             metadata = ACTIONS_BY_NAME.get(command, {})
             action_kind = str(metadata.get(INVENTORY_KEY_ACTION_KIND, ACTION_KIND_REMOTE_COMMAND))
             if action_kind != ACTION_KIND_HOST_LOCAL:
+                command_key = str(command or "").strip().lower()
+                if command_key in ACTIVE_GROUP_RESULT_COMMANDS and self._active_group_is_currently_active():
+                    btn.state(["disabled"])
                 continue
             btn.state(
                 ["!disabled"] if self._host_local_action_enabled(command) else ["disabled"]

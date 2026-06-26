@@ -536,8 +536,9 @@ public final class BringupRestServer {
       activeCommand = record;
       runImmediateCommandLocked(record);
       JsonObject accepted = commandSubmitJson(record);
-      replayByRequestId.put(requestId, new SubmitReplay(clientId, HTTP_ACCEPTED, accepted.deepCopy()));
-      sendJson(exchange, HTTP_ACCEPTED, accepted);
+      int submitHttpCode = submitHttpCodeFor(record);
+      replayByRequestId.put(requestId, new SubmitReplay(clientId, submitHttpCode, accepted.deepCopy()));
+      sendJson(exchange, submitHttpCode, accepted);
     }
   }
 
@@ -765,12 +766,28 @@ public final class BringupRestServer {
   }
 
   private JsonObject commandSubmitJson(CommandRecord record) {
-    JsonObject body = baseEnvelope(true, record.message);
+    JsonObject body = baseEnvelope(isSuccessfulSubmitStatus(record.status), record.message);
     body.addProperty(JSON_KEY_COMMAND_ID, record.commandId);
     body.addProperty(JSON_KEY_STATUS, record.status);
     body.addProperty(JSON_KEY_NAME, record.name);
     body.addProperty(JSON_KEY_OUTPUT_AVAILABLE, !record.outputChunks.isEmpty());
     return body;
+  }
+
+  private int submitHttpCodeFor(CommandRecord record) {
+    if (record == null || record.isRunning()) {
+      return HTTP_ACCEPTED;
+    }
+    return HTTP_OK;
+  }
+
+  private boolean isSuccessfulSubmitStatus(String status) {
+    if (status == null) {
+      return false;
+    }
+    return STATUS_ACCEPTED.equals(status)
+        || STATUS_RUNNING.equals(status)
+        || STATUS_FINISHED.equals(status);
   }
 
   private JsonObject unknownCommandBody() {

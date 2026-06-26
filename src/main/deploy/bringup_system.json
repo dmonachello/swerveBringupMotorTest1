@@ -264,8 +264,8 @@
       "terminator": true
     }
   ],
-  "data_version": "2026-06-25_164033",
-  "data_hash": "e81e351c4e5aa80b954e9491f28aa1362313e122e9340aa9ba0d417a759e8fb5",
+  "data_version": "2026-06-26_105642",
+  "data_hash": "30e55cd6f5b51c75dc6310a8e49c7a5de4d4d9ae6df2f1a8f9df2b23852466fa",
   "default_profile": "2026_no_swyfts",
   "bridgeConfig": {
     "schemaVersion": 2,
@@ -2026,8 +2026,8 @@
         "runnable": true
       },
       "mtrs_limit": {
-        "source": "test \"mtrs_limit\"\n\ndevice \"FALCON 9\"\ndevice \"lmtSw0\"\ndevice \"SPARKMAX/NEO 25\"\n\nmain:\n\tset \"FALCON 9\".output_percent_cmd = 0.15\n\n\tset \"SPARKMAX/NEO 25\".output_percent_cmd = 0.15\n\n\tabort \"SPARKMAX/NEO 25\".current_actual > 40\n\tabort \"FALCON 9\".current_actual > 40\n\n\tsuccess lmtSw0.pressed\n\tuntil timer.elapsed >= 3.0\n\n\n\n",
-        "sourceHash": "7e70cd5e2782c274ffc4f40fcf3d49aeb97ffd7238b7b956b74e94eff185aa1a",
+        "source": "test \"mtrs_limit\"\n\ndevice \"FALCON 9\"\ndevice \"lmtSw0\"\ndevice \"SPARKMAX/NEO 25\"\n\nmain:\n\tset \"FALCON 9\".output_percent_cmd = 0.15\n\n\tset \"SPARKMAX/NEO 25\".output_percent_cmd = 0.15\n\n\tabort \"SPARKMAX/NEO 25\".current_actual > 40\n\tabort \"FALCON 9\".current_actual > 40\n\n\tsuccess lmtSw0.pressed\n\tuntil timer.elapsed >= 3.0\n\trequire timer.elapsed < 3.0\n\n\n\n",
+        "sourceHash": "46d9d78a724059f1f947f5f6fd5240cca729d2fdd0d164672fa61a21db7f7fdf",
         "normalized": {
           "name": "mtrs_limit",
           "devices": [
@@ -2145,7 +2145,24 @@
                 }
               }
             ],
-            "requires": []
+            "requires": [
+              {
+                "id": "require_1",
+                "kind": "require",
+                "text": "require timer.elapsed < 3.0",
+                "reference": {
+                  "device": "timer",
+                  "signal": "elapsed",
+                  "text": "timer.elapsed"
+                },
+                "mode": "comparison",
+                "operator": "<",
+                "literal": {
+                  "value": 3.0,
+                  "valueType": "number"
+                }
+              }
+            ]
           },
           "close": {
             "sets": [],
