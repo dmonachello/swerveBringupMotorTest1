@@ -1766,6 +1766,19 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
         second_label = overlays[1]["label_bounds"]
         self.assertLess(second_label[3], first_label[1])
 
+    def test_group_overlay_skips_groups_without_placeable_members(self) -> None:
+        canvas = _CanvasStub()
+
+        overlays = draw_group_overlays(
+            canvas,
+            {"motor1": (100.0, 200.0, 180.0, 240.0)},
+            [{"name": "unknownGroup", "members": [{"label": "missingMotor"}]}],
+            zoom=1.0,
+        )
+
+        self.assertEqual([], overlays)
+        self.assertEqual([], canvas.rectangles)
+
     def test_draw_links_uses_distinct_dash_patterns_by_link_family(self) -> None:
         canvas = _CanvasStub()
 

@@ -551,6 +551,12 @@ public class BridgeUiCommandHandler {
       }
 
       @Override
+      public void resetUiSessionRuntimeContext() {
+        runtime.resetUiSessionRuntimeContext();
+        BridgeUiCommandHandler.this.resetProfileRuntimeUiState();
+      }
+
+      @Override
       public long getLastUiSeq() {
         return lastUiSeq;
       }
@@ -3499,7 +3505,7 @@ public class BridgeUiCommandHandler {
     root.addProperty("profile", runtimeProfile);
     root.addProperty(JSON_KEY_SELECTED_PROFILE, BringupUtil.getSelectedCanProfileLabel());
     root.addProperty(JSON_KEY_ACTIVE_RUNTIME_PROFILE, BringupUtil.getActiveRuntimeProfileLabel());
-    root.addProperty(JSON_KEY_RUNTIME_ACTIVE, runtime.isRuntimeReady() || controlledLifecycleActive);
+    root.addProperty(JSON_KEY_RUNTIME_ACTIVE, runtime.isRuntimeReady());
     root.addProperty(JSON_KEY_CONTROLLED_LIFECYCLE_ACTIVE, controlledLifecycleActive);
     root.addProperty(
         JSON_KEY_DISCOVER_THRESHOLD,

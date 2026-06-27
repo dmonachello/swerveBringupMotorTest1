@@ -83,6 +83,14 @@ from tools.common.topology_draw import (
     draw_links,
     render_topology_canvas_common,
 )
+from tools.common.group_contract import (
+    find_group_by_name,
+    group_member_labels,
+    group_member_map,
+    group_primary_label,
+    merge_effective_groups,
+    normalize_group_name,
+)
 from tools.common.motor_runtime_verdict import (
     infer_motor_runtime_verdict,
     runtime_motor_attachment,
@@ -116,6 +124,27 @@ NOTICE_COLOR_WARN_BG = "#fff7ed"
 NOTICE_COLOR_WARN_FG = "#c2410c"
 NOTICE_COLOR_ERROR_BG = "#fef2f2"
 NOTICE_COLOR_ERROR_FG = "#b91c1c"
+RUNNABLE_PANEL_TITLE = "Runnable State"
+RUNNABLE_PANEL_READY_HEADLINE = "READY TO RUN"
+RUNNABLE_PANEL_INACTIVE_HEADLINE = "NOT RUNNABLE"
+RUNNABLE_PANEL_WAITING_HEADLINE = "WAITING FOR STATE"
+RUNNABLE_PANEL_READY_DETAIL = "manual/group controls available - ready to run"
+RUNNABLE_PANEL_WAITING_DETAIL = "waiting for robot runtime state"
+RUNNABLE_PANEL_MANUAL_NOT_ACTIVATED_DETAIL = (
+    "Activate Group first."
+)
+RUNNABLE_PANEL_READY_BG = "#dcfce7"
+RUNNABLE_PANEL_READY_FG = "#166534"
+RUNNABLE_PANEL_INACTIVE_BG = "#fee2e2"
+RUNNABLE_PANEL_INACTIVE_FG = "#991b1b"
+RUNNABLE_PANEL_NEUTRAL_BG = "#e5e7eb"
+RUNNABLE_PANEL_NEUTRAL_FG = "#374151"
+RUNNABLE_PANEL_BORDER = "#cbd5e1"
+RUNNABLE_PANEL_WRAP = 320
+RUNNABLE_PANEL_PAD_X = 12
+RUNNABLE_PANEL_PAD_Y = 8
+RUNNABLE_PANEL_HEADLINE_FONT = ("Segoe UI", 11, "bold")
+RUNNABLE_PANEL_DETAIL_FONT = ("Segoe UI", 10, "normal")
 PRESENCE_STALE_MS = 2000
 RECENT_SEEN_NOW_MS = 100
 RECENT_SEEN_MS_SWITCH = 1000
@@ -270,6 +299,7 @@ ACTIVE_GROUP_MEMBER_ENABLED = "enabled"
 ACTIVE_GROUP_MEMBER_DISABLED = "disabled"
 ACTIVE_GROUP_MEMBER_ABSENT = "not in group"
 ACTIVE_GROUP_MEMBER_LOCKED = "locked"
+ACTIVE_GROUP_MEMBER_WAITING = "waiting for runtime"
 ACTIVE_GROUP_PRIMARY_YES = "PRIMARY"
 ACTIVE_GROUP_SELECTED_YES = "selected"
 ACTIVE_GROUP_SELECTED_NO = "not selected"
@@ -925,6 +955,7 @@ class LiveTopologyView(ttk.Frame):
         self._controlled_lifecycle_active = False
         self._show_groups = True
         self._runtime_fingerprint: Optional[Tuple[object, ...]] = None
+        self._runtime_state_seen = False
         self._runtime_state_notice_text = EMPTY_STRING
         self._runtime_state_notice_level = "info"
         self._runtime_event_notice_text = EMPTY_STRING
@@ -964,6 +995,51 @@ class LiveTopologyView(ttk.Frame):
                 variable=self._connection_filter_vars[filter_key],
                 command=self._redraw,
             ).pack(side="left")
+
+        self._runnable_scope_headline_var = tk.StringVar(value=RUNNABLE_PANEL_WAITING_HEADLINE)
+        self._runnable_scope_detail_var = tk.StringVar(value=RUNNABLE_PANEL_WAITING_DETAIL)
+        notice_row = ttk.Frame(self)
+        notice_row.pack(fill="x", padx=8, pady=(8, 0))
+        self._notice_panel = tk.Frame(
+            notice_row,
+            bg=RUNNABLE_PANEL_NEUTRAL_BG,
+            highlightbackground=RUNNABLE_PANEL_BORDER,
+            highlightthickness=1,
+            bd=0,
+            padx=RUNNABLE_PANEL_PAD_X,
+            pady=RUNNABLE_PANEL_PAD_Y,
+        )
+        self._notice_panel.pack(side="right", anchor="e")
+        self._notice_title_label = tk.Label(
+            self._notice_panel,
+            text=RUNNABLE_PANEL_TITLE,
+            bg=RUNNABLE_PANEL_NEUTRAL_BG,
+            fg=RUNNABLE_PANEL_NEUTRAL_FG,
+            anchor="w",
+            font=RUNNABLE_PANEL_DETAIL_FONT,
+        )
+        self._notice_title_label.pack(anchor="w")
+        self._notice_headline_label = tk.Label(
+            self._notice_panel,
+            textvariable=self._runnable_scope_headline_var,
+            bg=RUNNABLE_PANEL_NEUTRAL_BG,
+            fg=RUNNABLE_PANEL_NEUTRAL_FG,
+            anchor="w",
+            justify="left",
+            font=RUNNABLE_PANEL_HEADLINE_FONT,
+        )
+        self._notice_headline_label.pack(anchor="w", pady=(2, 0))
+        self._notice_detail_label = tk.Label(
+            self._notice_panel,
+            textvariable=self._runnable_scope_detail_var,
+            bg=RUNNABLE_PANEL_NEUTRAL_BG,
+            fg=RUNNABLE_PANEL_NEUTRAL_FG,
+            anchor="w",
+            justify="left",
+            wraplength=RUNNABLE_PANEL_WRAP,
+            font=RUNNABLE_PANEL_DETAIL_FONT,
+        )
+        self._notice_detail_label.pack(anchor="w", pady=(2, 0))
 
         body = ttk.Frame(self)
         body.pack(fill="both", expand=True, padx=8, pady=8)
@@ -1169,19 +1245,6 @@ class LiveTopologyView(ttk.Frame):
                 justify="left",
                 anchor="nw",
             ).pack(fill="x", pady=(8, 0))
-
-        self._notice_label = tk.Label(
-            self,
-            text=EMPTY_STRING,
-            anchor="w",
-            justify="left",
-            padx=10,
-            pady=6,
-            bg=NOTICE_COLOR_INFO_BG,
-            fg=NOTICE_COLOR_INFO_FG,
-            font=("Segoe UI", 14, "bold"),
-        )
-        self._notice_label.pack_forget()
 
         self.reload_profile(profile_name)
 
@@ -1507,6 +1570,7 @@ class LiveTopologyView(ttk.Frame):
         NAME
             update_runtime_state - Apply live runtime-state payload.
         """
+        self._runtime_state_seen = isinstance(payload, dict)
         mapped: Dict[str, Dict[str, object]] = {}
         selected_label = None
         selected_enabled: Optional[bool] = None
@@ -1625,13 +1689,9 @@ class LiveTopologyView(ttk.Frame):
             robot_estopped,
             tuple(
                 (
-                    str(group.get("name", EMPTY_STRING)).strip().lower(),
+                    normalize_group_name(group.get("name", EMPTY_STRING)),
                     bool(group.get("enabled", True)),
-                    tuple(
-                        str(member.get("label", EMPTY_STRING)).strip().lower()
-                        for member in group.get("members", [])
-                        if isinstance(member, dict)
-                    ),
+                    tuple(label.strip().lower() for label in group_member_labels(group, enabled_only=False)),
                 )
                 for group in runtime_groups
             ),
@@ -1641,7 +1701,12 @@ class LiveTopologyView(ttk.Frame):
         self._controlled_lifecycle_active = controlled_lifecycle_active
         self._selected_label = selected_label
         self._selected_enabled = selected_enabled
-        self._apply_runtime_notice_from_state(runtime_active, robot_enabled, robot_estopped)
+        self._apply_runtime_notice_from_state(
+            runtime_active,
+            controlled_lifecycle_active,
+            robot_enabled,
+            robot_estopped,
+        )
         self._update_details()
         if fingerprint == self._runtime_fingerprint:
             return False
@@ -1674,26 +1739,18 @@ class LiveTopologyView(ttk.Frame):
             merged.append(dict(group_payload))
         current_fingerprint = tuple(
             (
-                str(group.get("name", EMPTY_STRING)).strip().lower(),
+                normalize_group_name(group.get("name", EMPTY_STRING)),
                 bool(group.get("enabled", True)),
-                tuple(
-                    str(member.get("label", EMPTY_STRING)).strip().lower()
-                    for member in group.get("members", [])
-                    if isinstance(member, dict)
-                ),
+                tuple(label.strip().lower() for label in group_member_labels(group, enabled_only=False)),
             )
             for group in self._runtime_groups
             if isinstance(group, dict)
         )
         next_fingerprint = tuple(
             (
-                str(group.get("name", EMPTY_STRING)).strip().lower(),
+                normalize_group_name(group.get("name", EMPTY_STRING)),
                 bool(group.get("enabled", True)),
-                tuple(
-                    str(member.get("label", EMPTY_STRING)).strip().lower()
-                    for member in group.get("members", [])
-                    if isinstance(member, dict)
-                ),
+                tuple(label.strip().lower() for label in group_member_labels(group, enabled_only=False)),
             )
             for group in merged
         )
@@ -1709,36 +1766,7 @@ class LiveTopologyView(ttk.Frame):
         NAME
             _effective_groups - Merge static profile groups with runtime groups by name.
         """
-        merged: Dict[str, Dict[str, object]] = {}
-        for group in self._bridge_groups:
-            if not isinstance(group, dict):
-                continue
-            name = str(group.get("name", EMPTY_STRING)).strip()
-            if name:
-                merged[name.lower()] = dict(group)
-        for group in self._runtime_groups:
-            if not isinstance(group, dict):
-                continue
-            name = str(group.get("name", EMPTY_STRING)).strip()
-            if name:
-                key = name.lower()
-                existing = merged.get(key, {})
-                runtime_group = dict(group)
-                if isinstance(existing, dict):
-                    static_members = existing.get("members")
-                    runtime_members = runtime_group.get("members")
-                    if isinstance(static_members, list) and (
-                        not isinstance(runtime_members, list) or not runtime_members
-                    ):
-                        runtime_group["members"] = list(static_members)
-                    static_bindings = existing.get("bindings")
-                    runtime_bindings = runtime_group.get("bindings")
-                    if isinstance(static_bindings, list) and (
-                        not isinstance(runtime_bindings, list) or not runtime_bindings
-                    ):
-                        runtime_group["bindings"] = list(static_bindings)
-                merged[key] = runtime_group
-        return list(merged.values())
+        return merge_effective_groups(self._bridge_groups, self._runtime_groups)
 
     def set_runtime_notice(self, text: str, level: str = "warn") -> None:
         """
@@ -1801,31 +1829,40 @@ class LiveTopologyView(ttk.Frame):
         NAME
             _refresh_runtime_notice - Render the highest-priority live-topology notice.
         """
-        if self._runtime_state_notice_text:
-            message = self._runtime_state_notice_text
-            level = self._runtime_state_notice_level
+        if not self.__dict__.get("_runtime_state_seen", False):
+            headline = RUNNABLE_PANEL_WAITING_HEADLINE
+            bg = RUNNABLE_PANEL_NEUTRAL_BG
+            fg = RUNNABLE_PANEL_NEUTRAL_FG
+            detail = RUNNABLE_PANEL_WAITING_DETAIL
+        elif self._runtime_state_notice_text:
+            headline = RUNNABLE_PANEL_INACTIVE_HEADLINE
+            bg = RUNNABLE_PANEL_INACTIVE_BG
+            fg = RUNNABLE_PANEL_INACTIVE_FG
+            detail = self._runtime_state_notice_text
         elif self._runtime_event_notice_text:
-            message = self._runtime_event_notice_text
-            level = self._runtime_event_notice_level
+            headline = RUNNABLE_PANEL_INACTIVE_HEADLINE
+            bg = RUNNABLE_PANEL_INACTIVE_BG
+            fg = RUNNABLE_PANEL_INACTIVE_FG
+            detail = self._runtime_event_notice_text
         else:
-            self._notice_label.configure(text=EMPTY_STRING)
-            self._notice_label.pack_forget()
-            return
-        if level == "error":
-            bg = NOTICE_COLOR_ERROR_BG
-            fg = NOTICE_COLOR_ERROR_FG
-        elif level == "warn":
-            bg = NOTICE_COLOR_WARN_BG
-            fg = NOTICE_COLOR_WARN_FG
-        else:
-            bg = NOTICE_COLOR_INFO_BG
-            fg = NOTICE_COLOR_INFO_FG
-        self._notice_label.configure(text=message, bg=bg, fg=fg)
-        self._notice_label.pack(side="bottom", fill="x", padx=8, pady=(0, 8))
+            headline = RUNNABLE_PANEL_READY_HEADLINE
+            bg = RUNNABLE_PANEL_READY_BG
+            fg = RUNNABLE_PANEL_READY_FG
+            detail = RUNNABLE_PANEL_READY_DETAIL
+        self._runnable_scope_headline_var.set(headline)
+        self._runnable_scope_detail_var.set(detail)
+        self._notice_panel.configure(bg=bg, highlightbackground=RUNNABLE_PANEL_BORDER)
+        for label in (
+            self._notice_title_label,
+            self._notice_headline_label,
+            self._notice_detail_label,
+        ):
+            label.configure(bg=bg, fg=fg)
 
     def _apply_runtime_notice_from_state(
         self,
         runtime_active: Optional[bool],
+        controlled_lifecycle_active: Optional[bool],
         robot_enabled: Optional[bool],
         robot_estopped: Optional[bool],
     ) -> None:
@@ -1836,11 +1873,11 @@ class LiveTopologyView(ttk.Frame):
         if robot_estopped is True:
             self.set_runtime_state_notice("Robot E-Stop. Manual run blocked.", "error")
             return
-        if runtime_active is False:
-            self.set_runtime_state_notice("Runtime inactive. Click Runtime Activate.", "warn")
-            return
         if robot_enabled is False:
             self.set_runtime_state_notice("Robot disabled. Enable teleop to run motors.", "info")
+            return
+        if controlled_lifecycle_active is not True and runtime_active is not True:
+            self.set_runtime_state_notice(RUNNABLE_PANEL_MANUAL_NOT_ACTIVATED_DETAIL, "warn")
             return
         self.clear_runtime_state_notice()
 
@@ -2346,21 +2383,9 @@ class LiveTopologyView(ttk.Frame):
         frame = getattr(self, "_group_inspector_rows_frame", None)
         if summary_var is None or frame is None:
             return
-        group = self._runtime_group_by_name(self._group_inspector_name)
-        group_member_map: Dict[str, Dict[str, object]] = {}
-        primary_label = EMPTY_STRING
-        if isinstance(group, dict):
-            members = group.get("members")
-            if isinstance(members, list):
-                for member in members:
-                    if not isinstance(member, dict):
-                        continue
-                    label = str(member.get("label", EMPTY_STRING)).strip()
-                    if not label:
-                        continue
-                    if not primary_label:
-                        primary_label = label
-                    group_member_map[label.lower()] = dict(member)
+        group = self._effective_group_by_name(self._group_inspector_name)
+        resolved_member_map = group_member_map(group, enabled_only=False)
+        primary_label = group_primary_label(group, enabled_only=False)
         target_labels = list(self._group_inspector_targets)
         total_count = len(target_labels)
         enabled_count = 0
@@ -2376,7 +2401,7 @@ class LiveTopologyView(ttk.Frame):
         member_rows: List[Tuple[str, str]] = []
         for label in target_labels:
             label_key = label.strip().lower()
-            member = group_member_map.get(label_key, {})
+            member = resolved_member_map.get(label_key, {})
             enabled = bool(member.get("enabled", True))
             if enabled:
                 enabled_count += 1
@@ -2516,21 +2541,12 @@ class LiveTopologyView(ttk.Frame):
             if isinstance(detail_var, tk.StringVar):
                 detail_var.set(detail_text)
 
-    def _runtime_group_by_name(self, name: str) -> Optional[Dict[str, object]]:
+    def _effective_group_by_name(self, name: str) -> Optional[Dict[str, object]]:
         """
         NAME
-            _runtime_group_by_name - Return one runtime group payload by normalized name.
+            _effective_group_by_name - Return one effective group payload by normalized name.
         """
-        clean_name = str(name or EMPTY_STRING).strip().lower()
-        if not clean_name:
-            return None
-        for group in self._runtime_groups:
-            if not isinstance(group, dict):
-                continue
-            group_name = str(group.get("name", EMPTY_STRING)).strip().lower()
-            if group_name == clean_name:
-                return group
-        return None
+        return find_group_by_name(self._effective_groups(), name)
 
     def _bind_wrapped_label(self, container: tk.Widget, label: ttk.Label) -> None:
         """
@@ -2587,36 +2603,13 @@ class LiveTopologyView(ttk.Frame):
         """
         if self._active_group_summary_var is None:
             return
-        active_group = None
-        for group in self._runtime_groups:
-            if not isinstance(group, dict):
-                continue
-            name = str(group.get("name", EMPTY_STRING)).strip().lower()
-            if name == ACTIVE_GROUP_NAME:
-                active_group = group
-                break
+        active_group = self._effective_group_by_name(ACTIVE_GROUP_NAME)
         if not isinstance(active_group, dict):
             self._active_group_summary_var.set(ACTIVE_GROUP_NONE_TEXT)
             self._render_active_group_rows({})
             return
-        members = active_group.get("members")
-        member_map: Dict[str, Dict[str, object]] = {}
-        if isinstance(members, list):
-            for member in members:
-                if not isinstance(member, dict):
-                    continue
-                label = str(member.get("label", EMPTY_STRING)).strip()
-                if label:
-                    member_map[label.lower()] = dict(member)
-        primary_label = EMPTY_STRING
-        if isinstance(members, list):
-            for member in members:
-                if not isinstance(member, dict):
-                    continue
-                label = str(member.get("label", EMPTY_STRING)).strip()
-                if label:
-                    primary_label = label
-                    break
+        member_map = group_member_map(active_group, enabled_only=False)
+        primary_label = group_primary_label(active_group, enabled_only=False)
         if primary_label:
             self._active_group_summary_var.set(f"Primary: {primary_label}")
         else:
@@ -2642,6 +2635,23 @@ class LiveTopologyView(ttk.Frame):
             labels.append(label)
         labels.sort(key=lambda item: item.lower())
         return labels
+
+    def _active_group_members_editable(self) -> bool:
+        """
+        NAME
+            _active_group_members_editable - Return whether active-group membership rows are editable.
+
+        DESCRIPTION
+            The view can know the profile motor list before any runtime payload has
+            arrived. In that startup window, rows should render but remain
+            read-only so the operator does not see checkboxes toggle and then snap
+            back on the first runtime refresh.
+        """
+        if not self.__dict__.get("_runtime_state_seen", False):
+            return False
+        if self._controlled_lifecycle_active:
+            return False
+        return True
 
     def _render_active_group_rows(
         self,
@@ -2732,11 +2742,13 @@ class LiveTopologyView(ttk.Frame):
                     if checked and label_key == primary_label.strip().lower()
                     else EMPTY_STRING
                 )
-                checkbox_state = "disabled" if self._controlled_lifecycle_active else "normal"
+                checkbox_state = "normal" if self._active_group_members_editable() else "disabled"
                 detail_parts = []
                 if primary_text:
                     detail_parts.append(primary_text)
-                if self._controlled_lifecycle_active:
+                if not self.__dict__.get("_runtime_state_seen", False):
+                    detail_parts.append(ACTIVE_GROUP_MEMBER_WAITING)
+                elif self._controlled_lifecycle_active:
                     detail_parts.append(ACTIVE_GROUP_MEMBER_LOCKED)
                 detail_parts.append(enabled_text)
                 detail_parts.append(f"{ACTIVE_GROUP_PRESENT_PREFIX}{presence_text}")

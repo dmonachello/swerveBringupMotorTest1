@@ -67,6 +67,8 @@ final class BridgeUiSessionCommands implements BridgeUiCommandDispatcher.Command
 
     void setUiSessionId(String sessionId);
 
+    void resetUiSessionRuntimeContext();
+
     long getLastUiSeq();
 
     int getUiProtocolVersion();
@@ -140,6 +142,7 @@ final class BridgeUiSessionCommands implements BridgeUiCommandDispatcher.Command
     }
     if (reset) {
       dependencies.setUiSessionId(UUID.randomUUID().toString());
+      dependencies.resetUiSessionRuntimeContext();
     }
     long baseSeq = dependencies.getLastUiSeq();
     JsonObject payload = new JsonObject();

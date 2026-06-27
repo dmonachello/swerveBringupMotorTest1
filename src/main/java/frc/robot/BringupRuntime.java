@@ -552,6 +552,20 @@ public final class BringupRuntime {
 
   /**
    * NAME
+   *   isControlledLifecycleActive - Return whether a controlled lifecycle session is active.
+   *
+   * RETURNS
+   *   True when the controlled lifecycle activation manager currently reports
+   *   ACTIVE.
+   */
+  public boolean isControlledLifecycleActive() {
+    ControlledBringupLifecycleRuntime lifecycleRuntime = controlledBringupLifecycleRuntime;
+    return lifecycleRuntime != null
+        && lifecycleRuntime.activationManager().lifecycleState() == LifecycleState.ACTIVE;
+  }
+
+  /**
+   * NAME
    *   isSelectedProfileRuntimeReady - Return whether the selected profile is already active and usable.
    *
    * RETURNS
@@ -877,6 +891,21 @@ public final class BringupRuntime {
 
   /**
    * NAME
+   *   resetUiSessionRuntimeContext - Clear session-scoped bridge and lifecycle runtime state.
+   *
+   * SIDE EFFECTS
+   *   Deactivates any active controlled lifecycle session, drops dynamic bridge
+   *   runtime groups/selection, and rebuilds lifecycle catalogs from the current
+   *   profile so a new UI session starts from a clean runtime context.
+   */
+  public void resetUiSessionRuntimeContext() {
+    deactivateActiveControlledBringupLifecycle();
+    clearProfileScopedBridgeRuntimeState();
+    initializeDeviceLifecycle(System.currentTimeMillis());
+  }
+
+  /**
+   * NAME
    *   applyAndActivateRegistry - Apply registry JSON and fully activate runtime.
    *
    * PARAMETERS
@@ -945,6 +974,7 @@ public final class BringupRuntime {
    *   reason - Reset reason label.
    */
   public void deactivateActiveProfile(String reason) {
+    deactivateActiveControlledBringupLifecycle();
     if (core != null) {
       core.resetState(reason);
     }

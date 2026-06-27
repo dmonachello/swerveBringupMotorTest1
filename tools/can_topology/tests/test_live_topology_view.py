@@ -17,13 +17,42 @@ class _BoolVarStub:
         self.value = bool(value)
 
 
+class _StringVarStub:
+    def __init__(self, value: str = "") -> None:
+        self.value = value
+
+    def get(self) -> str:
+        return self.value
+
+    def set(self, value: str) -> None:
+        self.value = str(value)
+
+
 class _LabelStub:
     def __init__(self) -> None:
         self.text = ""
+        self.bg = None
+        self.fg = None
 
     def configure(self, **kwargs) -> None:
         if "text" in kwargs:
             self.text = str(kwargs["text"])
+        if "bg" in kwargs:
+            self.bg = kwargs["bg"]
+        if "fg" in kwargs:
+            self.fg = kwargs["fg"]
+
+
+class _PanelStub:
+    def __init__(self) -> None:
+        self.bg = None
+        self.highlightbackground = None
+
+    def configure(self, **kwargs) -> None:
+        if "bg" in kwargs:
+            self.bg = kwargs["bg"]
+        if "highlightbackground" in kwargs:
+            self.highlightbackground = kwargs["highlightbackground"]
 
 
 class _CanvasStub:
@@ -121,6 +150,9 @@ class LiveTopologyViewTests(unittest.TestCase):
         view._device_links = []
         view._show_groups = True
         view._runtime_fingerprint = None
+        view._runtime_state_seen = False
+        view._runtime_state_notice_text = ""
+        view._runtime_event_notice_text = ""
         view._connection_filter_vars = {
             key: _BoolVarStub(True) for key in live_view_module.CONNECTION_FILTERS_ORDER
         }
@@ -141,6 +173,85 @@ class LiveTopologyViewTests(unittest.TestCase):
             view._active_connection_filters(),
             set(live_view_module.CONNECTION_FILTERS_ORDER),
         )
+
+    def test_refresh_runtime_notice_waits_for_runtime_state_before_showing_ready(self) -> None:
+        view = self._make_view()
+        view._runtime_state_seen = False
+        view._runtime_state_notice_text = ""
+        view._runtime_event_notice_text = ""
+        view._runnable_scope_headline_var = _StringVarStub("")
+        view._runnable_scope_detail_var = _StringVarStub("")
+        view._notice_panel = _PanelStub()
+        view._notice_title_label = _LabelStub()
+        view._notice_headline_label = _LabelStub()
+        view._notice_detail_label = _LabelStub()
+
+        view._refresh_runtime_notice()
+
+        self.assertEqual("WAITING FOR STATE", view._runnable_scope_headline_var.get())
+        self.assertEqual(
+            "waiting for robot runtime state",
+            view._runnable_scope_detail_var.get(),
+        )
+
+    def test_update_runtime_state_marks_runtime_state_seen(self) -> None:
+        view = self._make_view()
+        view._runtime_state_seen = False
+        view._runnable_scope_headline_var = _StringVarStub("")
+        view._runnable_scope_detail_var = _StringVarStub("")
+        view._notice_panel = _PanelStub()
+        view._notice_title_label = _LabelStub()
+        view._notice_headline_label = _LabelStub()
+        view._notice_detail_label = _LabelStub()
+        view._update_details = lambda: None
+
+        view.update_runtime_state({"enabled": True, "devices": []})
+
+        self.assertTrue(view._runtime_state_seen)
+
+    def test_active_group_members_not_editable_before_runtime_state(self) -> None:
+        view = self._make_view()
+        view._runtime_state_seen = False
+        view._controlled_lifecycle_active = False
+
+        self.assertFalse(view._active_group_members_editable())
+
+    def test_active_group_members_not_editable_during_controlled_lifecycle(self) -> None:
+        view = self._make_view()
+        view._runtime_state_seen = True
+        view._controlled_lifecycle_active = True
+
+        self.assertFalse(view._active_group_members_editable())
+
+    def test_active_group_members_editable_after_runtime_state_when_unlocked(self) -> None:
+        view = self._make_view()
+        view._runtime_state_seen = True
+        view._controlled_lifecycle_active = False
+
+        self.assertTrue(view._active_group_members_editable())
+
+    def test_runtime_notice_requires_activation_before_manual_run(self) -> None:
+        view = self._make_view()
+        notices = []
+        view.set_runtime_state_notice = lambda text, level="warn": notices.append((text, level))
+        view.clear_runtime_state_notice = lambda: notices.append(("__clear__", "clear"))
+
+        view._apply_runtime_notice_from_state(False, False, True, False)
+
+        self.assertEqual(
+            [("Activate Group first.", "warn")],
+            notices,
+        )
+
+    def test_runtime_notice_is_ready_when_controlled_scope_is_active(self) -> None:
+        view = self._make_view()
+        notices = []
+        view.set_runtime_state_notice = lambda text, level="warn": notices.append((text, level))
+        view.clear_runtime_state_notice = lambda: notices.append(("__clear__", "clear"))
+
+        view._apply_runtime_notice_from_state(False, True, True, False)
+
+        self.assertEqual([("__clear__", "clear")], notices)
 
     def test_reload_profile_applies_saved_connection_filters(self) -> None:
         view = self._make_view()

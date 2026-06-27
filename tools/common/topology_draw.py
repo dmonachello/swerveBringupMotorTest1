@@ -13,7 +13,7 @@ DESCRIPTION
 
 from typing import Dict, Iterable, List, Tuple
 
-from tools.common.profile_constants import get_group_member_label
+from tools.common.group_contract import group_member_labels
 
 ETHERNET_LINK_DASH = (8, 4)
 CAN_TRUNK_LINK_DASH = (2, 2)
@@ -275,7 +275,6 @@ def draw_group_overlays(
     pad = 10.0
     overlays: List[Dict[str, object]] = []
     occupied_label_bounds: List[Tuple[float, float, float, float]] = []
-    unplaced_group_index = 0
 
     def _bounds_overlap(a: Tuple[float, float, float, float], b: Tuple[float, float, float, float]) -> bool:
         return not (a[2] <= b[0] or b[2] <= a[0] or a[3] <= b[1] or b[3] <= a[1])
@@ -286,20 +285,13 @@ def draw_group_overlays(
         name = str(group.get("name", "")).strip()
         if not name:
             continue
-        members = group.get("members", []) or []
         bounds_list = []
-        member_labels = []
-        for member in members:
-            if isinstance(member, dict):
-                label = get_group_member_label(member)
-            else:
-                label = member
-            if not isinstance(label, str):
-                continue
-            clean_label = label.strip()
+        member_labels = group_member_labels(group, enabled_only=False)
+        for clean_label in member_labels:
             if clean_label:
-                member_labels.append(clean_label)
-            bounds = label_bounds.get(clean_label)
+                bounds = label_bounds.get(clean_label)
+            else:
+                bounds = None
             if bounds:
                 bounds_list.append(bounds)
         label_font_px = max(10, int(12 * zoom))
@@ -308,43 +300,6 @@ def draw_group_overlays(
         label_w = max(36.0, len(name) * max(7.5, 8.5 * zoom))
         label_h = max(18.0, 18.0 * zoom)
         if not bounds_list:
-            label_x0 = 12.0
-            label_y0 = 12.0 + (unplaced_group_index * (label_h + 8.0))
-            label_x1 = label_x0 + label_w
-            label_y1 = label_y0 + label_h
-            color = palette[idx % len(palette)]
-            label_bg = canvas.create_rectangle(
-                label_x0,
-                label_y0,
-                label_x1,
-                label_y1,
-                fill="#ffffff",
-                outline=color,
-                width=1,
-                dash=(4, 2),
-            )
-            label_text = canvas.create_text(
-                label_x0 + label_pad_x,
-                label_y0 + label_pad_y,
-                text=name,
-                anchor="nw",
-                fill=color,
-                font=("Segoe UI", label_font_px),
-            )
-            if hasattr(canvas, "tag_raise"):
-                canvas.tag_raise(label_bg)
-                canvas.tag_raise(label_text)
-            overlays.append(
-                {
-                    "name": name,
-                    "bounds": (label_x0, label_y0, label_x1, label_y1),
-                    "label_bounds": (label_x0, label_y0, label_x1, label_y1),
-                    "member_labels": list(member_labels),
-                    "group": dict(group),
-                }
-            )
-            occupied_label_bounds.append((label_x0, label_y0, label_x1, label_y1))
-            unplaced_group_index += 1
             continue
         x0 = min(b[0] for b in bounds_list) - pad
         y0 = min(b[1] for b in bounds_list) - pad
@@ -394,7 +349,6 @@ def draw_group_overlays(
                 "name": name,
                 "bounds": (x0, y0, x1, y1),
                 "label_bounds": (label_x0, label_y0, label_x1, label_y1),
-                "member_labels": list(member_labels),
                 "group": dict(group),
             }
         )

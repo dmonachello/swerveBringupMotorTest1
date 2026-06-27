@@ -63,10 +63,38 @@ class BridgeUiSessionCommandsTest {
     assertEquals("UI lock held by another client.", result.message);
   }
 
+  @Test
+  void resetHandshakeClearsRuntimeContextAndRotatesSession() {
+    SessionDeps deps = new SessionDeps();
+    BridgeUiSessionCommands commands = new BridgeUiSessionCommands(deps);
+    JsonObject args = new JsonObject();
+    args.addProperty("reset", true);
+    BridgeUiIngressPolicy.Ingress ingress = new BridgeUiIngressPolicy.Ingress(
+        CMD_UI_HANDSHAKE,
+        args,
+        "clientA",
+        true,
+        false,
+        true,
+        false,
+        false,
+        true,
+        true,
+        false);
+
+    BridgeUiCommandResult result = commands.execute(ingress, 0.0, false);
+
+    assertTrue(result.ok);
+    assertTrue(deps.runtimeContextReset);
+    assertTrue(result.outJson.contains("sessionId"));
+    assertFalse(result.outJson.contains("session0"));
+  }
+
   private static final class SessionDeps implements BridgeUiSessionCommands.Dependencies {
     private String activeClientId = "";
     private boolean uiProtocolMonitorEnabled;
     private String uiSessionId = "session0";
+    private boolean runtimeContextReset;
 
     @Override
     public String getActiveUiClientId() {
@@ -109,6 +137,11 @@ class BridgeUiSessionCommandsTest {
     @Override
     public void setUiSessionId(String sessionId) {
       uiSessionId = sessionId;
+    }
+
+    @Override
+    public void resetUiSessionRuntimeContext() {
+      runtimeContextReset = true;
     }
 
     @Override

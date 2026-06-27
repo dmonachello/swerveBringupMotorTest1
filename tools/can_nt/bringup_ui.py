@@ -74,11 +74,13 @@ from tools.common.profile_constants import (
     KEY_ID,
     KEY_LABEL as PROFILE_KEY_LABEL,
     KEY_MANUFACTURER,
-    TYPE_MOTOR,
-    get_group_member_label,
 )
 from tools.common.profile_constants import KEY_ENABLED
 from tools.common.profile_constants import KEY_TYPE
+from tools.common.group_contract import (
+    group_member_map,
+    resolve_group_motor_targets,
+)
 from tools.common.robot_test_dsl import (
     compile_source,
     copy_external_library_test_into_root_payload,
@@ -224,6 +226,7 @@ OUTPUT_RUNTIME_DEACTIVATE = "CMD runtimeDeactivate"
 OUTPUT_LIFECYCLE_ACTIVATE_FMT = "CMD lifecycleActivate \"{label}\" mode={mode}"
 OUTPUT_LIFECYCLE_DEACTIVATE_FMT = "CMD lifecycleDeactivate \"{label}\""
 OUTPUT_LIFECYCLE_DEACTIVATE_ACTIVE = "CMD lifecycleDeactivateActive"
+OUTPUT_NO_ACTIVE_CONTROLLED_SESSION = "No active controlled session to deactivate."
 OUTPUT_GROUP_REPLACE_FMT = "CMD groupReplaceMembers \"{group}\" members={count}"
 OUTPUT_SELECTED_PROFILE_PREFIX = "Selected profile: "
 OUTPUT_GROUP_RUN_FMT = "CMD groupRunTest \"{group}\""
@@ -734,6 +737,21 @@ TEST_SCOPE_DETAIL_MANUAL_RESTORED = (
     "The remembered manual active-group was restored after leaving Tests. "
     "Press Activate Group before running manual actions."
 )
+RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_ACTIVATED = (
+    "Activate Group first."
+)
+RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_ACTIVATED = (
+    "Activate lifecycle first."
+)
+RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_TELEOP = (
+    "Switch to teleop, then Activate Group."
+)
+RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_TELEOP = (
+    "Switch to teleop, then Activate lifecycle."
+)
+RUNNABLE_SCOPE_DETAIL_MANUAL_EMPTY = (
+    "Active group is empty. Add devices before Activate Group."
+)
 TEST_SCOPE_DETAIL_MISSING_DEVICE_PREFIX = (
     "This test cannot run because a required profile device is missing: "
 )
@@ -756,6 +774,10 @@ TEST_SCOPE_PANEL_TITLE = "Test State"
 TEST_SCOPE_PANEL_READY_HEADLINE = "READY TO RUN"
 TEST_SCOPE_PANEL_INACTIVE_HEADLINE = "NOT RUNNABLE"
 TEST_SCOPE_PANEL_NO_SELECTION_HEADLINE = "NO TEST SELECTED"
+TEST_SCOPE_PANEL_WAITING_HEADLINE = "WAITING FOR STATE"
+RUNNABLE_SCOPE_PANEL_TITLE = "Runnable State"
+RUNNABLE_SCOPE_PANEL_READY_DETAIL = "manual/group controls available - ready to run"
+RUNNABLE_SCOPE_PANEL_WAITING_DETAIL = "waiting for robot runtime state"
 TEST_SCOPE_PANEL_READY_BG = "#dcfce7"
 TEST_SCOPE_PANEL_READY_FG = "#166534"
 TEST_SCOPE_PANEL_INACTIVE_BG = "#fee2e2"
@@ -795,9 +817,10 @@ TEST_LIBRARY_DEVICES_EMPTY = "(none)"
 TEST_LIBRARY_RESULTS_HEIGHT = 8
 TEST_SOURCE_TAB_LABEL = "Source Editor"
 TEST_SOURCE_REFERENCE_TITLE = "DSL Reference"
+TEST_SOURCE_REFERENCE_GEOMETRY = "420x180"
 TEST_SOURCE_REFERENCE_TEXT = (
     'Top level: test "name", device "label"\n'
-    "Phases: init:, main:, closed:\n"
+    "Phases: init:, main:, close:\n"
     "Statements: set, clear, until, abort, success, require, unsafe-exit"
 )
 TEST_SOURCE_COMPLETION_POPUP_TITLE = "Signal Completion"
@@ -1509,6 +1532,7 @@ class BringupControlUI(tk.Tk):
         self._runtime_state_pending_seq: Optional[int] = None
         self._runtime_state_pending_at = 0.0
         self._runtime_state_timeout_sec = 0.6
+        self._runtime_state_seen = False
         self._runtime_active_known: Optional[bool] = None
         self._controlled_lifecycle_active_known: Optional[bool] = None
         self._robot_enabled_known = True
@@ -1757,6 +1781,51 @@ class BringupControlUI(tk.Tk):
         ttk.Button(output_header, text="Clear Output", command=self._clear_output).pack(
             side="right"
         )
+        self._output_scope_headline_var = tk.StringVar(value=TEST_SCOPE_PANEL_WAITING_HEADLINE)
+        self._output_scope_detail_var = tk.StringVar(value=RUNNABLE_SCOPE_PANEL_WAITING_DETAIL)
+        output_status_row = ttk.Frame(output_panel)
+        output_status_row.pack(fill="x", pady=(0, 8))
+        output_status_panel = tk.Frame(
+            output_status_row,
+            bg=TEST_SCOPE_PANEL_NEUTRAL_BG,
+            highlightbackground=TEST_SCOPE_PANEL_BORDER,
+            highlightthickness=1,
+            bd=0,
+            padx=TEST_SCOPE_PANEL_PAD_X,
+            pady=TEST_SCOPE_PANEL_PAD_Y,
+        )
+        output_status_panel.pack(side="right", anchor="e", padx=8)
+        self._output_scope_panel = output_status_panel
+        self._output_scope_title_label = tk.Label(
+            output_status_panel,
+            text=RUNNABLE_SCOPE_PANEL_TITLE,
+            bg=TEST_SCOPE_PANEL_NEUTRAL_BG,
+            fg=TEST_SCOPE_PANEL_NEUTRAL_FG,
+            anchor="w",
+            font=TEST_SCOPE_PANEL_DETAIL_FONT,
+        )
+        self._output_scope_title_label.pack(anchor="w")
+        self._output_scope_headline_label = tk.Label(
+            output_status_panel,
+            textvariable=self._output_scope_headline_var,
+            bg=TEST_SCOPE_PANEL_NEUTRAL_BG,
+            fg=TEST_SCOPE_PANEL_NEUTRAL_FG,
+            anchor="w",
+            justify="left",
+            font=TEST_SCOPE_PANEL_HEADLINE_FONT,
+        )
+        self._output_scope_headline_label.pack(anchor="w", pady=(2, 0))
+        self._output_scope_detail_label = tk.Label(
+            output_status_panel,
+            textvariable=self._output_scope_detail_var,
+            bg=TEST_SCOPE_PANEL_NEUTRAL_BG,
+            fg=TEST_SCOPE_PANEL_NEUTRAL_FG,
+            anchor="w",
+            justify="left",
+            wraplength=TEST_SCOPE_PANEL_WRAP,
+            font=TEST_SCOPE_PANEL_DETAIL_FONT,
+        )
+        self._output_scope_detail_label.pack(anchor="w", pady=(2, 0))
         output_body = ttk.Frame(output_panel)
         output_body.pack(fill="both", expand=True)
         self._output = tk.Text(output_body, height=10, wrap="word", state="disabled")
@@ -1764,14 +1833,6 @@ class BringupControlUI(tk.Tk):
         scroll = ttk.Scrollbar(output_body, command=self._output.yview)
         scroll.pack(side="right", fill="y")
         self._output.configure(yscrollcommand=scroll.set)
-        self._output_notice_label = tk.Label(
-            output_panel,
-            text=NT_VALUE_EMPTY,
-            anchor="w",
-            padx=8,
-            pady=4,
-        )
-        self._output_notice_label.pack_forget()
 
         live_panel = ttk.Frame(notebook)
         notebook.add(live_panel, text="Live Topology")
@@ -2181,19 +2242,18 @@ class BringupControlUI(tk.Tk):
         )
         validate_button.pack(side="left", padx=(8, 0))
         self._test_source_validate_button = validate_button
+        reference_button = ttk.Button(
+            source_toolbar,
+            text=TEST_SOURCE_REFERENCE_TITLE,
+            command=self._toggle_test_source_reference_window,
+        )
+        reference_button.pack(side="left", padx=(8, 0))
         self._test_source_status_var = tk.StringVar(value=TEST_SOURCE_STATUS_NONE)
         ttk.Label(
             source_frame,
             textvariable=self._test_source_status_var,
             foreground=TEST_LIBRARY_STATUS_COLOR,
         ).pack(anchor="w", pady=(0, 8))
-        reference_frame = ttk.LabelFrame(source_frame, text=TEST_SOURCE_REFERENCE_TITLE, padding=8)
-        reference_frame.pack(fill="x", pady=(0, 8))
-        ttk.Label(
-            reference_frame,
-            text=TEST_SOURCE_REFERENCE_TEXT,
-            justify="left",
-        ).pack(anchor="w")
         source_body = ttk.Frame(source_frame)
         source_body.pack(fill="both", expand=True)
         self._test_source_line_numbers = tk.Text(
@@ -2687,7 +2747,7 @@ class BringupControlUI(tk.Tk):
         NAME
             _latest_runtime_state_payload_groups - Return the latest runtime-state groups list.
         """
-        payload = getattr(self, "_latest_runtime_state_payload", {})
+        payload = self.__dict__.get("_latest_runtime_state_payload", {})
         groups = payload.get("groups") if isinstance(payload, dict) else None
         return list(groups) if isinstance(groups, list) else []
 
@@ -2696,17 +2756,25 @@ class BringupControlUI(tk.Tk):
         NAME
             _runtime_active_group_members - Return ordered active-group member rows from runtime state.
         """
-        members = self._runtime_active_group_payload().get(GROUP_KEY_MEMBERS)
+        member_map = group_member_map(self._runtime_active_group_payload(), enabled_only=False)
         rows: List[Dict[str, Any]] = []
-        if isinstance(members, list):
-            for member in members:
-                if not isinstance(member, dict):
-                    continue
-                label = str(member.get(GROUP_MEMBER_KEY_LABEL, "")).strip()
-                if not label:
-                    continue
-                rows.append({"label": label, "enabled": bool(member.get(KEY_ENABLED, True))})
+        for key, member in member_map.items():
+            label = str(member.get(GROUP_MEMBER_KEY_LABEL, "")).strip()
+            if not label:
+                label = key
+            rows.append({"label": label, "enabled": bool(member.get(KEY_ENABLED, True))})
         return rows
+
+    def _manual_active_group_is_empty(self) -> bool:
+        """
+        NAME
+            _manual_active_group_is_empty - Return whether runtime currently shows no active-group members in manual mode.
+        """
+        if self.__dict__.get("_group_owner_mode", GROUP_SOURCE_MANUAL) != GROUP_SOURCE_MANUAL:
+            return False
+        if self.__dict__.get("_controlled_lifecycle_active_known") is True:
+            return False
+        return not bool(self._runtime_active_group_members())
 
     def _send_and_wait(self, command: str, args: Dict[str, Any]) -> bool:
         """
@@ -2905,6 +2973,42 @@ class BringupControlUI(tk.Tk):
             if str(device.get("activeGroupLabel", "")).strip().lower() == GROUP_ACTIVE_NAME:
                 return True
         return False
+
+    def _scope_is_currently_active(self) -> bool:
+        """
+        NAME
+            _scope_is_currently_active - Return whether the current top-bar owner scope is active.
+
+        DESCRIPTION
+            Manual mode is active only when runtime shows an active-group-owned
+            controlled session. Selected-test mode is active when the robot
+            reports any controlled lifecycle session active for the selected-test
+            owner flow.
+        """
+        if self._scope_context_kind() == GROUP_SOURCE_SELECTED_TEST:
+            return self.__dict__.get("_controlled_lifecycle_active_known") is True
+        return self._active_group_is_currently_active()
+
+    def _scope_activation_notice_text(self) -> str:
+        """
+        NAME
+            _scope_activation_notice_text - Return the next-step activation message for the current scope.
+
+        DESCRIPTION
+            The UI already knows whether the robot is disabled or not in teleop.
+            When those blockers are not present, the message should only talk
+            about the missing activation step instead of redundantly mentioning
+            teleop again.
+        """
+        owner_mode = self.__dict__.get("_group_owner_mode", GROUP_SOURCE_MANUAL)
+        mode = str(self.__dict__.get("_robot_mode_known", "") or "").strip().lower()
+        if mode and mode != "teleop":
+            if owner_mode == GROUP_SOURCE_SELECTED_TEST:
+                return RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_TELEOP
+            return RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_TELEOP
+        if owner_mode == GROUP_SOURCE_SELECTED_TEST:
+            return RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_ACTIVATED
+        return RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_ACTIVATED
 
     def _build_visibility_ctre_raw_table_widget(self, parent: tk.Widget) -> ttk.Treeview:
         """
@@ -3199,7 +3303,7 @@ class BringupControlUI(tk.Tk):
 
     def _iter_live_views(self) -> List[LiveTopologyView]:
         """
-        NAME
+            NAME
             _iter_live_views - Return all instantiated topology views.
         """
         views: List[LiveTopologyView] = []
@@ -3210,6 +3314,68 @@ class BringupControlUI(tk.Tk):
         if self._evidence_live_view is not None:
             views.append(self._evidence_live_view)
         return views
+
+    def _reset_ui_session_runtime_context(self) -> None:
+        """
+        NAME
+            _reset_ui_session_runtime_context - Drop session-scoped runtime/UI caches after session generation changes.
+        """
+        self._runtime_state_seen = False
+        self._runtime_state_pending_seq = None
+        self._runtime_state_pending_at = 0.0
+        self._runtime_active_known = None
+        self._controlled_lifecycle_active_known = None
+        self._robot_enabled_known = False
+        self._robot_estopped_known = False
+        self._robot_mode_known = "disabled"
+        self._state_stale = False
+        self._runtime_state_backoff = 1.0
+        self._runtime_state_idle_count = 0
+        self._runtime_state_pause_until = None
+        self._log_poll_inflight = False
+        self._log_poll_seq = None
+        self._last_cmd = None
+        self._last_sent_seq = None
+        self._runtime_state_notice_text = NT_VALUE_EMPTY
+        self._runtime_event_notice_text = NT_VALUE_EMPTY
+        self._latest_runtime_state_payload = {}
+        self._latest_runtime_devices = {}
+        self._evidence_probe_results_by_label = {}
+        self._manual_motion_checks = {}
+        self._manual_test_observations = {}
+        self._remembered_manual_active_group_members = []
+        self._tests_active_group_rows = []
+        self._tests_active_group_membership_key = tuple()
+        self._group_owner_mode = GROUP_SOURCE_MANUAL
+        self._manual_duty_last_sent_value = None
+        self._manual_duty_last_sent_at = 0.0
+        self._manual_duty_pending_after = None
+        self._manual_duty_targets = []
+        self._manual_duty_group_name = MANUAL_DUTY_NO_LABEL
+        self._tracker.clear()
+        if self._manual_duty_popup is not None:
+            self._close_manual_duty_popup(stop_motor=False)
+        self._refresh_tests_active_group_panel()
+        self._refresh_output_runtime_notice()
+        self._refresh_selected_test_scope_status()
+        self._refresh_evidence_view()
+        self._update_action_enabled()
+        for live_view in self._iter_live_views():
+            live_view.update_runtime_state(None)
+            live_view.set_manual_test_observations({})
+            live_view.clear_runtime_state_notice()
+            live_view.clear_runtime_notice()
+
+    def _apply_robot_ui_session_id(self, session_id: str) -> None:
+        """
+        NAME
+            _apply_robot_ui_session_id - Track robot UI session generation and invalidate stale host runtime context.
+        """
+        clean_session_id = str(session_id or "").strip()
+        previous_session_id = str(self.__dict__.get("_robot_ui_session_id") or "").strip()
+        if clean_session_id and previous_session_id and clean_session_id != previous_session_id:
+            self._reset_ui_session_runtime_context()
+        self._robot_ui_session_id = clean_session_id or None
 
     def _manual_duty_block_message(self) -> str:
         """
@@ -3303,9 +3469,7 @@ class BringupControlUI(tk.Tk):
         if not isinstance(group_payload, dict):
             self._append_output(f"Group payload not available for {group_name}.")
             return
-        targets = self._group_motor_targets(group_payload)
-        if not targets:
-            targets = self._group_overlay_motor_targets(group)
+        targets = self._resolved_group_motor_targets(group_payload)
         if not targets:
             self._append_output(f"Group has no motor targets: {group_name}")
             return
@@ -3314,24 +3478,6 @@ class BringupControlUI(tk.Tk):
             self._append_output(scope_blocked)
             return
         self._open_manual_group_duty_targets(group_name, targets, int(_event.x_root), int(_event.y_root))
-
-    def _group_overlay_motor_targets(self, group_region: Dict[str, Any]) -> List[str]:
-        """
-        NAME
-            _group_overlay_motor_targets - Resolve motor targets from one rendered overlay region fallback.
-        """
-        labels = group_region.get("member_labels")
-        if not isinstance(labels, list):
-            return []
-        targets: List[str] = []
-        for label in labels:
-            clean_label = str(label or NT_VALUE_EMPTY).strip()
-            if not clean_label:
-                continue
-            device = self._known_device_entry(clean_label)
-            if self._device_entry_is_motor(device):
-                targets.append(clean_label)
-        return targets
 
     def _on_active_group_member_toggled(self, label: str, enabled: bool) -> None:
         """
@@ -3351,6 +3497,10 @@ class BringupControlUI(tk.Tk):
         if self._tracker.is_pending():
             self._append_output(OUTPUT_BUSY)
             return
+        if not self.__dict__.get("_runtime_state_seen", False):
+            self._append_output("Runtime state not loaded yet. Wait for refresh before editing active-group.")
+            self.after_idle(self._request_runtime_state_refresh)
+            return
         command = CMD_GROUP_ADD_DEVICE if enabled else CMD_GROUP_REMOVE_DEVICE
         args = {
             GROUP_RUN_ARG_GROUP: GROUP_ACTIVE_NAME,
@@ -3360,8 +3510,7 @@ class BringupControlUI(tk.Tk):
             f"{timestamp_hms()} CMD {command} \"{GROUP_ACTIVE_NAME}\" \"{clean_label}\""
         )
         self._last_cmd = (command, args)
-        seq = self._send_tcp_command(command, args)
-        if seq is not None:
+        if self._send_and_wait(command, args):
             self.after_idle(self._request_runtime_state_refresh)
 
     def _on_live_override_action(self, label: str, action: str) -> None:
@@ -3435,73 +3584,36 @@ class BringupControlUI(tk.Tk):
         for live_view in self._iter_live_views():
             live_view.set_group_run_inspector(group_name, targets)
 
-    def _group_motor_targets(self, group_payload: Dict[str, Any]) -> List[str]:
+    def _resolved_group_motor_targets(self, group_payload: Dict[str, Any]) -> List[str]:
         """
         NAME
-            _group_motor_targets - Return enabled motor member labels for one clicked group payload.
+            _resolved_group_motor_targets - Return enabled motor member labels for one clicked group payload.
         """
-        members = group_payload.get(GROUP_KEY_MEMBERS)
-        if not isinstance(members, list):
-            return []
-        targets: List[str] = []
-        for member in members:
-            if isinstance(member, dict):
-                label = get_group_member_label(member)
-            else:
-                label = str(member or NT_VALUE_EMPTY).strip()
-            if not label:
-                continue
-            if isinstance(member, dict):
-                enabled = member.get(KEY_ENABLED)
-            else:
-                enabled = True
-            if isinstance(enabled, bool) and not enabled:
-                continue
-            device = self._known_device_entry(label)
-            if self._device_entry_is_motor(device):
-                targets.append(label)
-        return targets
+        return resolve_group_motor_targets(
+            group_payload,
+            [
+                self.__dict__.get("_profile_devices", {}),
+                self.__dict__.get("_test_profile_devices", {}),
+                self.__dict__.get("_latest_runtime_devices", {}),
+            ],
+            fallback_device_lists=self._fallback_profile_device_lists(),
+        )
 
-    def _known_device_entry(self, label: object) -> Dict[str, Any]:
+    def _fallback_profile_device_lists(self) -> List[List[Dict[str, Any]]]:
         """
         NAME
-            _known_device_entry - Resolve one label from the available profile/runtime device catalogs.
+            _fallback_profile_device_lists - Return profile device lists used as a readable last-resort label resolver.
         """
-        clean_label = str(label or NT_VALUE_EMPTY).strip().lower()
-        if not clean_label:
-            return {}
-        for attr_name in ("_profile_devices", "_test_profile_devices", "_latest_runtime_devices"):
-            catalog = self.__dict__.get(attr_name, {})
-            if not isinstance(catalog, dict):
-                continue
-            entry = catalog.get(clean_label, {})
-            if isinstance(entry, dict) and entry:
-                return entry
+        fallback_lists: List[List[Dict[str, Any]]] = []
         for profile_name in list_profiles():
             try:
                 profile_devices, _expected = get_profile(profile_name)
             except Exception:
                 continue
-            for entry in profile_devices:
-                if not isinstance(entry, dict):
-                    continue
-                entry_label = str(entry.get(DEVICE_KEY_LABEL, NT_VALUE_EMPTY)).strip().lower()
-                if entry_label == clean_label:
-                    return entry
-        return {}
-
-    def _device_entry_is_motor(self, device: object) -> bool:
-        """
-        NAME
-            _device_entry_is_motor - Return whether one known device entry represents a motor target.
-        """
-        if not isinstance(device, dict):
-            return False
-        device_type = str(device.get(DEVICE_KEY_TYPE, NT_VALUE_EMPTY)).strip()
-        if device_type == DEVICE_TYPE_MOTOR:
-            return True
-        type_name = str(device.get(KEY_TYPE, NT_VALUE_EMPTY)).strip().lower()
-        return type_name == TYPE_MOTOR.lower()
+            fallback_lists.append(
+                [entry for entry in profile_devices if isinstance(entry, dict)]
+            )
+        return fallback_lists
 
     def _on_live_view_left_click(self, _node: object, _event: tk.Event) -> None:
         """
@@ -5917,6 +6029,37 @@ class BringupControlUI(tk.Tk):
             text_widget.configure(yscrollcommand=scroll.set)
         return window
 
+    def _toggle_test_source_reference_window(self) -> None:
+        """
+        NAME
+            _toggle_test_source_reference_window - Open or close the DSL reference popup.
+        """
+        if hasattr(self, "_test_source_reference_window") and self._test_source_reference_window.winfo_exists():
+            self._test_source_reference_window.destroy()
+            return
+        self._test_source_reference_window = self._build_test_source_reference_window()
+        self._test_source_reference_window.lift()
+        self._test_source_reference_window.focus_set()
+
+    def _build_test_source_reference_window(self) -> tk.Toplevel:
+        """
+        NAME
+            _build_test_source_reference_window - Build the DSL reference popup.
+        """
+        window = tk.Toplevel(self)
+        window.title(TEST_SOURCE_REFERENCE_TITLE)
+        window.geometry(TEST_SOURCE_REFERENCE_GEOMETRY)
+        window.resizable(False, False)
+        window.protocol("WM_DELETE_WINDOW", window.destroy)
+
+        body = ttk.Frame(window, padding=10)
+        body.pack(fill="both", expand=True)
+        text_widget = tk.Text(body, wrap="word", height=6, state="normal")
+        text_widget.insert("end", TEST_SOURCE_REFERENCE_TEXT)
+        text_widget.configure(state="disabled")
+        text_widget.pack(fill="both", expand=True)
+        return window
+
     def _build_help_text(self) -> str:
         """
         NAME
@@ -7620,6 +7763,7 @@ class BringupControlUI(tk.Tk):
         """
         self._owner_required = False
         self._handshake_done = False
+        self._runtime_state_seen = False
         self._handshake_inflight = False
         self._last_handshake_attempt = 0.0
         self._session.reset_handshake()
@@ -8865,6 +9009,9 @@ class BringupControlUI(tk.Tk):
         if self._tracker.is_pending():
             self._append_output(OUTPUT_BUSY)
             return
+        if self.__dict__.get("_controlled_lifecycle_active_known") is not True:
+            self._append_output(OUTPUT_NO_ACTIVE_CONTROLLED_SESSION)
+            return
         self._append_output(f"{timestamp_hms()} {OUTPUT_LIFECYCLE_DEACTIVATE_ACTIVE}")
         self._last_cmd = ("lifecycleDeactivateActive", {})
         seq = send_tracked_command(
@@ -9042,6 +9189,7 @@ class BringupControlUI(tk.Tk):
             self._prev_tcp_connected = self._tcp_connected
         if not self._tcp_connected:
             self._handshake_done = False
+            self._runtime_state_seen = False
             self._handshake_inflight = False
             self._session.reset_handshake()
             self._last_keepalive = 0.0
@@ -9051,7 +9199,7 @@ class BringupControlUI(tk.Tk):
         if self._ui_table is not None:
             session_id = self._ui_table.getEntry("state/sessionId").getString("")
             if session_id:
-                self._robot_ui_session_id = session_id
+                self._apply_robot_ui_session_id(session_id)
             enabled = self._ui_table.getEntry("state/enabled").getBoolean(True)
             estopped = self._ui_table.getEntry("state/estopped").getBoolean(False)
             mode = self._ui_table.getEntry("state/mode").getString("disabled")
@@ -9073,6 +9221,7 @@ class BringupControlUI(tk.Tk):
             nt_connected = False
         if self._robot_enabled_known and not enabled:
             self._runtime_active_known = False
+            self._controlled_lifecycle_active_known = False
         self._robot_enabled_known = enabled
         self._robot_estopped_known = estopped
         self._robot_mode_known = str(mode or "disabled").strip().lower()
@@ -9278,30 +9427,41 @@ class BringupControlUI(tk.Tk):
         NAME
             _refresh_output_runtime_notice - Render the highest-priority next-step notice under Output.
         """
-        label = getattr(self, "_output_notice_label", None)
-        if label is None:
+        panel = getattr(self, "_output_scope_panel", None)
+        if panel is None:
             return
-        if self._runtime_state_notice_text:
-            message = self._runtime_state_notice_text
-            level = self._runtime_state_notice_level
+        runtime_state_seen = bool(self.__dict__.get("_runtime_state_seen", False))
+        if not self._tcp_connected or not self._handshake_done or not runtime_state_seen:
+            headline = TEST_SCOPE_PANEL_WAITING_HEADLINE
+            bg = TEST_SCOPE_PANEL_NEUTRAL_BG
+            fg = TEST_SCOPE_PANEL_NEUTRAL_FG
+            detail = RUNNABLE_SCOPE_PANEL_WAITING_DETAIL
+        elif self._runtime_state_notice_text:
+            headline = TEST_SCOPE_PANEL_INACTIVE_HEADLINE
+            bg = TEST_SCOPE_PANEL_INACTIVE_BG
+            fg = TEST_SCOPE_PANEL_INACTIVE_FG
+            detail = self._runtime_state_notice_text
         elif self._runtime_event_notice_text:
-            message = self._runtime_event_notice_text
-            level = self._runtime_event_notice_level
+            headline = TEST_SCOPE_PANEL_INACTIVE_HEADLINE
+            bg = TEST_SCOPE_PANEL_INACTIVE_BG
+            fg = TEST_SCOPE_PANEL_INACTIVE_FG
+            detail = self._runtime_event_notice_text
         else:
-            label.configure(text=NT_VALUE_EMPTY)
-            label.pack_forget()
-            return
-        if level == "error":
-            bg = NOTICE_COLOR_ERROR_BG
-            fg = NOTICE_COLOR_ERROR_FG
-        elif level == "warn":
-            bg = NOTICE_COLOR_WARN_BG
-            fg = NOTICE_COLOR_WARN_FG
-        else:
-            bg = NOTICE_COLOR_INFO_BG
-            fg = NOTICE_COLOR_INFO_FG
-        label.configure(text=message, bg=bg, fg=fg)
-        label.pack(fill="x", padx=8, pady=(6, 8))
+            headline = TEST_SCOPE_PANEL_READY_HEADLINE
+            bg = TEST_SCOPE_PANEL_READY_BG
+            fg = TEST_SCOPE_PANEL_READY_FG
+            detail = RUNNABLE_SCOPE_PANEL_READY_DETAIL
+        self._output_scope_headline_var.set(headline)
+        self._output_scope_detail_var.set(detail)
+        panel.configure(bg=bg, highlightbackground=TEST_SCOPE_PANEL_BORDER)
+        for attr_name in (
+            "_output_scope_title_label",
+            "_output_scope_headline_label",
+            "_output_scope_detail_label",
+        ):
+            label = self.__dict__.get(attr_name)
+            if label is not None:
+                label.configure(bg=bg, fg=fg)
 
     def _apply_runtime_state_payload(self, payload: Dict[str, Any]) -> None:
         """
@@ -9309,6 +9469,7 @@ class BringupControlUI(tk.Tk):
             _apply_runtime_state_payload - Apply live runtime-state JSON.
         """
         self._latest_runtime_state_payload = dict(payload or {})
+        self._runtime_state_seen = True
         latest_runtime_devices: Dict[str, Dict[str, Any]] = {}
         runtime_active = payload.get("runtimeActive")
         if isinstance(runtime_active, bool):
@@ -9445,46 +9606,37 @@ class BringupControlUI(tk.Tk):
         NAME
             _apply_live_runtime_notice_from_nt_state - Surface DS/NT state directly in Live Topology.
         """
-        show_lifecycle_activate_notice = (
-            self.__dict__.get("_group_owner_mode", GROUP_SOURCE_MANUAL) == GROUP_SOURCE_SELECTED_TEST
-        )
+        activation_notice = self._scope_activation_notice_text()
+        scope_active = self._scope_is_currently_active()
         if stale_state:
             self._set_runtime_state_notice(
                 "Robot state stale (code not running?)", "warn"
             )
+        elif self._manual_active_group_is_empty():
+            self._set_runtime_state_notice(
+                RUNNABLE_SCOPE_DETAIL_MANUAL_EMPTY, "warn"
+            )
         elif estopped:
             self._set_runtime_state_notice("Robot E-Stop. Manual run blocked.", "error")
-        elif (
-            show_lifecycle_activate_notice
-            and self._runtime_active_known is False
-            and self._controlled_lifecycle_active_known is not True
-        ):
-            self._set_runtime_state_notice(
-                "No active controlled session. Enable teleop, then activate lifecycle.", "warn"
-            )
         elif not enabled:
             self._set_runtime_state_notice(
                 "Robot disabled. Enable teleop to run motors.", "info"
             )
+        elif not scope_active:
+            self._set_runtime_state_notice(activation_notice, "warn")
         else:
             self._clear_runtime_state_notice()
         for live_view in self._iter_live_views():
             if stale_state:
                 live_view.set_runtime_state_notice("Robot state stale (code not running?)", "warn")
+            elif self._manual_active_group_is_empty():
+                live_view.set_runtime_state_notice(RUNNABLE_SCOPE_DETAIL_MANUAL_EMPTY, "warn")
             elif estopped:
                 live_view.set_runtime_state_notice("Robot E-Stop. Manual run blocked.", "error")
-            elif (
-                show_lifecycle_activate_notice
-                and
-                self._runtime_active_known is False
-                and self._controlled_lifecycle_active_known is not True
-            ):
-                live_view.set_runtime_state_notice(
-                    "No active controlled session. Enable teleop, then activate lifecycle.",
-                    "warn",
-                )
             elif not enabled:
                 live_view.set_runtime_state_notice("Robot disabled. Enable teleop to run motors.", "info")
+            elif not scope_active:
+                live_view.set_runtime_state_notice(activation_notice, "warn")
             else:
                 live_view.clear_runtime_state_notice()
 
@@ -9658,6 +9810,8 @@ class BringupControlUI(tk.Tk):
                     self._seq_seeded = True
                 session_id = data.get("sessionId")
                 session_id_value = session_id if isinstance(session_id, str) else ""
+                if session_id_value:
+                    self._apply_robot_ui_session_id(session_id_value)
                 min_seq = int(min_next) if isinstance(min_next, (int, float)) else None
                 self._session.mark_handshake_done(session_id_value, min_seq)
             self._last_out_seq = seq
@@ -9668,6 +9822,7 @@ class BringupControlUI(tk.Tk):
             elif name == "uiDisconnect":
                 self._tcp_connected = False
                 self._handshake_done = False
+                self._runtime_state_seen = False
                 self._handshake_inflight = False
                 self._session.reset_handshake()
                 self._last_profile_mismatch_prompt = None
@@ -9800,6 +9955,8 @@ class BringupControlUI(tk.Tk):
             activate_allowed = allow
             if activate_allowed and self._test_runtime_block_reason():
                 activate_allowed = False
+            if activate_allowed and self._scope_context_kind() != GROUP_SOURCE_SELECTED_TEST:
+                activate_allowed = not self._manual_active_group_is_empty()
             if (
                 activate_allowed
                 and self._scope_context_kind() == GROUP_SOURCE_SELECTED_TEST
@@ -9816,7 +9973,12 @@ class BringupControlUI(tk.Tk):
             )
         deactivate_scope_button = getattr(self, "_deactivate_scope_button", None)
         if deactivate_scope_button is not None:
-            deactivate_scope_button.state(["!disabled"] if allow else ["disabled"])
+            deactivate_allowed = (
+                allow and self.__dict__.get("_controlled_lifecycle_active_known") is True
+            )
+            deactivate_scope_button.state(
+                ["!disabled"] if deactivate_allowed else ["disabled"]
+            )
         run_selected_button = getattr(self, "_tests_run_selected_button", None)
         if run_selected_button is not None:
             run_selected_allowed = (
@@ -9864,6 +10026,7 @@ class BringupControlUI(tk.Tk):
             _handle_handshake_required - Reset handshake state on server warning.
         """
         self._handshake_done = False
+        self._runtime_state_seen = False
         self._handshake_inflight = False
         self._last_handshake_attempt = 0.0
         self._session.reset_handshake()
@@ -9887,6 +10050,7 @@ class BringupControlUI(tk.Tk):
         """
         self._owner_required = True
         self._handshake_done = False
+        self._runtime_state_seen = False
         self._handshake_inflight = False
         self._last_handshake_attempt = 0.0
         self._session.reset_handshake()

@@ -11,14 +11,14 @@ from hashlib import sha256
 from pathlib import Path
 from time import time
 
-BUILD_GIT_DESCRIBE = "scope-aware-runtime-activation-2026-06-15-6-g6156a80-dirty"
-BUILD_REVISION = "234"
-BUILD_WORKSPACE_REVISION = "4"
-BUILD_CODE_REVISION = "3a82657f89ee"
-BUILD_GIT_SHA = "6156a80"
+BUILD_GIT_DESCRIBE = "ui-group-topology-checkpoint-2026-06-26-dirty"
+BUILD_REVISION = "235"
+BUILD_WORKSPACE_REVISION = "48"
+BUILD_CODE_REVISION = "2e371f988a0b"
+BUILD_GIT_SHA = "f434968"
 BUILD_GIT_BRANCH = "main"
 BUILD_GIT_DIRTY = "dirty"
-BUILD_TIMESTAMP = "2026-06-26T19:35:42-04:00"
+BUILD_TIMESTAMP = "2026-06-26T21:54:40-04:00"
 
 BUILD_LABEL_REVISION = "build-revision"
 BUILD_LABEL_WORKSPACE_REVISION = "workspace-revision"

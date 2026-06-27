@@ -174,7 +174,7 @@ public class RobotV2 extends TimedRobot {
    */
   @Override
   public void disabledInit() {
-    if (BringupUtil.isProfileActive()) {
+    if (BringupUtil.isProfileActive() || runtime.isControlledLifecycleActive()) {
       runtime.deactivateActiveProfile(REASON_DISABLED_RUNTIME_DEACTIVATE);
       handleProfileDeactivate();
     } else {
