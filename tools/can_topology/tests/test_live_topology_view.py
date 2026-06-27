@@ -483,3 +483,41 @@ class LiveTopologyViewTests(unittest.TestCase):
         finally:
             live_view_module._load_profiles_payload = original_load_payload
             live_view_module._load_device_registry = original_load_registry
+
+    def test_effective_groups_preserve_static_members_when_runtime_group_only_has_counts(self) -> None:
+        view = self._make_view()
+        view._bridge_groups = [
+            {
+                "name": "motors",
+                "enabled": True,
+                "members": [
+                    {"label": "SPARKMAX/NEO 25", "enabled": True},
+                    {"label": "FALCON 9", "enabled": True},
+                ],
+                "bindings": [{"input": "controller0.rightY", "kind": "analog"}],
+            }
+        ]
+        view._runtime_groups = [
+            {
+                "name": "motors",
+                "enabled": True,
+                "memberCount": 2,
+                "bindingCount": 1,
+            }
+        ]
+
+        groups = view._effective_groups()
+
+        self.assertEqual(1, len(groups))
+        self.assertEqual("motors", groups[0]["name"])
+        self.assertEqual(
+            [
+                {"label": "SPARKMAX/NEO 25", "enabled": True},
+                {"label": "FALCON 9", "enabled": True},
+            ],
+            groups[0]["members"],
+        )
+        self.assertEqual(
+            [{"input": "controller0.rightY", "kind": "analog"}],
+            groups[0]["bindings"],
+        )

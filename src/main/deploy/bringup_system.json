@@ -264,8 +264,8 @@
       "terminator": true
     }
   ],
-  "data_version": "2026-06-26_105642",
-  "data_hash": "30e55cd6f5b51c75dc6310a8e49c7a5de4d4d9ae6df2f1a8f9df2b23852466fa",
+  "data_version": "2026-06-26_210342",
+  "data_hash": "4b877c4a2d7b21206ca971b2e7c618052667c32115524370100e8901c42e6b3e",
   "default_profile": "2026_no_swyfts",
   "bridgeConfig": {
     "schemaVersion": 2,
@@ -2026,8 +2026,8 @@
         "runnable": true
       },
       "mtrs_limit": {
-        "source": "test \"mtrs_limit\"\n\ndevice \"FALCON 9\"\ndevice \"lmtSw0\"\ndevice \"SPARKMAX/NEO 25\"\n\nmain:\n\tset \"FALCON 9\".output_percent_cmd = 0.15\n\n\tset \"SPARKMAX/NEO 25\".output_percent_cmd = 0.15\n\n\tabort \"SPARKMAX/NEO 25\".current_actual > 40\n\tabort \"FALCON 9\".current_actual > 40\n\n\tsuccess lmtSw0.pressed\n\tuntil timer.elapsed >= 3.0\n\trequire timer.elapsed < 3.0\n\n\n\n",
-        "sourceHash": "46d9d78a724059f1f947f5f6fd5240cca729d2fdd0d164672fa61a21db7f7fdf",
+        "source": "test \"mtrs_limit\"\n\ndevice \"FALCON 9\"\ndevice \"lmtSw0\"\ndevice \"SPARKMAX/NEO 25\"\n\nmain:\n\tset \"FALCON 9\".output_percent_cmd = 0.15\n\n\tset \"SPARKMAX/NEO 25\".output_percent_cmd = 0.15\n\n\tabort \"SPARKMAX/NEO 25\".current_actual > 40\n\tabort \"FALCON 9\".current_actual > 40\n\n\tsuccess lmtSw0.pressed\n\tuntil timer.elapsed >= 6.0\n\trequire timer.elapsed < 6.0\n\nclose:\n\n\n\n",
+        "sourceHash": "ad984b7b87a90c5e3a83b446ef899c2856edb924d656f30a470a814167ec43fb",
         "normalized": {
           "name": "mtrs_limit",
           "devices": [
@@ -2131,7 +2131,7 @@
               {
                 "id": "until_1",
                 "kind": "until",
-                "text": "until timer.elapsed >= 3.0",
+                "text": "until timer.elapsed >= 6.0",
                 "reference": {
                   "device": "timer",
                   "signal": "elapsed",
@@ -2140,7 +2140,7 @@
                 "mode": "comparison",
                 "operator": ">=",
                 "literal": {
-                  "value": 3.0,
+                  "value": 6.0,
                   "valueType": "number"
                 }
               }
@@ -2149,7 +2149,7 @@
               {
                 "id": "require_1",
                 "kind": "require",
-                "text": "require timer.elapsed < 3.0",
+                "text": "require timer.elapsed < 6.0",
                 "reference": {
                   "device": "timer",
                   "signal": "elapsed",
@@ -2158,7 +2158,7 @@
                 "mode": "comparison",
                 "operator": "<",
                 "literal": {
-                  "value": 3.0,
+                  "value": 6.0,
                   "valueType": "number"
                 }
               }

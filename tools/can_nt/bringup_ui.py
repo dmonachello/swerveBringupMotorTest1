@@ -21,6 +21,7 @@ import time
 import tkinter as tk
 import uuid
 import re
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
@@ -68,7 +69,14 @@ from tools.common.profile_constants import KEY_DEFAULT_PROFILE, KEY_DSL_TESTS
 from tools.common.tests_domain import collect_available_tests
 from tools.common.config_lifecycle import LocalConfigQueryService
 from tools.common.profiles import list_profile_names
-from tools.common.profile_constants import KEY_DEVICE_TYPE, KEY_ID, KEY_LABEL as PROFILE_KEY_LABEL, KEY_MANUFACTURER
+from tools.common.profile_constants import (
+    KEY_DEVICE_TYPE,
+    KEY_ID,
+    KEY_LABEL as PROFILE_KEY_LABEL,
+    KEY_MANUFACTURER,
+    TYPE_MOTOR,
+    get_group_member_label,
+)
 from tools.common.profile_constants import KEY_ENABLED
 from tools.common.profile_constants import KEY_TYPE
 from tools.common.robot_test_dsl import (
@@ -714,6 +722,9 @@ TEST_LIBRARY_STATUS_READY = "active-group active - ready to run"
 TEST_LIBRARY_STATUS_NO_SELECTED_TEST = TEST_LIBRARY_STATUS_INACTIVE_PREFIX + OUTPUT_NO_SELECTED_TEST
 TEST_LIBRARY_STATUS_LOADED_NOT_ACTIVATED = "active-group loaded from selected test - not activated"
 TEST_LIBRARY_STATUS_MANUAL_RESTORED = "manual active-group restored - not activated"
+TEST_LIBRARY_STATUS_BLOCKED_ESTOP = "robot disabled (E-Stop)"
+TEST_LIBRARY_STATUS_BLOCKED_DISABLED = "robot disabled"
+TEST_LIBRARY_STATUS_BLOCKED_NOT_TELEOP = "robot not in teleop"
 TEST_SCOPE_DETAIL_NO_SELECTION = "Select a test from one of the library lists to load its devices into active-group."
 TEST_SCOPE_DETAIL_LOADED_NOT_ACTIVATED = (
     "This test has loaded its required devices into active-group. "
@@ -728,6 +739,15 @@ TEST_SCOPE_DETAIL_MISSING_DEVICE_PREFIX = (
 )
 TEST_SCOPE_DETAIL_REQUIRED_UNAVAILABLE = (
     "This test cannot run because one or more required devices are not available."
+)
+TEST_SCOPE_DETAIL_BLOCKED_ESTOP = (
+    "This test cannot run because the robot is E-stopped. Clear the E-stop before activating the group or running the test."
+)
+TEST_SCOPE_DETAIL_BLOCKED_DISABLED = (
+    "This test cannot run because the robot is disabled. Enable teleop before activating the group or running the test."
+)
+TEST_SCOPE_DETAIL_BLOCKED_NOT_TELEOP = (
+    "This test cannot run because the robot is not in teleop. Switch to teleop before activating the group or running the test."
 )
 TEST_LIBRARY_LOCAL_SCOPE_PROFILE = "profile"
 TEST_LIBRARY_LOCAL_SCOPE_CONFIG = "config"
@@ -858,6 +878,12 @@ TEST_OUTPUT_PREFIX_NAME = "Test #"
 TEST_OUTPUT_PREFIX_RESULT = "Test result #"
 TEST_OUTPUT_PREFIX_RESULT_LEGACY = "Test result: "
 TEST_OUTPUT_PREFIX_RUN_ALL_COMPLETE = "Run-all complete."
+UNICODE_CATEGORY_CONTROL = "Cc"
+UNICODE_CATEGORY_FORMAT = "Cf"
+OUTPUT_SANITIZE_DROP_CATEGORIES = {
+    UNICODE_CATEGORY_CONTROL,
+    UNICODE_CATEGORY_FORMAT,
+}
 
 
 def _normalize_host_action_row(row: Dict[str, Any], default_source: str, default_kind: str) -> Dict[str, Any]:
@@ -907,6 +933,22 @@ def _load_generated_command_metadata() -> Tuple[Dict[str, Dict[str, Any]], List[
         ACTION_SOURCE_HOST,
         ACTION_KIND_HOST_LOCAL,
     )
+
+
+def _sanitize_stream_output_line(line: object) -> str:
+    """
+    NAME
+        _sanitize_stream_output_line - Remove hidden control/format characters from streamed output.
+    """
+    text = str(line or "")
+    if not text:
+        return ""
+    cleaned_chars: List[str] = []
+    for char in text:
+        if unicodedata.category(char) in OUTPUT_SANITIZE_DROP_CATEGORIES:
+            continue
+        cleaned_chars.append(char)
+    return "".join(cleaned_chars)
 
 
 ACTIONS_BY_NAME, HOST_UI_SECTIONS = _load_generated_command_metadata()
@@ -1230,6 +1272,9 @@ def _format_runtime_probe_score(device: Optional[Dict[str, Any]]) -> str:
     attachment = _runtime_active_probe_attachment(device or {})
     if not isinstance(attachment, dict):
         return VIS_LAST_SEEN_UNKNOWN
+    bucket = str(attachment.get(RUNTIME_PROBE_KEY_BUCKET, NT_VALUE_EMPTY)).strip().lower()
+    if bucket in (VIS_VALUE_UNKNOWN, "unknown", NT_VALUE_EMPTY):
+        return VIS_LAST_SEEN_UNKNOWN
     score = attachment.get(RUNTIME_PROBE_KEY_SCORE)
     max_score = attachment.get(RUNTIME_PROBE_KEY_MAX_SCORE)
     if isinstance(score, (int, float)) and isinstance(max_score, (int, float)):
@@ -1468,6 +1513,7 @@ class BringupControlUI(tk.Tk):
         self._controlled_lifecycle_active_known: Optional[bool] = None
         self._robot_enabled_known = True
         self._robot_estopped_known = False
+        self._robot_mode_known = "disabled"
         self._runtime_state_notice_text = NT_VALUE_EMPTY
         self._runtime_state_notice_level = "warn"
         self._runtime_event_notice_text = NT_VALUE_EMPTY
@@ -2175,7 +2221,7 @@ class BringupControlUI(tk.Tk):
         self._test_source_text.configure(yscrollcommand=self._on_test_source_yscroll)
         self._test_source_text.bind("<<Modified>>", self._on_test_source_modified)
         self._test_source_text.bind("<KeyRelease>", self._on_test_source_key_release)
-        self._test_source_text.bind("<MouseWheel>", self._refresh_test_source_line_numbers)
+        self._test_source_text.bind("<MouseWheel>", self._on_test_source_mousewheel)
         self._test_source_text.bind("<ButtonRelease-1>", self._on_test_source_click_release)
         self._test_source_text.bind("<Configure>", self._on_test_source_configure)
         self._test_source_text.bind("<Control-z>", self._on_test_source_undo)
@@ -3259,6 +3305,8 @@ class BringupControlUI(tk.Tk):
             return
         targets = self._group_motor_targets(group_payload)
         if not targets:
+            targets = self._group_overlay_motor_targets(group)
+        if not targets:
             self._append_output(f"Group has no motor targets: {group_name}")
             return
         scope_blocked = self._manual_duty_scope_block_message_for_targets(targets)
@@ -3266,6 +3314,24 @@ class BringupControlUI(tk.Tk):
             self._append_output(scope_blocked)
             return
         self._open_manual_group_duty_targets(group_name, targets, int(_event.x_root), int(_event.y_root))
+
+    def _group_overlay_motor_targets(self, group_region: Dict[str, Any]) -> List[str]:
+        """
+        NAME
+            _group_overlay_motor_targets - Resolve motor targets from one rendered overlay region fallback.
+        """
+        labels = group_region.get("member_labels")
+        if not isinstance(labels, list):
+            return []
+        targets: List[str] = []
+        for label in labels:
+            clean_label = str(label or NT_VALUE_EMPTY).strip()
+            if not clean_label:
+                continue
+            device = self._known_device_entry(clean_label)
+            if self._device_entry_is_motor(device):
+                targets.append(clean_label)
+        return targets
 
     def _on_active_group_member_toggled(self, label: str, enabled: bool) -> None:
         """
@@ -3379,19 +3445,63 @@ class BringupControlUI(tk.Tk):
             return []
         targets: List[str] = []
         for member in members:
-            if not isinstance(member, dict):
-                continue
-            label = str(member.get(GROUP_MEMBER_KEY_LABEL, NT_VALUE_EMPTY)).strip()
+            if isinstance(member, dict):
+                label = get_group_member_label(member)
+            else:
+                label = str(member or NT_VALUE_EMPTY).strip()
             if not label:
                 continue
-            enabled = member.get(KEY_ENABLED)
+            if isinstance(member, dict):
+                enabled = member.get(KEY_ENABLED)
+            else:
+                enabled = True
             if isinstance(enabled, bool) and not enabled:
                 continue
-            device = self._profile_devices.get(label.lower(), {})
-            device_type = str(device.get(DEVICE_KEY_TYPE, NT_VALUE_EMPTY)).strip()
-            if device_type == DEVICE_TYPE_MOTOR:
+            device = self._known_device_entry(label)
+            if self._device_entry_is_motor(device):
                 targets.append(label)
         return targets
+
+    def _known_device_entry(self, label: object) -> Dict[str, Any]:
+        """
+        NAME
+            _known_device_entry - Resolve one label from the available profile/runtime device catalogs.
+        """
+        clean_label = str(label or NT_VALUE_EMPTY).strip().lower()
+        if not clean_label:
+            return {}
+        for attr_name in ("_profile_devices", "_test_profile_devices", "_latest_runtime_devices"):
+            catalog = self.__dict__.get(attr_name, {})
+            if not isinstance(catalog, dict):
+                continue
+            entry = catalog.get(clean_label, {})
+            if isinstance(entry, dict) and entry:
+                return entry
+        for profile_name in list_profiles():
+            try:
+                profile_devices, _expected = get_profile(profile_name)
+            except Exception:
+                continue
+            for entry in profile_devices:
+                if not isinstance(entry, dict):
+                    continue
+                entry_label = str(entry.get(DEVICE_KEY_LABEL, NT_VALUE_EMPTY)).strip().lower()
+                if entry_label == clean_label:
+                    return entry
+        return {}
+
+    def _device_entry_is_motor(self, device: object) -> bool:
+        """
+        NAME
+            _device_entry_is_motor - Return whether one known device entry represents a motor target.
+        """
+        if not isinstance(device, dict):
+            return False
+        device_type = str(device.get(DEVICE_KEY_TYPE, NT_VALUE_EMPTY)).strip()
+        if device_type == DEVICE_TYPE_MOTOR:
+            return True
+        type_name = str(device.get(KEY_TYPE, NT_VALUE_EMPTY)).strip().lower()
+        return type_name == TYPE_MOTOR.lower()
 
     def _on_live_view_left_click(self, _node: object, _event: tk.Event) -> None:
         """
@@ -6123,12 +6233,13 @@ class BringupControlUI(tk.Tk):
         NAME
             _selected_test_library_global_name - Return the selected global-library DSL test name.
         """
-        if not hasattr(self, "_test_library_global_list"):
+        listbox = self.__dict__.get("_test_library_global_list")
+        if listbox is None:
             return ""
-        selection = self._test_library_global_list.curselection()
+        selection = listbox.curselection()
         if not selection:
             return ""
-        value = str(self._test_library_global_list.get(selection[0]) or "").strip()
+        value = str(listbox.get(selection[0]) or "").strip()
         if value.endswith(TEST_LIBRARY_INVALID_SUFFIX):
             return value[: -len(TEST_LIBRARY_INVALID_SUFFIX)].rstrip()
         return value
@@ -6138,12 +6249,13 @@ class BringupControlUI(tk.Tk):
         NAME
             _selected_test_library_config_name - Return the selected config-library DSL test name.
         """
-        if not hasattr(self, "_test_library_config_list"):
+        listbox = self.__dict__.get("_test_library_config_list")
+        if listbox is None:
             return ""
-        selection = self._test_library_config_list.curselection()
+        selection = listbox.curselection()
         if not selection:
             return ""
-        value = str(self._test_library_config_list.get(selection[0]) or "").strip()
+        value = str(listbox.get(selection[0]) or "").strip()
         if value.endswith(TEST_LIBRARY_INVALID_SUFFIX):
             return value[: -len(TEST_LIBRARY_INVALID_SUFFIX)].rstrip()
         return value
@@ -6153,12 +6265,13 @@ class BringupControlUI(tk.Tk):
         NAME
             _selected_test_library_profile_name - Return the selected profile-runnable DSL test name.
         """
-        if not hasattr(self, "_test_library_profile_list"):
+        listbox = self.__dict__.get("_test_library_profile_list")
+        if listbox is None:
             return ""
-        selection = self._test_library_profile_list.curselection()
+        selection = listbox.curselection()
         if not selection:
             return ""
-        value = str(self._test_library_profile_list.get(selection[0]) or "").strip()
+        value = str(listbox.get(selection[0]) or "").strip()
         if value.endswith(TEST_LIBRARY_INVALID_SUFFIX):
             return value[: -len(TEST_LIBRARY_INVALID_SUFFIX)].rstrip()
         return value
@@ -6178,6 +6291,39 @@ class BringupControlUI(tk.Tk):
         if global_name:
             return (global_name, "global")
         return ("", "")
+
+    def _sync_test_library_entry_to_selected_test(self, test_name: str) -> None:
+        """
+        NAME
+            _sync_test_library_entry_to_selected_test - Align list selections and source editor to one authoritative selected test.
+        """
+        target = str(test_name or "").strip()
+        if not target:
+            return
+        current_entry_name, _current_entry_scope = self._selected_test_library_entry()
+        current_source_name = str(self.__dict__.get("_selected_test_source_name", "") or "").strip()
+        if current_entry_name == target and current_source_name == target:
+            return
+        global_list = self.__dict__.get("_test_library_global_list")
+        config_list = self.__dict__.get("_test_library_config_list")
+        profile_list = self.__dict__.get("_test_library_profile_list")
+        self._suppress_test_library_selection_change = True
+        try:
+            if global_list is not None:
+                global_list.selection_clear(0, tk.END)
+            if config_list is not None:
+                config_list.selection_clear(0, tk.END)
+            if profile_list is not None:
+                profile_list.selection_clear(0, tk.END)
+            selected = (
+                self._restore_test_library_listbox_selection(profile_list, target)
+                or self._restore_test_library_listbox_selection(config_list, target)
+                or self._restore_test_library_listbox_selection(global_list, target)
+            )
+        finally:
+            self._suppress_test_library_selection_change = False
+        if selected:
+            self._load_selected_test_source()
 
     def _test_source_has_unsaved_changes(self) -> bool:
         """
@@ -6225,16 +6371,16 @@ class BringupControlUI(tk.Tk):
         finally:
             self._suppress_test_library_selection_change = False
 
-    def _restore_test_library_listbox_selection(self, listbox: object, target_name: str) -> None:
+    def _restore_test_library_listbox_selection(self, listbox: object, target_name: str) -> bool:
         """
         NAME
             _restore_test_library_listbox_selection - Restore a listbox selection by test name without reloading the editor.
         """
         if listbox is None:
-            return
+            return False
         target = str(target_name or "").strip()
         if not target:
-            return
+            return False
         count = int(listbox.size())
         for index in range(count):
             entry = str(listbox.get(index) or "").strip()
@@ -6244,7 +6390,8 @@ class BringupControlUI(tk.Tk):
                 continue
             listbox.selection_set(index)
             listbox.see(index)
-            return
+            return True
+        return False
 
     def _confirm_test_source_switch(self) -> bool:
         """
@@ -6445,6 +6592,13 @@ class BringupControlUI(tk.Tk):
             _on_test_source_click_release - Refresh source-editor state and dismiss signal completion on cursor clicks.
         """
         self._refresh_test_source_line_numbers()
+        self._hide_test_source_completion_popup()
+
+    def _on_test_source_mousewheel(self, _event=None) -> None:
+        """
+        NAME
+            _on_test_source_mousewheel - Dismiss completion during wheel scroll without rewriting editor state.
+        """
         self._hide_test_source_completion_popup()
 
     def _on_test_source_configure(self, _event=None) -> None:
@@ -7094,6 +7248,9 @@ class BringupControlUI(tk.Tk):
         NAME
             _append_test_output - Append a line to the Tests-tab activity log.
         """
+        line = _sanitize_stream_output_line(line)
+        if not line.strip():
+            return
         lines = self.__dict__.get("_test_lines")
         if lines is None:
             lines = []
@@ -7223,7 +7380,7 @@ class BringupControlUI(tk.Tk):
         NAME
             _is_test_activity_output_line - Return true when one streamed output line belongs in the Tests-tab activity log.
         """
-        text = str(line or "").strip()
+        text = _sanitize_stream_output_line(line).strip()
         if not text:
             return False
         return text.startswith(
@@ -7615,6 +7772,9 @@ class BringupControlUI(tk.Tk):
         invalid_labels = [str(row.get("label", "")).strip() for row in rows if bool(row.get("invalid"))]
         if invalid_labels:
             return "missing resource/device - " + invalid_labels[0]
+        runtime_block_reason = self._test_runtime_block_reason()
+        if runtime_block_reason:
+            return runtime_block_reason
         if not self._active_group_is_currently_active():
             return TEST_LIBRARY_STATUS_LOADED_NOT_ACTIVATED
         row = self._selected_test_row(selected_name)
@@ -7626,6 +7786,20 @@ class BringupControlUI(tk.Tk):
         runnable_now = row.get("runnableNow")
         if isinstance(runnable_now, bool):
             return "" if runnable_now else "required devices unavailable"
+        return ""
+
+    def _test_runtime_block_reason(self) -> str:
+        """
+        NAME
+            _test_runtime_block_reason - Return robot-state blocker text for activation/test execution.
+        """
+        if bool(self.__dict__.get("_robot_estopped_known", False)):
+            return TEST_LIBRARY_STATUS_BLOCKED_ESTOP
+        if not bool(self.__dict__.get("_robot_enabled_known", True)):
+            return TEST_LIBRARY_STATUS_BLOCKED_DISABLED
+        mode = str(self.__dict__.get("_robot_mode_known", "") or "").strip().lower()
+        if mode and mode != "teleop":
+            return TEST_LIBRARY_STATUS_BLOCKED_NOT_TELEOP
         return ""
 
     def _selected_test_row(self, selected_name: str) -> Optional[Dict[str, Any]]:
@@ -7790,6 +7964,12 @@ class BringupControlUI(tk.Tk):
             return TEST_SCOPE_DETAIL_LOADED_NOT_ACTIVATED
         if reason == TEST_LIBRARY_STATUS_MANUAL_RESTORED:
             return TEST_SCOPE_DETAIL_MANUAL_RESTORED
+        if reason == TEST_LIBRARY_STATUS_BLOCKED_ESTOP:
+            return TEST_SCOPE_DETAIL_BLOCKED_ESTOP
+        if reason == TEST_LIBRARY_STATUS_BLOCKED_DISABLED:
+            return TEST_SCOPE_DETAIL_BLOCKED_DISABLED
+        if reason == TEST_LIBRARY_STATUS_BLOCKED_NOT_TELEOP:
+            return TEST_SCOPE_DETAIL_BLOCKED_NOT_TELEOP
         if reason.startswith("missing resource/device - "):
             missing = reason.split(" - ", 1)[1].strip()
             return TEST_SCOPE_DETAIL_MISSING_DEVICE_PREFIX + missing
@@ -8895,6 +9075,7 @@ class BringupControlUI(tk.Tk):
             self._runtime_active_known = False
         self._robot_enabled_known = enabled
         self._robot_estopped_known = estopped
+        self._robot_mode_known = str(mode or "disabled").strip().lower()
         if self._tests_table is not None:
             selected_name = str(
                 self._tests_table.getEntry("selectedName").getString("") or ""
@@ -9264,6 +9445,9 @@ class BringupControlUI(tk.Tk):
         NAME
             _apply_live_runtime_notice_from_nt_state - Surface DS/NT state directly in Live Topology.
         """
+        show_lifecycle_activate_notice = (
+            self.__dict__.get("_group_owner_mode", GROUP_SOURCE_MANUAL) == GROUP_SOURCE_SELECTED_TEST
+        )
         if stale_state:
             self._set_runtime_state_notice(
                 "Robot state stale (code not running?)", "warn"
@@ -9271,7 +9455,8 @@ class BringupControlUI(tk.Tk):
         elif estopped:
             self._set_runtime_state_notice("Robot E-Stop. Manual run blocked.", "error")
         elif (
-            self._runtime_active_known is False
+            show_lifecycle_activate_notice
+            and self._runtime_active_known is False
             and self._controlled_lifecycle_active_known is not True
         ):
             self._set_runtime_state_notice(
@@ -9289,6 +9474,8 @@ class BringupControlUI(tk.Tk):
             elif estopped:
                 live_view.set_runtime_state_notice("Robot E-Stop. Manual run blocked.", "error")
             elif (
+                show_lifecycle_activate_notice
+                and
                 self._runtime_active_known is False
                 and self._controlled_lifecycle_active_known is not True
             ):
@@ -9392,6 +9579,7 @@ class BringupControlUI(tk.Tk):
                     mirror_to_test = self._is_test_activity_command(str(last_cmd[0]))
                 if text:
                     for line in text.splitlines():
+                        line = _sanitize_stream_output_line(line)
                         if self._should_skip_out_line(line):
                             continue
                         self._append_output(line)
@@ -9441,6 +9629,7 @@ class BringupControlUI(tk.Tk):
                 self._append_test_output(header)
             if text:
                 for line in text.splitlines():
+                    line = _sanitize_stream_output_line(line)
                     self._remember_out_line(line)
                     self._append_output(f"  {line}")
                     if self._is_test_activity_command(name):
@@ -9609,6 +9798,8 @@ class BringupControlUI(tk.Tk):
         activate_scope_button = getattr(self, "_activate_scope_button", None)
         if activate_scope_button is not None:
             activate_allowed = allow
+            if activate_allowed and self._test_runtime_block_reason():
+                activate_allowed = False
             if (
                 activate_allowed
                 and self._scope_context_kind() == GROUP_SOURCE_SELECTED_TEST
@@ -9628,7 +9819,9 @@ class BringupControlUI(tk.Tk):
             deactivate_scope_button.state(["!disabled"] if allow else ["disabled"])
         run_selected_button = getattr(self, "_tests_run_selected_button", None)
         if run_selected_button is not None:
-            run_selected_allowed = allow and self._selected_test_ready()
+            run_selected_allowed = (
+                allow and not self._test_runtime_block_reason() and self._selected_test_ready()
+            )
             run_selected_button.state(
                 ["!disabled"] if run_selected_allowed else ["disabled"]
             )
@@ -9765,10 +9958,13 @@ class BringupControlUI(tk.Tk):
         """
         if not name or name == "(none)":
             return
-        if name == str(self._selected_test_var.get() or "").strip():
+        current_name = str(self._selected_test_var.get() or "").strip()
+        if name == current_name:
+            self._sync_test_library_entry_to_selected_test(name)
             return
         self._last_selected_test = name
         self._selected_test_var.set(name)
+        self._sync_test_library_entry_to_selected_test(name)
         if self._current_right_tab_text() == TEST_LIBRARY_TAB_LABEL:
             self._load_selected_test_into_active_group(force_replace=False)
         self._refresh_selected_test_scope_status()

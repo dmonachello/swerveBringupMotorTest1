@@ -288,6 +288,7 @@ def draw_group_overlays(
             continue
         members = group.get("members", []) or []
         bounds_list = []
+        member_labels = []
         for member in members:
             if isinstance(member, dict):
                 label = get_group_member_label(member)
@@ -295,7 +296,10 @@ def draw_group_overlays(
                 label = member
             if not isinstance(label, str):
                 continue
-            bounds = label_bounds.get(label.strip())
+            clean_label = label.strip()
+            if clean_label:
+                member_labels.append(clean_label)
+            bounds = label_bounds.get(clean_label)
             if bounds:
                 bounds_list.append(bounds)
         label_font_px = max(10, int(12 * zoom))
@@ -335,6 +339,7 @@ def draw_group_overlays(
                     "name": name,
                     "bounds": (label_x0, label_y0, label_x1, label_y1),
                     "label_bounds": (label_x0, label_y0, label_x1, label_y1),
+                    "member_labels": list(member_labels),
                     "group": dict(group),
                 }
             )
@@ -389,6 +394,7 @@ def draw_group_overlays(
                 "name": name,
                 "bounds": (x0, y0, x1, y1),
                 "label_bounds": (label_x0, label_y0, label_x1, label_y1),
+                "member_labels": list(member_labels),
                 "group": dict(group),
             }
         )

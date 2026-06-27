@@ -1721,7 +1721,23 @@ class LiveTopologyView(ttk.Frame):
                 continue
             name = str(group.get("name", EMPTY_STRING)).strip()
             if name:
-                merged[name.lower()] = dict(group)
+                key = name.lower()
+                existing = merged.get(key, {})
+                runtime_group = dict(group)
+                if isinstance(existing, dict):
+                    static_members = existing.get("members")
+                    runtime_members = runtime_group.get("members")
+                    if isinstance(static_members, list) and (
+                        not isinstance(runtime_members, list) or not runtime_members
+                    ):
+                        runtime_group["members"] = list(static_members)
+                    static_bindings = existing.get("bindings")
+                    runtime_bindings = runtime_group.get("bindings")
+                    if isinstance(static_bindings, list) and (
+                        not isinstance(runtime_bindings, list) or not runtime_bindings
+                    ):
+                        runtime_group["bindings"] = list(static_bindings)
+                merged[key] = runtime_group
         return list(merged.values())
 
     def set_runtime_notice(self, text: str, level: str = "warn") -> None:
