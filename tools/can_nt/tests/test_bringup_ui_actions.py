@@ -198,6 +198,37 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         BringupUiActionMetadataTests - Validate merged robot and host action metadata.
     """
 
+    def test_rest_runtime_state_uses_runtime_generated_timestamp_for_last_ack(self) -> None:
+        table = _RestTableAdapter.from_runtime_state(
+            {"sessionId": "abc", "lastActivityMs": 1000.0},
+            {
+                "generatedAtMs": 5000.0,
+                "enabled": True,
+                "estopped": False,
+                "mode": "teleop",
+                "selectedProfile": "test_minimal_25_9",
+                "activeRuntimeProfile": "",
+            },
+            fetched_at_ms=9000.0,
+        )
+
+        self.assertEqual(5000.0, table.getEntry("state/lastAckMs").getDouble(0.0))
+
+    def test_rest_runtime_state_falls_back_to_fetch_time_when_generated_time_missing(self) -> None:
+        table = _RestTableAdapter.from_runtime_state(
+            {"sessionId": "abc", "lastActivityMs": 1000.0},
+            {
+                "enabled": True,
+                "estopped": False,
+                "mode": "teleop",
+                "selectedProfile": "test_minimal_25_9",
+                "activeRuntimeProfile": "",
+            },
+            fetched_at_ms=9000.0,
+        )
+
+        self.assertEqual(9000.0, table.getEntry("state/lastAckMs").getDouble(0.0))
+
     def test_merge_host_actions_preserves_both_sources(self) -> None:
         robot_actions = [
             {
@@ -2299,6 +2330,279 @@ class BringupUiActionMetadataTests(unittest.TestCase):
             [(GROUP_ACTIVE_NAME, ["FALCON 9"], GROUP_ACTIVE_NAME, 11, 22)],
             popup_calls,
         )
+
+    def test_reset_ui_session_runtime_context_stops_manual_duty_popup(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._tracker = type("TrackerStub", (), {"clear": lambda _self: None})()
+        ui._manual_duty_popup = object()
+        output_lines: list[str] = []
+        ui._append_output = output_lines.append
+        ui._close_manual_duty_popup = lambda stop_motor: calls.append(stop_motor)
+        ui._refresh_tests_active_group_panel = lambda: None
+        ui._refresh_output_runtime_notice = lambda: None
+        ui._refresh_selected_test_scope_status = lambda: None
+        ui._refresh_evidence_view = lambda: None
+        ui._update_action_enabled = lambda: None
+        ui._iter_live_views = lambda: []
+        calls: list[bool] = []
+
+        ui._reset_ui_session_runtime_context()
+
+        self.assertEqual([True], calls)
+        self.assertTrue(
+            any("Manual duty popup closed: UI session/runtime context reset." in line for line in output_lines)
+        )
+
+    def test_live_view_left_click_logs_manual_duty_popup_close_reason(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        calls: list[tuple[str, bool]] = []
+        ui._manual_duty_popup = object()
+        ui._request_runtime_state_refresh = lambda: None
+        ui._dismiss_manual_duty_popup = lambda reason, stop_motor: calls.append((reason, stop_motor))
+
+        ui._on_live_view_left_click(None, None)
+
+        self.assertEqual(
+            [("Manual duty popup closed: outside click in live view.", True)],
+            calls,
+        )
+
+    def test_on_manual_duty_popup_destroy_logs_unexpected_destroy(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        popup = object()
+        lines: list[str] = []
+        ui._manual_duty_popup = popup
+        ui._emit_manual_duty_popup_reason = lines.append
+
+        ui._on_manual_duty_popup_destroy(type("Event", (), {"widget": popup})(), popup)
+
+        self.assertEqual(
+            ["Manual duty popup closed: popup destroyed unexpectedly."],
+            lines,
+        )
+
+    def test_on_manual_duty_popup_destroy_skips_expected_reason(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        popup = object()
+        lines: list[str] = []
+        ui._manual_duty_popup = popup
+        ui._manual_duty_popup_close_reason = "Manual duty popup closed: popup window dismissed."
+        ui._emit_manual_duty_popup_reason = lines.append
+
+        ui._on_manual_duty_popup_destroy(type("Event", (), {"widget": popup})(), popup)
+
+        self.assertEqual([], lines)
+
+    def test_poll_nt_blocked_manual_duty_popup_stops_motor(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._live_clock_var = type("ClockVarStub", (), {"set": lambda _self, _value: None})()
+        ui._tcp_connected = False
+        ui._auto_connect_enabled = False
+        ui._last_connect_attempt = 0.0
+        ui._session = type(
+            "SessionStub",
+            (),
+            {
+                "reset_handshake": lambda _self: None,
+                "poll_events": lambda _self: [],
+            },
+        )()
+        ui._handshake_done = False
+        ui._prev_tcp_connected = False
+        ui._notify_ui_failure = lambda *_args, **_kwargs: None
+        ui._runtime_state_seen = False
+        ui._handshake_inflight = False
+        ui._last_keepalive = time.time()
+        ui._ui_table = None
+        ui._tests_table = None
+        ui._running_text_var = _StringVarStub()
+        ui._refresh_test_result_status = lambda: None
+        ui._apply_live_runtime_notice_from_nt_state = lambda *_args: None
+        ui._manual_duty_block_message = lambda: "blocked"
+        ui._manual_duty_popup = object()
+        output_lines: list[str] = []
+        ui._append_output = output_lines.append
+        ui._close_manual_duty_popup = lambda stop_motor: calls.append(stop_motor)
+        ui._is_connected = None
+        ui._tracker = type(
+            "TrackerStub",
+            (),
+            {
+                "check_timeout": lambda _self, _now: False,
+                "pending_text": lambda _self: "",
+                "is_pending": lambda _self: False,
+            },
+        )()
+        ui._pending_label = _LabelStub()
+        ui._status_label = _LabelStub()
+        ui._state_stale_sec = 1.0
+        ui._live_enabled_var = _ValueVarStub(False)
+        ui._poll_live_overlay = lambda _now: None
+        ui._poll_presence_overrides = lambda: None
+        ui._poll_visibility_snapshot = lambda _now: None
+        ui._update_action_enabled = lambda: None
+        ui._poll_interval_idle = 1.0
+        ui._poll_interval_active = 0.1
+        ui.after = lambda _delay, _callback: None
+        ui._maybe_send_pending_robot_profile_selection = lambda: None
+        ui._sync_diagnostic_profile_context = lambda reload_views=True: None
+        ui._maybe_prompt_host_profile_context_sync = lambda: None
+        ui._iter_live_views = lambda: []
+        ui._rio_host = "172.22.11.2"
+        ui._runtime_active_known = False
+        ui._controlled_lifecycle_active_known = False
+        ui._robot_enabled_known = False
+        ui._robot_estopped_known = False
+        ui._robot_mode_known = "disabled"
+        ui._robot_selected_profile = PROFILE_NONE
+        ui._robot_active_runtime_profile = PROFILE_NONE
+        ui._log_poll_inflight = False
+        ui._log_poll_seq = None
+        ui._last_log_poll = time.time()
+        ui._log_poll_interval = 1.0
+        ui._keepalive_interval = 1.0
+        ui._handshake_min_interval = 1.0
+        ui._last_handshake_attempt = 0.0
+        calls: list[bool] = []
+
+        ui._poll_nt()
+
+        self.assertEqual([True], calls)
+        self.assertTrue(
+            any("Manual duty popup closed: blocked" in line for line in output_lines)
+        )
+
+    def test_poll_nt_runtime_fetch_does_not_false_stale_manual_popup(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._live_clock_var = type("ClockVarStub", (), {"set": lambda _self, _value: None})()
+        ui._tcp_connected = True
+        ui._auto_connect_enabled = False
+        ui._last_connect_attempt = 0.0
+        now_ms = time.time() * 1000.0
+        ui._session = type(
+            "SessionStub",
+            (),
+            {
+                "reset_handshake": lambda _self: None,
+                "handshake_done": lambda _self: True,
+                "poll_events": lambda _self: [],
+                "fetch_session_snapshot": lambda _self: {
+                    "sessionId": "session-1",
+                    "lastActivityMs": now_ms - 5000.0,
+                },
+                "fetch_runtime_state": lambda _self: {
+                    "generatedAtMs": now_ms,
+                    "enabled": True,
+                    "estopped": False,
+                    "mode": "teleop",
+                    "selectedProfile": "test_minimal_25_9",
+                    "activeRuntimeProfile": "",
+                },
+                "fetch_tests_state": lambda _self: {},
+            },
+        )()
+        ui._handshake_done = True
+        ui._prev_tcp_connected = True
+        ui._notify_ui_failure = lambda *_args, **_kwargs: None
+        ui._runtime_state_seen = False
+        ui._handshake_inflight = False
+        ui._last_keepalive = time.time()
+        ui._ui_table = None
+        ui._tests_table = None
+        ui._running_text_var = _StringVarStub()
+        ui._refresh_test_result_status = lambda: None
+        ui._apply_live_runtime_notice_from_nt_state = lambda *_args: None
+        ui._manual_duty_popup = object()
+        output_lines: list[str] = []
+        close_calls: list[bool] = []
+        ui._append_output = output_lines.append
+        ui._close_manual_duty_popup = lambda stop_motor: close_calls.append(stop_motor)
+        ui._is_connected = None
+        ui._tracker = type(
+            "TrackerStub",
+            (),
+            {
+                "check_timeout": lambda _self, _now: False,
+                "pending_text": lambda _self: "",
+                "is_pending": lambda _self: False,
+            },
+        )()
+        ui._pending_label = _LabelStub()
+        ui._status_label = _LabelStub()
+        ui._state_stale_sec = 1.0
+        ui._live_enabled_var = _ValueVarStub(False)
+        ui._poll_live_overlay = lambda _now: None
+        ui._poll_presence_overrides = lambda: None
+        ui._poll_visibility_snapshot = lambda _now: None
+        ui._update_action_enabled = lambda: None
+        ui._poll_interval_idle = 1.0
+        ui._poll_interval_active = 0.1
+        ui.after = lambda _delay, _callback: None
+        ui._maybe_send_pending_robot_profile_selection = lambda: None
+        ui._sync_diagnostic_profile_context = lambda reload_views=True: None
+        ui._maybe_prompt_host_profile_context_sync = lambda: None
+        ui._iter_live_views = lambda: []
+        ui._rio_host = "172.22.11.2"
+        ui._runtime_active_known = False
+        ui._controlled_lifecycle_active_known = False
+        ui._robot_enabled_known = False
+        ui._robot_estopped_known = False
+        ui._robot_mode_known = "disabled"
+        ui._robot_selected_profile = PROFILE_NONE
+        ui._robot_active_runtime_profile = PROFILE_NONE
+        ui._pending_robot_profile_selection = PROFILE_NONE
+        ui._log_poll_inflight = False
+        ui._log_poll_seq = None
+        ui._last_log_poll = time.time()
+        ui._log_poll_interval = 1.0
+        ui._keepalive_interval = 1.0
+        ui._handshake_min_interval = 1.0
+        ui._last_handshake_attempt = 0.0
+        ui._client_id = "client-1"
+        ui._latest_tests_state_payload = {}
+        ui._sync_test_dropdown_values = lambda _values: None
+        ui._resolve_test_names_from_rows = lambda: []
+        ui._resolve_selected_from_rows = lambda: ""
+        ui._sync_test_selection = lambda _name: None
+
+        ui._poll_nt()
+
+        self.assertFalse(ui._state_stale)
+        self.assertEqual([], close_calls)
+        self.assertFalse(any("robot state stale" in line.lower() for line in output_lines))
+
+    def test_handle_close_logs_manual_duty_popup_close_reason(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        calls: list[tuple[str, bool]] = []
+        ui._manual_duty_popup = object()
+        ui._dismiss_manual_duty_popup = lambda reason, stop_motor: calls.append((reason, stop_motor))
+        ui.release_lock = lambda: None
+        ui.destroy = lambda: None
+        ui._on_close = None
+
+        ui._handle_close()
+
+        self.assertEqual(
+            [("Manual duty popup closed: UI shutdown.", True)],
+            calls,
+        )
+
+    def test_emit_manual_duty_popup_reason_mirrors_to_output_and_stdout(self) -> None:
+        import builtins
+
+        ui = BringupControlUI.__new__(BringupControlUI)
+        output_lines: list[str] = []
+        printed: list[str] = []
+        ui._append_output = output_lines.append
+        original_print = builtins.print
+        builtins.print = lambda *args, **_kwargs: printed.append(" ".join(str(arg) for arg in args))
+        try:
+            ui._emit_manual_duty_popup_reason("Manual duty popup closed: test.")
+        finally:
+            builtins.print = original_print
+
+        self.assertEqual(["Manual duty popup closed: test."], output_lines)
+        self.assertEqual(["Manual duty popup closed: test."], printed)
 
     def test_flush_manual_duty_send_uses_group_command_for_static_multi_motor_group(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)

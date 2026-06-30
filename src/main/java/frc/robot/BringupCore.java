@@ -3565,7 +3565,7 @@ public final class BringupCore {
           }
           device.stop();
           if (closeAfterStop) {
-            device.close();
+            device.shutdown();
           }
           counts.stopped++;
         } catch (Exception ex) {

@@ -196,6 +196,22 @@ public interface DeviceUnit extends HasRegistrationHeader {
    */
   default void deactivate() {}
 
+  /**
+   * NAME
+   *   shutdown
+   *
+   * SYNOPSIS
+   *   Drive the device to a safe inactive state, then release vendor resources.
+   *
+   * SIDE EFFECTS
+   *   Invokes deactivate() before close() so motors and other active devices
+   *   do not retain a live command across lifecycle teardown.
+   */
+  default void shutdown() {
+    deactivate();
+    close();
+  }
+
   // Optional test hook for non-motor devices (no-op by default).
   /**
    * NAME

@@ -30,6 +30,6 @@ public final class DeviceUnitLiveDevice implements LiveDevice {
 
     @Override
     public void close() {
-        deviceUnit.close();
+        deviceUnit.shutdown();
     }
 }

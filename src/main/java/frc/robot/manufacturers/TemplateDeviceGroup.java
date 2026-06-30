@@ -213,7 +213,7 @@ public final class TemplateDeviceGroup implements ManufacturerGroup {
   @Override
   public void closeAll() {
     for (DeviceUnit device : bucket.getDevices()) {
-      device.close();
+      device.shutdown();
     }
     bucket.resetAddPointer();
   }

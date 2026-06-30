@@ -101,7 +101,7 @@ public final class MicrosoftDeviceGroup implements ManufacturerGroup {
   public void closeAll() {
     for (DeviceTypeBucket bucket : buckets) {
       for (DeviceUnit device : bucket.getDevices()) {
-        device.close();
+        device.shutdown();
       }
       bucket.resetAddPointer();
     }

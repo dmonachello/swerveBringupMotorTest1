@@ -240,13 +240,20 @@ class _RestTableAdapter:
         self._payload = payload if isinstance(payload, dict) else {}
 
     @classmethod
-    def from_runtime_state(cls, session_state: Dict[str, Any], runtime_state: Dict[str, Any]) -> "_RestTableAdapter":
+    def from_runtime_state(
+        cls,
+        session_state: Dict[str, Any],
+        runtime_state: Dict[str, Any],
+        fetched_at_ms: float = 0.0,
+    ) -> "_RestTableAdapter":
+        generated_at_ms = _RestValueAdapter(runtime_state.get("generatedAtMs")).getDouble(0.0)
+        last_ack_ms = generated_at_ms if generated_at_ms > 0.0 else float(fetched_at_ms or 0.0)
         state = {
             "sessionId": str(session_state.get("sessionId", "") or ""),
             "enabled": bool(runtime_state.get("enabled", False)),
             "estopped": bool(runtime_state.get("estopped", False)),
             "mode": str(runtime_state.get("mode", "disabled") or "disabled"),
-            "lastAckMs": float(session_state.get("lastActivityMs", 0.0) or 0.0),
+            "lastAckMs": last_ack_ms,
             "selectedProfile": str(runtime_state.get("selectedProfile", PROFILE_NONE) or PROFILE_NONE),
             "activeRuntimeProfile": str(runtime_state.get("activeRuntimeProfile", PROFILE_NONE) or PROFILE_NONE),
         }
@@ -3643,7 +3650,10 @@ class BringupControlUI(tk.Tk):
         self._manual_duty_group_name = MANUAL_DUTY_NO_LABEL
         self._tracker.clear()
         if self._manual_duty_popup is not None:
-            self._close_manual_duty_popup(stop_motor=False)
+            self._dismiss_manual_duty_popup(
+                "Manual duty popup closed: UI session/runtime context reset.",
+                stop_motor=True,
+            )
         self._refresh_tests_active_group_panel()
         self._refresh_output_runtime_notice()
         self._refresh_selected_test_scope_status()
@@ -3911,7 +3921,10 @@ class BringupControlUI(tk.Tk):
         """
         self._request_runtime_state_refresh()
         if self._manual_duty_popup is not None:
-            self._close_manual_duty_popup(stop_motor=True)
+            self._dismiss_manual_duty_popup(
+                "Manual duty popup closed: outside click in live view.",
+                stop_motor=True,
+            )
 
     def _open_manual_duty_popup(
         self,
@@ -3925,7 +3938,11 @@ class BringupControlUI(tk.Tk):
         NAME
             _open_manual_duty_popup - Show a popup slider for manual motor duty.
         """
-        self._close_manual_duty_popup(stop_motor=True)
+        if self._manual_duty_popup is not None:
+            self._dismiss_manual_duty_popup(
+                "Manual duty popup closed: replaced by a new manual-duty popup.",
+                stop_motor=True,
+            )
         popup = tk.Toplevel(self)
         popup.title(MANUAL_DUTY_POPUP_TITLE)
         popup.transient(self)
@@ -3933,7 +3950,18 @@ class BringupControlUI(tk.Tk):
         popup.geometry(
             f"{MANUAL_DUTY_POPUP_SIZE}+{x_root + MANUAL_DUTY_POPUP_OFFSET_X}+{y_root + MANUAL_DUTY_POPUP_OFFSET_Y}"
         )
-        popup.protocol("WM_DELETE_WINDOW", lambda: self._close_manual_duty_popup(stop_motor=True))
+        popup.bind(
+            "<Destroy>",
+            lambda event, expected_popup=popup: self._on_manual_duty_popup_destroy(event, expected_popup),
+            add="+",
+        )
+        popup.protocol(
+            "WM_DELETE_WINDOW",
+            lambda: self._dismiss_manual_duty_popup(
+                "Manual duty popup closed: popup window dismissed.",
+                stop_motor=True,
+            ),
+        )
         body = ttk.Frame(popup, padding=8)
         body.pack(fill="both", expand=True)
         ttk.Label(body, text=label).pack(anchor="w")
@@ -3961,6 +3989,35 @@ class BringupControlUI(tk.Tk):
         self._manual_duty_last_sent_at = 0.0
         self._manual_duty_pending_after = None
         scale.focus_set()
+
+    def _emit_manual_duty_popup_reason(self, reason: str) -> None:
+        """
+        NAME
+            _emit_manual_duty_popup_reason - Mirror one popup-close reason to the UI log and stdout.
+        """
+        clean_reason = str(reason or NT_VALUE_EMPTY).strip()
+        if not clean_reason:
+            return
+        self._append_output(clean_reason)
+        try:
+            print(clean_reason, flush=True)
+        except Exception:
+            pass
+
+    def _on_manual_duty_popup_destroy(self, event: tk.Event, expected_popup: tk.Toplevel) -> None:
+        """
+        NAME
+            _on_manual_duty_popup_destroy - Log popup destruction that bypasses the normal dismiss helper.
+        """
+        if event is None or getattr(event, "widget", None) is not expected_popup:
+            return
+        reason = str(self.__dict__.pop("_manual_duty_popup_close_reason", NT_VALUE_EMPTY) or NT_VALUE_EMPTY).strip()
+        if reason:
+            return
+        if self._manual_duty_popup is expected_popup:
+            self._emit_manual_duty_popup_reason(
+                "Manual duty popup closed: popup destroyed unexpectedly."
+            )
 
     def _on_manual_duty_scale_button_down(self, event: tk.Event) -> Optional[str]:
         """
@@ -4013,6 +4070,19 @@ class BringupControlUI(tk.Tk):
                 pass
         if stop_motor and targets:
             self._send_manual_duty_clear(label, targets, group_name)
+
+    def _dismiss_manual_duty_popup(self, reason: str, stop_motor: bool) -> None:
+        """
+        NAME
+            _dismiss_manual_duty_popup - Log one operator-facing reason, then close the manual-duty popup.
+        """
+        if self._manual_duty_popup is None:
+            return
+        clean_reason = str(reason or NT_VALUE_EMPTY).strip()
+        if clean_reason:
+            self._manual_duty_popup_close_reason = clean_reason
+            self._emit_manual_duty_popup_reason(clean_reason)
+        self._close_manual_duty_popup(stop_motor=stop_motor)
 
     def _schedule_manual_duty_send(self) -> None:
         """
@@ -9785,10 +9855,12 @@ class BringupControlUI(tk.Tk):
             session_snapshot = self._session.fetch_session_snapshot()
             runtime_snapshot = self._session.fetch_runtime_state()
             tests_snapshot = self._session.fetch_tests_state()
+            fetched_at_ms = time.time() * 1000.0
             self._latest_tests_state_payload = dict(tests_snapshot or {})
             self._ui_table = _RestTableAdapter.from_runtime_state(
                 session_snapshot,
                 runtime_snapshot,
+                fetched_at_ms=fetched_at_ms,
             )
             self._tests_table = _RestTableAdapter.from_tests_state(tests_snapshot)
         if self._ui_table is not None:
@@ -9895,8 +9967,10 @@ class BringupControlUI(tk.Tk):
         self._apply_live_runtime_notice_from_nt_state(enabled, estopped, stale_state)
         blocked = self._manual_duty_block_message()
         if blocked and self._manual_duty_popup is not None:
-            self._append_output(blocked)
-            self._close_manual_duty_popup(stop_motor=False)
+            self._dismiss_manual_duty_popup(
+                f"Manual duty popup closed: {blocked}",
+                stop_motor=True,
+            )
         if (
             self._tcp_connected
             and not stale_state
@@ -10741,7 +10815,10 @@ class BringupControlUI(tk.Tk):
         NAME
             _handle_close - Handle UI close and notify caller.
         """
-        self._close_manual_duty_popup(stop_motor=True)
+        self._dismiss_manual_duty_popup(
+            "Manual duty popup closed: UI shutdown.",
+            stop_motor=True,
+        )
         self.release_lock()
         if self._on_close:
             self._on_close()
