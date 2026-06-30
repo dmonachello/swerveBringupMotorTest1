@@ -264,8 +264,8 @@
       "terminator": true
     }
   ],
-  "data_version": "2026-06-30_134714",
-  "data_hash": "2b75299d7f892afcc77503384df0e94d6cf542e4d712e4a1d92376fff163a592",
+  "data_version": "2026-06-30_162546",
+  "data_hash": "666ad86a8cb5c65271d694b259ffd53a9033bb9ea91cc2eddd4e2c9c70a0d698",
   "default_profile": "2026_no_swyfts",
   "bridgeConfig": {
     "schemaVersion": 2,
@@ -1681,8 +1681,8 @@
         "runnable": true
       },
       "test_minimal_25_9_spark25_leftY": {
-        "source": "test \"test_minimal_25_9_spark25_leftY\"\n\ndevice \"FALCON 9\"\ndevice \"lmtSw0\"\ndevice \"SPARKMAX/NEO 25\"\n\nmain:\n\tset \"FALCON 9\".output_percent_cmd = 0.15\n\n\tset \"SPARKMAX/NEO 25\".output_percent_cmd = 0.15\n\n\tabort \"SPARKMAX/NEO 25\".current_actual > 40\n\tabort \"FALCON 9\".current_actual > 40\n\n\tsuccess lmtSw0.pressed\n\tuntil timer.elapsed >= 6.0\n\n\t# test that the motor actialy moved\n\trequire \"SPARKMAX/NEO 25\".position_delta outside -1.0 1.0\n\trequire \"FALCON 9\".position_delta outside -1.0 1.0\n\trequire lmtSw0.pressed\n\trequire \"FALCON 9\".current_actual > 0.0\n\nclose:\n\n\n\n",
-        "sourceHash": "dc754f190b956ea82380a3d1d94b0de89ad2a9a946294947711b1b7c68d15068",
+        "source": "test \"test_minimal_25_9_spark25_leftY\"\n\ndevice \"FALCON 9\"\ndevice \"lmtSw0\"\ndevice \"SPARKMAX/NEO 25\"\n\nmain:\n\tset \"FALCON 9\".output_percent_cmd = 0.15\n\n\tset \"SPARKMAX/NEO 25\".output_percent_cmd = 0.15\n\n\tabort \"SPARKMAX/NEO 25\".current_actual > 40\n\tabort \"FALCON 9\".current_actual > 40\n\n\tsuccess lmtSw0.pressed\n\tuntil timer.elapsed >= 6.0\n\n\t# verify that the motor actually moved\n\trequire \"SPARKMAX/NEO 25\".position_delta outside -1.0 1.0\n\trequire \"FALCON 9\".position_delta outside -1.0 1.0\n\n\t# fail if the limit switch was not pressed during the test\n\trequire lmtSw0.pressed\n\n\trequire \"FALCON 9\".current_actual > 0.0\n\nclose:\n\n\n\n",
+        "sourceHash": "ca1dd5e4c27cd3dd77481d9efbe5fc2f61cd75a7c1cbb765a54088fd19e91693",
         "normalized": {
           "name": "test_minimal_25_9_spark25_leftY",
           "devices": [
