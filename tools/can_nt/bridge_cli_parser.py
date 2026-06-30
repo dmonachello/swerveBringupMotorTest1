@@ -128,6 +128,8 @@ CMD_NODES = "nodes"
 CMD_EDGES = "edges"
 CMD_CLEAR = "clear"
 CMD_SELECT = "select"
+CMD_ACTIVATE_TESTS = "activate"
+CMD_DEACTIVATE_TESTS = "deactivate"
 CMD_RUN_ALL = "run-all"
 CMD_STOP_LATCH = "stop-latch"
 CMD_SAFETY_LATCH = "safety-latch"
@@ -741,6 +743,10 @@ class BridgeCliParser:
                 kind = SPEC.kind_exec_tests_select
             elif sub == SPEC.cmd_toggle:
                 kind = SPEC.kind_exec_tests_toggle
+            elif sub == CMD_ACTIVATE_TESTS:
+                kind = SPEC.kind_exec_tests_activate
+            elif sub == CMD_DEACTIVATE_TESTS:
+                kind = SPEC.kind_exec_tests_deactivate
             elif sub == SPEC.cmd_run:
                 kind = SPEC.kind_exec_tests_run
             elif sub == CMD_RUN_ALL:
@@ -800,6 +806,10 @@ class BridgeCliParser:
                 kind = SPEC.kind_exec_tests_select
             elif sub == SPEC.cmd_toggle:
                 kind = SPEC.kind_exec_tests_toggle
+            elif sub == CMD_ACTIVATE_TESTS:
+                kind = SPEC.kind_exec_tests_activate
+            elif sub == CMD_DEACTIVATE_TESTS:
+                kind = SPEC.kind_exec_tests_deactivate
             elif sub == SPEC.cmd_run:
                 kind = SPEC.kind_exec_tests_run
             elif sub == CMD_RUN_ALL:

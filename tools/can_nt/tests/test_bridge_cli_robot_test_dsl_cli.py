@@ -122,6 +122,13 @@ class BridgeCliRobotTestDslCliTests(unittest.TestCase):
             self.assertEqual(show_result.code, SS__NORMAL)
             self.assertIn('"name": "spin_up_motor1"', output.getvalue())
 
+    def test_show_tests_robot_is_not_treated_as_local_dsl_authoring(self) -> None:
+        cli = self._build_cli(connected=True)
+
+        self.assertFalse(cli._is_test_authoring_command(["show", "tests", "robot"]))
+        self.assertFalse(cli._is_test_authoring_command(["show", "tests", "both"]))
+        self.assertTrue(cli._is_test_authoring_command(["show", "tests"]))
+
     def test_validate_reports_unknown_profile(self) -> None:
         cli = self._build_cli()
         output = io.StringIO()
@@ -593,6 +600,58 @@ class BridgeCliRobotTestDslCliTests(unittest.TestCase):
         self.assertEqual(cli._session.sent_commands, [("runTest", {})])
         self.assertEqual(captured, [(7, 12.0, False)])
 
+    def test_tests_activate_dispatches_selected_test_lifecycle_activation(self) -> None:
+        cli = self._build_cli(connected=True)
+        event = BridgeEvent(
+            type="ack",
+            seq=1,
+            name="activateSelectedTestDevices",
+            status="ok",
+            message="OK",
+            text="",
+            json_text="{}",
+            ts=0.0,
+            session_id="s",
+            state={},
+            raw={},
+        )
+        cli._wait_for_seq = lambda seq, print_events=True: event
+        cli._event_failed = lambda incoming, label: False
+
+        result = cli._execute_line("tests activate")
+
+        self.assertEqual(result.code, SS__NORMAL)
+        self.assertEqual(
+            cli._session.sent_commands,
+            [("activateSelectedTestDevices", {"mode": "READ_ONLY"})],
+        )
+
+    def test_tests_deactivate_dispatches_selected_test_lifecycle_deactivation(self) -> None:
+        cli = self._build_cli(connected=True)
+        event = BridgeEvent(
+            type="ack",
+            seq=1,
+            name="deactivateSelectedTestDevices",
+            status="ok",
+            message="OK",
+            text="",
+            json_text="{}",
+            ts=0.0,
+            session_id="s",
+            state={},
+            raw={},
+        )
+        cli._wait_for_seq = lambda seq, print_events=True: event
+        cli._event_failed = lambda incoming, label: False
+
+        result = cli._execute_line("tests deactivate")
+
+        self.assertEqual(result.code, SS__NORMAL)
+        self.assertEqual(
+            cli._session.sent_commands,
+            [("deactivateSelectedTestDevices", {})],
+        )
+
     def test_tests_run_all_wait_dispatches_and_waits_for_summary(self) -> None:
         cli = self._build_cli(connected=True)
         event = BridgeEvent(
@@ -620,7 +679,7 @@ class BridgeCliRobotTestDslCliTests(unittest.TestCase):
 
         self.assertEqual(result.code, SS__NORMAL)
         self.assertEqual(cli._session.sent_commands, [("runAllTests", {})])
-        self.assertEqual(captured, [(11, 10.0, True)])
+        self.assertEqual(captured, [(11, 120.0, True)])
 
     def test_finish_tests_wait_prints_detailed_summary(self) -> None:
         cli = self._build_cli()

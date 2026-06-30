@@ -33,9 +33,12 @@ from .command_catalog_service import (
     merge_host_ui_actions as merge_host_ui_actions_shared,
 )
 from .command_workflow_service import send_tracked_command
+from .can_bus_report_service import build_host_can_bus_report
 from .bridge_ops import (
     _resolve_device_type_label,
+    activate_selected_test_devices,
     connect,
+    deactivate_selected_test_devices,
     download_current_config,
     disconnect,
     lifecycle_activate,
@@ -52,6 +55,15 @@ from .bridge_ops import (
     ui_ping,
 )
 from .bridge_session import BridgeEvent, BridgeSession
+from .dsl_reference import (
+    TEST_SOURCE_REFERENCE_GEOMETRY,
+    TEST_SOURCE_REFERENCE_OVERVIEW,
+    TEST_SOURCE_REFERENCE_TITLE,
+    TEST_SOURCE_REFERENCE_TREE_WIDTH,
+    collect_dsl_reference_topic_map,
+    dsl_reference_topics,
+    render_dsl_reference_detail,
+)
 from .host_ui_actions import (
     ACTION_KIND_HOST_LOCAL,
     ACTION_SOURCE_HOST,
@@ -176,6 +188,139 @@ PRESENCE_VALUES = {
     PRESENCE_VALUE_NONE,
 }
 
+
+class _RestValueAdapter:
+    """
+    NAME
+        _RestValueAdapter - Small value wrapper matching the NT entry getter shape.
+    """
+
+    def __init__(self, value: Any) -> None:
+        self._value = value
+
+    def getString(self, default: str) -> str:
+        value = self._value
+        if value is None:
+            return default
+        if isinstance(value, str):
+            return value
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        return str(value)
+
+    def getDouble(self, default: float) -> float:
+        value = self._value
+        try:
+            return float(value)
+        except Exception:
+            return default
+
+    def getBoolean(self, default: bool) -> bool:
+        value = self._value
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in ("true", "1", "yes", "on"):
+                return True
+            if normalized in ("false", "0", "no", "off", ""):
+                return False
+        return default
+
+
+class _RestTableAdapter:
+    """
+    NAME
+        _RestTableAdapter - Small nested-table wrapper matching the NT table getter shape.
+    """
+
+    def __init__(self, payload: Any) -> None:
+        self._payload = payload if isinstance(payload, dict) else {}
+
+    @classmethod
+    def from_runtime_state(cls, session_state: Dict[str, Any], runtime_state: Dict[str, Any]) -> "_RestTableAdapter":
+        state = {
+            "sessionId": str(session_state.get("sessionId", "") or ""),
+            "enabled": bool(runtime_state.get("enabled", False)),
+            "estopped": bool(runtime_state.get("estopped", False)),
+            "mode": str(runtime_state.get("mode", "disabled") or "disabled"),
+            "lastAckMs": float(session_state.get("lastActivityMs", 0.0) or 0.0),
+            "selectedProfile": str(runtime_state.get("selectedProfile", PROFILE_NONE) or PROFILE_NONE),
+            "activeRuntimeProfile": str(runtime_state.get("activeRuntimeProfile", PROFILE_NONE) or PROFILE_NONE),
+        }
+        return cls({"state": state})
+
+    @classmethod
+    def from_tests_state(cls, tests_state: Dict[str, Any]) -> "_RestTableAdapter":
+        rows_payload: Dict[str, Any] = {}
+        rows = tests_state.get("rows")
+        if isinstance(rows, list):
+            for index, row in enumerate(rows):
+                if not isinstance(row, dict):
+                    continue
+                required_devices = row.get("requiredDevices")
+                required_text = ""
+                if isinstance(required_devices, list):
+                    required_text = ",".join(
+                        str(part).strip() for part in required_devices if str(part).strip()
+                    )
+                row_payload = dict(row)
+                row_payload["requiredDevices"] = required_text
+                rows_payload[str(index)] = row_payload
+        run = tests_state.get("run")
+        run_payload = run if isinstance(run, dict) else {}
+        selected_name = ""
+        active_name = ""
+        active_status = ""
+        run_all_active = False
+        if isinstance(rows, list):
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                if bool(row.get("selected", False)) and not selected_name:
+                    selected_name = str(row.get("name", "") or "").strip()
+                status = str(row.get("status", "") or "").strip().lower()
+                if status == "running" and not active_name:
+                    active_name = str(row.get("name", "") or "").strip()
+                    active_status = status
+        table_payload = {
+            "totalCount": len(rows_payload),
+            "selectedName": selected_name,
+            "activeName": active_name,
+            "activeStatus": active_status,
+            "runAllActive": run_all_active,
+            "runId": run_payload.get("runId", 0),
+            "runState": str(run_payload.get("state", "") or ""),
+            "runTest": str(run_payload.get("test", "") or ""),
+            "runResult": str(run_payload.get("result", "") or ""),
+            "runStatus": str(run_payload.get("status", "") or ""),
+            "runMessage": str(run_payload.get("message", "") or ""),
+            "runStartedAtMs": run_payload.get("startedAtMs", 0),
+            "runFinishedAtMs": run_payload.get("finishedAtMs", 0),
+            "rows": rows_payload,
+        }
+        return cls(table_payload)
+
+    def getEntry(self, key: str) -> _RestValueAdapter:
+        value: Any = self._payload
+        for part in str(key or "").split("/"):
+            if not isinstance(value, dict):
+                value = None
+                break
+            value = value.get(part)
+        return _RestValueAdapter(value)
+
+    def getSubTable(self, key: str) -> "_RestTableAdapter":
+        value: Any = self._payload
+        for part in str(key or "").split("/"):
+            if not isinstance(value, dict):
+                value = {}
+                break
+            value = value.get(part, {})
+        return _RestTableAdapter(value if isinstance(value, dict) else {})
+
 # Constants (device dict keys).
 DEVICE_KEY_LABEL = "label"
 DEVICE_KEY_MFG = KEY_MANUFACTURER
@@ -208,6 +353,8 @@ BUTTON_PUSH_CONFIG = "Push Config"
 BUTTON_DOWNLOAD_CONFIG = "Download Current Config"
 BUTTON_SHOW_RUNTIME_STATE = "Show Runtime State"
 BUTTON_SHOW_LIFECYCLE_STATE = "Show Lifecycle State"
+CMD_PRINT_CAN_DIAG = "printCANdiag"
+CMD_PRINT_NT_DIAG = "printNTdiag"
 GROUP_SOURCE_MANUAL = "manual"
 GROUP_SOURCE_SELECTED_TEST = "selected test"
 GROUP_SOURCE_LABEL_PREFIX = "Active Group Source: "
@@ -220,6 +367,9 @@ OUTPUT_NO_SELECTED_TEST = "no selected test"
 OUTPUT_PUSH_CANCELLED = "Config push cancelled."
 OUTPUT_DOWNLOAD_CANCELLED = "Config download cancelled."
 OUTPUT_PUSH_START_FMT = "PUSH {path} profile={profile}"
+OUTPUT_PUSH_PROGRESS_FMT = "Push Config: {detail}"
+OUTPUT_PUSH_SUCCESS = "Push Config: OK"
+OUTPUT_PUSH_FAILURE = "Push Config: FAILED"
 OUTPUT_DOWNLOAD_START_FMT = "DOWNLOAD {path}"
 OUTPUT_RUNTIME_ACTIVATE_FMT = "CMD runtimeActivate \"{profile}\""
 OUTPUT_RUNTIME_DEACTIVATE = "CMD runtimeDeactivate"
@@ -233,6 +383,12 @@ OUTPUT_GROUP_RUN_FMT = "CMD groupRunTest \"{group}\""
 OUTPUT_OWNER_REQUIRED = "Owning control client required. Use Reconnect UI Session to reclaim control."
 DOWNLOAD_FILENAME = "bringup_system.downloaded.json"
 CONFIG_FILE_TYPES = (("JSON files", "*.json"), ("All files", "*.*"))
+PROFILES_APPLY_STAGE_KEYS = (
+    ("transfer check", "transferCheck"),
+    ("content validation", "contentValidation"),
+    ("apply", "apply"),
+    ("post-apply check", "postApplyCheck"),
+)
 DEVICE_TYPE_MOTOR = "2"
 CMD_GROUP_RUN_TEST = "groupRunTest"
 CMD_GROUP_ADD_DEVICE = "groupAddDevice"
@@ -720,17 +876,25 @@ TEST_LIBRARY_STATUS_FMT = (
 TEST_LIBRARY_SELECTION_LABEL = "Current Test"
 TEST_LIBRARY_RUNNING_DEFAULT = "Running: (none)"
 TEST_LIBRARY_LAST_RESULT_DEFAULT = "Last Result: (none)"
+TEST_FAILURE_PREFIX = "Test failure detail:"
+TEST_SUCCESS_PREFIX = "Test success detail:"
+TEST_FAILURE_REQUIRE_PREFIX = "require not satisfied:"
+TEST_FAILURE_SIGNAL_SET_PREFIX = "signal fallback active:"
+TEST_FAILURE_LAST_SAMPLES_PREFIX = "last samples:"
+TEST_FAILURE_SAMPLE_LIMIT = 3
 TEST_LIBRARY_STATUS_INACTIVE_PREFIX = "selected test inactive - "
-TEST_LIBRARY_STATUS_READY = "active-group active - ready to run"
+TEST_LIBRARY_STATUS_READY = "selected test devices active - ready to run"
 TEST_LIBRARY_STATUS_NO_SELECTED_TEST = TEST_LIBRARY_STATUS_INACTIVE_PREFIX + OUTPUT_NO_SELECTED_TEST
-TEST_LIBRARY_STATUS_LOADED_NOT_ACTIVATED = "active-group loaded from selected test - not activated"
+TEST_LIBRARY_STATUS_LOADED_NOT_ACTIVATED = "selected test scope ready - not activated"
 TEST_LIBRARY_STATUS_MANUAL_RESTORED = "manual active-group restored - not activated"
 TEST_LIBRARY_STATUS_BLOCKED_ESTOP = "robot disabled (E-Stop)"
 TEST_LIBRARY_STATUS_BLOCKED_DISABLED = "robot disabled"
 TEST_LIBRARY_STATUS_BLOCKED_NOT_TELEOP = "robot not in teleop"
-TEST_SCOPE_DETAIL_NO_SELECTION = "Select a test from one of the library lists to load its devices into active-group."
+TEST_SCOPE_DETAIL_NO_SELECTION = (
+    "Select a test from one of the library lists to show the devices that test uses."
+)
 TEST_SCOPE_DETAIL_LOADED_NOT_ACTIVATED = (
-    "This test has loaded its required devices into active-group. "
+    "This test requires the devices shown in Selected Test Devices. "
     "Press Activate Group, then run the test."
 )
 TEST_SCOPE_DETAIL_MANUAL_RESTORED = (
@@ -757,6 +921,9 @@ TEST_SCOPE_DETAIL_MISSING_DEVICE_PREFIX = (
 )
 TEST_SCOPE_DETAIL_REQUIRED_UNAVAILABLE = (
     "This test cannot run because one or more required devices are not available."
+)
+TEST_SCOPE_DETAIL_NOT_LOADED_ON_ROBOT = (
+    "This test exists locally, but the robot has not loaded it into the current runnable test set."
 )
 TEST_SCOPE_DETAIL_BLOCKED_ESTOP = (
     "This test cannot run because the robot is E-stopped. Clear the E-stop before activating the group or running the test."
@@ -794,16 +961,16 @@ TEST_RESULT_PASS_FG = "#166534"
 TEST_RESULT_FAIL_FG = "#991b1b"
 TEST_RESULT_RUNNING_FG = "#1d4ed8"
 TEST_RESULT_NEUTRAL_FG = "#374151"
-TEST_ACTIVE_GROUP_TITLE = "Active Group"
+TEST_ACTIVE_GROUP_TITLE = "Selected Test Devices"
 TEST_ACTIVE_GROUP_STATUS_LOCKED = "locked"
 TEST_ACTIVE_GROUP_STATUS_INVALID = "invalid"
 TEST_ACTIVE_GROUP_STATUS_NOT_ACTIVATED = "not instantiated"
 TEST_ACTIVE_GROUP_STATUS_ENABLED = "enabled"
-TEST_ACTIVE_GROUP_PANEL_EMPTY = "No test-owned active-group members."
+TEST_ACTIVE_GROUP_PANEL_EMPTY = "No selected-test devices."
 TEST_ACTIVE_GROUP_SINGLETON_LABELS = {"controller0", "roborio", "pdp"}
 TEST_LIBRARY_NOTE_TEXT = (
     "The Tests tab has three sources: external Global Library, config-shared Config Library, "
-    "and selected-profile Profile Tests. Selecting a test loads active-group from that DSL test. "
+    "and selected-profile Profile Tests. Selecting a test shows the devices required by that DSL test. "
     "Use Push Config to make config/profile changes available on the robot."
 )
 TEST_LIBRARY_SET_NONE = "(none)"
@@ -816,13 +983,6 @@ TEST_LIBRARY_RESULTS_TITLE = "Test Activity"
 TEST_LIBRARY_DEVICES_EMPTY = "(none)"
 TEST_LIBRARY_RESULTS_HEIGHT = 8
 TEST_SOURCE_TAB_LABEL = "Source Editor"
-TEST_SOURCE_REFERENCE_TITLE = "DSL Reference"
-TEST_SOURCE_REFERENCE_GEOMETRY = "420x180"
-TEST_SOURCE_REFERENCE_TEXT = (
-    'Top level: test "name", device "label"\n'
-    "Phases: init:, main:, close:\n"
-    "Statements: set, clear, until, abort, success, require, unsafe-exit"
-)
 TEST_SOURCE_COMPLETION_POPUP_TITLE = "Signal Completion"
 TEST_SOURCE_COMPLETION_DEVICE_PATTERN = r'(?:\"([^\"]+)\"|([A-Za-z_][A-Za-z0-9_]*))\.$'
 TEST_SOURCE_COMPLETION_EMPTY = "(no signals)"
@@ -876,6 +1036,13 @@ HIDDEN_LEFT_RAIL_COMMANDS = {
     "toggleEnabled",
 }
 TEST_ACTIVITY_COMMANDS = {
+    "activepresenceprobe",
+    "dumpreport",
+    "printcancoder",
+    "printcandiag",
+    "printhealth",
+    "printinputs",
+    "printprofiledevices",
     "printstate",
     "printtestsinfo",
     "printtestsoverview",
@@ -889,6 +1056,10 @@ TEST_ACTIVITY_COMMANDS = {
     "testprev",
     "selecttestnext",
     "selecttestprev",
+    "showruntimestate",
+    "showsources",
+    "showstatus",
+    "showversion",
     "toggleenabled",
     "groupreplacemembers",
     "lifecycleactivate",
@@ -945,17 +1116,63 @@ def _merge_host_ui_actions(
     )
 
 
+def _normalize_loaded_command_metadata(
+    actions_by_name: Dict[str, Dict[str, Any]],
+    sections: List[Dict[str, Any]],
+) -> Tuple[Dict[str, Dict[str, Any]], List[Dict[str, Any]]]:
+    """
+    NAME
+        _normalize_loaded_command_metadata - Apply host-owned command ownership overrides.
+    """
+    normalized_actions = {
+        str(name): dict(row) for name, row in actions_by_name.items() if isinstance(row, dict)
+    }
+    nt_row = normalized_actions.get(CMD_PRINT_NT_DIAG)
+    if isinstance(nt_row, dict):
+        nt_row[INVENTORY_KEY_SHOW_IN_HOST_UI] = False
+        normalized_actions[CMD_PRINT_NT_DIAG] = nt_row
+    can_row = normalized_actions.get(CMD_PRINT_CAN_DIAG)
+    if isinstance(can_row, dict):
+        can_row[INVENTORY_KEY_ACTION_KIND] = ACTION_KIND_HOST_LOCAL
+        can_row[INVENTORY_KEY_SOURCE] = ACTION_SOURCE_HOST
+        normalized_actions[CMD_PRINT_CAN_DIAG] = can_row
+    normalized_sections: List[Dict[str, Any]] = []
+    for section in sections:
+        if not isinstance(section, dict):
+            continue
+        commands = section.get("commands")
+        if not isinstance(commands, list):
+            normalized_sections.append(dict(section))
+            continue
+        filtered_commands: List[Dict[str, Any]] = []
+        for row in commands:
+            if not isinstance(row, dict):
+                continue
+            name = str(row.get("name", "")).strip()
+            if name == CMD_PRINT_NT_DIAG:
+                continue
+            if name == CMD_PRINT_CAN_DIAG and name in normalized_actions:
+                filtered_commands.append(dict(normalized_actions[name]))
+                continue
+            filtered_commands.append(dict(row))
+        new_section = dict(section)
+        new_section["commands"] = filtered_commands
+        normalized_sections.append(new_section)
+    return normalized_actions, normalized_sections
+
+
 def _load_generated_command_metadata() -> Tuple[Dict[str, Dict[str, Any]], List[Dict[str, Any]]]:
     """
     NAME
         _load_generated_command_metadata - Load merged robot and host UI action metadata.
     """
-    return load_host_ui_command_metadata(
+    actions_by_name, sections = load_host_ui_command_metadata(
         HOST_UI_ACTIONS,
         ACTION_SOURCE_ROBOT,
         ACTION_SOURCE_HOST,
         ACTION_KIND_HOST_LOCAL,
     )
+    return _normalize_loaded_command_metadata(actions_by_name, sections)
 
 
 def _sanitize_stream_output_line(line: object) -> str:
@@ -1413,6 +1630,16 @@ def _attachment_string_list(attachment: Optional[Dict[str, Any]], key: str) -> L
     return out
 
 
+def _format_test_detail_value(value: object) -> str:
+    """
+    NAME
+        _format_test_detail_value - Format one test detail sample value for concise UI display.
+    """
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, float):
+        return f"{value:.3f}"
+    return str(value)
 class BringupControlUI(tk.Tk):
     """
     NAME
@@ -1545,6 +1772,7 @@ class BringupControlUI(tk.Tk):
         self._runtime_state_path: Optional[str] = None
         self._runtime_state_path_mtime: Optional[float] = None
         self._latest_runtime_state_payload: Dict[str, Any] = {}
+        self._latest_tests_state_payload: Dict[str, Any] = {}
         self._latest_runtime_devices: Dict[str, Dict[str, Any]] = {}
         self._presence_overrides_file: Dict[str, str] = {}
         self._presence_timeline: List[Dict[str, Any]] = []
@@ -1582,8 +1810,10 @@ class BringupControlUI(tk.Tk):
         self._pending_tests_boundary_transition: Optional[Tuple[str, str]] = None
         self._robot_selected_profile = PROFILE_NONE
         self._robot_active_runtime_profile = PROFILE_NONE
+        self._pending_robot_profile_selection = PROFILE_NONE
         self._last_profile_context = PROFILE_NONE
         self._last_profile_mismatch_prompt: Optional[Tuple[str, str]] = None
+        self._last_test_result_signature: Optional[Tuple[int, str, str]] = None
         self._ui_command_prefs = _load_ui_command_prefs()
         self._ui_auto_select_default_profile = _load_ui_auto_select_default_pref()
         self._ui_show_visibility_tab = _load_ui_show_visibility_tab_pref()
@@ -2680,9 +2910,9 @@ class BringupControlUI(tk.Tk):
         selected_name = str(name or "").strip()
         if not selected_name or selected_name == PROFILE_NONE:
             return
-        self._selected_test_var.set(selected_name)
         tests_tab_active = self._current_right_tab_text() == TEST_LIBRARY_TAB_LABEL
         if not tests_tab_active:
+            self._selected_test_var.set(selected_name)
             self._refresh_selected_test_scope_status()
             return
         if not self._tcp_connected:
@@ -2691,6 +2921,12 @@ class BringupControlUI(tk.Tk):
         if self._tracker.is_pending():
             self._refresh_selected_test_scope_status()
             return
+        if not self._robot_knows_test_name(selected_name):
+            self._append_output(TEST_SCOPE_DETAIL_NOT_LOADED_ON_ROBOT)
+            self._append_test_output(TEST_SCOPE_DETAIL_NOT_LOADED_ON_ROBOT)
+            self._refresh_selected_test_scope_status()
+            return
+        self._selected_test_var.set(selected_name)
         if selected_name == self._last_selected_test:
             self._refresh_selected_test_scope_status()
             return
@@ -2706,10 +2942,23 @@ class BringupControlUI(tk.Tk):
         if self._tests_active_group_membership_key == previous_key:
             self._refresh_selected_test_scope_status()
 
+    def _robot_knows_test_name(self, name: str) -> bool:
+        """
+        NAME
+            _robot_knows_test_name - Return whether the robot currently reports one test name in /tests/state rows.
+        """
+        target = str(name or "").strip()
+        if not target:
+            return False
+        for candidate in self._resolve_test_names_from_rows():
+            if str(candidate or "").strip() == target:
+                return True
+        return False
+
     def _handle_tests_boundary_transition(self, previous_tab: str, current_tab: str) -> None:
         """
         NAME
-            _handle_tests_boundary_transition - Apply V2 deactivate/clear/restore behavior when crossing Tests and non-Tests.
+            _handle_tests_boundary_transition - Keep selected-test scope ownership coherent when crossing Tests and non-Tests.
         """
         previous_is_tests = previous_tab == TEST_LIBRARY_TAB_LABEL
         current_is_tests = current_tab == TEST_LIBRARY_TAB_LABEL
@@ -2722,14 +2971,11 @@ class BringupControlUI(tk.Tk):
             return
         self._pending_tests_boundary_transition = None
         if previous_is_tests:
-            self._deactivate_group_blocking()
-            self._restore_manual_active_group_members()
             self._group_owner_mode = GROUP_SOURCE_MANUAL
+            self._deactivate_selected_test_scope_blocking()
             return
-        self._remembered_manual_active_group_members = self._runtime_active_group_members()
-        self._deactivate_group_blocking()
-        self._load_selected_test_into_active_group(force_replace=True)
         self._group_owner_mode = GROUP_SOURCE_SELECTED_TEST
+        self._load_selected_test_into_active_group(force_replace=True)
 
     def _runtime_active_group_payload(self) -> Dict[str, Any]:
         """
@@ -2779,7 +3025,7 @@ class BringupControlUI(tk.Tk):
     def _send_and_wait(self, command: str, args: Dict[str, Any]) -> bool:
         """
         NAME
-            _send_and_wait - Send one tracked command and block briefly until its OUT event arrives.
+            _send_and_wait - Send one tracked command and block briefly until its terminal OUT result arrives.
         """
         seq = send_tracked_command(
             self._session,
@@ -2793,6 +3039,7 @@ class BringupControlUI(tk.Tk):
             return False
         self._last_sent_seq = seq
         deadline = time.time() + 2.0
+        ack_status = ""
         while time.time() < deadline:
             events = self._session.poll_events()
             if not events:
@@ -2800,9 +3047,12 @@ class BringupControlUI(tk.Tk):
                 time.sleep(0.02)
                 continue
             for event in events:
+                if int(event.seq) == int(seq) and event.type == "ack":
+                    ack_status = str(event.status or "").strip().lower()
                 self._handle_tcp_response(event)
                 if int(event.seq) == int(seq) and event.type == "out":
-                    return True
+                    final_status = ack_status or str(event.status or "").strip().lower()
+                    return final_status == "ok"
         self._tracker.clear_pending()
         self._append_output("TIMEOUT waiting for ACK/OUT.")
         return False
@@ -2816,6 +3066,19 @@ class BringupControlUI(tk.Tk):
         self._append_output(f"{ts} {OUTPUT_LIFECYCLE_DEACTIVATE_ACTIVE}")
         self._last_cmd = ("lifecycleDeactivateActive", {})
         ok = self._send_and_wait("lifecycleDeactivateActive", {})
+        if not ok:
+            return False
+        return True
+
+    def _deactivate_selected_test_scope_blocking(self) -> bool:
+        """
+        NAME
+            _deactivate_selected_test_scope_blocking - Deactivate the selected-test lifecycle scope when leaving Tests.
+        """
+        ts = timestamp_hms()
+        self._append_output(f"{ts} CMD deactivateSelectedTestDevices")
+        self._last_cmd = ("deactivateSelectedTestDevices", {})
+        ok = self._send_and_wait("deactivateSelectedTestDevices", {})
         if not ok:
             return False
         return True
@@ -2840,10 +3103,13 @@ class BringupControlUI(tk.Tk):
     def _selected_test_required_rows(self) -> List[Dict[str, Any]]:
         """
         NAME
-            _selected_test_required_rows - Build ordered Tests-tab active-group rows from the selected local DSL declaration.
+            _selected_test_required_rows - Build ordered Tests-tab scope rows from robot-required devices with local fallback.
         """
         selected_name = str(self._selected_test_var.get() or "").strip()
-        required_devices = self._selected_test_declared_required_devices(selected_name)
+        selected_row = self._selected_test_row(selected_name)
+        required_devices = list(selected_row.get("requiredDevices", [])) if isinstance(selected_row, dict) else []
+        if not required_devices:
+            required_devices = self._selected_test_declared_required_devices(selected_name)
         test_profile_devices = self.__dict__.get("_test_profile_devices", {})
         profile_devices = self.__dict__.get("_profile_devices", {})
         rows: List[Dict[str, Any]] = []
@@ -2921,7 +3187,7 @@ class BringupControlUI(tk.Tk):
     def _load_selected_test_into_active_group(self, force_replace: bool = False) -> None:
         """
         NAME
-            _load_selected_test_into_active_group - Rebuild active-group from the selected DSL test while in Tests.
+            _load_selected_test_into_active_group - Refresh the Tests-tab selected-test scope display model.
         """
         rows = self._selected_test_required_rows()
         membership_key = self._tests_active_group_membership_key_for_rows(rows)
@@ -2932,17 +3198,7 @@ class BringupControlUI(tk.Tk):
             return
         self._tests_active_group_rows = rows
         self._tests_active_group_membership_key = membership_key
-        if changed and self._active_group_is_currently_active():
-            self._deactivate_group_blocking()
-        valid_members = [
-            {"label": row["label"], "enabled": True}
-            for row in rows
-            if not bool(row.get("invalid"))
-        ]
-        if self._tcp_connected and not self._tracker.is_pending():
-            self._replace_active_group_members(valid_members)
-            self.after_idle(self._request_runtime_state_refresh)
-        self._set_runtime_event_notice(TEST_LIBRARY_STATUS_LOADED_NOT_ACTIVATED, "info")
+        self._tests_active_group_loaded_to_robot = None
         self._refresh_tests_active_group_panel()
 
     def _restore_manual_active_group_members(self) -> None:
@@ -2951,6 +3207,7 @@ class BringupControlUI(tk.Tk):
             _restore_manual_active_group_members - Restore the remembered manual active-group membership after leaving Tests.
         """
         members = list(self.__dict__.get("_remembered_manual_active_group_members", []))
+        self._tests_active_group_loaded_to_robot = None
         if self._tcp_connected and not self._tracker.is_pending():
             self._replace_active_group_members(members)
             self.after_idle(self._request_runtime_state_refresh)
@@ -3067,16 +3324,45 @@ class BringupControlUI(tk.Tk):
         if name == self._last_selected_profile:
             return
         self._last_selected_profile = name
+        self._pending_robot_profile_selection = name
         if name == PROFILE_NONE:
             return
+        self._maybe_send_pending_robot_profile_selection()
+
+    def _can_send_profile_selection_now(self) -> bool:
+        """
+        NAME
+            _can_send_profile_selection_now - Return whether the UI can send selectProfile immediately.
+        """
         if not self._tcp_connected or not self._handshake_done:
-            return
-        if self._tracker.is_pending():
-            return
-        seq = send_command(self._session, "selectProfile", {"name": name})
-        if seq is not None:
-            self._last_sent_seq = seq
-            self._tracker.start("selectProfile", {"name": name}, seq, now=time.time())
+            return False
+        tracker = getattr(self, "_tracker", None)
+        if tracker is not None and tracker.is_pending():
+            return False
+        return True
+
+    def _maybe_send_pending_robot_profile_selection(self) -> bool:
+        """
+        NAME
+            _maybe_send_pending_robot_profile_selection - Flush one deferred selectProfile request when transport is ready.
+        """
+        pending_name = _normalize_profile_name(
+            self.__dict__.get("_pending_robot_profile_selection", PROFILE_NONE)
+        )
+        if pending_name == PROFILE_NONE:
+            return False
+        if not self._can_send_profile_selection_now():
+            return False
+        if _normalize_profile_name(self.__dict__.get("_robot_selected_profile", PROFILE_NONE)) == pending_name:
+            self._pending_robot_profile_selection = PROFILE_NONE
+            return False
+        seq = send_command(self._session, "selectProfile", {"name": pending_name})
+        if seq is None:
+            return False
+        self._last_sent_seq = seq
+        self._tracker.start("selectProfile", {"name": pending_name}, seq, now=time.time())
+        self._pending_robot_profile_selection = PROFILE_NONE
+        return True
 
     def _selected_profile_name(self) -> str:
         """
@@ -3134,6 +3420,8 @@ class BringupControlUI(tk.Tk):
         NAME
             _maybe_prompt_host_profile_context_sync - Offer to align local UI context to the robot-selected profile.
         """
+        if _normalize_profile_name(self.__dict__.get("_pending_robot_profile_selection", PROFILE_NONE)) != PROFILE_NONE:
+            return
         if not hasattr(self, "_profile_box"):
             return
         available_profiles = tuple(str(value) for value in self._profile_box.cget("values"))
@@ -3346,6 +3634,7 @@ class BringupControlUI(tk.Tk):
         self._remembered_manual_active_group_members = []
         self._tests_active_group_rows = []
         self._tests_active_group_membership_key = tuple()
+        self._tests_active_group_loaded_to_robot = None
         self._group_owner_mode = GROUP_SOURCE_MANUAL
         self._manual_duty_last_sent_value = None
         self._manual_duty_last_sent_at = 0.0
@@ -6049,16 +6338,85 @@ class BringupControlUI(tk.Tk):
         window = tk.Toplevel(self)
         window.title(TEST_SOURCE_REFERENCE_TITLE)
         window.geometry(TEST_SOURCE_REFERENCE_GEOMETRY)
-        window.resizable(False, False)
+        window.resizable(True, True)
         window.protocol("WM_DELETE_WINDOW", window.destroy)
 
         body = ttk.Frame(window, padding=10)
         body.pack(fill="both", expand=True)
-        text_widget = tk.Text(body, wrap="word", height=6, state="normal")
-        text_widget.insert("end", TEST_SOURCE_REFERENCE_TEXT)
-        text_widget.configure(state="disabled")
-        text_widget.pack(fill="both", expand=True)
+        paned = ttk.Panedwindow(body, orient="horizontal")
+        paned.pack(fill="both", expand=True)
+
+        tree_frame = ttk.Frame(paned)
+        detail_frame = ttk.Frame(paned)
+        paned.add(tree_frame, weight=1)
+        paned.add(detail_frame, weight=3)
+
+        tree = ttk.Treeview(tree_frame, show="tree", selectmode="browse")
+        tree.pack(side="left", fill="both", expand=True)
+        tree_scroll = ttk.Scrollbar(tree_frame, command=tree.yview)
+        tree_scroll.pack(side="right", fill="y")
+        tree.configure(yscrollcommand=tree_scroll.set)
+
+        text_widget = tk.Text(detail_frame, wrap="word", state="normal")
+        text_widget.pack(side="left", fill="both", expand=True)
+        detail_scroll = ttk.Scrollbar(detail_frame, command=text_widget.yview)
+        detail_scroll.pack(side="right", fill="y")
+        text_widget.configure(yscrollcommand=detail_scroll.set)
+
+        topics = dsl_reference_topics()
+        topic_map = collect_dsl_reference_topic_map(topics)
+        self._test_source_reference_topic_map = topic_map
+        self._test_source_reference_tree = tree
+        self._test_source_reference_text = text_widget
+
+        def _add_topics(parent_id: str, nodes: List[Dict[str, object]]) -> None:
+            for node in nodes:
+                topic_id = str(node.get("id", "")).strip()
+                title = str(node.get("title", "")).strip()
+                if not topic_id or not title:
+                    continue
+                tree.insert(parent_id, "end", iid=topic_id, text=title, open=True)
+                children = node.get("children")
+                if isinstance(children, list):
+                    _add_topics(topic_id, [child for child in children if isinstance(child, dict)])
+
+        _add_topics("", topics)
+        tree.bind("<<TreeviewSelect>>", self._on_test_source_reference_selected)
+        if tree.exists(TEST_SOURCE_REFERENCE_OVERVIEW):
+            tree.selection_set(TEST_SOURCE_REFERENCE_OVERVIEW)
+            tree.focus(TEST_SOURCE_REFERENCE_OVERVIEW)
+            self._show_test_source_reference_topic(TEST_SOURCE_REFERENCE_OVERVIEW)
         return window
+
+    def _show_test_source_reference_topic(self, topic_id: str) -> None:
+        """
+        NAME
+            _show_test_source_reference_topic - Render one DSL reference topic into the detail pane.
+        """
+        topic_map = getattr(self, "_test_source_reference_topic_map", {})
+        text_widget = getattr(self, "_test_source_reference_text", None)
+        if text_widget is None or not isinstance(topic_map, dict):
+            return
+        topic = topic_map.get(topic_id)
+        if not isinstance(topic, dict):
+            return
+        text_widget.configure(state="normal")
+        text_widget.delete("1.0", "end")
+        text_widget.insert("end", render_dsl_reference_detail(topic))
+        text_widget.configure(state="disabled")
+
+    def _on_test_source_reference_selected(self, _event=None) -> None:
+        """
+        NAME
+            _on_test_source_reference_selected - Update detail text when the DSL reference tree selection changes.
+        """
+        tree = getattr(self, "_test_source_reference_tree", None)
+        if tree is None:
+            return
+        selection = tree.selection()
+        if not selection:
+            return
+        self._show_test_source_reference_topic(str(selection[0]))
 
     def _build_help_text(self) -> str:
         """
@@ -7774,6 +8132,9 @@ class BringupControlUI(tk.Tk):
         NAME
             _dispatch_host_local_action - Execute a host-local UI action.
         """
+        if command == CMD_PRINT_CAN_DIAG:
+            self._show_host_can_bus_report()
+            return True
         if command == HOST_ACTION_RECONNECT_UI_SESSION:
             self._reconnect_ui_session()
             return True
@@ -7790,11 +8151,33 @@ class BringupControlUI(tk.Tk):
         NAME
             _host_local_action_enabled - Return whether a host-local UI action should be enabled.
         """
+        if command == CMD_PRINT_CAN_DIAG:
+            return bool(self._tcp_connected) and not self._tracker.is_pending()
         if command == HOST_ACTION_RECONNECT_UI_SESSION:
             return not self._tracker.is_pending()
         if command in (HOST_ACTION_DSL_TEST_IMPORT, HOST_ACTION_DSL_TEST_VALIDATE):
             return not self._tracker.is_pending()
         return not self._tracker.is_pending()
+
+    def _show_host_can_bus_report(self) -> None:
+        """
+        NAME
+            _show_host_can_bus_report - Build the host-owned combined CAN bus report.
+        """
+        if not self._tcp_connected:
+            self._append_output(OUTPUT_NOT_CONNECTED)
+            return
+        if self._tracker.is_pending():
+            self._append_output(OUTPUT_BUSY)
+            self._append_test_output(OUTPUT_BUSY)
+            return
+        command_line = f"{timestamp_hms()} CMD {CMD_PRINT_CAN_DIAG}"
+        self._append_output(command_line)
+        self._append_test_output(command_line)
+        report = build_host_can_bus_report(self._session, self._visibility_provider)
+        for line in report.splitlines():
+            self._append_output(line)
+            self._append_test_output(line)
 
     def _retry_last_command(self) -> None:
         """
@@ -7919,9 +8302,13 @@ class BringupControlUI(tk.Tk):
         runtime_block_reason = self._test_runtime_block_reason()
         if runtime_block_reason:
             return runtime_block_reason
-        if not self._active_group_is_currently_active():
-            return TEST_LIBRARY_STATUS_LOADED_NOT_ACTIVATED
         row = self._selected_test_row(selected_name)
+        if not self._scope_is_currently_active():
+            if not isinstance(row, dict):
+                return "required devices unavailable"
+            if self.__dict__.get("_tests_active_group_loaded_to_robot") is False:
+                return "required devices unavailable"
+            return TEST_LIBRARY_STATUS_LOADED_NOT_ACTIVATED
         if not isinstance(row, dict):
             return "required devices unavailable"
         blocked_reason = str(row.get("blockedReason", "") or "").strip()
@@ -7951,10 +8338,11 @@ class BringupControlUI(tk.Tk):
         NAME
             _selected_test_row - Return the robot-published metadata row for one selected test.
         """
-        if self._tests_table is None or not selected_name:
+        tests_table = self.__dict__.get("_tests_table")
+        if tests_table is None or not selected_name:
             return None
-        total = int(self._tests_table.getEntry("totalCount").getDouble(0.0))
-        rows = self._tests_table.getSubTable("rows")
+        total = int(tests_table.getEntry("totalCount").getDouble(0.0))
+        rows = tests_table.getSubTable("rows")
         for i in range(total):
             row = rows.getSubTable(str(i))
             row_name = str(row.getEntry("name").getString("") or "").strip()
@@ -7980,6 +8368,116 @@ class BringupControlUI(tk.Tk):
         """
         return self._selected_test_inactive_reason() == ""
 
+    def _latest_test_run_payload(self) -> Dict[str, Any]:
+        """
+        NAME
+            _latest_test_run_payload - Return the latest raw run payload from /tests/state.
+        """
+        payload = self.__dict__.get("_latest_tests_state_payload", {})
+        if not isinstance(payload, dict):
+            return {}
+        run_payload = payload.get("run")
+        return run_payload if isinstance(run_payload, dict) else {}
+
+    def _format_test_last_samples(self, details: Dict[str, Any]) -> str:
+        """
+        NAME
+            _format_test_last_samples - Format a short last-samples summary for a failed test.
+        """
+        last_samples = details.get("lastSamples")
+        if not isinstance(last_samples, dict) or not last_samples:
+            return ""
+        parts: List[str] = []
+        for key in sorted(last_samples.keys()):
+            value = last_samples.get(key)
+            parts.append(f"{key}={_format_test_detail_value(value)}")
+            if len(parts) >= TEST_FAILURE_SAMPLE_LIMIT:
+                break
+        return f"{TEST_FAILURE_LAST_SAMPLES_PREFIX} " + ", ".join(parts) if parts else ""
+
+    def _format_test_failure_reason(self, run_payload: Dict[str, Any]) -> str:
+        """
+        NAME
+            _format_test_failure_reason - Build a concise human-readable reason for one failed test run.
+        """
+        if not isinstance(run_payload, dict):
+            return ""
+        run_message = str(run_payload.get("message", "") or "").strip()
+        details = run_payload.get("details")
+        if not isinstance(details, dict):
+            return run_message
+        requires = details.get("requires")
+        if isinstance(requires, list):
+            for require in requires:
+                if not isinstance(require, dict):
+                    continue
+                if bool(require.get("satisfied", False)):
+                    continue
+                require_text = str(require.get("text", "") or "").strip()
+                reason = (
+                    f"{TEST_FAILURE_REQUIRE_PREFIX} {require_text}"
+                    if require_text
+                    else TEST_FAILURE_REQUIRE_PREFIX
+                )
+                sample_value = require.get("sampleValue")
+                if sample_value is not None:
+                    reason += f" (last={_format_test_detail_value(sample_value)})"
+                sample_summary = self._format_test_last_samples(details)
+                if sample_summary:
+                    reason += f"; {sample_summary}"
+                return reason
+        signal_fallbacks = details.get("signalSetFallbacks")
+        if isinstance(signal_fallbacks, list) and signal_fallbacks:
+            fallback = signal_fallbacks[0]
+            if isinstance(fallback, dict):
+                fallback_text = str(fallback.get("text", "") or fallback.get("id", "") or "").strip()
+                if fallback_text:
+                    return f"{TEST_FAILURE_SIGNAL_SET_PREFIX} {fallback_text}"
+        sample_summary = self._format_test_last_samples(details)
+        if run_message and sample_summary:
+            return f"{run_message}; {sample_summary}"
+        if sample_summary:
+            return sample_summary
+        return run_message
+
+    def _format_test_success_reason(self, run_payload: Dict[str, Any]) -> str:
+        """
+        NAME
+            _format_test_success_reason - Build a concise human-readable reason for one passed test run.
+        """
+        if not isinstance(run_payload, dict):
+            return ""
+        run_status = str(run_payload.get("status", "") or "").strip()
+        if run_status:
+            return run_status
+        run_message = str(run_payload.get("message", "") or "").strip()
+        if run_message:
+            return run_message
+        return str(run_payload.get("test", "") or "").strip()
+
+    def _maybe_log_test_result_detail(self, run_payload: Dict[str, Any], detail: str) -> None:
+        """
+        NAME
+            _maybe_log_test_result_detail - Append one detailed test-result line when a terminal result changes.
+        """
+        if not isinstance(run_payload, dict):
+            return
+        run_state = str(run_payload.get("state", "") or "").strip()
+        if run_state not in ("passed", "failed", "blocked", "aborted", "interrupted"):
+            return
+        run_id = int(run_payload.get("runId", 0) or 0)
+        run_test = str(run_payload.get("test", "") or "").strip()
+        signature = (run_id, run_state, run_test)
+        if signature == self.__dict__.get("_last_test_result_signature"):
+            return
+        self._last_test_result_signature = signature
+        if not detail:
+            return
+        prefix = TEST_SUCCESS_PREFIX if run_state == "passed" else TEST_FAILURE_PREFIX
+        line = f"{prefix} {detail}"
+        self._append_output(line)
+        self._append_test_output(line)
+
     def _refresh_test_result_status(self) -> None:
         """
         NAME
@@ -7996,21 +8494,25 @@ class BringupControlUI(tk.Tk):
             run_test = str(self._tests_table.getEntry("runTest").getString("") or "").strip()
             run_result = str(self._tests_table.getEntry("runResult").getString("") or "").strip()
             run_message = str(self._tests_table.getEntry("runMessage").getString("") or "").strip()
+            run_payload = self._latest_test_run_payload()
             if run_state == "running" and run_test:
                 result_text = f"Last Result: RUNNING - {run_test}"
                 result_color = TEST_RESULT_RUNNING_FG
             elif run_state == "passed" and run_test:
-                detail = run_message or run_test
+                detail = self._format_test_success_reason(run_payload) or run_message or run_test
                 result_text = f"Last Result: PASS - {detail}"
                 result_color = TEST_RESULT_PASS_FG
+                self._maybe_log_test_result_detail(run_payload, detail)
             elif run_state == "failed" and run_test:
-                detail = run_message or run_test
+                detail = self._format_test_failure_reason(run_payload) or run_message or run_test
                 result_text = f"Last Result: FAIL - {detail}"
                 result_color = TEST_RESULT_FAIL_FG
+                self._maybe_log_test_result_detail(run_payload, detail)
             elif run_state in ("blocked", "aborted", "interrupted"):
-                detail = run_message or run_test or run_state.upper()
+                detail = self._format_test_failure_reason(run_payload) or run_message or run_test or run_state.upper()
                 result_text = f"Last Result: {run_state.upper()} - {detail}"
                 result_color = TEST_RESULT_FAIL_FG
+                self._maybe_log_test_result_detail(run_payload, detail)
             elif run_result and run_test:
                 result_text = f"Last Result: {run_result} - {run_test}"
                 result_color = (
@@ -8035,13 +8537,13 @@ class BringupControlUI(tk.Tk):
         if not rows:
             listbox.insert(tk.END, TEST_ACTIVE_GROUP_PANEL_EMPTY)
             return
-        group_active = self._active_group_is_currently_active()
+        scope_active = self._scope_is_currently_active() if self._scope_context_kind() == GROUP_SOURCE_SELECTED_TEST else self._active_group_is_currently_active()
         for row in rows:
             label = str(row.get("label", "")).strip()
             if not label:
                 continue
             statuses = [TEST_ACTIVE_GROUP_STATUS_ENABLED]
-            if bool(row.get("locked")):
+            if bool(row.get("locked")) or scope_active:
                 statuses.append(TEST_ACTIVE_GROUP_STATUS_LOCKED)
             if bool(row.get("invalid")):
                 statuses.append(TEST_ACTIVE_GROUP_STATUS_INVALID)
@@ -8053,7 +8555,7 @@ class BringupControlUI(tk.Tk):
                 elif str(label).strip().lower() in TEST_ACTIVE_GROUP_SINGLETON_LABELS:
                     instantiated = bool(runtime_device.get("testable", False))
             statuses.append(
-                "instantiated" if group_active and instantiated else TEST_ACTIVE_GROUP_STATUS_NOT_ACTIVATED
+                "instantiated" if scope_active and instantiated else TEST_ACTIVE_GROUP_STATUS_NOT_ACTIVATED
             )
             reason = str(row.get("reason", "")).strip()
             line = f"{label} | " + " | ".join(statuses)
@@ -8900,6 +9402,36 @@ class BringupControlUI(tk.Tk):
         self.update_idletasks()
         return operation()
 
+    def _append_push_status_line(self, detail: str) -> None:
+        """
+        NAME
+            _append_push_status_line - Append one Push Config progress/status line and flush the UI.
+        """
+        line = OUTPUT_PUSH_PROGRESS_FMT.format(detail=str(detail or "").strip())
+        self._append_output(line)
+        self.update_idletasks()
+
+    def _append_profiles_apply_stage_lines(self, payload: Optional[Dict[str, object]]) -> None:
+        """
+        NAME
+            _append_profiles_apply_stage_lines - Append staged profilesApply results from robot JSON.
+        """
+        if not isinstance(payload, dict):
+            return
+        for label, key in PROFILES_APPLY_STAGE_KEYS:
+            stage_payload = payload.get(key)
+            if not isinstance(stage_payload, dict):
+                continue
+            ok = bool(stage_payload.get("ok", False))
+            self._append_output(
+                OUTPUT_PUSH_PROGRESS_FMT.format(
+                    detail=f"{label}: {'OK' if ok else 'FAILED'}"
+                )
+            )
+            detail = str(stage_payload.get("message", "") or "").strip()
+            if detail:
+                self._append_output(detail)
+
     def _runtime_activate_from_ui(self) -> None:
         """
         NAME
@@ -8965,13 +9497,33 @@ class BringupControlUI(tk.Tk):
     def _activate_scope_from_ui(self) -> None:
         """
         NAME
-            _activate_scope_from_ui - Activate active-group from the current context.
+            _activate_scope_from_ui - Activate the current scope from the current context.
         """
         if not self._tcp_connected:
             self._append_output(OUTPUT_NOT_CONNECTED)
             return
         if self._tracker.is_pending():
             self._append_output(OUTPUT_BUSY)
+            return
+        if self._scope_context_kind() == GROUP_SOURCE_SELECTED_TEST:
+            args = {"mode": LIFECYCLE_DEFAULT_MODE}
+            self._append_output(
+                f"{timestamp_hms()} CMD activateSelectedTestDevices mode={LIFECYCLE_DEFAULT_MODE}"
+            )
+            self._last_cmd = ("activateSelectedTestDevices", args)
+            seq = send_tracked_command(
+                self._session,
+                self._tracker,
+                "activateSelectedTestDevices",
+                args,
+                sender=lambda session, _command_name, _command_args: activate_selected_test_devices(
+                    session,
+                    LIFECYCLE_DEFAULT_MODE,
+                ),
+                now=time.time(),
+            )
+            if seq is not None:
+                self._last_sent_seq = seq
             return
         mode = LIFECYCLE_DEFAULT_MODE
         label = GROUP_ACTIVE_NAME
@@ -9001,7 +9553,7 @@ class BringupControlUI(tk.Tk):
     def _deactivate_scope_from_ui(self) -> None:
         """
         NAME
-            _deactivate_scope_from_ui - Deactivate the current active-group session from the top bar.
+            _deactivate_scope_from_ui - Deactivate the current scope session from the top bar.
         """
         if not self._tcp_connected:
             self._append_output(OUTPUT_NOT_CONNECTED)
@@ -9011,6 +9563,22 @@ class BringupControlUI(tk.Tk):
             return
         if self.__dict__.get("_controlled_lifecycle_active_known") is not True:
             self._append_output(OUTPUT_NO_ACTIVE_CONTROLLED_SESSION)
+            return
+        if self._scope_context_kind() == GROUP_SOURCE_SELECTED_TEST:
+            self._append_output(f"{timestamp_hms()} CMD deactivateSelectedTestDevices")
+            self._last_cmd = ("deactivateSelectedTestDevices", {})
+            seq = send_tracked_command(
+                self._session,
+                self._tracker,
+                "deactivateSelectedTestDevices",
+                {},
+                sender=lambda session, _command_name, _command_args: deactivate_selected_test_devices(
+                    session
+                ),
+                now=time.time(),
+            )
+            if seq is not None:
+                self._last_sent_seq = seq
             return
         self._append_output(f"{timestamp_hms()} {OUTPUT_LIFECYCLE_DEACTIVATE_ACTIVE}")
         self._last_cmd = ("lifecycleDeactivateActive", {})
@@ -9113,13 +9681,25 @@ class BringupControlUI(tk.Tk):
             return
 
         def _operation() -> object:
-            return push_config(self._session, selected, profile_name)
+            return push_config(
+                self._session,
+                selected,
+                profile_name,
+                status_callback=self._append_push_status_line,
+            )
 
         result = self._run_blocking_status_operation(
             OUTPUT_PUSH_START_FMT.format(path=selected, profile=profile_name),
             _operation,
         )
+        payload = getattr(result, "payload", None) if result is not None else None
+        apply_payload = payload.get("apply") if isinstance(payload, dict) else None
+        self._append_profiles_apply_stage_lines(apply_payload)
         message = getattr(result, "message", "") if result is not None else ""
+        if result is not None and getattr(result, "ok", lambda: False)():
+            self._append_output(OUTPUT_PUSH_SUCCESS)
+        else:
+            self._append_output(OUTPUT_PUSH_FAILURE)
         self._append_output(message or "Config push finished.")
         self._refresh_profiles()
 
@@ -9193,9 +9773,24 @@ class BringupControlUI(tk.Tk):
             self._handshake_inflight = False
             self._session.reset_handshake()
             self._last_keepalive = 0.0
+            self._ui_table = None
+            self._tests_table = None
         for event in self._session.poll_events():
             self._handle_tcp_response(event)
 
+        session_snapshot: Dict[str, Any] = {}
+        runtime_snapshot: Dict[str, Any] = {}
+        tests_snapshot: Dict[str, Any] = {}
+        if self._tcp_connected:
+            session_snapshot = self._session.fetch_session_snapshot()
+            runtime_snapshot = self._session.fetch_runtime_state()
+            tests_snapshot = self._session.fetch_tests_state()
+            self._latest_tests_state_payload = dict(tests_snapshot or {})
+            self._ui_table = _RestTableAdapter.from_runtime_state(
+                session_snapshot,
+                runtime_snapshot,
+            )
+            self._tests_table = _RestTableAdapter.from_tests_state(tests_snapshot)
         if self._ui_table is not None:
             session_id = self._ui_table.getEntry("state/sessionId").getString("")
             if session_id:
@@ -9210,9 +9805,14 @@ class BringupControlUI(tk.Tk):
             self._robot_active_runtime_profile = _normalize_profile_name(
                 self._ui_table.getEntry(NT_UI_STATE_ACTIVE_RUNTIME_PROFILE).getString(PROFILE_NONE)
             )
+            if self._robot_selected_profile == _normalize_profile_name(
+                self.__dict__.get("_pending_robot_profile_selection", PROFILE_NONE)
+            ):
+                self._pending_robot_profile_selection = PROFILE_NONE
+            self._maybe_send_pending_robot_profile_selection()
             self._sync_diagnostic_profile_context(reload_views=True)
             self._maybe_prompt_host_profile_context_sync()
-            nt_connected = True
+            nt_connected = self._tcp_connected
         else:
             enabled = True
             estopped = False
@@ -9274,11 +9874,10 @@ class BringupControlUI(tk.Tk):
             if last_ack_ms > 0.0 and (now_ms - last_ack_ms) > (self._state_stale_sec * 1000.0):
                 stale_state = True
         self._state_stale = stale_state
-        nt_label = "NT OK" if nt_connected else "NT Disconnected"
         label = (
-            f"REST Connected ({nt_label}, rio={self._rio_host})"
+            f"REST Connected (rio={self._rio_host})"
             if self._tcp_connected
-            else f"REST Disconnected ({nt_label}, rio={self._rio_host})"
+            else f"REST Disconnected (rio={self._rio_host})"
         )
         self._status_label.configure(
             text=label,
@@ -9612,15 +10211,15 @@ class BringupControlUI(tk.Tk):
             self._set_runtime_state_notice(
                 "Robot state stale (code not running?)", "warn"
             )
-        elif self._manual_active_group_is_empty():
-            self._set_runtime_state_notice(
-                RUNNABLE_SCOPE_DETAIL_MANUAL_EMPTY, "warn"
-            )
         elif estopped:
             self._set_runtime_state_notice("Robot E-Stop. Manual run blocked.", "error")
         elif not enabled:
             self._set_runtime_state_notice(
                 "Robot disabled. Enable teleop to run motors.", "info"
+            )
+        elif self._manual_active_group_is_empty():
+            self._set_runtime_state_notice(
+                RUNNABLE_SCOPE_DETAIL_MANUAL_EMPTY, "warn"
             )
         elif not scope_active:
             self._set_runtime_state_notice(activation_notice, "warn")
@@ -9629,12 +10228,12 @@ class BringupControlUI(tk.Tk):
         for live_view in self._iter_live_views():
             if stale_state:
                 live_view.set_runtime_state_notice("Robot state stale (code not running?)", "warn")
-            elif self._manual_active_group_is_empty():
-                live_view.set_runtime_state_notice(RUNNABLE_SCOPE_DETAIL_MANUAL_EMPTY, "warn")
             elif estopped:
                 live_view.set_runtime_state_notice("Robot E-Stop. Manual run blocked.", "error")
             elif not enabled:
                 live_view.set_runtime_state_notice("Robot disabled. Enable teleop to run motors.", "info")
+            elif self._manual_active_group_is_empty():
+                live_view.set_runtime_state_notice(RUNNABLE_SCOPE_DETAIL_MANUAL_EMPTY, "warn")
             elif not scope_active:
                 live_view.set_runtime_state_notice(activation_notice, "warn")
             else:
@@ -9686,6 +10285,10 @@ class BringupControlUI(tk.Tk):
         if selected_profile == PROFILE_NONE:
             return
         self._robot_selected_profile = selected_profile
+        if selected_profile == _normalize_profile_name(
+            self.__dict__.get("_pending_robot_profile_selection", PROFILE_NONE)
+        ):
+            self._pending_robot_profile_selection = PROFILE_NONE
         self._sync_diagnostic_profile_context(reload_views=True)
 
     def _handle_tcp_response(self, event: BridgeEvent) -> None:

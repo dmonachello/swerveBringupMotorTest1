@@ -58,6 +58,7 @@ public final class DslBringupTest implements BringupTest {
   private final Map<String, Double> warningLastSec = new HashMap<>();
   private final Map<String, Boolean> fallbackActiveBySetId = new LinkedHashMap<>();
   private final Map<String, Double> lastResolvedSetValues = new LinkedHashMap<>();
+  private final Map<String, Double> aggregateSignalMaxValues = new LinkedHashMap<>();
   private final Map<String, Boolean> conditionLastRawValues = new LinkedHashMap<>();
   private final Map<String, Boolean> conditionRawValues = new LinkedHashMap<>();
   private final Map<String, Boolean> conditionEffectiveValues = new LinkedHashMap<>();
@@ -135,6 +136,7 @@ public final class DslBringupTest implements BringupTest {
     warningLastSec.clear();
     fallbackActiveBySetId.clear();
     lastResolvedSetValues.clear();
+    aggregateSignalMaxValues.clear();
     conditionLastRawValues.clear();
     conditionRawValues.clear();
     conditionEffectiveValues.clear();
@@ -276,6 +278,7 @@ public final class DslBringupTest implements BringupTest {
     details.put("result", result != null ? result.name() : "");
     details.put("requires", buildRequireDetails());
     details.put("lastSamples", new LinkedHashMap<>(lastSampleValues));
+    details.put("aggregateSignals", new LinkedHashMap<>(aggregateSignalMaxValues));
     details.put("lastResolvedSets", new LinkedHashMap<>(lastResolvedSetValues));
     details.put("signalSetFallbacks", buildSignalSetFallbackDetails());
     details.put(DETAIL_KEY_CONDITIONS, buildConditionDetails());
@@ -766,6 +769,35 @@ public final class DslBringupTest implements BringupTest {
     if (device == null || !context.isDeviceSnapshotAllowed(deviceName)) {
       return null;
     }
+    if (DslSignalRegistry.SIGNAL_CURRENT_ACTUAL_MAX.equals(signalName)) {
+      return updateAggregateSignalMax(
+          deviceName,
+          signalName,
+          readSignalValue(context, deviceName, DslSignalRegistry.SIGNAL_CURRENT_ACTUAL, nowSec),
+          false);
+    }
+    if (DslSignalRegistry.SIGNAL_VELOCITY_ACTUAL_MAX_ABS.equals(signalName)) {
+      return updateAggregateSignalMax(
+          deviceName,
+          signalName,
+          readSignalValue(context, deviceName, DslSignalRegistry.SIGNAL_VELOCITY_ACTUAL, nowSec),
+          true);
+    }
+    if (DslSignalRegistry.SIGNAL_POSITION_DELTA_MAX_ABS.equals(signalName)) {
+      return updateAggregateSignalMax(
+          deviceName,
+          signalName,
+          readSignalValue(context, deviceName, DslSignalRegistry.SIGNAL_POSITION_DELTA, nowSec),
+          true);
+    }
+    return readDeviceSignalValue(deviceName, signalName);
+  }
+
+  private Object readDeviceSignalValue(String deviceName, String signalName) {
+    DeviceUnit device = devices.get(deviceName);
+    if (device == null) {
+      return null;
+    }
     String deviceType = resolveDeviceType(deviceName);
     Object deviceSignal = device.readDslSignal(signalName);
     if (deviceSignal instanceof Number numberValue
@@ -777,6 +809,27 @@ public final class DslBringupTest implements BringupTest {
       return start != null ? position - start.doubleValue() : position;
     }
     return deviceSignal;
+  }
+
+  private Object updateAggregateSignalMax(
+      String deviceName,
+      String signalName,
+      Object sampleValue,
+      boolean absoluteValue) {
+    String key = deviceName + "|" + signalName;
+    Double previous = aggregateSignalMaxValues.get(key);
+    if (!(sampleValue instanceof Number numberValue)) {
+      return previous;
+    }
+    double candidate = numberValue.doubleValue();
+    if (absoluteValue) {
+      candidate = Math.abs(candidate);
+    }
+    if (previous == null || candidate > previous.doubleValue()) {
+      aggregateSignalMaxValues.put(key, candidate);
+      return candidate;
+    }
+    return previous;
   }
 
   private boolean isDeltaPositionSignal(String signalName) {

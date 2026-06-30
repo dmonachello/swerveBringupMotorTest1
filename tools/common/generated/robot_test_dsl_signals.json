@@ -43,6 +43,14 @@
         "safeValue": null,
         "safeProvider": false
       },
+      "current_actual_max": {
+        "valueType": "number",
+        "readable": true,
+        "writable": false,
+        "clearable": false,
+        "safeValue": null,
+        "safeProvider": false
+      },
       "temperature": {
         "valueType": "number",
         "readable": true,
@@ -75,6 +83,14 @@
         "safeValue": null,
         "safeProvider": false
       },
+      "velocity_actual_max_abs": {
+        "valueType": "number",
+        "readable": true,
+        "writable": false,
+        "clearable": false,
+        "safeValue": null,
+        "safeProvider": false
+      },
       "position": {
         "valueType": "number",
         "readable": true,
@@ -92,6 +108,14 @@
         "safeProvider": false
       },
       "position_delta": {
+        "valueType": "number",
+        "readable": true,
+        "writable": false,
+        "clearable": false,
+        "safeValue": null,
+        "safeProvider": false
+      },
+      "position_delta_max_abs": {
         "valueType": "number",
         "readable": true,
         "writable": false,
@@ -136,6 +160,14 @@
         "safeProvider": false
       },
       "position_delta": {
+        "valueType": "number",
+        "readable": true,
+        "writable": false,
+        "clearable": false,
+        "safeValue": null,
+        "safeProvider": false
+      },
+      "position_delta_max_abs": {
         "valueType": "number",
         "readable": true,
         "writable": false,

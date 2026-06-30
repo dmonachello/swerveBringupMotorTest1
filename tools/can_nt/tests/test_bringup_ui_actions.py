@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import time
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from tools.can_nt.bringup_ui import (
@@ -15,6 +16,8 @@ from tools.can_nt.bringup_ui import (
     ACTION_SOURCE_ROBOT,
     ATTACHMENT_TYPE_ACTIVE_PRESENCE_PROBE,
     BringupControlUI,
+    CMD_PRINT_CAN_DIAG,
+    CMD_PRINT_NT_DIAG,
     CMD_SHOW_LIFECYCLE_STATE,
     GROUP_ACTIVE_NAME,
     GROUP_RUN_ARG_GROUP,
@@ -30,12 +33,24 @@ from tools.can_nt.bringup_ui import (
     TEST_SOURCE_COMPLETION_MODE_NONE,
     TEST_SOURCE_COMPLETION_MODE_READ,
     TEST_SOURCE_COMPLETION_MODE_WRITE,
+    _RestTableAdapter,
     _load_tests_from_dsl_store,
     _action_sections,
     _format_runtime_probe_score,
     _merge_host_ui_actions,
 )
+from tools.can_nt.dsl_reference import (
+    TEST_SOURCE_REFERENCE_CATEGORY_DEVICES,
+    TEST_SOURCE_REFERENCE_OVERVIEW,
+    TEST_SOURCE_REFERENCE_TOPIC_DEVICE_TYPE_PREFIX,
+    TEST_SOURCE_REFERENCE_TOPIC_MAIN,
+    TEST_SOURCE_REFERENCE_TOPIC_REQUIRE,
+    collect_dsl_reference_topic_map,
+    dsl_reference_topics,
+    render_dsl_reference_detail,
+)
 from tools.can_nt.bridge_session import BridgeEvent
+from tools.can_nt.status import SS__CONFIG__INVALID, SS__CONFIG__SAVED, StatusResult
 from tools.can_nt.host_ui_actions import (
     ACTION_KIND_HOST_LOCAL,
     ACTION_SOURCE_HOST,
@@ -232,6 +247,45 @@ class BringupUiActionMetadataTests(unittest.TestCase):
             ACTION_KIND_HOST_LOCAL,
         )
 
+    def test_can_bus_action_is_host_owned_in_loaded_action_metadata(self) -> None:
+        self.assertIn(CMD_PRINT_CAN_DIAG, ACTIONS_BY_NAME)
+        self.assertEqual(
+            ACTIONS_BY_NAME[CMD_PRINT_CAN_DIAG][INVENTORY_KEY_ACTION_KIND],
+            ACTION_KIND_HOST_LOCAL,
+        )
+        self.assertEqual(
+            ACTIONS_BY_NAME[CMD_PRINT_CAN_DIAG][INVENTORY_KEY_SOURCE],
+            ACTION_SOURCE_HOST,
+        )
+
+    def test_nt_diagnostics_action_hidden_from_loaded_sections(self) -> None:
+        sections = _action_sections()
+        flattened = [command for _section, items in sections for _label, command in items]
+        self.assertNotIn(CMD_PRINT_NT_DIAG, flattened)
+
+    def test_dispatch_host_local_action_handles_can_bus_report(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._tcp_connected = True
+        ui._visibility_provider = object()
+        ui._session = object()
+        ui._tracker = type("_Tracker", (), {"is_pending": lambda self: False})()
+        output: list[str] = []
+        test_output: list[str] = []
+        ui._append_output = output.append
+        ui._append_test_output = test_output.append
+        with patch(
+            "tools.can_nt.bringup_ui.build_host_can_bus_report",
+            return_value="line1\nline2",
+        ):
+            handled = ui._dispatch_host_local_action(CMD_PRINT_CAN_DIAG)
+        self.assertTrue(handled)
+        self.assertTrue(any("CMD printCANdiag" in line for line in output))
+        self.assertTrue(any("CMD printCANdiag" in line for line in test_output))
+        self.assertIn("line1", output)
+        self.assertIn("line2", output)
+        self.assertIn("line1", test_output)
+        self.assertIn("line2", test_output)
+
     def test_action_sections_exclude_remote_commands_not_allowed_for_host_ui(self) -> None:
         sections = _action_sections()
         flattened = [command for _section, items in sections for _label, command in items]
@@ -253,6 +307,20 @@ class BringupUiActionMetadataTests(unittest.TestCase):
 
     def test_show_lifecycle_state_is_tracked_in_tests_activity(self) -> None:
         self.assertIn("showlifecyclestate", TEST_ACTIVITY_COMMANDS)
+
+    def test_left_rail_reports_are_tracked_in_tests_activity(self) -> None:
+        for command in (
+            "activepresenceprobe",
+            "printcancoder",
+            "printcandiag",
+            "printhealth",
+            "printinputs",
+            "showruntimestate",
+            "showstatus",
+            "showversion",
+            "showsources",
+        ):
+            self.assertIn(command, TEST_ACTIVITY_COMMANDS)
 
     def test_load_tests_from_dsl_store_prefers_profile_test_set(self) -> None:
         payload = {
@@ -387,7 +455,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._active_group_is_currently_active = lambda: False
 
         self.assertEqual(
-            "active-group loaded from selected test - not activated",
+            "selected test scope ready - not activated",
             ui._selected_test_inactive_reason(),
         )
 
@@ -652,9 +720,9 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui = BringupControlUI.__new__(BringupControlUI)
 
         self.assertEqual(
-            "This test has loaded its required devices into active-group. Press Activate Group, then run the test.",
+            "This test requires the devices shown in Selected Test Devices. Press Activate Group, then run the test.",
             ui._format_selected_test_scope_status_detail(
-                "active-group loaded from selected test - not activated"
+                "selected test scope ready - not activated"
             ),
         )
 
@@ -1210,7 +1278,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._clear_runtime_state_notice = lambda: recorded.append(("__clear__", "clear"))
         ui._iter_live_views = lambda: [live_view]
 
-        ui._apply_live_runtime_notice_from_nt_state(False, False, False)
+        ui._apply_live_runtime_notice_from_nt_state(True, False, False)
 
         self.assertEqual(
             [("Active group is empty. Add devices before Activate Group.", "warn")],
@@ -1218,6 +1286,40 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         )
         self.assertEqual(
             ("Active group is empty. Add devices before Activate Group.", "warn"),
+            live_view.notice,
+        )
+
+    def test_live_runtime_notice_prefers_disabled_over_empty_manual_active_group(self) -> None:
+        class _LiveView:
+            def __init__(self) -> None:
+                self.notice = None
+
+            def set_runtime_state_notice(self, text, level) -> None:
+                self.notice = (text, level)
+
+            def clear_runtime_state_notice(self) -> None:
+                self.notice = None
+
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._group_owner_mode = "manual"
+        ui._runtime_active_known = False
+        ui._controlled_lifecycle_active_known = False
+        ui._scope_is_currently_active = lambda: False
+        ui._manual_active_group_is_empty = lambda: True
+        recorded = []
+        live_view = _LiveView()
+        ui._set_runtime_state_notice = lambda text, level="warn": recorded.append((text, level))
+        ui._clear_runtime_state_notice = lambda: recorded.append(("__clear__", "clear"))
+        ui._iter_live_views = lambda: [live_view]
+
+        ui._apply_live_runtime_notice_from_nt_state(False, False, False)
+
+        self.assertEqual(
+            [("Robot disabled. Enable teleop to run motors.", "info")],
+            recorded,
+        )
+        self.assertEqual(
+            ("Robot disabled. Enable teleop to run motors.", "info"),
             live_view.notice,
         )
 
@@ -1542,7 +1644,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertIn("refresh", refresh_calls)
         self.assertIn("runtime", refresh_calls)
 
-    def test_activate_scope_from_tests_uses_active_group_lifecycle_path(self) -> None:
+    def test_activate_scope_from_tests_uses_selected_test_lifecycle_path(self) -> None:
         class _Tracker:
             def is_pending(self) -> bool:
                 return False
@@ -1560,11 +1662,10 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         with patch("tools.can_nt.bringup_ui.send_tracked_command", return_value=31):
             ui._activate_scope_from_ui()
 
-        self.assertEqual(ui._last_cmd[0], "lifecycleActivate")
-        self.assertEqual(ui._last_cmd[1]["label"], GROUP_ACTIVE_NAME)
+        self.assertEqual(ui._last_cmd[0], "activateSelectedTestDevices")
         self.assertEqual(ui._last_cmd[1]["mode"], "READ_ONLY")
         self.assertEqual(ui._last_sent_seq, 31)
-        self.assertTrue(any("lifecycleActivate" in line for line in lines))
+        self.assertTrue(any("activateSelectedTestDevices" in line for line in lines))
 
     def test_clear_test_output_clears_activity_widget(self) -> None:
         class _TextStub:
@@ -1588,7 +1689,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertTrue(ui._test_output.deleted)
         self.assertEqual(["normal", "disabled"], ui._test_output.states)
 
-    def test_handle_tests_boundary_transition_into_tests_remembers_manual_group(self) -> None:
+    def test_handle_tests_boundary_transition_into_tests_refreshes_selected_test_scope_only(self) -> None:
         class _Tracker:
             def is_pending(self) -> bool:
                 return False
@@ -1596,19 +1697,16 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui = BringupControlUI.__new__(BringupControlUI)
         ui._tcp_connected = True
         ui._tracker = _Tracker()
-        ui._runtime_active_group_members = lambda: [{"label": "FALCON 9", "enabled": True}]
         calls = []
-        ui._deactivate_group_blocking = lambda: calls.append("deactivate") or True
         ui._load_selected_test_into_active_group = lambda force_replace=False: calls.append(
             ("load", force_replace)
         )
 
         ui._handle_tests_boundary_transition("Live Topology", "Tests")
 
-        self.assertEqual([{"label": "FALCON 9", "enabled": True}], ui._remembered_manual_active_group_members)
-        self.assertEqual(["deactivate", ("load", True)], calls)
+        self.assertEqual([("load", True)], calls)
 
-    def test_handle_tests_boundary_transition_leaving_tests_restores_manual_group(self) -> None:
+    def test_handle_tests_boundary_transition_leaving_tests_deactivates_selected_test_scope(self) -> None:
         class _Tracker:
             def is_pending(self) -> bool:
                 return False
@@ -1616,14 +1714,12 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui = BringupControlUI.__new__(BringupControlUI)
         ui._tcp_connected = True
         ui._tracker = _Tracker()
-        ui._remembered_manual_active_group_members = [{"label": "SPARKMAX/NEO 25", "enabled": True}]
         calls = []
-        ui._deactivate_group_blocking = lambda: calls.append("deactivate") or True
-        ui._restore_manual_active_group_members = lambda: calls.append("restore")
+        ui._deactivate_selected_test_scope_blocking = lambda: calls.append("deactivate-selected") or True
 
         ui._handle_tests_boundary_transition("Tests", "Live Topology")
 
-        self.assertEqual(["deactivate", "restore"], calls)
+        self.assertEqual(["deactivate-selected"], calls)
 
     def test_handle_tests_boundary_transition_defers_while_command_pending(self) -> None:
         class _Tracker:
@@ -1812,6 +1908,29 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertEqual(ui._last_sent_seq, 22)
         self.assertTrue(any("lifecycleDeactivateActive" in line for line in lines))
 
+    def test_deactivate_scope_from_tests_uses_selected_test_lifecycle_path(self) -> None:
+        class _Tracker:
+            def is_pending(self) -> bool:
+                return False
+
+        ui = BringupControlUI.__new__(BringupControlUI)
+        lines = []
+        ui._tcp_connected = True
+        ui._tracker = _Tracker()
+        ui._session = object()
+        ui._last_sent_seq = None
+        ui._append_output = lines.append
+        ui._controlled_lifecycle_active_known = True
+        ui._current_right_tab_text = lambda: "Tests"
+
+        with patch("tools.can_nt.bringup_ui.send_tracked_command", return_value=24):
+            ui._deactivate_scope_from_ui()
+
+        self.assertEqual(ui._last_cmd[0], "deactivateSelectedTestDevices")
+        self.assertEqual(ui._last_cmd[1], {})
+        self.assertEqual(ui._last_sent_seq, 24)
+        self.assertTrue(any("deactivateSelectedTestDevices" in line for line in lines))
+
     def test_show_lifecycle_state_from_ui_uses_lifecycle_show_command(self) -> None:
         class _Tracker:
             def is_pending(self) -> bool:
@@ -1888,6 +2007,62 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertEqual("test_minimal_25_9", ui._last_selected_profile)
         self.assertEqual([("test_minimal_25_9", True)], applied)
         mock_prompt.assert_not_called()
+
+    def test_profile_selection_is_deferred_until_transport_is_ready(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._profile_box = _ProfileBoxStub("test_minimal_25_9")
+        ui._last_selected_profile = PROFILE_NONE
+        ui._tcp_connected = False
+        ui._handshake_done = False
+        ui._tracker = type(
+            "TrackerStub",
+            (),
+            {
+                "is_pending": staticmethod(lambda: False),
+                "start": staticmethod(lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                    AssertionError("should not start tracker while disconnected")
+                )),
+            },
+        )()
+        ui._apply_profile_selection = lambda _name, reload_views: None
+
+        with patch("tools.can_nt.bringup_ui.send_command", return_value=77) as mock_send:
+            ui._on_profile_selected()
+
+        self.assertEqual("test_minimal_25_9", ui._pending_robot_profile_selection)
+        self.assertIsNone(ui.__dict__.get("_last_sent_seq"))
+        mock_send.assert_not_called()
+
+    def test_pending_profile_selection_flushes_once_when_transport_recovers(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._pending_robot_profile_selection = "test_minimal_25_9"
+        ui._robot_selected_profile = PROFILE_NONE
+        ui._tcp_connected = True
+        ui._handshake_done = True
+        started = []
+        ui._tracker = type(
+            "TrackerStub",
+            (),
+            {
+                "is_pending": staticmethod(lambda: False),
+                "start": staticmethod(
+                    lambda command, args, seq, now=None: started.append((command, args, seq))
+                ),
+            },
+        )()
+        ui._session = object()
+
+        with patch("tools.can_nt.bringup_ui.send_command", return_value=91) as mock_send:
+            sent = ui._maybe_send_pending_robot_profile_selection()
+
+        self.assertTrue(sent)
+        self.assertEqual(PROFILE_NONE, ui._pending_robot_profile_selection)
+        self.assertEqual(91, ui._last_sent_seq)
+        self.assertEqual(
+            [("selectProfile", {"name": "test_minimal_25_9"}, 91)],
+            started,
+        )
+        mock_send.assert_called_once_with(ui._session, "selectProfile", {"name": "test_minimal_25_9"})
 
     def test_live_runtime_notice_requires_activation_when_selected_test_scope_is_not_active(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
@@ -2262,6 +2437,402 @@ class BringupUiActionMetadataTests(unittest.TestCase):
             calls,
         )
         self.assertEqual(["refresh"], refresh_calls)
+
+    def test_send_and_wait_returns_false_when_command_out_reports_error(self) -> None:
+        class _Session:
+            def __init__(self) -> None:
+                self._events = [[
+                    BridgeEvent(
+                        type="ack",
+                        seq=42,
+                        name="selectTestByName",
+                        status="error",
+                        message="Test not found",
+                        text="",
+                        json_text="",
+                        ts=0.0,
+                        session_id="",
+                        state={},
+                        raw={},
+                    ),
+                    BridgeEvent(
+                        type="out",
+                        seq=42,
+                        name="selectTestByName",
+                        status="error",
+                        message="Test not found",
+                        text="Test not found: missing_test",
+                        json_text="",
+                        ts=0.0,
+                        session_id="",
+                        state={},
+                        raw={},
+                    ),
+                ]]
+
+            def poll_events(self):
+                return self._events.pop(0) if self._events else []
+
+        class _Tracker:
+            def clear_pending(self) -> None:
+                return None
+
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._session = _Session()
+        ui._tracker = _Tracker()
+        ui._append_output = lambda _line: None
+        ui._handle_tcp_response = lambda _event: None
+        ui.update_idletasks = lambda: None
+
+        with patch("tools.can_nt.bringup_ui.send_tracked_command", return_value=42):
+            self.assertFalse(ui._send_and_wait("selectTestByName", {"name": "missing_test"}))
+
+    def test_load_selected_test_into_active_group_refreshes_display_only(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._tests_active_group_membership_key = tuple()
+        ui._tests_active_group_rows = []
+        ui._selected_test_required_rows = lambda: [
+            {"label": "SPARKMAX/NEO 25", "enabled": True, "invalid": False}
+        ]
+        notices = []
+        ui._refresh_tests_active_group_panel = lambda: notices.append(("panel", "refresh"))
+
+        ui._load_selected_test_into_active_group(force_replace=True)
+
+        self.assertIsNone(ui._tests_active_group_loaded_to_robot)
+        self.assertEqual([("panel", "refresh")], notices)
+
+    def test_apply_selected_test_name_from_ui_ignores_local_test_not_known_to_robot(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._selected_test_var = _StringVarStub("robot_test_a")
+        ui._last_selected_test = "robot_test_a"
+        ui._current_right_tab_text = lambda: "Tests"
+        ui._tcp_connected = True
+        ui._tracker = type(
+            "TrackerStub",
+            (),
+            {"is_pending": staticmethod(lambda: False)},
+        )()
+        ui._tests_table = _SubTableStub(
+            entries={"totalCount": "1"},
+            rows={
+                "rows": _SubTableStub(
+                    rows={
+                        "0": _SubTableStub(
+                            entries={
+                                "name": "robot_test_a",
+                                "requiredDevices": "",
+                                "runnableNow": True,
+                                "blockedReason": "",
+                            }
+                        )
+                    }
+                )
+            },
+        )
+        output_lines = []
+        ui._append_output = lambda line: output_lines.append(line)
+        ui._append_test_output = lambda line: output_lines.append(line)
+        ui._refresh_selected_test_scope_status = lambda: output_lines.append("refresh")
+        ui._send_and_wait = lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("should not send selectTestByName for a robot-unknown test")
+        )
+
+        ui._apply_selected_test_name_from_ui("local_only_test")
+
+        self.assertEqual("robot_test_a", ui._selected_test_var.get())
+        self.assertTrue(
+            any("robot has not loaded it into the current runnable test set" in line for line in output_lines)
+        )
+
+    def test_selected_test_inactive_reason_reports_required_unavailable_when_group_load_failed(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._selected_test_var = _StringVarStub("test_minimal_25_9_spark25_leftY")
+        ui._tests_active_group_rows = [{"label": "SPARKMAX/NEO 25", "enabled": True, "invalid": False}]
+        ui._tests_active_group_loaded_to_robot = False
+        ui._robot_enabled_known = True
+        ui._robot_estopped_known = False
+        ui._robot_mode_known = "teleop"
+        ui._active_group_is_currently_active = lambda: False
+
+        self.assertEqual("required devices unavailable", ui._selected_test_inactive_reason())
+
+    def test_dsl_reference_topics_include_hierarchy_for_phases_and_statements(self) -> None:
+        topics = dsl_reference_topics()
+        topic_map = collect_dsl_reference_topic_map(topics)
+
+        self.assertIn(TEST_SOURCE_REFERENCE_OVERVIEW, topic_map)
+        self.assertIn(TEST_SOURCE_REFERENCE_CATEGORY_DEVICES, topic_map)
+        self.assertIn(TEST_SOURCE_REFERENCE_TOPIC_MAIN, topic_map)
+        self.assertIn(TEST_SOURCE_REFERENCE_TOPIC_REQUIRE, topic_map)
+
+    def test_dsl_reference_topics_include_supported_device_type_pages(self) -> None:
+        topic_map = collect_dsl_reference_topic_map(dsl_reference_topics())
+
+        self.assertIn(TEST_SOURCE_REFERENCE_TOPIC_DEVICE_TYPE_PREFIX + "motor", topic_map)
+        self.assertIn(TEST_SOURCE_REFERENCE_TOPIC_DEVICE_TYPE_PREFIX + "xboxController", topic_map)
+        self.assertIn(TEST_SOURCE_REFERENCE_TOPIC_DEVICE_TYPE_PREFIX + "PDP", topic_map)
+
+    def test_render_dsl_reference_detail_includes_examples_for_require(self) -> None:
+        topic_map = collect_dsl_reference_topic_map(dsl_reference_topics())
+        detail = render_dsl_reference_detail(topic_map[TEST_SOURCE_REFERENCE_TOPIC_REQUIRE])
+
+        self.assertIn("Require does not stop the test by itself.", detail)
+        self.assertIn("Examples:", detail)
+        self.assertIn('require "SPARKMAX/NEO 25".position_delta outside -1.0 1.0', detail)
+
+    def test_render_dsl_reference_detail_includes_supported_signals_for_motor(self) -> None:
+        topic_map = collect_dsl_reference_topic_map(dsl_reference_topics())
+        detail = render_dsl_reference_detail(
+            topic_map[TEST_SOURCE_REFERENCE_TOPIC_DEVICE_TYPE_PREFIX + "motor"]
+        )
+
+        self.assertIn("Supported Signals:", detail)
+        self.assertIn("output_percent_cmd", detail)
+        self.assertIn("current_actual_max", detail)
+        self.assertIn("position_delta_max_abs", detail)
+
+    def test_show_test_source_reference_topic_renders_detail_text(self) -> None:
+        class _TextStub:
+            def __init__(self) -> None:
+                self.content = ""
+                self.state = ""
+
+            def configure(self, **kwargs) -> None:
+                if "state" in kwargs:
+                    self.state = kwargs["state"]
+
+            def delete(self, *_args) -> None:
+                self.content = ""
+
+            def insert(self, _index, text) -> None:
+                self.content += str(text)
+
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._test_source_reference_topic_map = collect_dsl_reference_topic_map(dsl_reference_topics())
+        ui._test_source_reference_text = _TextStub()
+
+        ui._show_test_source_reference_topic(TEST_SOURCE_REFERENCE_TOPIC_MAIN)
+
+        self.assertIn("Runs every test tick until a success/abort/until ends the test.", ui._test_source_reference_text.content)
+        self.assertIn('set "SPARKMAX/NEO 25".output_percent_cmd = controller0.leftY', ui._test_source_reference_text.content)
+
+    def test_refresh_test_result_status_shows_unsatisfied_require_detail(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._last_result_text_var = _StringVarStub()
+        ui._last_result_label = _LabelStub()
+        ui._append_output = lambda _line: None
+        ui._append_test_output = lambda _line: None
+        ui._last_test_result_signature = None
+        tests_state = {
+            "run": {
+                "runId": 7,
+                "state": "failed",
+                "test": "test_minimal_25_9_spark25_leftY",
+                "result": "FAIL",
+                "status": 'until until_1: until timer.elapsed >= 10.0',
+                "message": "",
+                "details": {
+                    "requires": [
+                        {
+                            "id": "require_1",
+                            "text": 'require "SPARKMAX/NEO 25".position_delta outside -1.0 1.0',
+                            "satisfied": False,
+                            "sampleValue": -0.125,
+                        }
+                    ],
+                    "lastSamples": {
+                        "SPARKMAX/NEO 25.position_delta": -0.125,
+                        "controller0.leftY": -0.7701,
+                    },
+                },
+            }
+        }
+        ui._latest_tests_state_payload = tests_state
+        ui._tests_table = _RestTableAdapter.from_tests_state(tests_state)
+
+        ui._refresh_test_result_status()
+
+        text = ui._last_result_text_var.get()
+        self.assertIn("Last Result: FAIL - require not satisfied:", text)
+        self.assertIn('"SPARKMAX/NEO 25".position_delta outside -1.0 1.0', text)
+        self.assertIn("last=-0.125", text)
+        self.assertEqual("#991b1b", ui._last_result_label.foreground)
+
+    def test_refresh_test_result_status_logs_failure_detail_once(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._last_result_text_var = _StringVarStub()
+        ui._last_result_label = _LabelStub()
+        output_lines: list[str] = []
+        test_output_lines: list[str] = []
+        ui._append_output = output_lines.append
+        ui._append_test_output = test_output_lines.append
+        ui._last_test_result_signature = None
+        tests_state = {
+            "run": {
+                "runId": 9,
+                "state": "failed",
+                "test": "test_minimal_25_9_spark25_leftY",
+                "result": "FAIL",
+                "status": "",
+                "message": "",
+                "details": {
+                    "requires": [
+                        {
+                            "id": "require_1",
+                            "text": 'require "SPARKMAX/NEO 25".position_delta outside -1.0 1.0',
+                            "satisfied": False,
+                        }
+                    ],
+                    "lastSamples": {},
+                },
+            }
+        }
+        ui._latest_tests_state_payload = tests_state
+        ui._tests_table = _RestTableAdapter.from_tests_state(tests_state)
+
+        ui._refresh_test_result_status()
+        ui._refresh_test_result_status()
+
+        self.assertEqual(
+            1,
+            sum(1 for line in output_lines if line.startswith("Test failure detail:")),
+        )
+        self.assertEqual(
+            1,
+            sum(1 for line in test_output_lines if line.startswith("Test failure detail:")),
+        )
+
+    def test_refresh_test_result_status_shows_success_status_detail(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._last_result_text_var = _StringVarStub()
+        ui._last_result_label = _LabelStub()
+        ui._append_output = lambda _line: None
+        ui._append_test_output = lambda _line: None
+        ui._last_test_result_signature = None
+        tests_state = {
+            "run": {
+                "runId": 11,
+                "state": "passed",
+                "test": "test_minimal_25_9_spark25_leftY",
+                "result": "PASS",
+                "status": "success success_1: success lmtSw0.pressed",
+                "message": "",
+                "details": {},
+            }
+        }
+        ui._latest_tests_state_payload = tests_state
+        ui._tests_table = _RestTableAdapter.from_tests_state(tests_state)
+
+        ui._refresh_test_result_status()
+
+        text = ui._last_result_text_var.get()
+        self.assertEqual(
+            "Last Result: PASS - success success_1: success lmtSw0.pressed",
+            text,
+        )
+        self.assertEqual("#166534", ui._last_result_label.foreground)
+
+    def test_refresh_test_result_status_logs_success_detail_once(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._last_result_text_var = _StringVarStub()
+        ui._last_result_label = _LabelStub()
+        output_lines: list[str] = []
+        test_output_lines: list[str] = []
+        ui._append_output = output_lines.append
+        ui._append_test_output = test_output_lines.append
+        ui._last_test_result_signature = None
+        tests_state = {
+            "run": {
+                "runId": 12,
+                "state": "passed",
+                "test": "test_minimal_25_9_spark25_leftY",
+                "result": "PASS",
+                "status": "success success_1: success lmtSw0.pressed",
+                "message": "",
+                "details": {},
+            }
+        }
+        ui._latest_tests_state_payload = tests_state
+        ui._tests_table = _RestTableAdapter.from_tests_state(tests_state)
+
+        ui._refresh_test_result_status()
+        ui._refresh_test_result_status()
+
+        self.assertEqual(
+            1,
+            sum(1 for line in output_lines if line.startswith("Test success detail:")),
+        )
+        self.assertEqual(
+            1,
+            sum(1 for line in test_output_lines if line.startswith("Test success detail:")),
+        )
+
+    def test_push_config_from_ui_shows_staged_progress_and_success_ack(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._tcp_connected = True
+        ui._tracker = type("TrackerStub", (), {"is_pending": staticmethod(lambda: False)})()
+        ui._selected_real_profile = lambda: "test_minimal_25_9"
+        ui._config_dialog_start = lambda: (Path("C:/tmp"), "bringup_system.json")
+        ui._refresh_profiles = lambda: None
+        ui._session = object()
+        ui.update_idletasks = lambda: None
+        output_lines: list[str] = []
+        ui._append_output = output_lines.append
+        payload = {
+            "apply": {
+                "transferCheck": {"ok": True, "message": "registry bytes and hash match"},
+                "contentValidation": {"ok": True, "message": "content accepted"},
+                "apply": {"ok": True, "message": "registry applied"},
+                "postApplyCheck": {"ok": True, "message": "post-apply verified"},
+            }
+        }
+
+        def _fake_push(_session, _path, _profile, *, status_callback=None):
+            if status_callback is not None:
+                status_callback("load local config")
+                status_callback("upload registry")
+            return StatusResult(
+                code=SS__CONFIG__SAVED,
+                message="Config pushed to robot.",
+                payload=payload,
+            )
+
+        with patch("tools.can_nt.bringup_ui.filedialog.askopenfilename", return_value="C:/tmp/bringup_system.json"):
+            with patch("tools.can_nt.bringup_ui.push_config", side_effect=_fake_push):
+                ui._push_config_from_ui()
+
+        self.assertTrue(any("PUSH C:/tmp/bringup_system.json profile=test_minimal_25_9" in line for line in output_lines))
+        self.assertIn("Push Config: load local config", output_lines)
+        self.assertIn("Push Config: upload registry", output_lines)
+        self.assertIn("Push Config: transfer check: OK", output_lines)
+        self.assertIn("Push Config: content validation: OK", output_lines)
+        self.assertIn("Push Config: apply: OK", output_lines)
+        self.assertIn("Push Config: post-apply check: OK", output_lines)
+        self.assertIn("Push Config: OK", output_lines)
+        self.assertIn("Config pushed to robot.", output_lines)
+
+    def test_push_config_from_ui_shows_failure_ack(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._tcp_connected = True
+        ui._tracker = type("TrackerStub", (), {"is_pending": staticmethod(lambda: False)})()
+        ui._selected_real_profile = lambda: "test_minimal_25_9"
+        ui._config_dialog_start = lambda: (Path("C:/tmp"), "bringup_system.json")
+        ui._refresh_profiles = lambda: None
+        ui._session = object()
+        ui.update_idletasks = lambda: None
+        output_lines: list[str] = []
+        ui._append_output = output_lines.append
+
+        with patch("tools.can_nt.bringup_ui.filedialog.askopenfilename", return_value="C:/tmp/bringup_system.json"):
+            with patch(
+                "tools.can_nt.bringup_ui.push_config",
+                return_value=StatusResult(code=SS__CONFIG__INVALID, message="Robot rejected config push."),
+            ):
+                ui._push_config_from_ui()
+
+        self.assertIn("Push Config: FAILED", output_lines)
+        self.assertIn("Robot rejected config push.", output_lines)
 
 if __name__ == "__main__":
     unittest.main()

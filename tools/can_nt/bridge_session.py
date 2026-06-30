@@ -71,6 +71,9 @@ REST_PATH_COMMANDS = "/commands"
 REST_PATH_LOGS = "/logs"
 REST_PATH_MONITOR_ENABLE = "/monitor/enable"
 REST_PATH_MONITOR_DISABLE = "/monitor/disable"
+REST_PATH_PROTOCOL_MONITOR = "/ui/protocol-monitor"
+REST_PATH_RUNTIME_STATE = "/runtime/state"
+REST_PATH_TESTS_STATE = "/tests/state"
 REST_PATH_CONFIG_CURRENT = "/config/current"
 REST_QUERY_AFTER = "after"
 REST_QUERY_CLIENT_ID = "clientId"
@@ -256,7 +259,6 @@ class BridgeSession:
         self,
         rio_host: str,
         rest_port: int,
-        nt_state_reader: Optional[callable] = None,
         auto_handshake: bool = True,
     ) -> None:
         self._rio_host = rio_host
@@ -268,12 +270,14 @@ class BridgeSession:
         self._last_handshake_error = EMPTY_STRING
         self._session_id = EMPTY_STRING
         self._last_state: Dict[str, Any] = {}
-        self._nt_state_reader = nt_state_reader
         self._auto_handshake = auto_handshake
         self._connected = False
         self._event_queue: Deque[BridgeEvent] = deque()
         self._last_log_sequence = VALUE_ZERO
         self._pending_by_seq: Dict[int, PendingCommand] = {}
+        self._last_runtime_state: Dict[str, Any] = {}
+        self._last_tests_state: Dict[str, Any] = {}
+        self._last_protocol_monitor: Dict[str, Any] = {}
 
     def is_connected(self) -> bool:
         """
@@ -424,14 +428,57 @@ class BridgeSession:
 
     def get_state_snapshot(self) -> Dict[str, Any]:
         state = dict(self._last_state or {})
-        if self._nt_state_reader is not None:
-            try:
-                nt_state = self._nt_state_reader()
-                if isinstance(nt_state, dict):
-                    state.update(nt_state)
-            except Exception:
-                pass
+        state.update(self._flatten_runtime_state(self._last_runtime_state))
         return state
+
+    def fetch_protocol_monitor(self) -> Dict[str, Any]:
+        response = self._http.request(
+            HTTP_METHOD_GET,
+            REST_PATH_PROTOCOL_MONITOR,
+            timeout=REST_TIMEOUT_COMMAND_SEC,
+        )
+        if response.get("_http_status") == 200 and bool(response.get("ok")):
+            self._last_protocol_monitor = dict(response)
+        return dict(self._last_protocol_monitor)
+
+    def fetch_runtime_state(self) -> Dict[str, Any]:
+        response = self._http.request(
+            HTTP_METHOD_GET,
+            REST_PATH_RUNTIME_STATE,
+            timeout=REST_TIMEOUT_COMMAND_SEC,
+        )
+        payload = response.get("runtime")
+        if response.get("_http_status") == 200 and isinstance(payload, dict):
+            self._last_runtime_state = dict(payload)
+            self._last_state.update(self._flatten_runtime_state(self._last_runtime_state))
+        return dict(self._last_runtime_state)
+
+    def fetch_tests_state(self) -> Dict[str, Any]:
+        response = self._http.request(
+            HTTP_METHOD_GET,
+            REST_PATH_TESTS_STATE,
+            timeout=REST_TIMEOUT_COMMAND_SEC,
+        )
+        payload = response.get("tests")
+        if response.get("_http_status") == 200 and isinstance(payload, dict):
+            self._last_tests_state = dict(payload)
+        return dict(self._last_tests_state)
+
+    def fetch_session_snapshot(self) -> Dict[str, Any]:
+        response = self._http.request(
+            HTTP_METHOD_GET,
+            REST_PATH_SESSION,
+            timeout=REST_TIMEOUT_CONNECT_SEC,
+        )
+        if response.get("_http_status") == 200 and bool(response.get("ok")):
+            self._last_state = {
+                "sessionId": str(response.get(REST_JSON_SESSION_ID, EMPTY_STRING)),
+                "connected": bool(response.get(REST_JSON_CONNECTED, False)),
+                "ownerClientId": str(response.get("ownerClientId", EMPTY_STRING)),
+                "monitorEnabled": bool(response.get("monitorEnabled", False)),
+                "lastActivityMs": response.get("lastActivityMs", VALUE_ZERO),
+            }
+        return dict(self._last_state)
 
     def _next_seq(self) -> int:
         self._seq += VALUE_ONE
@@ -669,6 +716,23 @@ class BridgeSession:
                 raw={REST_JSON_STATUS: status, REST_JSON_MESSAGE: message},
             )
         )
+
+    def _flatten_runtime_state(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        flattened: Dict[str, Any] = {}
+        if not isinstance(payload, dict):
+            return flattened
+        for key in (
+            "enabled",
+            "estopped",
+            "mode",
+            "selectedProfile",
+            "activeRuntimeProfile",
+            "runtimeActive",
+            "controlledLifecycleActive",
+        ):
+            if key in payload:
+                flattened[key] = payload.get(key)
+        return flattened
 
 
 def _parse_json_text(text: str) -> Optional[Any]:

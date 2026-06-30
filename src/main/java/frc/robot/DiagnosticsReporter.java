@@ -1,5 +1,6 @@
 package frc.robot;
 
+import com.google.gson.JsonObject;
 import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableEntry;
 import edu.wpi.first.networktables.NetworkTableValue;
@@ -244,6 +245,19 @@ final class DiagnosticsReporter {
    */
   String buildReportJsonForDump() {
     return buildReportJson();
+  }
+
+  /**
+   * NAME
+   *   buildBusHealthJson - Build machine-readable roboRIO CAN-controller health.
+   *
+   * RETURNS
+   *   JsonObject containing the latest bus-health counters and sample age.
+   */
+  JsonObject buildBusHealthJson() {
+    JsonObject root = new JsonObject();
+    canHealth.appendSnapshotJson(root);
+    return root;
   }
 
   /**

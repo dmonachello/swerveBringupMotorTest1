@@ -53,8 +53,10 @@ from tools.can_nt.status import (
 from tools.can_nt.bridge_ops import (
     add_all_devices,
     add_next_motor,
+    activate_selected_test_devices,
     clear_stop_latch,
     connect,
+    deactivate_selected_test_devices,
     disconnect,
     export_runtime_groups,
     group_add_device,
@@ -138,6 +140,8 @@ AST_EXEC_SPEC = {
     "label_clear_stop_latch": "clear stop-latch",
     "label_tests_select": "tests select",
     "label_tests_toggle": "tests toggle",
+    "label_tests_activate": "tests activate",
+    "label_tests_deactivate": "tests deactivate",
     "label_tests_run": "tests run",
     "label_tests_run_all": "tests run-all",
     "label_run_test_default": "run test",
@@ -210,6 +214,8 @@ class BridgeCliAstExecutor:
             KIND_EXEC_CLEAR_STOP_LATCH: self._ast_exec_clear_stop_latch,
             SPEC.kind_exec_tests_select: self._ast_exec_tests_select,
             SPEC.kind_exec_tests_toggle: self._ast_exec_tests_toggle,
+            SPEC.kind_exec_tests_activate: self._ast_exec_tests_activate,
+            SPEC.kind_exec_tests_deactivate: self._ast_exec_tests_deactivate,
             SPEC.kind_exec_tests_run: self._ast_exec_tests_run,
             SPEC.kind_exec_tests_run_all: self._ast_exec_tests_run_all,
             KIND_EXEC_RUN_TEST_DEFAULT: self._ast_exec_run_test_default,
@@ -274,6 +280,26 @@ class BridgeCliAstExecutor:
         seq = toggle_test(self._cli._session)
         event = self._cli._wait_for_seq(seq)
         if self._cli._event_failed(event, AST_EXEC_SPEC["label_tests_toggle"]):
+            return AST_EXEC_SPEC["ret_err"]
+        return None
+
+    def _ast_exec_tests_activate(self, _ast: CommandAst) -> Optional[int]:
+        if not self._cli._session.is_connected():
+            print(AST_EXEC_SPEC["msg_err_robot_unavailable"])
+            return AST_EXEC_SPEC["ret_err"]
+        seq = activate_selected_test_devices(self._cli._session)
+        event = self._cli._wait_for_seq(seq)
+        if self._cli._event_failed(event, AST_EXEC_SPEC["label_tests_activate"]):
+            return AST_EXEC_SPEC["ret_err"]
+        return None
+
+    def _ast_exec_tests_deactivate(self, _ast: CommandAst) -> Optional[int]:
+        if not self._cli._session.is_connected():
+            print(AST_EXEC_SPEC["msg_err_robot_unavailable"])
+            return AST_EXEC_SPEC["ret_err"]
+        seq = deactivate_selected_test_devices(self._cli._session)
+        event = self._cli._wait_for_seq(seq)
+        if self._cli._event_failed(event, AST_EXEC_SPEC["label_tests_deactivate"]):
             return AST_EXEC_SPEC["ret_err"]
         return None
 

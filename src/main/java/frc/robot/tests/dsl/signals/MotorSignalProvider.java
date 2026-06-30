@@ -38,6 +38,10 @@ public final class MotorSignalProvider implements DslDeviceSignalProvider {
         new DslSignalMeta(
             DslSignalRegistry.VALUE_TYPE_NUMBER, true, false, false, null, false, false));
     signals.put(
+        DslSignalRegistry.SIGNAL_CURRENT_ACTUAL_MAX,
+        new DslSignalMeta(
+            DslSignalRegistry.VALUE_TYPE_NUMBER, true, false, false, null, false, false));
+    signals.put(
         DslSignalRegistry.SIGNAL_TEMPERATURE,
         new DslSignalMeta(
             DslSignalRegistry.VALUE_TYPE_NUMBER, true, false, false, null, false, false));
@@ -54,6 +58,10 @@ public final class MotorSignalProvider implements DslDeviceSignalProvider {
         new DslSignalMeta(
             DslSignalRegistry.VALUE_TYPE_NUMBER, true, false, false, null, false, false));
     signals.put(
+        DslSignalRegistry.SIGNAL_VELOCITY_ACTUAL_MAX_ABS,
+        new DslSignalMeta(
+            DslSignalRegistry.VALUE_TYPE_NUMBER, true, false, false, null, false, false));
+    signals.put(
         DslSignalRegistry.SIGNAL_POSITION,
         new DslSignalMeta(
             DslSignalRegistry.VALUE_TYPE_NUMBER, true, false, false, null, false, false));
@@ -63,6 +71,10 @@ public final class MotorSignalProvider implements DslDeviceSignalProvider {
             DslSignalRegistry.VALUE_TYPE_NUMBER, true, false, false, null, false, false));
     signals.put(
         DslSignalRegistry.SIGNAL_POSITION_DELTA,
+        new DslSignalMeta(
+            DslSignalRegistry.VALUE_TYPE_NUMBER, true, false, false, null, false, false));
+    signals.put(
+        DslSignalRegistry.SIGNAL_POSITION_DELTA_MAX_ABS,
         new DslSignalMeta(
             DslSignalRegistry.VALUE_TYPE_NUMBER, true, false, false, null, false, false));
     signals.put(

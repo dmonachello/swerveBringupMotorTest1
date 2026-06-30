@@ -2,14 +2,14 @@ from __future__ import annotations
 
 """
 NAME
-    can_nt_client.py - NetworkTables client setup and publish loop helpers.
+    can_nt_client.py - Legacy diagnostics publish wrapper.
 
 SYNOPSIS
     from tools.can_nt.can_nt_client import setup_nt, publish_updates
 
 DESCRIPTION
-    Encapsulates NT client creation and periodic publishing of device/summary
-    data for the CAN diagnostics tool.
+    Formerly owned NT publishing. It now returns disabled transport objects so
+    callers can keep one code path while the bringup system runs REST-only.
 """
 
 import json
@@ -31,20 +31,9 @@ def setup_nt(args):
         args: Parsed CLI args with NT configuration.
 
     RETURNS
-        (nt_instance, diag_table) or (None, None) when NT is disabled.
-
-    SIDE EFFECTS
-        Starts an NT client and attempts to connect to the roboRIO server.
+        (None, None). NT is no longer used by supported bringup workflows.
     """
-    if args.no_nt:
-        return None, None
-    # Local import so --help works without NT dependencies.
-    from ntcore import NetworkTableInstance
-    nt = NetworkTableInstance.getDefault()
-    nt.startClient4("can-nt-bridge")
-    nt.setServer(args.rio)
-    table = nt.getTable("bringup").getSubTable("diag")
-    return nt, table
+    return None, None
 
 
 def publish_updates(

@@ -59,6 +59,26 @@ MSG_PUSH_READ_FAILED = "Failed to read config file: {path}"
 MSG_PUSH_TIMEOUT = "Timed out waiting for robot command output."
 PUSH_EVENT_SLEEP_SEC = 0.02
 PUSH_TIMEOUT_SEC = 10.0
+PUSH_STAGE_LOAD = "load local config"
+PUSH_STAGE_VALIDATE = "validate local config"
+PUSH_STAGE_UPLOAD = "upload registry"
+PUSH_STAGE_SELECT_PROFILE = "select profile"
+PUSH_STAGE_CLEAR_GROUPS = "clear robot groups"
+PUSH_STAGE_IMPORT_GROUPS = "import groups and bindings"
+PUSH_STAGE_COMPLETE = "complete"
+PAYLOAD_KEY_APPLY = "apply"
+PAYLOAD_KEY_ACTIVE_PROFILE = "activeProfile"
+PAYLOAD_KEY_PUSH_STAGES = "pushStages"
+
+
+def _emit_status(status_callback: Optional[Callable[[str], None]], message: str) -> None:
+    """
+    NAME
+        _emit_status - Forward one progress message when a callback is present.
+    """
+    if status_callback is None:
+        return
+    status_callback(message)
 
 
 def wait_for_command_event(
@@ -180,6 +200,7 @@ def push_config(
     conflict_policy: str,
     *,
     plan_loader: Callable[[str, str, Optional[str]], Any],
+    status_callback: Optional[Callable[[str], None]] = None,
 ) -> StatusResult:
     """
     NAME
@@ -187,9 +208,11 @@ def push_config(
     """
     if not profile_name:
         return StatusResult(code=SS__CONFIG__PROFILE_REQUIRED, message=MSG_PROFILE_REQUIRED)
+    _emit_status(status_callback, f"Push Config: {PUSH_STAGE_LOAD}")
     ok, error, raw, payload = read_registry_raw(path)
     if not ok or payload is None:
         return StatusResult(code=SS__CONFIG__INVALID, message=error or MSG_PUSH_PARSE_ROOT)
+    _emit_status(status_callback, f"Push Config: {PUSH_STAGE_VALIDATE}")
     valid, message = validate_registry_payload(payload, profile_name)
     if not valid:
         return StatusResult(code=SS__CONFIG__INVALID, message=message)
@@ -200,6 +223,7 @@ def push_config(
         "registryHash": registry_hash,
         "registryBytes": registry_bytes,
     }
+    _emit_status(status_callback, f"Push Config: {PUSH_STAGE_UPLOAD}")
     event = wait_for_command_event(
         session,
         session.send_command(CMD_PROFILES_APPLY, args),
@@ -214,6 +238,7 @@ def push_config(
             apply_payload = None
     if not event_succeeded(event):
         return StatusResult(code=SS__CONFIG__INVALID, message=event.message or MSG_PUSH_APPLY_FAILED)
+    _emit_status(status_callback, f"Push Config: {PUSH_STAGE_SELECT_PROFILE}")
     select_event = wait_for_command_event(
         session,
         session.send_command(CMD_SELECT_PROFILE, {KEY_NAME: profile_name}),
@@ -223,9 +248,11 @@ def push_config(
             code=SS__NETWORK__ROBOT_UNAVAILABLE,
             message=(select_event.message if select_event is not None else MSG_PUSH_TIMEOUT),
         )
+    _emit_status(status_callback, f"Push Config: {PUSH_STAGE_CLEAR_GROUPS}")
     cleared, clear_message = clear_existing_groups_remote(session)
     if not cleared:
         return StatusResult(code=SS__NETWORK__ROBOT_UNAVAILABLE, message=clear_message)
+    _emit_status(status_callback, f"Push Config: {PUSH_STAGE_IMPORT_GROUPS}")
     plan = plan_loader(path, conflict_policy, profile_name)
     if not getattr(plan, "ok", False):
         return StatusResult(code=SS__CONFIG__INVALID, message=str(getattr(plan, "message", MSG_PUSH_APPLY_FAILED)))
@@ -242,7 +269,24 @@ def push_config(
     result_message = MSG_PUSH_OK
     if isinstance(apply_payload, dict):
         result_message = str(apply_payload.get("message", MSG_PUSH_OK))
-    return StatusResult(code=SS__CONFIG__SAVED, message=result_message)
+    _emit_status(status_callback, f"Push Config: {PUSH_STAGE_COMPLETE}")
+    return StatusResult(
+        code=SS__CONFIG__SAVED,
+        message=result_message,
+        payload={
+            PAYLOAD_KEY_APPLY: apply_payload if isinstance(apply_payload, dict) else {},
+            PAYLOAD_KEY_ACTIVE_PROFILE: profile_name,
+            PAYLOAD_KEY_PUSH_STAGES: [
+                PUSH_STAGE_LOAD,
+                PUSH_STAGE_VALIDATE,
+                PUSH_STAGE_UPLOAD,
+                PUSH_STAGE_SELECT_PROFILE,
+                PUSH_STAGE_CLEAR_GROUPS,
+                PUSH_STAGE_IMPORT_GROUPS,
+                PUSH_STAGE_COMPLETE,
+            ],
+        },
+    )
 
 
 def download_current_config(session: BridgeSession, path: str) -> StatusResult:

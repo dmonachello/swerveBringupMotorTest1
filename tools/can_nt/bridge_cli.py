@@ -431,6 +431,7 @@ CONNECT_PROFILE_SYNC_TIMEOUT_SEC = 1.0
 CONNECT_PROFILE_SYNC_SLEEP_SEC = 0.05
 PROFILE_EXPORT_TEST_RUN_WAIT_SEC = 2.0
 TEST_WAIT_DEFAULT_TIMEOUT_SEC = 10.0
+TEST_WAIT_RUN_ALL_DEFAULT_TIMEOUT_SEC = 120.0
 TEST_WAIT_POLL_SEC = 0.1
 TEST_WAIT_RUN_ALL_SETTLE_POLLS = 3
 TEST_WAIT_PROGRESS_PERIOD_SEC = 1.0
@@ -5304,7 +5305,7 @@ class BridgeCli:
         action = tokens[COUNT_ONE].lower()
         if action not in (CMD_RUN, CMD_RUN_ALL):
             return None
-        wait_flag, timeout_sec, error = self._parse_tests_run_args(tokens)
+        wait_flag, timeout_sec, timeout_explicit, error = self._parse_tests_run_args(tokens)
         if error:
             print(error)
             return StatusResult(code=SS__CLI_VALIDATOR__INVALID_VALUE)
@@ -5325,7 +5326,18 @@ class BridgeCli:
         if run_id and run_id > COUNT_ZERO:
             self._last_test_run_id = run_id
         if wait_flag:
-            return self._wait_for_test_run_completion(run_id, timeout_sec, run_all=(action == CMD_RUN_ALL))
+            effective_timeout_sec = timeout_sec
+            if effective_timeout_sec is None:
+                effective_timeout_sec = (
+                    TEST_WAIT_RUN_ALL_DEFAULT_TIMEOUT_SEC
+                    if action == CMD_RUN_ALL
+                    else TEST_WAIT_DEFAULT_TIMEOUT_SEC
+                )
+            return self._wait_for_test_run_completion(
+                run_id,
+                effective_timeout_sec,
+                run_all=(action == CMD_RUN_ALL),
+            )
         self._print_tests_run_started(action, run_id)
         return StatusResult(code=SS__NORMAL)
 
@@ -5358,9 +5370,10 @@ class BridgeCli:
     def _parse_tests_run_args(
         self,
         tokens: List[str],
-    ) -> tuple[bool, float, Optional[str]]:
+    ) -> tuple[bool, Optional[float], bool, Optional[str]]:
         wait_flag = False
-        timeout_sec = TEST_WAIT_DEFAULT_TIMEOUT_SEC
+        timeout_sec: Optional[float] = None
+        timeout_explicit = False
         index = COUNT_TWO
         while index < len(tokens):
             flag = tokens[index].lower()
@@ -5370,17 +5383,23 @@ class BridgeCli:
                 continue
             if flag == FLAG_TIMEOUT:
                 if index + COUNT_ONE >= len(tokens):
-                    return (False, timeout_sec, "ERROR: tests run --timeout requires a value.")
+                    return (False, timeout_sec, timeout_explicit, "ERROR: tests run --timeout requires a value.")
                 try:
                     timeout_sec = float(tokens[index + COUNT_ONE])
+                    timeout_explicit = True
                 except ValueError:
-                    return (False, timeout_sec, "ERROR: tests run timeout must be numeric.")
+                    return (False, timeout_sec, timeout_explicit, "ERROR: tests run timeout must be numeric.")
                 index += COUNT_TWO
                 continue
-            return (False, timeout_sec, "ERROR: tests run [--wait] [--timeout <seconds>]")
-        if timeout_sec <= SLEEP_MIN_SEC or timeout_sec > SLEEP_MAX_SEC:
-            return (False, timeout_sec, f"ERROR: timeout must be between {SLEEP_MIN_SEC} and {SLEEP_MAX_SEC}.")
-        return (wait_flag, timeout_sec, None)
+            return (False, timeout_sec, timeout_explicit, "ERROR: tests run [--wait] [--timeout <seconds>]")
+        if timeout_sec is not None and (timeout_sec <= SLEEP_MIN_SEC or timeout_sec > SLEEP_MAX_SEC):
+            return (
+                False,
+                timeout_sec,
+                timeout_explicit,
+                f"ERROR: timeout must be between {SLEEP_MIN_SEC} and {SLEEP_MAX_SEC}.",
+            )
+        return (wait_flag, timeout_sec, timeout_explicit, None)
 
     def _wait_for_test_run_completion(
         self,
@@ -6654,11 +6673,20 @@ class BridgeCli:
             # Allow runtime test runner commands to flow through the AST executor.
             if len(tokens) >= COUNT_TWO:
                 sub = tokens[COUNT_ONE].lower()
-                if sub in (CMD_SELECT, CMD_TOGGLE, CMD_RUN, CMD_RUN_ALL):
+                if sub in (CMD_SELECT, CMD_TOGGLE, CMD_RUN, CMD_RUN_ALL, "activate", "deactivate"):
                     return False
             return True
         if tokens[0].lower() == CMD_SHOW and len(tokens) > 1:
-            return tokens[1].lower() in (CMD_TEST, CMD_TESTS)
+            target = tokens[1].lower()
+            if target not in (CMD_TEST, CMD_TESTS):
+                return False
+            explicit_robot_source = any(
+                token.lower() in (SHOW_SOURCE_ROBOT, SHOW_SOURCE_BOTH, "--robot", "--both")
+                for token in tokens[2:]
+            )
+            if explicit_robot_source:
+                return False
+            return True
         return False
 
     def _execute_test_authoring(self, tokens: List[str]) -> StatusResult:
@@ -11999,6 +12027,10 @@ class BridgeCli:
                 "  Select a bringup test on the robot by name.\n"
                 "tests toggle\n"
                 "  Toggle enabled state of the selected test (robot).\n"
+                "tests activate\n"
+                "  Activate the selected test's required device scope (robot).\n"
+                "tests deactivate\n"
+                "  Deactivate the selected test's active device scope (robot).\n"
                 "tests run [--wait] [--timeout <seconds>]\n"
                 "  Run the selected test once (robot).\n"
                 "tests wait [--run <id>] [--timeout <seconds>]\n"
@@ -12008,6 +12040,14 @@ class BridgeCli:
             ),
             "tests select": "tests select <name>\n  Select a bringup test on the robot by name.",
             "tests toggle": "tests toggle\n  Toggle enabled state of the selected test (robot).",
+            "tests activate": (
+                "tests activate\n"
+                "  Activate the selected test's required device scope (robot)."
+            ),
+            "tests deactivate": (
+                "tests deactivate\n"
+                "  Deactivate the selected test's active device scope (robot)."
+            ),
             "tests run": (
                 "tests run [--wait] [--timeout <seconds>]\n"
                 "  Run the selected test once (robot). Use --wait to print the finished run summary."

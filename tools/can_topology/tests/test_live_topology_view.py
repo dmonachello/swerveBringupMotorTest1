@@ -153,6 +153,11 @@ class LiveTopologyViewTests(unittest.TestCase):
         view._runtime_state_seen = False
         view._runtime_state_notice_text = ""
         view._runtime_event_notice_text = ""
+        view._active_group_summary_var = None
+        view._active_group_status_var = None
+        view._detail_vars = {}
+        view._group_inspector_name = ""
+        view._group_inspector_targets = []
         view._connection_filter_vars = {
             key: _BoolVarStub(True) for key in live_view_module.CONNECTION_FILTERS_ORDER
         }
@@ -252,6 +257,76 @@ class LiveTopologyViewTests(unittest.TestCase):
         view._apply_runtime_notice_from_state(False, True, True, False)
 
         self.assertEqual([("__clear__", "clear")], notices)
+
+    def test_runtime_notice_prefers_disabled_over_activation_blocker(self) -> None:
+        view = self._make_view()
+        notices = []
+        view.set_runtime_state_notice = lambda text, level="warn": notices.append((text, level))
+        view.clear_runtime_state_notice = lambda: notices.append(("__clear__", "clear"))
+
+        view._apply_runtime_notice_from_state(False, False, False, False)
+
+        self.assertEqual(
+            [("Robot disabled. Enable teleop to run motors.", "info")],
+            notices,
+        )
+
+    def test_active_group_status_waits_for_runtime_state(self) -> None:
+        view = self._make_view()
+        view._runtime_state_seen = False
+
+        self.assertEqual(
+            live_view_module.ACTIVE_GROUP_STATUS_WAITING_TEXT,
+            view._active_group_status_text({"name": "active-group"}, {"falcon 9": {}}),
+        )
+
+    def test_active_group_status_reports_empty_group(self) -> None:
+        view = self._make_view()
+        view._runtime_state_seen = True
+        view._controlled_lifecycle_active = False
+
+        self.assertEqual(
+            live_view_module.ACTIVE_GROUP_STATUS_EMPTY_TEXT,
+            view._active_group_status_text({"name": "active-group"}, {}),
+        )
+
+    def test_active_group_status_reports_editable_when_inactive(self) -> None:
+        view = self._make_view()
+        view._runtime_state_seen = True
+        view._controlled_lifecycle_active = False
+
+        self.assertEqual(
+            live_view_module.ACTIVE_GROUP_STATUS_EDITABLE_TEXT,
+            view._active_group_status_text({"name": "active-group"}, {"falcon 9": {}}),
+        )
+
+    def test_active_group_status_reports_ready_when_active_members_present(self) -> None:
+        view = self._make_view()
+        view._runtime_state_seen = True
+        view._controlled_lifecycle_active = True
+        view._runtime_state = {
+            "falcon 9": {"presenceConfidence": 1.0},
+            "sparkmax/neo 25": {"presenceConfidence": 1.0},
+        }
+
+        self.assertEqual(
+            live_view_module.ACTIVE_GROUP_STATUS_READY_TEXT,
+            view._active_group_status_text(
+                {"name": "active-group"},
+                {"falcon 9": {}, "sparkmax/neo 25": {}},
+            ),
+        )
+
+    def test_active_group_status_reports_locked_when_active_members_not_present(self) -> None:
+        view = self._make_view()
+        view._runtime_state_seen = True
+        view._controlled_lifecycle_active = True
+        view._runtime_state = {"falcon 9": {"presenceConfidence": 0.0}}
+
+        self.assertEqual(
+            live_view_module.ACTIVE_GROUP_STATUS_LOCKED_TEXT,
+            view._active_group_status_text({"name": "active-group"}, {"falcon 9": {}}),
+        )
 
     def test_reload_profile_applies_saved_connection_filters(self) -> None:
         view = self._make_view()
@@ -594,6 +669,66 @@ class LiveTopologyViewTests(unittest.TestCase):
         finally:
             live_view_module._load_profiles_payload = original_load_payload
             live_view_module._load_device_registry = original_load_registry
+
+    def test_reload_profile_refreshes_active_group_details_immediately(self) -> None:
+        view = self._make_view()
+        view._update_details_calls = 0
+        view._update_details = lambda: setattr(
+            view, "_update_details_calls", view._update_details_calls + 1
+        )
+
+        original_load_payload = live_view_module._load_profiles_payload
+        original_load_registry = live_view_module._load_device_registry
+        original_parse_bridge_groups = live_view_module.parse_bridge_groups
+        original_redraw = view._redraw
+
+        try:
+            live_view_module._load_profiles_payload = lambda: (
+                {
+                    "defaultProfile": "demo",
+                    "profiles": {
+                        "demo": {
+                            "devices": [
+                                {"label": "FALCON 9", "type": "motor", "deviceType": 2, "id": 9},
+                            ]
+                        }
+                    },
+                },
+                "",
+            )
+            live_view_module._load_device_registry = lambda _payload: {}
+            live_view_module.parse_bridge_groups = lambda _payload, _profile: []
+            view._redraw = lambda *_args, **_kwargs: None
+
+            view.reload_profile("demo")
+
+            self.assertEqual(1, view._update_details_calls)
+        finally:
+            live_view_module._load_profiles_payload = original_load_payload
+            live_view_module._load_device_registry = original_load_registry
+            live_view_module.parse_bridge_groups = original_parse_bridge_groups
+            view._redraw = original_redraw
+
+    def test_reload_profile_error_clears_active_group_details_immediately(self) -> None:
+        view = self._make_view()
+        view._update_details_calls = 0
+        view._update_details = lambda: setattr(
+            view, "_update_details_calls", view._update_details_calls + 1
+        )
+
+        original_load_payload = live_view_module._load_profiles_payload
+        original_redraw = view._redraw
+
+        try:
+            live_view_module._load_profiles_payload = lambda: (None, "load failed")
+            view._redraw = lambda *_args, **_kwargs: None
+
+            view.reload_profile("demo")
+
+            self.assertEqual(1, view._update_details_calls)
+        finally:
+            live_view_module._load_profiles_payload = original_load_payload
+            view._redraw = original_redraw
 
     def test_effective_groups_preserve_static_members_when_runtime_group_only_has_counts(self) -> None:
         view = self._make_view()

@@ -18,7 +18,7 @@ import hashlib
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from tools.can_nt.config_transfer_service import (
     download_current_config as shared_download_current_config,
@@ -1303,6 +1303,8 @@ def push_config(
     path: str,
     profile_name: str,
     conflict_policy: str = "error",
+    *,
+    status_callback: Optional[Callable[[str], None]] = None,
 ) -> StatusResult:
     """
     NAME
@@ -1314,6 +1316,7 @@ def push_config(
         profile_name,
         conflict_policy,
         plan_loader=import_config,
+        status_callback=status_callback,
     )
 
 

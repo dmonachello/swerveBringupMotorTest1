@@ -250,6 +250,13 @@ public final class BringupRestServerTest {
     }
 
     @Override
+    public JsonObject buildTestsStateJson() {
+      JsonObject root = new JsonObject();
+      root.addProperty("totalCount", 1);
+      return root;
+    }
+
+    @Override
     public JsonObject buildCurrentConfigJson() {
       JsonObject root = new JsonObject();
       root.addProperty("schema_version", 1);

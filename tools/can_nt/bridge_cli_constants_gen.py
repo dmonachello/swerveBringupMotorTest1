@@ -207,6 +207,8 @@ class ParserSpec:
     kind_exec_add_all: str
     kind_exec_tests_select: str
     kind_exec_tests_toggle: str
+    kind_exec_tests_activate: str
+    kind_exec_tests_deactivate: str
     kind_exec_tests_run: str
     kind_exec_tests_run_all: str
     kind_show: str
@@ -446,6 +448,8 @@ SPEC = ParserSpec(
     kind_exec_add_all='exec_add_all',
     kind_exec_tests_select='exec_tests_select',
     kind_exec_tests_toggle='exec_tests_toggle',
+    kind_exec_tests_activate='exec_tests_activate',
+    kind_exec_tests_deactivate='exec_tests_deactivate',
     kind_exec_tests_run='exec_tests_run',
     kind_exec_tests_run_all='exec_tests_run_all',
     kind_show='show',

@@ -1262,11 +1262,14 @@ public final class BringupRuntime {
         continue;
       }
       boolean singletonSupport = isLifecycleSingletonEntry(entry);
-      if (singletonSupport) {
-        ensureSingletonLifecycleDeviceCreated(entry.label);
-      }
       frc.robot.diag.lifecycle.runtime.DeviceRuntimeState controlledState =
           controlledLifecycleRuntimeStateForLabel(entry.label);
+      if (singletonSupport) {
+        ensureSingletonLifecycleDeviceCreated(
+            entry.label,
+            shouldInstantiateLifecycleSingleton(
+                runtimeActive, controlledLifecycleActive, controlledState));
+      }
       inScopeByLabel.put(
           entry.label.trim().toLowerCase(),
           singletonSupport
@@ -1305,8 +1308,8 @@ public final class BringupRuntime {
     deviceLifecycle.refresh(entries, snapshotsByLabel, instantiatedByLabel, inScopeByLabel, nowMs);
   }
 
-  private void ensureSingletonLifecycleDeviceCreated(String label) {
-    if (core == null || label == null || label.isBlank()) {
+  private void ensureSingletonLifecycleDeviceCreated(String label, boolean shouldInstantiate) {
+    if (core == null || !shouldInstantiate || label == null || label.isBlank()) {
       return;
     }
     frc.robot.devices.DeviceUnit device = core.findDeviceByLabel(label);
@@ -1338,6 +1341,16 @@ public final class BringupRuntime {
     if (!instantiated) {
       return false;
     }
+    if (controlledLifecycleActive) {
+      return controlledState != null && controlledState.isActive();
+    }
+    return runtimeActive;
+  }
+
+  static boolean shouldInstantiateLifecycleSingleton(
+      boolean runtimeActive,
+      boolean controlledLifecycleActive,
+      frc.robot.diag.lifecycle.runtime.DeviceRuntimeState controlledState) {
     if (controlledLifecycleActive) {
       return controlledState != null && controlledState.isActive();
     }

@@ -25,6 +25,7 @@ from tools.common.robot_test_dsl import (
     update_test_source_in_root_payload,
     validate_store_for_profile,
 )
+from tools.common.generate_robot_test_dsl_reference import generate_reference_payload
 
 
 class RobotTestDslServiceTests(unittest.TestCase):
@@ -123,6 +124,35 @@ class RobotTestDslServiceTests(unittest.TestCase):
                 }
             ),
         )
+
+    def test_signal_catalog_includes_run_scoped_aggregate_motor_signals(self) -> None:
+        catalog = signal_catalog()
+
+        self.assertIn("current_actual_max", catalog["motor"])
+        self.assertIn("velocity_actual_max_abs", catalog["motor"])
+        self.assertIn("position_delta_max_abs", catalog["motor"])
+        self.assertIn("position_delta_max_abs", catalog["encoderExternal"])
+
+    def test_generated_dsl_reference_payload_includes_device_docs_and_signals(self) -> None:
+        payload = generate_reference_payload()
+
+        topics = payload["topics"]
+        topic_map = {}
+
+        def _walk(nodes):
+            for node in nodes:
+                topic_id = str(node.get("id", "")).strip()
+                if topic_id:
+                    topic_map[topic_id] = node
+                children = node.get("children")
+                if isinstance(children, list):
+                    _walk(children)
+
+        _walk(topics)
+        motor_topic = topic_map["topic_device_type_motor"]
+        self.assertIn("Motor controller devices", motor_topic["summary"])
+        self.assertTrue(any("current_actual_max" in line for line in motor_topic["signals"]))
+        self.assertTrue(str(motor_topic.get("sourcePath", "")).endswith("motor.devices.md"))
 
     def test_import_test_into_root_payload_without_explicit_set_uses_profile_owned_set(self) -> None:
         payload = self._root_payload(include_controller=True)

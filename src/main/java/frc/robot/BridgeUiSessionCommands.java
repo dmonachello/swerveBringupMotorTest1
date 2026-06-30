@@ -113,8 +113,10 @@ final class BridgeUiSessionCommands implements BridgeUiCommandDispatcher.Command
         break;
       case CMD_UI_MONITOR_DISABLE:
         dependencies.setUiProtocolMonitorEnabled(false);
-        dependencies.getUiProtocolTable().getEntry(KEY_ENABLED).setBoolean(false);
-        dependencies.getUiProtocolTable().getEntry(KEY_CONNECTED).setBoolean(false);
+        if (dependencies.getUiProtocolTable() != null) {
+          dependencies.getUiProtocolTable().getEntry(KEY_ENABLED).setBoolean(false);
+          dependencies.getUiProtocolTable().getEntry(KEY_CONNECTED).setBoolean(false);
+        }
         result.message = MESSAGE_MONITOR_DISABLED;
         break;
       case CMD_UI_POLL_LOG:
@@ -159,7 +161,7 @@ final class BridgeUiSessionCommands implements BridgeUiCommandDispatcher.Command
     if (ingress.locked && activeClientId != null && activeClientId.equals(ingress.client)) {
       dependencies.setActiveUiClientId(null);
       result.message = MESSAGE_UI_LOCK_RELEASED;
-      if (dependencies.isUiProtocolMonitorEnabled()) {
+      if (dependencies.isUiProtocolMonitorEnabled() && dependencies.getUiProtocolTable() != null) {
         dependencies.getUiProtocolTable().getEntry(KEY_CONNECTED).setBoolean(false);
       }
       return;

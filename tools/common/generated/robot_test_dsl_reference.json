@@ -1,0 +1,571 @@
+{
+  "schemaVersion": 1,
+  "generatedFrom": "tools.common.generate_robot_test_dsl_reference",
+  "topics": [
+    {
+      "id": "overview",
+      "title": "Overview",
+      "summary": "Start here for the shape of one DSL test.",
+      "details": [
+        "A DSL test declares devices, then uses init/main/close phases to read signals, write outputs, and decide pass/fail.",
+        "Use the tree on the left to drill into supported devices, top-level declarations, phases, and individual statements."
+      ],
+      "examples": [
+        "test \"spark25_leftY\"",
+        "device \"SPARKMAX/NEO 25\"",
+        "device \"controller0\"",
+        "",
+        "main:",
+        "    set \"SPARKMAX/NEO 25\".output_percent_cmd = controller0.leftY deadband 0.08 scaled 0.25 default 0.0",
+        "    until timer.elapsed >= 10.0",
+        "    require \"SPARKMAX/NEO 25\".position_delta outside -1.0 1.0"
+      ],
+      "children": [
+        {
+          "id": "category_devices",
+          "title": "Supported Devices",
+          "summary": "Currently supported DSL device families, what they do, and which signals they expose.",
+          "children": [
+            {
+              "id": "topic_device_type_encoderExternal",
+              "title": "encoderExternal",
+              "summary": "External encoder devices used to measure rotation and accumulated position change.",
+              "syntax": [
+                "device \"<label>\"  # resolves to DSL type encoderExternal"
+              ],
+              "details": [
+                "Use this when motion proof comes from an external encoder instead of an integrated motor sensor.",
+                "The aggregate `position_delta_max_abs` signal is useful for proving motion over the whole run."
+              ],
+              "signals": [
+                "- position: number | read",
+                "- position_actual: number | read",
+                "- position_delta: number | read",
+                "- position_delta_max_abs: number | read"
+              ],
+              "examples": [
+                "device \"driveEncoder0\"",
+                "main:",
+                "    until timer.elapsed >= 3.0",
+                "    require \"driveEncoder0\".position_delta_max_abs > 5.0"
+              ],
+              "sourcePath": "src/main/java/frc/robot/tests/dsl/signals/encoderExternal.devices.md"
+            },
+            {
+              "id": "topic_device_type_limitSwitch",
+              "title": "limitSwitch",
+              "summary": "Digital or controller-backed limit switch devices used for pressed/not-pressed completion checks.",
+              "syntax": [
+                "device \"<label>\"  # resolves to DSL type limitSwitch"
+              ],
+              "details": [
+                "Use this when a test needs a simple contact or pressed condition.",
+                "This is commonly paired with `success` or `require` for end-stop tests."
+              ],
+              "signals": [
+                "- pressed: boolean | read"
+              ],
+              "examples": [
+                "device \"lmtSw0\"",
+                "main:",
+                "    success lmtSw0.pressed"
+              ],
+              "sourcePath": "src/main/java/frc/robot/tests/dsl/signals/limitSwitch.devices.md"
+            },
+            {
+              "id": "topic_device_type_motor",
+              "title": "motor",
+              "summary": "Motor controller devices used for commanded output, motion, current, and temperature evidence.",
+              "syntax": [
+                "device \"<label>\"  # resolves to DSL type motor"
+              ],
+              "details": [
+                "Use this for controllable motors such as Falcons, Krakens, and Spark MAX / NEO devices.",
+                "Most motion-oriented DSL tests read position, velocity, current, and temperature signals from this device type.",
+                "Run-scoped aggregate signals such as `current_actual_max` and `position_delta_max_abs` prove that something happened sometime during the run, not just at the final sample."
+              ],
+              "signals": [
+                "- current: number | read",
+                "- current_actual: number | read",
+                "- current_actual_max: number | read",
+                "- faults: boolean | clear",
+                "- output: number | write | safe=0.0",
+                "- output_percent_applied: number | read",
+                "- output_percent_cmd: number | read, write | safe-provider",
+                "- position: number | read",
+                "- position_actual: number | read",
+                "- position_delta: number | read",
+                "- position_delta_max_abs: number | read",
+                "- temperature: number | read",
+                "- temperature_actual: number | read",
+                "- velocity: number | read",
+                "- velocity_actual: number | read",
+                "- velocity_actual_max_abs: number | read"
+              ],
+              "examples": [
+                "device \"FALCON 9\"",
+                "device \"SPARKMAX/NEO 25\"",
+                "main:",
+                "    set \"FALCON 9\".output_percent_cmd = 0.15",
+                "    require \"SPARKMAX/NEO 25\".position_delta_max_abs > 1.0"
+              ],
+              "sourcePath": "src/main/java/frc/robot/tests/dsl/signals/motor.devices.md"
+            },
+            {
+              "id": "topic_device_type_PDH",
+              "title": "PDH",
+              "summary": "REV power distribution device with supply and per-channel telemetry similar to PDP-style checks.",
+              "syntax": [
+                "device \"<label>\"  # resolves to DSL type PDH"
+              ],
+              "details": [
+                "Use this for REV PDH voltage, current, fault, and switchable-channel evidence.",
+                "Per-channel signals follow the generated catalog naming such as `channel0_current` and `channel0_fault`."
+              ],
+              "signals": [
+                "- brownout: boolean | read",
+                "- can_warning: boolean | read",
+                "- channel0_current: number | read",
+                "- channel0_fault: boolean | read",
+                "- channel0_sticky_fault: boolean | read",
+                "- channel10_current: number | read",
+                "- channel10_fault: boolean | read",
+                "- channel10_sticky_fault: boolean | read",
+                "- channel11_current: number | read",
+                "- channel11_fault: boolean | read",
+                "- channel11_sticky_fault: boolean | read",
+                "- channel12_current: number | read",
+                "- channel12_fault: boolean | read",
+                "- channel12_sticky_fault: boolean | read",
+                "- channel13_current: number | read",
+                "- channel13_fault: boolean | read",
+                "- channel13_sticky_fault: boolean | read",
+                "- channel14_current: number | read",
+                "- channel14_fault: boolean | read",
+                "- channel14_sticky_fault: boolean | read",
+                "- channel15_current: number | read",
+                "- channel15_fault: boolean | read",
+                "- channel15_sticky_fault: boolean | read",
+                "- channel16_current: number | read",
+                "- channel16_fault: boolean | read",
+                "- channel16_sticky_fault: boolean | read",
+                "- channel17_current: number | read",
+                "- channel17_fault: boolean | read",
+                "- channel17_sticky_fault: boolean | read",
+                "- channel18_current: number | read",
+                "- channel18_fault: boolean | read",
+                "- channel18_sticky_fault: boolean | read",
+                "- channel19_current: number | read",
+                "- channel19_fault: boolean | read",
+                "- channel19_sticky_fault: boolean | read",
+                "- channel1_current: number | read",
+                "- channel1_fault: boolean | read",
+                "- channel1_sticky_fault: boolean | read",
+                "- channel20_current: number | read",
+                "- channel20_fault: boolean | read",
+                "- channel20_sticky_fault: boolean | read",
+                "- channel21_current: number | read",
+                "- channel21_fault: boolean | read",
+                "- channel21_sticky_fault: boolean | read",
+                "- channel22_current: number | read",
+                "- channel22_fault: boolean | read",
+                "- channel22_sticky_fault: boolean | read",
+                "- channel23_current: number | read",
+                "- channel23_fault: boolean | read",
+                "- channel23_sticky_fault: boolean | read",
+                "- channel2_current: number | read",
+                "- channel2_fault: boolean | read",
+                "- channel2_sticky_fault: boolean | read",
+                "- channel3_current: number | read",
+                "- channel3_fault: boolean | read",
+                "- channel3_sticky_fault: boolean | read",
+                "- channel4_current: number | read",
+                "- channel4_fault: boolean | read",
+                "- channel4_sticky_fault: boolean | read",
+                "- channel5_current: number | read",
+                "- channel5_fault: boolean | read",
+                "- channel5_sticky_fault: boolean | read",
+                "- channel6_current: number | read",
+                "- channel6_fault: boolean | read",
+                "- channel6_sticky_fault: boolean | read",
+                "- channel7_current: number | read",
+                "- channel7_fault: boolean | read",
+                "- channel7_sticky_fault: boolean | read",
+                "- channel8_current: number | read",
+                "- channel8_fault: boolean | read",
+                "- channel8_sticky_fault: boolean | read",
+                "- channel9_current: number | read",
+                "- channel9_fault: boolean | read",
+                "- channel9_sticky_fault: boolean | read",
+                "- faults: boolean | clear",
+                "- hardware_fault: boolean | read",
+                "- sticky_brownout: boolean | read",
+                "- sticky_can_bus_off: boolean | read",
+                "- sticky_can_warning: boolean | read",
+                "- sticky_has_reset: boolean | read",
+                "- switchable_enabled: boolean | read",
+                "- temperature: number | read",
+                "- total_current: number | read",
+                "- voltage: number | read"
+              ],
+              "examples": [
+                "device \"pdh\"",
+                "main:",
+                "    require \"pdh\".voltage > 11.5"
+              ],
+              "sourcePath": "src/main/java/frc/robot/tests/dsl/signals/PDH.devices.md"
+            },
+            {
+              "id": "topic_device_type_PDP",
+              "title": "PDP",
+              "summary": "Legacy CTRE power distribution device with voltage, current, temperature, and per-channel signals.",
+              "syntax": [
+                "device \"<label>\"  # resolves to DSL type PDP"
+              ],
+              "details": [
+                "Use this for power-distribution checks, brownout guards, and per-channel load evidence.",
+                "Per-channel signals follow the generated catalog naming such as `channel0_current` and `channel0_fault`."
+              ],
+              "signals": [
+                "- brownout: boolean | read",
+                "- can_warning: boolean | read",
+                "- channel0_current: number | read",
+                "- channel0_fault: boolean | read",
+                "- channel0_sticky_fault: boolean | read",
+                "- channel10_current: number | read",
+                "- channel10_fault: boolean | read",
+                "- channel10_sticky_fault: boolean | read",
+                "- channel11_current: number | read",
+                "- channel11_fault: boolean | read",
+                "- channel11_sticky_fault: boolean | read",
+                "- channel12_current: number | read",
+                "- channel12_fault: boolean | read",
+                "- channel12_sticky_fault: boolean | read",
+                "- channel13_current: number | read",
+                "- channel13_fault: boolean | read",
+                "- channel13_sticky_fault: boolean | read",
+                "- channel14_current: number | read",
+                "- channel14_fault: boolean | read",
+                "- channel14_sticky_fault: boolean | read",
+                "- channel15_current: number | read",
+                "- channel15_fault: boolean | read",
+                "- channel15_sticky_fault: boolean | read",
+                "- channel1_current: number | read",
+                "- channel1_fault: boolean | read",
+                "- channel1_sticky_fault: boolean | read",
+                "- channel2_current: number | read",
+                "- channel2_fault: boolean | read",
+                "- channel2_sticky_fault: boolean | read",
+                "- channel3_current: number | read",
+                "- channel3_fault: boolean | read",
+                "- channel3_sticky_fault: boolean | read",
+                "- channel4_current: number | read",
+                "- channel4_fault: boolean | read",
+                "- channel4_sticky_fault: boolean | read",
+                "- channel5_current: number | read",
+                "- channel5_fault: boolean | read",
+                "- channel5_sticky_fault: boolean | read",
+                "- channel6_current: number | read",
+                "- channel6_fault: boolean | read",
+                "- channel6_sticky_fault: boolean | read",
+                "- channel7_current: number | read",
+                "- channel7_fault: boolean | read",
+                "- channel7_sticky_fault: boolean | read",
+                "- channel8_current: number | read",
+                "- channel8_fault: boolean | read",
+                "- channel8_sticky_fault: boolean | read",
+                "- channel9_current: number | read",
+                "- channel9_fault: boolean | read",
+                "- channel9_sticky_fault: boolean | read",
+                "- faults: boolean | clear",
+                "- hardware_fault: boolean | read",
+                "- sticky_brownout: boolean | read",
+                "- sticky_can_bus_off: boolean | read",
+                "- sticky_can_warning: boolean | read",
+                "- sticky_has_reset: boolean | read",
+                "- switchable_enabled: boolean | read",
+                "- temperature: number | read",
+                "- total_current: number | read",
+                "- voltage: number | read"
+              ],
+              "examples": [
+                "device \"pdp\"",
+                "main:",
+                "    abort \"pdp\".brownout == true",
+                "    require \"pdp\".channel0_current > 0.2"
+              ],
+              "sourcePath": "src/main/java/frc/robot/tests/dsl/signals/PDP.devices.md"
+            },
+            {
+              "id": "topic_device_type_TestTimer",
+              "title": "TestTimer",
+              "summary": "Built-in timing source used for timeouts and elapsed-time gating.",
+              "syntax": [
+                "device \"<label>\"  # resolves to DSL type TestTimer"
+              ],
+              "details": [
+                "The DSL timer is available without a device declaration, but it is still part of the supported signal model.",
+                "Use `timer.elapsed` in `until`, `require`, `abort`, or `success` conditions."
+              ],
+              "signals": [
+                "- elapsed: number | read"
+              ],
+              "examples": [
+                "main:",
+                "    until timer.elapsed >= 10.0",
+                "    require timer.elapsed >= 0.5"
+              ],
+              "sourcePath": "src/main/java/frc/robot/tests/dsl/signals/TestTimer.devices.md"
+            },
+            {
+              "id": "topic_device_type_xboxController",
+              "title": "xboxController",
+              "summary": "Operator input device used as a live signal source for axes, buttons, triggers, and D-pad state.",
+              "syntax": [
+                "device \"<label>\"  # resolves to DSL type xboxController"
+              ],
+              "details": [
+                "Use this when a DSL test reads operator input and feeds it into a writable output signal.",
+                "Controller signals are read-only sources; they are not writable test targets."
+              ],
+              "signals": [
+                "- A: boolean | read",
+                "- B: boolean | read",
+                "- leftY: number | read",
+                "- rightY: number | read"
+              ],
+              "examples": [
+                "device \"controller0\"",
+                "device \"SPARKMAX/NEO 25\"",
+                "main:",
+                "    set \"SPARKMAX/NEO 25\".output_percent_cmd = controller0.leftY deadband 0.08 scaled 0.25 default 0.0"
+              ],
+              "sourcePath": "src/main/java/frc/robot/tests/dsl/signals/xboxController.devices.md"
+            }
+          ]
+        },
+        {
+          "id": "category_top",
+          "title": "Top Level",
+          "summary": "Declarations that appear before phases.",
+          "children": [
+            {
+              "id": "topic_test",
+              "title": "test \"name\"",
+              "summary": "Declare the test name shown in UI, CLI, and results.",
+              "syntax": [
+                "test \"my_test_name\""
+              ],
+              "details": [
+                "Exactly one test declaration should appear at the top of the source.",
+                "The name is the stable identifier used by profile test sets and selection commands."
+              ],
+              "examples": [
+                "test \"falcon9_move_150_rotations\"",
+                "test \"test_minimal_25_9_spark25_leftY\""
+              ]
+            },
+            {
+              "id": "topic_device",
+              "title": "device \"label\"",
+              "summary": "Declare each device label the test references.",
+              "syntax": [
+                "device \"SPARKMAX/NEO 25\""
+              ],
+              "details": [
+                "Every referenced device must be declared before init/main/close.",
+                "Labels must match the configured bringup device labels exactly."
+              ],
+              "examples": [
+                "device \"SPARKMAX/NEO 25\"",
+                "device \"controller0\"",
+                "device \"lmtSw0\""
+              ]
+            }
+          ]
+        },
+        {
+          "id": "category_phases",
+          "title": "Phases",
+          "summary": "Execution sections that group statements by when they run.",
+          "children": [
+            {
+              "id": "topic_init",
+              "title": "init:",
+              "summary": "Runs once at test start before the main loop.",
+              "syntax": [
+                "init:"
+              ],
+              "details": [
+                "Use init for one-time setup such as zeroing outputs, clearing signals, or applying startup values.",
+                "Init statements run after devices are instantiated and before main begins."
+              ],
+              "examples": [
+                "init:",
+                "    clear \"FALCON 9\".sticky_fault",
+                "    set \"FALCON 9\".output_percent_cmd = 0.0"
+              ]
+            },
+            {
+              "id": "topic_main",
+              "title": "main:",
+              "summary": "Runs every test tick until a success/abort/until ends the test.",
+              "syntax": [
+                "main:"
+              ],
+              "details": [
+                "Put active control logic and pass/fail conditions here.",
+                "Statement order does not create nested blocks; all main statements belong to the main phase."
+              ],
+              "examples": [
+                "main:",
+                "    set \"SPARKMAX/NEO 25\".output_percent_cmd = controller0.leftY deadband 0.08 scaled 0.25 default 0.0",
+                "    until timer.elapsed >= 10.0",
+                "    require \"SPARKMAX/NEO 25\".position_delta outside -1.0 1.0"
+              ]
+            },
+            {
+              "id": "topic_close",
+              "title": "close:",
+              "summary": "Runs once when the test stops, regardless of pass or fail.",
+              "syntax": [
+                "close:"
+              ],
+              "details": [
+                "Use close for cleanup and safe shutdown requests.",
+                "Close runs after the result is decided, so it is not part of pass/fail evaluation."
+              ],
+              "examples": [
+                "close:",
+                "    set \"SPARKMAX/NEO 25\".output_percent_cmd = 0.0"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "category_statements",
+          "title": "Statements",
+          "summary": "Actions and conditions used inside phases.",
+          "children": [
+            {
+              "id": "topic_set",
+              "title": "set",
+              "summary": "Write a literal or scaled signal into a writable device signal.",
+              "syntax": [
+                "set \"FALCON 9\".output_percent_cmd = 0.2",
+                "set \"SPARKMAX/NEO 25\".output_percent_cmd = controller0.leftY deadband 0.08 scaled 0.25 default 0.0"
+              ],
+              "details": [
+                "Literal form writes a fixed value every tick in that phase.",
+                "Scaled form reads another signal, applies deadband/scale/default, then writes the result."
+              ],
+              "examples": [
+                "set \"FALCON 9\".output_percent_cmd = 0.15",
+                "set \"SPARKMAX/NEO 25\".output_percent_cmd = controller0.leftY deadband 0.08 scaled 0.25 default 0.0"
+              ]
+            },
+            {
+              "id": "topic_clear",
+              "title": "clear",
+              "summary": "Clear a clearable signal such as a sticky fault.",
+              "syntax": [
+                "clear \"pdp\".sticky_fault"
+              ],
+              "details": [
+                "Use clear when the target signal supports a clear operation.",
+                "This is usually paired with init so the test starts from a known state."
+              ],
+              "examples": [
+                "init:",
+                "    clear \"pdp\".sticky_fault"
+              ]
+            },
+            {
+              "id": "topic_until",
+              "title": "until",
+              "summary": "Stop the test when the condition becomes true.",
+              "syntax": [
+                "until timer.elapsed >= 10.0"
+              ],
+              "details": [
+                "Until decides when the test ends.",
+                "If requires are present, they must have latched true before the until ends the test or the result becomes FAIL."
+              ],
+              "examples": [
+                "main:",
+                "    until timer.elapsed >= 10.0",
+                "    require \"FALCON 9\".position_delta > 150.0"
+              ]
+            },
+            {
+              "id": "topic_abort",
+              "title": "abort",
+              "summary": "Fail immediately when the condition becomes true.",
+              "syntax": [
+                "abort \"pdp\".brownout == true"
+              ],
+              "details": [
+                "Abort is a hard failure guard.",
+                "Use it for safety or clearly-invalid runtime states that should stop the test immediately."
+              ],
+              "examples": [
+                "main:",
+                "    abort \"pdp\".brownout == true"
+              ]
+            },
+            {
+              "id": "topic_success",
+              "title": "success",
+              "summary": "Pass immediately when the condition becomes true.",
+              "syntax": [
+                "success \"lmtSw0\".pressed == true"
+              ],
+              "details": [
+                "Success ends the test as PASS as soon as the condition is met.",
+                "This is useful when there is a clear completion event and no fixed timeout is needed."
+              ],
+              "examples": [
+                "main:",
+                "    success lmtSw0.pressed"
+              ]
+            },
+            {
+              "id": "topic_require",
+              "title": "require",
+              "summary": "Latch evidence that must become true sometime before the test ends.",
+              "syntax": [
+                "require \"FALCON 9\".position_delta > 150.0",
+                "require \"SPARKMAX/NEO 25\".position_delta outside -1.0 1.0"
+              ],
+              "details": [
+                "Require does not stop the test by itself.",
+                "The condition may become true at any time during the run; once satisfied it stays latched for final pass/fail evaluation.",
+                "This is the right tool for proving motion, current draw, button press, or other evidence before an until timeout."
+              ],
+              "examples": [
+                "main:",
+                "    until timer.elapsed >= 10.0",
+                "    require \"SPARKMAX/NEO 25\".position_delta outside -1.0 1.0"
+              ]
+            },
+            {
+              "id": "topic_unsafe_exit",
+              "title": "unsafe-exit",
+              "summary": "Declare a signal that should be cleared/stopped if the test exits unexpectedly.",
+              "syntax": [
+                "unsafe-exit \"FALCON 9\".output_percent_cmd"
+              ],
+              "details": [
+                "Unsafe-exit marks outputs that must be driven safe if the test is interrupted or errors out.",
+                "Use it for actuators that would be dangerous to leave commanded on exit."
+              ],
+              "examples": [
+                "unsafe-exit \"SPARKMAX/NEO 25\".output_percent_cmd"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

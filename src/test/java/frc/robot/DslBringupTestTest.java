@@ -332,6 +332,36 @@ class DslBringupTestTest {
     assertEquals(BringupTestResult.PASS, test.getResult());
   }
 
+  @Test
+  void dslRunScopedAggregateSignalsTrackMotorEvidenceAcrossTheRun() {
+    SignalRecordingDevice motor = new SignalRecordingDevice();
+    motor.setSignal("current_actual", 0.0);
+    motor.setSignal("velocity_actual", 0.0);
+    motor.setSignal("position_delta", 0.0);
+    DslBringupTest test = new DslBringupTest(buildAggregateSignalTest());
+    BringupTestContext context = context(motor);
+
+    assertTrue(test.start(context, START_SEC));
+
+    motor.setSignal("current_actual", 1.2);
+    motor.setSignal("velocity_actual", -35.0);
+    motor.setSignal("position_delta", 0.5);
+    test.update(context, START_SEC + 0.05);
+
+    motor.setSignal("current_actual", 3.4);
+    motor.setSignal("velocity_actual", -72.0);
+    motor.setSignal("position_delta", 2.25);
+    test.update(context, START_SEC + 0.20);
+
+    test.update(context, START_SEC + 0.35);
+
+    assertEquals(BringupTestResult.PASS, test.getResult());
+    String runDetails = test.buildRunDetails().toString();
+    assertTrue(runDetails.contains("current_actual_max=3.4"));
+    assertTrue(runDetails.contains("velocity_actual_max_abs=72.0"));
+    assertTrue(runDetails.contains("position_delta_max_abs=2.25"));
+  }
+
   private static DslModels.DslNormalizedTest buildTest() {
     DslModels.DslNormalizedTest test = new DslModels.DslNormalizedTest();
     test.name = TEST_NAME;
@@ -359,6 +389,51 @@ class DslBringupTestTest {
 
   private static DslModels.DslNormalizedTest buildControllerButtonTest() {
     return buildControllerButtonTest(SIGNAL_A);
+  }
+
+  private static DslModels.DslNormalizedTest buildAggregateSignalTest() {
+    DslModels.DslNormalizedTest test = new DslModels.DslNormalizedTest();
+    test.name = "aggregate_signals";
+    DslModels.DslDeviceRef device = new DslModels.DslDeviceRef();
+    device.name = MOTOR_LABEL;
+    test.devices.add(device);
+
+    DslModels.DslCondition requireCurrent = new DslModels.DslCondition();
+    requireCurrent.id = "require_1";
+    requireCurrent.kind = "require";
+    requireCurrent.text = "require motor-a.current_actual_max > 3.0";
+    requireCurrent.reference = reference(MOTOR_LABEL, "current_actual_max");
+    requireCurrent.operator = ">";
+    requireCurrent.literal = numberLiteral(3.0);
+    test.main.requires.add(requireCurrent);
+
+    DslModels.DslCondition requireVelocity = new DslModels.DslCondition();
+    requireVelocity.id = "require_2";
+    requireVelocity.kind = "require";
+    requireVelocity.text = "require motor-a.velocity_actual_max_abs > 70.0";
+    requireVelocity.reference = reference(MOTOR_LABEL, "velocity_actual_max_abs");
+    requireVelocity.operator = ">";
+    requireVelocity.literal = numberLiteral(70.0);
+    test.main.requires.add(requireVelocity);
+
+    DslModels.DslCondition requirePosition = new DslModels.DslCondition();
+    requirePosition.id = "require_3";
+    requirePosition.kind = "require";
+    requirePosition.text = "require motor-a.position_delta_max_abs > 2.0";
+    requirePosition.reference = reference(MOTOR_LABEL, "position_delta_max_abs");
+    requirePosition.operator = ">";
+    requirePosition.literal = numberLiteral(2.0);
+    test.main.requires.add(requirePosition);
+
+    DslModels.DslCondition until = new DslModels.DslCondition();
+    until.id = "until_1";
+    until.kind = "until";
+    until.text = "timer.elapsed >= 0.3";
+    until.reference = reference("timer", "elapsed");
+    until.operator = ">=";
+    until.literal = numberLiteral(0.3);
+    test.main.untils.add(until);
+    return test;
   }
 
   private static DslModels.DslNormalizedTest buildControllerButtonTest(String signalName) {

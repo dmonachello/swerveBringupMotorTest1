@@ -57,6 +57,9 @@ public final class BringupRestServer {
   private static final String PATH_LOGS = "/logs";
   private static final String PATH_MONITOR_ENABLE = "/monitor/enable";
   private static final String PATH_MONITOR_DISABLE = "/monitor/disable";
+  private static final String PATH_PROTOCOL_MONITOR = "/ui/protocol-monitor";
+  private static final String PATH_RUNTIME_STATE = "/runtime/state";
+  private static final String PATH_TESTS_STATE = "/tests/state";
   private static final String PATH_CONFIG_CURRENT = "/config/current";
   private static final String PATH_INVENTORY_COMMANDS = "/inventory/commands";
   private static final String JSON_KEY_OK = "ok";
@@ -159,6 +162,7 @@ public final class BringupRestServer {
   public interface RestCallbacks {
     JsonObject buildDevicesJson();
     JsonObject buildRuntimeStateJson();
+    JsonObject buildTestsStateJson();
     JsonObject buildCurrentConfigJson();
     frc.robot.BridgeUiCommandHandler.RestCommandResult executeCommand(
         String name,
@@ -226,6 +230,9 @@ public final class BringupRestServer {
     created.createContext(PATH_LOGS, new RootHandler());
     created.createContext(PATH_MONITOR_ENABLE, new RootHandler());
     created.createContext(PATH_MONITOR_DISABLE, new RootHandler());
+    created.createContext(PATH_PROTOCOL_MONITOR, new RootHandler());
+    created.createContext(PATH_RUNTIME_STATE, new RootHandler());
+    created.createContext(PATH_TESTS_STATE, new RootHandler());
     created.createContext(PATH_CONFIG_CURRENT, new RootHandler());
     created.createContext(PATH_INVENTORY_COMMANDS, new RootHandler());
     created.start();
@@ -325,6 +332,18 @@ public final class BringupRestServer {
     }
     if (PATH_LOGS.equals(path)) {
       handleLogs(exchange);
+      return;
+    }
+    if (PATH_PROTOCOL_MONITOR.equals(path)) {
+      handleProtocolMonitor(exchange);
+      return;
+    }
+    if (PATH_RUNTIME_STATE.equals(path)) {
+      handleRuntimeState(exchange);
+      return;
+    }
+    if (PATH_TESTS_STATE.equals(path)) {
+      handleTestsState(exchange);
       return;
     }
     if (PATH_MONITOR_ENABLE.equals(path)) {
@@ -714,6 +733,41 @@ public final class BringupRestServer {
       monitorEnabled = enabled;
     }
     sendJson(exchange, HTTP_OK, sessionSnapshot(enabled ? MESSAGE_MONITOR_ENABLED : MESSAGE_MONITOR_DISABLED));
+  }
+
+  private void handleProtocolMonitor(HttpExchange exchange) throws IOException {
+    if (!METHOD_GET.equals(exchange.getRequestMethod())) {
+      sendMethodNotAllowed(exchange);
+      return;
+    }
+    JsonObject body = sessionSnapshot(MESSAGE_FINISHED);
+    synchronized (stateLock) {
+      body.addProperty(JSON_KEY_NEXT_SEQUENCE, logSequenceAllocator.get());
+      body.add(JSON_KEY_ACTIVE_COMMAND, activeCommand != null ? activeCommand.toStatusJson() : null);
+    }
+    sendJson(exchange, HTTP_OK, body);
+  }
+
+  private void handleRuntimeState(HttpExchange exchange) throws IOException {
+    if (!METHOD_GET.equals(exchange.getRequestMethod())) {
+      sendMethodNotAllowed(exchange);
+      return;
+    }
+    JsonObject body = baseEnvelope(true, MESSAGE_FINISHED);
+    JsonObject runtime = callbacks.buildRuntimeStateJson();
+    body.add("runtime", runtime != null ? runtime : new JsonObject());
+    sendJson(exchange, HTTP_OK, body);
+  }
+
+  private void handleTestsState(HttpExchange exchange) throws IOException {
+    if (!METHOD_GET.equals(exchange.getRequestMethod())) {
+      sendMethodNotAllowed(exchange);
+      return;
+    }
+    JsonObject body = baseEnvelope(true, MESSAGE_FINISHED);
+    JsonObject tests = callbacks.buildTestsStateJson();
+    body.add("tests", tests != null ? tests : new JsonObject());
+    sendJson(exchange, HTTP_OK, body);
   }
 
   private void handleInventoryCommands(HttpExchange exchange) throws IOException {

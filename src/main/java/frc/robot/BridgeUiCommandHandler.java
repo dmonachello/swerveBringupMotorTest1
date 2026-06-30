@@ -127,6 +127,7 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_ESTOPPED = "estopped";
   private static final String JSON_KEY_MODE = "mode";
   private static final String JSON_KEY_GROUPS = "groups";
+  private static final String JSON_KEY_CAN_BUS = "canBus";
   private static final String JSON_KEY_MEMBERS = "members";
   private static final String JSON_KEY_BINDINGS = "bindings";
   private static final String JSON_KEY_PRESENCE_CONFIDENCE = "presenceConfidence";
@@ -248,6 +249,10 @@ public class BridgeUiCommandHandler {
   private static final String CMD_LIFECYCLE_DEACTIVATE = "lifecycleDeactivate";
   private static final String CMD_LIFECYCLE_DEACTIVATE_ACTIVE =
       "lifecycleDeactivateActive";
+  private static final String CMD_ACTIVATE_SELECTED_TEST_DEVICES =
+      "activateSelectedTestDevices";
+  private static final String CMD_DEACTIVATE_SELECTED_TEST_DEVICES =
+      "deactivateSelectedTestDevices";
   private static final String CMD_SHOW_LIFECYCLE_STATE = "showLifecycleState";
   private static final String CMD_PROFILES_RELOAD = "profilesReload";
   private static final String UI_STATE_ENABLED_KEY = "state/enabled";
@@ -1505,7 +1510,7 @@ public class BridgeUiCommandHandler {
     this.robotLocalExecutor = new RobotLocalCommandExecutor(robotLocalHost);
     this.controllerValueProvider = new RobotLocalControllerValueProvider();
     this.controllerGateway = new RobotLocalControllerGateway(robotLocalExecutor, controllerValueProvider);
-    this.uiOutputFacade = new BridgeUiOutputFacade(uiTable, UI_PROTOCOL_VERSION);
+    this.uiOutputFacade = uiTable != null ? new BridgeUiOutputFacade(uiTable, UI_PROTOCOL_VERSION) : null;
   }
 
   /**
@@ -1662,6 +1667,9 @@ public class BridgeUiCommandHandler {
   }
 
   public void handleUiCommands() {
+    if (uiTable == null) {
+      return;
+    }
     long seq = (long) uiTable.getEntry("cmd/seq").getInteger(-1);
     if (seq <= lastUiSeq) {
       return;
@@ -1912,6 +1920,8 @@ public class BridgeUiCommandHandler {
       case "printTestsInfo":
       case "printTestsOverview":
       case "selectTestByName":
+      case CMD_ACTIVATE_SELECTED_TEST_DEVICES:
+      case CMD_DEACTIVATE_SELECTED_TEST_DEVICES:
       case "showTests":
       case "groupReplaceMembers":
       case CMD_MANUAL_GROUP_DUTY_SET:
@@ -2391,6 +2401,10 @@ public class BridgeUiCommandHandler {
    *   publishUiAck - Publish UI command acknowledgements to NetworkTables.
    */
   private void publishUiAck(long seq, boolean ok, String message, String name, double cmdTs) {
+    if (uiOutputFacade == null) {
+      lastUiAckMs = System.currentTimeMillis();
+      return;
+    }
     lastUiAckMs =
         uiOutputFacade.publishUiAck(seq, ok, message, name, cmdTs, uiSessionId, activeUiClientId);
   }
@@ -2403,6 +2417,9 @@ public class BridgeUiCommandHandler {
    *   Emits at least one output entry per command to release the UI.
    */
   private void publishUiOut(long seq, String name, String text, double cmdTs, String jsonText) {
+    if (uiOutputFacade == null) {
+      return;
+    }
     uiOutputFacade.publishUiOut(seq, name, text, cmdTs, jsonText);
   }
 
@@ -2411,6 +2428,9 @@ public class BridgeUiCommandHandler {
    *   publishUiRobotState - Publish driver station state for UI feedback.
    */
   public void publishUiRobotState() {
+    if (uiTable == null) {
+      return;
+    }
     boolean enabled = DriverStation.isEnabled();
     boolean estopped = DriverStation.isEStopped();
     String mode = "disabled";
@@ -3525,6 +3545,9 @@ public class BridgeUiCommandHandler {
         : DriverStation.isTeleop() ? "teleop"
         : DriverStation.isTest() ? "test" : "disabled");
     root.add(JSON_KEY_SAFETY_LATCH, buildSafetyLatchJson());
+    root.add(
+        JSON_KEY_CAN_BUS,
+        diagnostics() != null ? diagnostics().buildBusHealthJson() : new JsonObject());
     JsonArray groups = new JsonArray();
     for (BridgeGroupManager.Group group : bridgeGroups().getGroups()) {
       JsonObject g = buildGroupJson(group);
@@ -3750,6 +3773,17 @@ public class BridgeUiCommandHandler {
     }
     root.add(JSON_KEY_TESTS_ROWS, rows);
     return root;
+  }
+
+  /**
+   * NAME
+   *   buildTestsStateJson - Build the authoritative tests-state JSON payload.
+   *
+   * RETURNS
+   *   JSON payload containing current selection, run state, and rows.
+   */
+  public JsonObject buildTestsStateJson() {
+    return buildTestsOverviewJson(core().buildTestsOverview());
   }
 
   /**
@@ -4694,6 +4728,9 @@ public class BridgeUiCommandHandler {
    *   Writes NetworkTables entries under bringup/tests.
    */
   public void publishTestsOverview(BringupCore.TestsOverview overview) {
+    if (testsTable == null) {
+      return;
+    }
     if (overview == null) {
       return;
     }
@@ -4752,6 +4789,9 @@ public class BridgeUiCommandHandler {
    *   Writes selected and active test info to NetworkTables.
    */
   public void publishTestsSelectionStatus() {
+    if (testsTable == null) {
+      return;
+    }
     testsTable.getEntry("selectedIndex").setNumber(core().getSelectedBringupTestIndex());
     testsTable.getEntry("selectedName").setString(core().getSelectedBringupTestName());
     testsTable.getEntry("activeName").setString(core().getActiveBringupTestName());

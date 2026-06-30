@@ -121,6 +121,33 @@ class BringupRuntimeLifecycleSelectionTest {
   }
 
   @Test
+  void shouldInstantiateLifecycleSingletonRequiresActiveScope() {
+    DeviceRuntimeState controlledState = new DeviceRuntimeState();
+    controlledState.markActivated("session-1", "active-group", "READ_ONLY");
+
+    assertFalse(
+        BringupRuntime.shouldInstantiateLifecycleSingleton(
+            false,
+            false,
+            null));
+    assertTrue(
+        BringupRuntime.shouldInstantiateLifecycleSingleton(
+            true,
+            false,
+            null));
+    assertTrue(
+        BringupRuntime.shouldInstantiateLifecycleSingleton(
+            false,
+            true,
+            controlledState));
+    assertFalse(
+        BringupRuntime.shouldInstantiateLifecycleSingleton(
+            false,
+            true,
+            new DeviceRuntimeState()));
+  }
+
+  @Test
   void synchronizeBridgeRuntimeConfigLoadsProfileDefinedGroups() {
     BridgeGroupManager groups = new BridgeGroupManager();
     BridgeGroupManager.SelectedState selected = new BridgeGroupManager.SelectedState();

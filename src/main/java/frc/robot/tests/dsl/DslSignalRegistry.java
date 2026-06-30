@@ -39,13 +39,16 @@ public final class DslSignalRegistry {
   public static final String SIGNAL_OUTPUT_PERCENT_APPLIED = "output_percent_applied";
   public static final String SIGNAL_CURRENT = "current";
   public static final String SIGNAL_CURRENT_ACTUAL = "current_actual";
+  public static final String SIGNAL_CURRENT_ACTUAL_MAX = "current_actual_max";
   public static final String SIGNAL_TEMPERATURE = "temperature";
   public static final String SIGNAL_TEMPERATURE_ACTUAL = "temperature_actual";
   public static final String SIGNAL_VELOCITY = "velocity";
   public static final String SIGNAL_VELOCITY_ACTUAL = "velocity_actual";
+  public static final String SIGNAL_VELOCITY_ACTUAL_MAX_ABS = "velocity_actual_max_abs";
   public static final String SIGNAL_POSITION = "position";
   public static final String SIGNAL_POSITION_ACTUAL = "position_actual";
   public static final String SIGNAL_POSITION_DELTA = "position_delta";
+  public static final String SIGNAL_POSITION_DELTA_MAX_ABS = "position_delta_max_abs";
   public static final String SIGNAL_FAULTS = "faults";
   public static final String SIGNAL_VOLTAGE = "voltage";
   public static final String SIGNAL_TOTAL_CURRENT = "total_current";

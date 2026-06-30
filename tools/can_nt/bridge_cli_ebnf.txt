@@ -34,7 +34,7 @@ exec           = show_exec
                | "reset" ws "zero-config" [ ws ("--yes" | "--clear-memory") ] [ ws ("--yes" | "--clear-memory") ]
                | "active" ws ("add" | "next" | ("show" [ ws "--json" ]))
                | "run" ws "test" [ ws name ]
-               | "tests" ws ("select" ws name | "toggle" | tests_run_args | tests_wait_args)
+               | "tests" ws ("select" ws name | "toggle" | "activate" | "deactivate" | tests_run_args | tests_wait_args)
                | "profile" ws "export" ws name ws path [ ws "--install-robot" ]
                | "profile" ws "device" ws "show-all" ws name
                | "bindings" [ ws bindings_args ]
@@ -219,6 +219,8 @@ tests_args     = "templates"
                | "clear"
                | "select" ws name
                | "toggle"
+               | "activate"
+               | "deactivate"
                | tests_run_args
                | tests_wait_args ;
 

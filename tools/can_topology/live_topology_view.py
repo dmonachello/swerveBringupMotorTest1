@@ -291,6 +291,12 @@ TITLE_TEXT_DEFAULT = "Live Topology"
 SELECTION_FRAME_TEXT = "Selection"
 ACTIVE_GROUP_NAME = "active-group"
 ACTIVE_GROUP_FRAME_TEXT = "Active Group"
+ACTIVE_GROUP_STATUS_NONE_TEXT = "Status: (not present)"
+ACTIVE_GROUP_STATUS_EMPTY_TEXT = "Status: empty - add devices to activate"
+ACTIVE_GROUP_STATUS_WAITING_TEXT = "Status: waiting for runtime state"
+ACTIVE_GROUP_STATUS_EDITABLE_TEXT = "Status: membership editor - add devices, then activate"
+ACTIVE_GROUP_STATUS_LOCKED_TEXT = "Status: locked by active controlled session"
+ACTIVE_GROUP_STATUS_READY_TEXT = "Status: active and ready to run"
 ACTIVE_GROUP_EMPTY_TEXT = "(empty)"
 ACTIVE_GROUP_NONE_TEXT = "(not present)"
 ACTIVE_GROUP_ELIGIBLE_EMPTY_TEXT = "(no eligible motors)"
@@ -1068,6 +1074,7 @@ class LiveTopologyView(ttk.Frame):
 
         self._detail_vars: Dict[str, tk.StringVar] = {}
         self._active_group_summary_var: Optional[tk.StringVar] = None
+        self._active_group_status_var: Optional[tk.StringVar] = None
         self._active_group_rows_frame: Optional[ttk.Frame] = None
         self._active_group_rows_canvas: Optional[tk.Canvas] = None
         self._active_group_member_vars: Dict[str, tk.BooleanVar] = {}
@@ -1209,6 +1216,13 @@ class LiveTopologyView(ttk.Frame):
                 padding=8,
             )
             active_group_frame.pack(side="top", fill="both", expand=True, pady=(8, 0))
+            self._active_group_status_var = tk.StringVar(value=ACTIVE_GROUP_STATUS_WAITING_TEXT)
+            ttk.Label(
+                active_group_frame,
+                textvariable=self._active_group_status_var,
+                justify="left",
+                anchor="nw",
+            ).pack(fill="x", pady=(0, 4))
             self._active_group_summary_var = tk.StringVar(value=ACTIVE_GROUP_NONE_TEXT)
             ttk.Label(
                 active_group_frame,
@@ -1261,6 +1275,7 @@ class LiveTopologyView(ttk.Frame):
             self._nodes = []
             self._diagram_meta = {}
             self._bridge_groups = []
+            self._update_details()
             self._redraw()
             return
         registry = _load_device_registry(payload)
@@ -1330,6 +1345,7 @@ class LiveTopologyView(ttk.Frame):
             self._attachment_links = []
             self._dio_links = []
         self._bridge_groups = parse_bridge_groups(payload, self._profile_name)
+        self._update_details()
         self._redraw()
 
     def _bind_vertical_mousewheel(self, widget: tk.Widget, canvas: tk.Canvas) -> None:
@@ -2605,16 +2621,65 @@ class LiveTopologyView(ttk.Frame):
             return
         active_group = self._effective_group_by_name(ACTIVE_GROUP_NAME)
         if not isinstance(active_group, dict):
+            self._set_active_group_status_text(ACTIVE_GROUP_STATUS_NONE_TEXT)
             self._active_group_summary_var.set(ACTIVE_GROUP_NONE_TEXT)
             self._render_active_group_rows({})
             return
         member_map = group_member_map(active_group, enabled_only=False)
         primary_label = group_primary_label(active_group, enabled_only=False)
+        self._set_active_group_status_text(
+            self._active_group_status_text(active_group, member_map)
+        )
         if primary_label:
             self._active_group_summary_var.set(f"Primary: {primary_label}")
         else:
             self._active_group_summary_var.set(ACTIVE_GROUP_EMPTY_TEXT)
         self._render_active_group_rows(member_map, primary_label)
+
+    def _set_active_group_status_text(self, text: str) -> None:
+        """
+        NAME
+            _set_active_group_status_text - Update the plain-language active-group status line.
+        """
+        if self._active_group_status_var is None:
+            return
+        self._active_group_status_var.set(str(text or ACTIVE_GROUP_STATUS_NONE_TEXT))
+
+    def _active_group_status_text(
+        self,
+        active_group: Dict[str, object],
+        member_map: Dict[str, Dict[str, object]],
+    ) -> str:
+        """
+        NAME
+            _active_group_status_text - Return plain-language status for the active-group panel.
+        """
+        if not self.__dict__.get("_runtime_state_seen", False):
+            return ACTIVE_GROUP_STATUS_WAITING_TEXT
+        if not member_map:
+            return ACTIVE_GROUP_STATUS_EMPTY_TEXT
+        if self._controlled_lifecycle_active:
+            if self._all_active_group_members_present(member_map):
+                return ACTIVE_GROUP_STATUS_READY_TEXT
+            return ACTIVE_GROUP_STATUS_LOCKED_TEXT
+        return ACTIVE_GROUP_STATUS_EDITABLE_TEXT
+
+    def _all_active_group_members_present(
+        self,
+        member_map: Dict[str, Dict[str, object]],
+    ) -> bool:
+        """
+        NAME
+            _all_active_group_members_present - Return whether all active-group members currently show presence.
+        """
+        if not member_map:
+            return False
+        for label_key in member_map.keys():
+            live = self._runtime_state.get(label_key, {})
+            presence = live.get("presenceConfidence")
+            if not isinstance(presence, (int, float)) or float(presence) < 0.5:
+                return False
+        return True
 
     def _eligible_active_group_labels(self) -> List[str]:
         """

@@ -74,13 +74,9 @@ public class RobotV2 extends TimedRobot {
   // Builds reports, JSON snapshots, and optional NT telemetry.
   private final NetworkTable diagTable =
       NetworkTableInstance.getDefault().getTable("bringup").getSubTable("diag");
-  private final NetworkTable testsTable =
-      NetworkTableInstance.getDefault().getTable("bringup").getSubTable("tests");
-  private final NetworkTable uiTable =
-      NetworkTableInstance.getDefault().getTable("bringup").getSubTable("ui");
-  private final NetworkTable uiProtocolTable =
-      // Compatibility NT subtree name retained for one iteration.
-      NetworkTableInstance.getDefault().getTable("bringup").getSubTable("ui_tcp");
+  private static final NetworkTable TESTS_TABLE_DISABLED = null;
+  private static final NetworkTable UI_TABLE_DISABLED = null;
+  private static final NetworkTable UI_PROTOCOL_TABLE_DISABLED = null;
   private BridgeUiCommandHandler uiHandler;
   // Edge-detect state for buttons that should fire once per press.
   private final EdgeTrigger edge = new EdgeTrigger();
@@ -126,9 +122,9 @@ public class RobotV2 extends TimedRobot {
     uiHandler = new BridgeUiCommandHandler(
         runtime,
         bindings,
-        testsTable,
-        uiTable,
-        uiProtocolTable,
+        TESTS_TABLE_DISABLED,
+        UI_TABLE_DISABLED,
+        UI_PROTOCOL_TABLE_DISABLED,
         profileToggleAction,
         profileActivateAction,
         profileDeactivateAction);
@@ -206,8 +202,6 @@ public class RobotV2 extends TimedRobot {
     if (uiHandler != null) {
       boolean xboxConnected = controller0 != null && DriverStation.isJoystickConnected(0);
       uiHandler.updateSafety(xboxConnected);
-      uiHandler.publishUiRobotState();
-      uiHandler.publishTestsSelectionStatus();
     }
     frc.robot.diag.app.AppStatusTracker.recordLoop();
   }
@@ -246,7 +240,6 @@ public class RobotV2 extends TimedRobot {
 
     if (uiHandler != null) {
       uiHandler.setLastSpeeds(neoSpeed, krakenSpeed);
-      uiHandler.handleUiCommands();
       uiHandler.submitControllerBindings(bind);
       uiHandler.stepRobotLocalCommands();
     }
@@ -632,8 +625,13 @@ public class RobotV2 extends TimedRobot {
     }
 
     @Override
+    public com.google.gson.JsonObject buildTestsStateJson() {
+      return uiHandler != null ? uiHandler.buildTestsStateJson() : new com.google.gson.JsonObject();
+    }
+
+    @Override
     public com.google.gson.JsonObject buildCurrentConfigJson() {
-      return BringupUtil.readCurrentProfilesJson();
+      return BringupUtil.buildCurrentProfilesJson();
     }
 
     @Override

@@ -218,6 +218,12 @@ public final class BringupUtil {
   private static final String MODEL_FLEX = "VORTEX";
   private static final String MODEL_KRAKEN = "KRAKEN";
   private static final String MODEL_FALCON = "FALCON";
+  private static final String MOTOR_SPEC_REV_NEO = "REV NEO";
+  private static final String MOTOR_SPEC_REV_NEO_550 = "REV NEO 550";
+  private static final String MOTOR_SPEC_REV_NEO_2 = "REV NEO 2.0";
+  private static final String MOTOR_SPEC_REV_VORTEX = "REV NEO Vortex";
+  private static final String MOTOR_SPEC_CTRE_FALCON_500 = "CTRE Falcon 500";
+  private static final String MOTOR_SPEC_CTRE_KRAKEN_X60 = "CTRE Kraken X60";
   private static final int MFG_NI_ID = 1;
   private static final int MFG_CTRE_ID = 4;
   private static final int MFG_REV_ID = 5;
@@ -258,6 +264,7 @@ public final class BringupUtil {
   private static JsonObject dslTestsRoot = null;
   private static String defaultProfile = NT_LABEL_EMPTY;
   private static String selectedProfile = NT_LABEL_EMPTY;
+  private static String currentDataVersion = NT_LABEL_EMPTY;
   private static boolean activeProfileApplied = false;
   private static final Map<String, MotorSpec> MOTOR_SPECS = loadMotorSpecs();
   private static final CanMappings CAN_MAPPINGS = loadCanMappings();
@@ -863,6 +870,32 @@ public final class BringupUtil {
     } catch (IOException | JsonParseException ex) {
       return null;
     }
+  }
+
+  /**
+   * NAME
+   *   buildCurrentProfilesJson - Build the loaded in-memory bringup_system.json payload.
+   *
+   * RETURNS
+   *   JSON object representing the robot's authoritative loaded registry state.
+   */
+  public static JsonObject buildCurrentProfilesJson() {
+    JsonObject root = new JsonObject();
+    root.addProperty("schema_version", PROFILE_SCHEMA_VERSION);
+    root.addProperty("data_version", currentDataVersion != null ? currentDataVersion : NT_LABEL_EMPTY);
+    root.add("devices", GSON.toJsonTree(new ArrayList<>(DEVICE_REGISTRY.values())));
+    root.add("profiles", GSON.toJsonTree(profiles));
+    root.addProperty("default_profile", defaultProfile != null ? defaultProfile : NT_LABEL_EMPTY);
+    if (dslTestsRoot != null) {
+      root.add(KEY_DSL_TESTS, dslTestsRoot.deepCopy());
+    }
+    JsonObject bridgeConfig = buildBridgeConfigJson();
+    if (bridgeConfig.size() > 0) {
+      root.add(KEY_BRIDGE_CONFIG, bridgeConfig);
+    }
+    root.addProperty("data_hash", NT_LABEL_EMPTY);
+    root.addProperty("data_hash", sha256Hex(canonicalizeJson(root)));
+    return root;
   }
 
   private static String resolveProfileNameOrActive(String profileName) {
@@ -1652,6 +1685,7 @@ public final class BringupUtil {
       }
       profiles = new LinkedHashMap<>(root.profiles);
       profileOrder = new ArrayList<>(profiles.keySet());
+      currentDataVersion = root.dataVersion != null ? root.dataVersion : NT_LABEL_EMPTY;
       defaultProfile =
           root.defaultProfile != null ? root.defaultProfile : NT_LABEL_EMPTY;
       if (!profiles.containsKey(defaultProfile)) {
@@ -1701,6 +1735,14 @@ public final class BringupUtil {
   private static Path resolveProfilePath() {
     // Use deploy folder on roboRIO, fallback to repo-relative path.
     try {
+      Path runtimePath = Filesystem.getOperatingDirectory().toPath().resolve(DEFAULT_PROFILE_FILE);
+      if (Files.exists(runtimePath)) {
+        return runtimePath;
+      }
+      Path legacyRuntime = Filesystem.getOperatingDirectory().toPath().resolve(LEGACY_PROFILE_FILE);
+      if (Files.exists(legacyRuntime)) {
+        return legacyRuntime;
+      }
       Path deployPath = Filesystem.getDeployDirectory().toPath().resolve(DEFAULT_PROFILE_FILE);
       if (Files.exists(deployPath)) {
         return deployPath;
@@ -1709,14 +1751,6 @@ public final class BringupUtil {
       Path legacyDeploy = Filesystem.getDeployDirectory().toPath().resolve(LEGACY_PROFILE_FILE);
       if (Files.exists(legacyDeploy)) {
         return legacyDeploy;
-      }
-      Path runtimePath = Filesystem.getOperatingDirectory().toPath().resolve(DEFAULT_PROFILE_FILE);
-      if (Files.exists(runtimePath)) {
-        return runtimePath;
-      }
-      Path legacyRuntime = Filesystem.getOperatingDirectory().toPath().resolve(LEGACY_PROFILE_FILE);
-      if (Files.exists(legacyRuntime)) {
-        return legacyRuntime;
       }
     } catch (Exception ex) {
       // Fall through to local dev path.
@@ -1785,6 +1819,7 @@ public final class BringupUtil {
     setProfileTests(new LinkedHashMap<>());
     setProfileBridgeConfigs(new LinkedHashMap<>());
     dslTestsRoot = null;
+    currentDataVersion = NT_LABEL_EMPTY;
     defaultProfile = NT_LABEL_EMPTY;
     selectedProfile = NT_LABEL_EMPTY;
     activeProfile = NT_LABEL_EMPTY;
@@ -2354,6 +2389,85 @@ public final class BringupUtil {
     PROFILE_BRIDGE_CONFIGS.putAll(configsByProfile);
   }
 
+  private static JsonObject buildBridgeConfigJson() {
+    JsonObject byProfile = new JsonObject();
+    for (String profileName : profileOrder) {
+      JsonObject profile = buildBridgeProfileJson(profileName);
+      if (profile.size() > 0) {
+        byProfile.add(profileName, profile);
+      }
+    }
+    if (byProfile.size() <= 0) {
+      return new JsonObject();
+    }
+    JsonObject bridge = new JsonObject();
+    bridge.add(KEY_BRIDGE_BY_PROFILE, byProfile);
+    return bridge;
+  }
+
+  private static JsonObject buildBridgeProfileJson(String profileName) {
+    JsonObject profile = new JsonObject();
+    JsonElement testsPayload = PROFILE_TESTS.get(profileName);
+    if (testsPayload != null && !testsPayload.isJsonNull()) {
+      profile.add(KEY_BRIDGE_TESTS, testsPayload.deepCopy());
+    }
+    BridgeProfileRuntimeConfig runtimeConfig = PROFILE_BRIDGE_CONFIGS.get(profileName);
+    if (runtimeConfig == null) {
+      return profile;
+    }
+    JsonArray groups = new JsonArray();
+    for (BridgeProfileGroupConfig group : runtimeConfig.groups) {
+      if (group == null || group.name == null || group.name.isBlank()) {
+        continue;
+      }
+      JsonObject groupObject = new JsonObject();
+      groupObject.addProperty(KEY_NAME, group.name);
+      groupObject.addProperty(KEY_ENABLED, group.enabled);
+      JsonArray members = new JsonArray();
+      for (BridgeProfileMemberConfig member : group.members) {
+        if (member == null || member.label == null || member.label.isBlank()) {
+          continue;
+        }
+        JsonObject memberObject = new JsonObject();
+        memberObject.addProperty(KEY_LABEL, member.label);
+        memberObject.addProperty(KEY_ENABLED, member.enabled);
+        members.add(memberObject);
+      }
+      groupObject.add(KEY_MEMBERS, members);
+      JsonArray bindings = new JsonArray();
+      for (BridgeProfileBindingConfig binding : group.bindings) {
+        if (binding == null
+            || binding.input == null
+            || binding.input.isBlank()
+            || binding.kind == null
+            || binding.kind.isBlank()) {
+          continue;
+        }
+        JsonObject bindingObject = new JsonObject();
+        bindingObject.addProperty(KEY_INPUT, binding.input);
+        bindingObject.addProperty(KEY_KIND, binding.kind);
+        if (binding.hasValue) {
+          bindingObject.addProperty(KEY_VALUE, binding.value);
+        }
+        bindings.add(bindingObject);
+      }
+      groupObject.add(KEY_BRIDGE_BINDINGS, bindings);
+      groups.add(groupObject);
+    }
+    if (groups.size() > 0) {
+      profile.add(KEY_BRIDGE_GROUPS, groups);
+    }
+    if (runtimeConfig.selectedDevice != null
+        && runtimeConfig.selectedDevice.device != null
+        && !runtimeConfig.selectedDevice.device.isBlank()) {
+      JsonObject selectedDevice = new JsonObject();
+      selectedDevice.addProperty(KEY_DEVICE, runtimeConfig.selectedDevice.device);
+      selectedDevice.addProperty(KEY_ENABLED, runtimeConfig.selectedDevice.enabled);
+      profile.add(KEY_BRIDGE_SELECTED_DEVICE, selectedDevice);
+    }
+    return profile;
+  }
+
   /**
    * NAME
    *   applyRegistryPayload - Replace in-memory registry from payload data.
@@ -2365,6 +2479,7 @@ public final class BringupUtil {
     try {
       profiles = new LinkedHashMap<>(payload.root.profiles);
       profileOrder = new ArrayList<>(profiles.keySet());
+      currentDataVersion = payload.root.dataVersion != null ? payload.root.dataVersion : NT_LABEL_EMPTY;
       String nextDefault = safeText(payload.root.defaultProfile);
       if (nextDefault.isBlank() || !profiles.containsKey(nextDefault)) {
         nextDefault = profiles.isEmpty() ? NT_LABEL_EMPTY : profileOrder.get(INDEX_ZERO);
@@ -2951,7 +3066,15 @@ public final class BringupUtil {
     if (model == null) {
       return null;
     }
-    return MOTOR_SPECS.get(model);
+    MotorSpec exact = MOTOR_SPECS.get(model);
+    if (exact != null) {
+      return exact;
+    }
+    String normalizedModel = normalizeMotorSpecModel(model);
+    if (normalizedModel == null || normalizedModel.isBlank()) {
+      return null;
+    }
+    return MOTOR_SPECS.get(normalizedModel);
   }
 
   /**
@@ -2986,24 +3109,49 @@ public final class BringupUtil {
     }
     String upper = label.toUpperCase();
     if (upper.contains("VORTEX")) {
-      return "REV NEO Vortex";
+      return MOTOR_SPEC_REV_VORTEX;
     }
     if (upper.contains("NEO 550") || upper.contains("NEO550")) {
-      return "REV NEO 550";
+      return MOTOR_SPEC_REV_NEO_550;
     }
     if (upper.contains("NEO 2.0") || upper.contains("NEO2")) {
-      return "REV NEO 2.0";
+      return MOTOR_SPEC_REV_NEO_2;
     }
     if (upper.contains("NEO")) {
-      return "REV NEO";
+      return MOTOR_SPEC_REV_NEO;
     }
     if (upper.contains("KRAKEN")) {
-      return "CTRE Kraken X60";
+      return MOTOR_SPEC_CTRE_KRAKEN_X60;
     }
     if (upper.contains("FALCON")) {
-      return "CTRE Falcon 500";
+      return MOTOR_SPEC_CTRE_FALCON_500;
     }
     return null;
+  }
+
+  /**
+   * NAME
+   *   normalizeMotorSpecModel - Canonicalize one configured motor-model alias for spec lookup.
+   *
+   * PARAMETERS
+   *   modelName - Raw configured or vendor-reported motor model text.
+   *
+   * RETURNS
+   *   Canonical motor-spec model key when recognized, otherwise the original text.
+   */
+  private static String normalizeMotorSpecModel(String modelName) {
+    if (modelName == null) {
+      return null;
+    }
+    String exact = modelName.trim();
+    if (exact.isBlank()) {
+      return null;
+    }
+    String inferred = inferMotorModelFromLabel(exact);
+    if (inferred != null && !inferred.isBlank()) {
+      return inferred;
+    }
+    return exact;
   }
 
   /**

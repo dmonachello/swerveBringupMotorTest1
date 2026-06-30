@@ -15,6 +15,8 @@ Primary source inputs:
 
 - `tools/status_codes/status_codes_source.json`
 - `tools/status_codes/generate_status_codes.py`
+- `tools/common/generate_robot_test_dsl_reference.py`
+- `src/main/java/frc/robot/tests/dsl/signals/*.devices.md`
 
 These drive the generated status catalog and downstream language/runtime files.
 
@@ -63,6 +65,13 @@ These drive the generated status catalog and downstream language/runtime files.
 
 - `tools/status_codes/reports/status_surface_inventory.json`
   - Purpose: Generated inventory snapshot for status-code/message coverage and auditing.
+
+### DSL Reference Artifact
+
+- `tools/common/generated/robot_test_dsl_reference.json`
+  - Purpose: Generated hierarchical DSL help content for host surfaces.
+  - Used by: `tools/can_nt/dsl_reference.py`, the DSL reference popup in the bringup UI.
+  - Source merge: device-local `*.devices.md` docs plus the generated DSL signal catalog.
 
 ## Why We Keep Generated Files
 

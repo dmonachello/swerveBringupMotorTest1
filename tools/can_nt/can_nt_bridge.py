@@ -582,20 +582,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         if nt is not None:
             ui_table = nt.getTable("bringup").getSubTable("ui")
 
-        def _read_nt_state() -> Dict[str, Any]:
-            if ui_table is None:
-                return {}
-            return {
-                "enabled": ui_table.getEntry(NT_UI_STATE_ENABLED).getBoolean(False),
-                "estopped": ui_table.getEntry(NT_UI_STATE_ESTOPPED).getBoolean(False),
-                "mode": ui_table.getEntry(NT_UI_STATE_MODE).getString(NT_UI_MODE_DISABLED),
-                "lastAckMs": ui_table.getEntry(NT_UI_STATE_LAST_ACK).getDouble(FLOAT_ZERO),
-                "sessionId": ui_table.getEntry(NT_UI_STATE_SESSION).getString(EMPTY_STRING),
-                "selectedProfile": ui_table.getEntry(NT_UI_STATE_SELECTED_PROFILE).getString(EMPTY_STRING),
-                "activeRuntimeProfile": ui_table.getEntry(NT_UI_STATE_ACTIVE_RUNTIME_PROFILE).getString(EMPTY_STRING),
-            }
-
-        session = BridgeSession(args.rio, args.ui_rest_port, nt_state_reader=_read_nt_state)
+        session = BridgeSession(args.rio, args.ui_rest_port)
         cli = BridgeCli(
             session,
             batch=bool(args.batch),
@@ -1420,24 +1407,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         }
 
     if args.cli or args.batch:
-        ui_table = None
-        if nt is not None:
-            ui_table = nt.getTable("bringup").getSubTable("ui")
-
-        def _read_nt_state() -> Dict[str, Any]:
-            if ui_table is None:
-                return {}
-            return {
-                "enabled": ui_table.getEntry(NT_UI_STATE_ENABLED).getBoolean(False),
-                "estopped": ui_table.getEntry(NT_UI_STATE_ESTOPPED).getBoolean(False),
-                "mode": ui_table.getEntry(NT_UI_STATE_MODE).getString(NT_UI_MODE_DISABLED),
-                "lastAckMs": ui_table.getEntry(NT_UI_STATE_LAST_ACK).getDouble(FLOAT_ZERO),
-                "sessionId": ui_table.getEntry(NT_UI_STATE_SESSION).getString(EMPTY_STRING),
-                "selectedProfile": ui_table.getEntry(NT_UI_STATE_SELECTED_PROFILE).getString(EMPTY_STRING),
-                "activeRuntimeProfile": ui_table.getEntry(NT_UI_STATE_ACTIVE_RUNTIME_PROFILE).getString(EMPTY_STRING),
-            }
-
-        session = BridgeSession(args.rio, args.ui_rest_port, nt_state_reader=_read_nt_state)
+        session = BridgeSession(args.rio, args.ui_rest_port)
         cli = BridgeCli(
             session,
             batch=bool(args.batch),
@@ -1476,21 +1446,18 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 sniffer_thread.join(timeout=SOURCE_THREAD_JOIN_SEC)
 
     if args.ui:
-        if nt is None or ui_table is None:
-            print("ERROR: --ui requires NetworkTables (remove --no-nt).")
-            return 2
         try:
             from .bringup_ui import BringupControlUI
         except ImportError:
             from tools.can_nt.bringup_ui import BringupControlUI
 
-        def _nt_is_connected() -> bool:
+        def _rest_is_connected() -> bool:
             """
             NAME
-                _nt_is_connected - Return current NT connection state.
+                _rest_is_connected - Return current REST connection state.
             """
             try:
-                return bool(nt.isConnected())
+                return bool(ui._session.is_connected())
             except Exception:
                 return False
 
@@ -1512,7 +1479,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             diag_table=diag_table,
             rio_host=args.rio,
             tcp_port=args.ui_rest_port,
-            is_connected=_nt_is_connected,
+            is_connected=_rest_is_connected,
             on_close=on_close,
             visibility_provider=visibility_provider,
         )
