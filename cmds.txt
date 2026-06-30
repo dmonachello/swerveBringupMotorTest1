@@ -1,0 +1,18 @@
+cd C:\Users\dmona\swerve3
+python tools\can_nt\can_nt_bridge.py --cli --rio 172.22.11.2
+connect
+configure terminal
+show profiles
+profile test_minimal_25_9
+exit
+show runtime-state
+show tests
+tests select falcon9_move_150_rotations
+tests activate
+tests run --wait
+tests select falcon9_move_150_rotations
+tests run-all --wait --timeout 120
+tests deactivate
+tests select xxx25_leftY
+tests activate
+tests run --wait
