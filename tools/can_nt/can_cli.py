@@ -98,7 +98,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-nt",
         action="store_true",
-        help="Disable NetworkTables publishing (capture/logging only).",
+        help="Accepted for compatibility; ignored by the REST-only host bridge.",
     )
 
     parser.add_argument("--timeout", type=float, default=1.0)
@@ -161,7 +161,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--console-monitor",
         action="store_true",
-        help="Enable roboRIO NetConsole monitoring and NT publish.",
+        help="Enable roboRIO NetConsole monitoring for host diagnostics.",
     )
     parser.add_argument(
         "--console-transport",
@@ -195,7 +195,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--console-rate",
         type=float,
         default=2.0,
-        help="Console NT publish rate (Hz).",
+        help="Console monitor refresh hint (Hz).",
     )
     parser.add_argument(
         "--console-debug-log",
@@ -244,19 +244,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dump-after", type=float, default=3.0)
 
     parser.add_argument(
-        "--list-keys",
-        action="store_true",
-        help="Print the NetworkTables keys this tool publishes and exit.",
-    )
-    parser.add_argument(
-        "--dump-nt",
-        default="",
-        help="Write a JSON description of published NetworkTables keys and exit.",
-    )
-    parser.add_argument(
         "--publish-unknown",
         action="store_true",
-        help="Publish devices seen on the bus that are not in the profile as UNKNOWN.",
+        help="Include devices seen on the bus that are not in the profile as UNKNOWN.",
     )
     parser.add_argument(
         "--dump-profile",

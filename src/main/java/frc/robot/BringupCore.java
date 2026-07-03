@@ -3,7 +3,6 @@ package frc.robot;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.wpilibj.Timer;
 import frc.robot.devices.DeviceUnit;
 import frc.robot.diag.probe.ActiveDevicePresenceProbe;
@@ -130,8 +129,6 @@ public final class BringupCore {
   private final DeviceLifecycleRegistry deviceLifecycle;
   private final ActiveDevicePresenceProbe activePresenceProbe = new ActiveDevicePresenceProbe();
   private final Map<String, ActivePresenceProbeAttachment> latestActivePresenceByLabel = new HashMap<>();
-  private final NetworkTable diagTable;
-
   /**
    * NAME
    *   BringupCore - Construct and initialize bringup state.
@@ -141,10 +138,8 @@ public final class BringupCore {
    */
   public BringupCore(
       SampledTelemetrySampler sampledTelemetry,
-      NetworkTable diagTable,
       DeviceLifecycleRegistry deviceLifecycle) {
     this.sampledTelemetry = sampledTelemetry;
-    this.diagTable = diagTable;
     this.deviceLifecycle = deviceLifecycle;
     testContext = new BringupTestContext(manufacturerGroups, deviceLifecycle);
     syncProfileRuntimeFromRegistry();
@@ -3145,7 +3140,7 @@ public final class BringupCore {
   public ActiveDevicePresenceProbe.ProbeSessionResult refreshActivePresenceProbeCache(
       boolean preclearSticky) {
     ActiveDevicePresenceProbe.ProbeSessionResult session =
-        activePresenceProbe.runOnce(this, diagTable, preclearSticky);
+        activePresenceProbe.runOnce(this, preclearSticky);
     cacheActivePresenceProbeSession(session, System.currentTimeMillis());
     return session;
   }

@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from tools.common.cli_helpers import add_input_arg, add_output_arg
+from tools.common.config_api.repository import ConfigRepository
 from tools.common.profile_constants import (
     INTERFACE_CAN,
     KEY_DATA_HASH,
@@ -232,7 +233,10 @@ def _write_json(path: Optional[str], payload: Dict[str, object]) -> None:
     """
     data = json.dumps(payload, indent=2, sort_keys=False)
     if path:
-        Path(path).write_text(data + "\n", encoding="utf-8")
+        output_path = Path(path)
+        repository = ConfigRepository()
+        session = repository.session_for_payload(output_path, payload)
+        repository.save(session, path=output_path, stamp=False)
     else:
         print(data)
 

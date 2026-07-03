@@ -34,9 +34,6 @@ final class RobotLocalReportCommands {
     if (bind.pressed(RobotLocalCommandRegistry.COMMAND_PRINT_NEXT_TEST)) {
       context.printNextTest();
     }
-    if (bind.pressed(RobotLocalCommandRegistry.COMMAND_PRINT_NT_DIAG)) {
-      context.printNtDiagnostics();
-    }
     if (bind.pressed(RobotLocalCommandRegistry.COMMAND_PRINT_CAN_DIAG)) {
       context.printCanDiagnostics();
     }

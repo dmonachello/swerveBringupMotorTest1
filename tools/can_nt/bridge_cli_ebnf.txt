@@ -35,6 +35,7 @@ exec           = show_exec
                | "active" ws ("add" | "next" | ("show" [ ws "--json" ]))
                | "run" ws "test" [ ws name ]
                | "tests" ws ("select" ws name | "toggle" | "activate" | "deactivate" | tests_run_args | tests_wait_args)
+               | "profile" ws name
                | "profile" ws "export" ws name ws path [ ws "--install-robot" ]
                | "profile" ws "device" ws "show-all" ws name
                | "bindings" [ ws bindings_args ]

@@ -74,6 +74,22 @@ class ConfigApiGuardTests(unittest.TestCase):
 
         self.assertEqual([], violations)
 
+    def test_flags_direct_read_json_inside_test_path_too(self) -> None:
+        source = (
+            "from pathlib import Path\n"
+            "from tools.common.json_io import read_json\n"
+            "payload = read_json(Path('tmp') / 'bringup_system.json')\n"
+        )
+
+        violations = scan_text(source, "tools/can_nt/tests/example_test.py")
+
+        self.assertEqual(
+            [
+                "tools/can_nt/tests/example_test.py:3: direct read_json(...) targeting bringup_system.json bypasses ConfigRepository"
+            ],
+            violations,
+        )
+
     def test_main_passes_when_no_violations(self) -> None:
         import tools.can_nt.scripts.config_api_guard as guard
 

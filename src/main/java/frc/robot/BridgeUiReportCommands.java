@@ -17,7 +17,6 @@ final class BridgeUiReportCommands implements BridgeUiCommandDispatcher.CommandF
   private static final String CMD_PRINT_BINDINGS = "printBindings";
   private static final String CMD_PRINT_PROFILE_DEVICES = "printProfileDevices";
   private static final String CMD_PRINT_SELECTED_TEST_SOURCE = "printSelectedTestSource";
-  private static final String CMD_PRINT_NT_DIAG = "printNTdiag";
   private static final String CMD_PRINT_CAN_DIAG = "printCANdiag";
   private static final String CMD_DUMP_REPORT = "dumpReport";
   private static final String CMD_SHOW_STATUS = "showStatus";
@@ -38,7 +37,6 @@ final class BridgeUiReportCommands implements BridgeUiCommandDispatcher.CommandF
       CMD_PRINT_BINDINGS,
       CMD_PRINT_PROFILE_DEVICES,
       CMD_PRINT_SELECTED_TEST_SOURCE,
-      CMD_PRINT_NT_DIAG,
       CMD_PRINT_CAN_DIAG,
       CMD_DUMP_REPORT,
       CMD_SHOW_STATUS,
@@ -67,10 +65,6 @@ final class BridgeUiReportCommands implements BridgeUiCommandDispatcher.CommandF
     String printProfileDevices();
 
     String buildSelectedTestSourceReportText();
-
-    String buildNetworkDiagnosticsReportIfReady();
-
-    String appendUiSessionStats(String report);
 
     String buildCanDiagnosticsReportIfReady();
 
@@ -155,9 +149,6 @@ final class BridgeUiReportCommands implements BridgeUiCommandDispatcher.CommandF
       case CMD_PRINT_SELECTED_TEST_SOURCE:
         result.outText = emitReport(dependencies.buildSelectedTestSourceReportText(), 4);
         break;
-      case CMD_PRINT_NT_DIAG:
-        executePrintNtDiag(result);
-        break;
       case CMD_PRINT_CAN_DIAG:
         executePrintCanDiag(result);
         break;
@@ -188,24 +179,6 @@ final class BridgeUiReportCommands implements BridgeUiCommandDispatcher.CommandF
 
   private String buildInputsReportText(double neoSpeed, double krakenSpeed) {
     return String.format(TEXT_INPUTS_REPORT_TEMPLATE, neoSpeed, krakenSpeed, neoSpeed, krakenSpeed);
-  }
-
-  private void executePrintNtDiag(BridgeUiCommandResult result) {
-    if (!dependencies.hasDiagnostics()) {
-      result.ok = false;
-      result.message = MESSAGE_DIAGNOSTICS_UNAVAILABLE;
-      return;
-    }
-    String report = dependencies.buildNetworkDiagnosticsReportIfReady();
-    if (report != null) {
-      report = dependencies.appendUiSessionStats(report);
-      dependencies.requestTextReport(report, 4);
-      result.outText = report;
-      return;
-    }
-    String message = "Network diagnostics rate-limited; try again shortly.";
-    dependencies.requestTextReport(message, 4);
-    result.outText = message;
   }
 
   private void executePrintCanDiag(BridgeUiCommandResult result) {

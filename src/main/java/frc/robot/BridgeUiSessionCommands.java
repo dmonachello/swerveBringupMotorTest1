@@ -1,7 +1,6 @@
 package frc.robot;
 
 import com.google.gson.JsonObject;
-import edu.wpi.first.networktables.NetworkTable;
 import java.time.ZoneId;
 import java.util.Set;
 import java.util.UUID;
@@ -57,8 +56,6 @@ final class BridgeUiSessionCommands implements BridgeUiCommandDispatcher.Command
 
     void setUiProtocolMonitorEnabled(boolean enabled);
 
-    NetworkTable getUiProtocolTable();
-
     ZoneId resolveRemoteCommandZone(JsonObject args);
 
     void setRemoteCommandZone(ZoneId zone);
@@ -113,10 +110,6 @@ final class BridgeUiSessionCommands implements BridgeUiCommandDispatcher.Command
         break;
       case CMD_UI_MONITOR_DISABLE:
         dependencies.setUiProtocolMonitorEnabled(false);
-        if (dependencies.getUiProtocolTable() != null) {
-          dependencies.getUiProtocolTable().getEntry(KEY_ENABLED).setBoolean(false);
-          dependencies.getUiProtocolTable().getEntry(KEY_CONNECTED).setBoolean(false);
-        }
         result.message = MESSAGE_MONITOR_DISABLED;
         break;
       case CMD_UI_POLL_LOG:
@@ -161,9 +154,6 @@ final class BridgeUiSessionCommands implements BridgeUiCommandDispatcher.Command
     if (ingress.locked && activeClientId != null && activeClientId.equals(ingress.client)) {
       dependencies.setActiveUiClientId(null);
       result.message = MESSAGE_UI_LOCK_RELEASED;
-      if (dependencies.isUiProtocolMonitorEnabled() && dependencies.getUiProtocolTable() != null) {
-        dependencies.getUiProtocolTable().getEntry(KEY_CONNECTED).setBoolean(false);
-      }
       return;
     }
     if (!ingress.locked) {

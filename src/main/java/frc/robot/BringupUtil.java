@@ -74,8 +74,6 @@ public final class BringupUtil {
   private static final String KEY_NAME = "name";
   private static final String KEY_VALUE = "value";
   private static final String LABEL_UNKNOWN = "UNKNOWN";
-  private static final String NT_LABEL_SAFE_CHARS = "-_.~";
-  private static final String NT_LABEL_FALLBACK = "UNKNOWN";
   private static final String NT_LABEL_EMPTY = "";
   public static final long REGISTRY_BYTES_UNKNOWN = -1L;
   private static final int DIO_REFCOUNT_ZERO = 0;
@@ -85,8 +83,6 @@ public final class BringupUtil {
   private static final Map<Integer, DigitalInput> DIO_INPUTS = new HashMap<>();
   private static final Map<DigitalInput, Integer> DIO_INPUT_CHANNELS = new IdentityHashMap<>();
   private static final Map<Integer, Integer> DIO_INPUT_REFCOUNT = new HashMap<>();
-  private static final char NT_LABEL_PERCENT = '%';
-  private static final String NT_LABEL_HEX = "0123456789ABCDEF";
   private static final int ASCII_0 = 48;
   private static final int ASCII_9 = 57;
   private static final int ASCII_A = 65;
@@ -1080,96 +1076,6 @@ public final class BringupUtil {
       return true;
     }
     return device.getLifecycleOwnership() == DeviceLifecycleOwnership.RUNTIME_OWNED_RECREATABLE;
-  }
-
-  /**
-   * NAME
-   *   encodeLabelForNt - Encode a label for use in NetworkTables keys.
-   *
-   * PARAMETERS
-   *   label - Device label from bringup_system.json.
-   *
-   * RETURNS
-   *   Encoded label safe for NT key segments.
-   */
-  public static String encodeLabelForNt(String label) {
-    if (label == null || label.isBlank()) {
-      return NT_LABEL_FALLBACK;
-    }
-    byte[] bytes = label.getBytes(StandardCharsets.UTF_8);
-    StringBuilder sb = new StringBuilder(bytes.length * 2);
-    for (byte b : bytes) {
-      int value = b & 0xFF;
-      if (isNtLabelSafe(value)) {
-        sb.append((char) value);
-      } else {
-        sb.append(NT_LABEL_PERCENT);
-        sb.append(NT_LABEL_HEX.charAt((value >> 4) & 0x0F));
-        sb.append(NT_LABEL_HEX.charAt(value & 0x0F));
-      }
-    }
-    return sb.toString();
-  }
-
-  /**
-   * NAME
-   *   decodeLabelFromNt - Decode an NT label key to its display form.
-   *
-   * PARAMETERS
-   *   labelKey - Encoded label key segment.
-   *
-   * RETURNS
-   *   Decoded label string.
-   */
-  public static String decodeLabelFromNt(String labelKey) {
-    if (labelKey == null || labelKey.isBlank()) {
-      return NT_LABEL_EMPTY;
-    }
-    int len = labelKey.length();
-    byte[] out = new byte[len];
-    int outLen = 0;
-    int i = 0;
-    while (i < len) {
-      char ch = labelKey.charAt(i);
-      if (ch == NT_LABEL_PERCENT && (i + 2) < len) {
-        int hi = hexValue(labelKey.charAt(i + 1));
-        int lo = hexValue(labelKey.charAt(i + 2));
-        if (hi >= 0 && lo >= 0) {
-          out[outLen++] = (byte) ((hi << 4) + lo);
-          i += 3;
-          continue;
-        }
-      }
-      out[outLen++] = (byte) ch;
-      i += 1;
-    }
-    return new String(out, 0, outLen, StandardCharsets.UTF_8);
-  }
-
-  private static boolean isNtLabelSafe(int value) {
-    if (value >= ASCII_A && value <= ASCII_Z) {
-      return true;
-    }
-    if (value >= ASCII_a && value <= ASCII_z) {
-      return true;
-    }
-    if (value >= ASCII_0 && value <= ASCII_9) {
-      return true;
-    }
-    return NT_LABEL_SAFE_CHARS.indexOf(value) >= 0;
-  }
-
-  private static int hexValue(char ch) {
-    if (ch >= ASCII_0 && ch <= ASCII_9) {
-      return ch - ASCII_0;
-    }
-    if (ch >= ASCII_A && ch <= ASCII_F) {
-      return ch - ASCII_A + 10;
-    }
-    if (ch >= ASCII_a && ch <= ASCII_f) {
-      return ch - ASCII_a + 10;
-    }
-    return -1;
   }
 
   /**

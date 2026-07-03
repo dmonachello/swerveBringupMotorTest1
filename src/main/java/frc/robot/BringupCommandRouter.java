@@ -240,18 +240,6 @@ public final class BringupCommandRouter {
       }
 
       @Override
-      public void printNtDiagnostics() {
-        DiagnosticsReporter diagnostics = runtime.getDiagnostics();
-        if (diagnostics == null) {
-          return;
-        }
-        String report = diagnostics.buildNetworkDiagnosticsReportIfReady();
-        if (report != null) {
-          runtime.requestTextReport(report, REPORT_BATCH_SIZE);
-        }
-      }
-
-      @Override
       public void printCanDiagnostics() {
         DiagnosticsReporter diagnostics = runtime.getDiagnostics();
         if (diagnostics == null) {
@@ -427,17 +415,6 @@ public final class BringupCommandRouter {
       @Override
       public void printNextTest() {
         core.printNextTestReport();
-      }
-
-      @Override
-      public void printNtDiagnostics() {
-        if (diagnostics == null) {
-          return;
-        }
-        String report = diagnostics.buildNetworkDiagnosticsReportIfReady();
-        if (report != null) {
-          core.requestTextReport(report, REPORT_BATCH_SIZE);
-        }
       }
 
       @Override

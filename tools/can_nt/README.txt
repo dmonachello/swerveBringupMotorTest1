@@ -3,8 +3,7 @@ Version: 1.0.0
 
 What this is
 - Reads live FRC CAN traffic (via python-can)
-- Publishes device presence/age/count to NetworkTables under /bringup/diag/...
-- Optionally publishes a CAN arbitration-ID summary (as JSON)
+- Feeds host-owned visibility and diagnostics surfaces directly from the bridge process
 - Optionally writes a Wireshark-readable capture (.pcapng preferred)
 - Optional Bridge CLI for REST command/control (no CAN access required)
 
@@ -13,7 +12,6 @@ Folder contents
 - can_profiles.py         Profile device tables loaded from src/main/deploy/bringup_system.json
 - can_analyzer.py         Tracks arbitration IDs: rates, stale/missing, changing bytes
 - can_logging.py          PCAP/PCAPNG logging wrapper
-- can_nt_publish.py       NetworkTables publishing helpers
 - bridge_cli.py           REST CLI front end for robot UI commands
 - run_can_robot.bat       Convenience runner (robot profile)
 - run_can_demo.bat        Convenience runner (demo_club profile)
@@ -24,9 +22,6 @@ Requirements (Windows Driver Station)
 - Python 3.10+ recommended
 - python-can
 - pyserial (only needed if you later add auto-port detection; safe to install anyway)
-- NetworkTables client:
-    - pyntcore (preferred; NT4)
-    - pynetworktables (fallback; older NT2/NT3)
 - prompt_toolkit (enables CLI inline `?` prefill)
 
 Wireshark capture
@@ -72,9 +67,9 @@ Versioning
 
 Typical commands
 Robot run with capture:
-  python -m tools.can_nt.can_nt_bridge --profile robot --interface slcan --channel COM3 --bitrate 1000000 --rio 172.22.11.2 --publish-can-summary --pcap tools\can_nt\logs\robot_run.pcapng
+  python -m tools.can_nt.can_nt_bridge --profile robot --interface slcan --channel COM3 --bitrate 1000000 --rio 172.22.11.2 --pcap tools\can_nt\logs\robot_run.pcapng
 Robot run with live Wireshark pipe:
-  python -m tools.can_nt.can_nt_bridge --profile robot --interface slcan --channel COM3 --bitrate 1000000 --rio 172.22.11.2 --publish-can-summary --pcap-pipe FRC_CAN
+  python -m tools.can_nt.can_nt_bridge --profile robot --interface slcan --channel COM3 --bitrate 1000000 --rio 172.22.11.2 --pcap-pipe FRC_CAN
 Bridge CLI (REST only, no CAN required):
   python -m tools.can_nt.can_nt_bridge --cli --no-can --rio 172.22.11.2
 

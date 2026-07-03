@@ -45,7 +45,7 @@ Purpose: Get a minimal group edited and saved quickly.
 
 Example:
 ```
-python tools\can_nt\can_nt_bridge.py --cli --no-can --no-nt
+python tools\can_nt\can_nt_bridge.py --cli --no-can
 configure terminal
 profile home_030226
 group motors

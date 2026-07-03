@@ -6,13 +6,13 @@ Purpose
   - incrementally enable devices
   - stop outputs immediately on command
   - print device health and sensor readings
-- It also consumes diagnostics from the PC-side Python tool via NetworkTables under bringup/diag.
+- It cooperates with PC-side host diagnostics surfaces, but supported bringup workflows no longer depend on a NetworkTables bridge.
 
 Hard rules
 - Safety first: ensure there is always a clear, immediate way to stop all outputs.
 - Do not change CAN IDs or device tables without updating the Python tool profile tables in tools/ in the same change.
-- Do not change NetworkTables paths without coordinated update with tools/ publisher.
-- If the Python publisher is not running, Java code must behave sensibly (no crashes, no blocking).
+- Do not add new bringup behavior that depends on a Python-side NetworkTables publisher.
+- If the PC host diagnostics tool is not running, Java code must behave sensibly (no crashes, no blocking).
 - Keep hardware configuration easy to customize: prefer data-driven profiles and ensure changes are documented for teams to update their device list quickly.
 - The JSON report exposes telemetry under `devices[].attachments` (e.g., `type=revMotor` / `ctreMotor`) with fields such as `cmdDuty`, `appliedDuty`, and `motorCurrentA`.
 - AI diagnosis guidance lives in `AI_DIAGNOSIS.md`.

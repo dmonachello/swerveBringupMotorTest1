@@ -18,7 +18,7 @@ See also:
 - **Bringup UI**: desktop Tk control surface for profile selection, reports, tests, live topology, and visibility.
 - **Bridge CLI**: Cisco-style TCP CLI for robot control and local config authoring.
 - **Topology editor**: Tk editor for `bringup_system.json` devices, topology, groups, and profile metadata.
-- **CAN tool**: passive PC-side CANable listener and NetworkTables publisher.
+- **CAN tool**: passive PC-side CANable listener with host-owned visibility, evidence, and CAN reporting surfaces.
 - **Regression / validation tools**: host-side checks for config, topology, CLI, and cross-surface compatibility.
 
 ## How To Read This Catalog
@@ -321,14 +321,6 @@ Each feature entry includes:
 - **How to access:** UI `CAN Bus`
 - **When to use it:** compare robot-local visibility to the passive sniffer view.
 
-### NT Diagnostics Report
-
-- **Purpose:** print PC-side CAN tool diagnostics published via NetworkTables.
-- **Surface:** robot runtime, Bringup UI.
-- **How to access:** UI `NT Diagnostics`
-- **When to use it:** passive bus presence and age/count diagnostics.
-- **Dependencies:** PC CAN tool running and connected.
-
 ### Inputs Report
 
 - **Purpose:** show controller state and input binding interpretation.
@@ -461,9 +453,9 @@ Each feature entry includes:
 - **How to access:** `python -m tools.can_nt.can_nt_bridge ...`
 - **Hard rule:** passive only; never transmits CAN.
 
-### NetworkTables Publishing
+### Host Diagnostics Publishing
 
-- **Purpose:** publish passive diagnostics for robot/UI consumption.
+- **Purpose:** build host-owned visibility, evidence, and CAN diagnostics without a NetworkTables bridge.
 - **Surface:** PC CAN tool.
 - **How to access:** run `can_nt_bridge.py` with robot connectivity.
 

@@ -8,45 +8,21 @@ SYNOPSIS
     from tools.can_nt.can_reporting import print_summary, format_frame_line
 
 DESCRIPTION
-    Formats NetworkTables key inventories, status transitions, and summary
-    lines for human-readable diagnostics.
+    Formats status transitions and summary lines for human-readable diagnostics.
 """
 
-import json
 from typing import Any, Dict, List, Optional
 
 from tools.common.time_utils import timestamp_hms
-from tools.common.nt_labels import encode_label_for_nt
 from .can_analyzer import CanLiveAnalyzer
 from .can_state import SnifferState
-
-
-KEY_DEV_BASE = "bringup/diag/dev"
-KEY_LABEL = "label"
-KEY_STATUS = "status"
-KEY_AGE_SEC = "ageSec"
-KEY_MSG_COUNT = "msgCount"
-KEY_LAST_SEEN = "lastSeen"
-KEY_PRESENCE_SOURCE = "presenceSource"
-KEY_PRESENCE_CONFIDENCE = "presenceConfidence"
-KEY_TRAFFIC_AGE_SEC = "trafficAgeSec"
-KEY_STATUS_AGE_SEC = "statusAgeSec"
-KEY_PREFER_STATUS = "prefer_status"
-
-KEY_CAN_SUMMARY = "bringup/diag/can/summary/json"
-KEY_PC_HEARTBEAT = "bringup/diag/can/pc/heartbeat"
-KEY_PC_OPEN_OK = "bringup/diag/can/pc/openOk"
-KEY_PC_FRAMES_PER_SEC = "bringup/diag/can/pc/framesPerSec"
-KEY_PC_FRAMES_TOTAL = "bringup/diag/can/pc/framesTotal"
-KEY_PC_READ_ERRORS = "bringup/diag/can/pc/readErrors"
-KEY_PC_LAST_FRAME_AGE = "bringup/diag/can/pc/lastFrameAgeSec"
-KEY_CONSOLE_DYNAMIC = "bringup/diag/console/(dynamic keys per rule/device)"
-KEY_CONSOLE_RESET = "bringup/diag/console/reset"
 
 STATUS_OK = "OK"
 STATUS_MISSING = "MISSING"
 STATUS_CONTROL_ONLY = "CONTROL_ONLY"
 STATUS_UNKNOWN = "UNKNOWN"
+KEY_LABEL = "label"
+KEY_PREFER_STATUS = "prefer_status"
 
 LABEL_UNKNOWN = "UNKNOWN"
 MAX_UNKNOWN_LABELS = 5
@@ -85,67 +61,6 @@ SUMMARY_TOP_FMT = "  {label} hz={hz}"
 SUMMARY_UNKNOWN_ACTIVE_FMT = "  {unknown_key}={labels}"
 SUMMARY_CAPTURE_FMT = "  {capture_key} lastFrameAge={age}"
 MAX_TOP_LINES = 5
-
-
-def print_or_dump_nt_keys(devices, print_keys: bool, dump_path: str) -> None:
-    """
-    NAME
-        print_or_dump_nt_keys - Emit or persist the published NT key list.
-
-    PARAMETERS
-        devices: Profile device list used to expand per-device keys.
-        print_keys: Whether to print to stdout.
-        dump_path: Optional JSON output path.
-
-    SIDE EFFECTS
-        Prints to stdout and/or writes a JSON file.
-    """
-    keys = []
-    for spec in devices:
-        label = str(spec.get(KEY_LABEL, LABEL_UNKNOWN))
-        label_key = encode_label_for_nt(label)
-        base = f"{KEY_DEV_BASE}/{label_key}"
-        keys.extend(
-            [
-                f"{base}/{KEY_LABEL}",
-                f"{base}/{KEY_STATUS}",
-                f"{base}/{KEY_AGE_SEC}",
-                f"{base}/{KEY_MSG_COUNT}",
-                f"{base}/{KEY_LAST_SEEN}",
-                f"{base}/{KEY_PRESENCE_SOURCE}",
-                f"{base}/{KEY_PRESENCE_CONFIDENCE}",
-                f"{base}/{KEY_TRAFFIC_AGE_SEC}",
-                f"{base}/{KEY_STATUS_AGE_SEC}",
-            ]
-        )
-    keys.append(KEY_CAN_SUMMARY)
-    keys.extend(
-        [
-            KEY_PC_HEARTBEAT,
-            KEY_PC_OPEN_OK,
-            KEY_PC_FRAMES_PER_SEC,
-            KEY_PC_FRAMES_TOTAL,
-            KEY_PC_READ_ERRORS,
-            KEY_PC_LAST_FRAME_AGE,
-            KEY_CONSOLE_DYNAMIC,
-            KEY_CONSOLE_RESET,
-        ]
-    )
-    payload = {
-        "keys": keys,
-        "count": len(keys),
-    }
-    if print_keys:
-        print("NetworkTables keys published by tools/can_nt/can_nt_bridge.py:")
-        for key in keys:
-            print(f"  {key}")
-    if dump_path:
-        try:
-            with open(dump_path, "w", encoding="utf-8") as f:
-                json.dump(payload, f, indent=2)
-        except Exception as exc:
-            print(f"ERROR: Failed to write NT keys dump '{dump_path}': {exc}")
-        print(f"Wrote NT key inventory to {dump_path}")
 
 
 def print_status_transitions(

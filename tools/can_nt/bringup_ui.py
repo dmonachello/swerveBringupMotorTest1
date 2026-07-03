@@ -75,7 +75,6 @@ from .host_ui_actions import (
 from .status import SS__NORMAL
 from tools.common.json_io import read_json, write_json
 from tools.common.config_api import ConfigEditSession, ConfigRepository
-from tools.common.nt_labels import decode_label_from_nt, encode_label_for_nt
 from tools.common.paths import repo_root, tests_deploy_path
 from tools.common.profile_constants import KEY_DEFAULT_PROFILE, KEY_DSL_TESTS
 from tools.common.tests_domain import collect_available_tests
@@ -176,8 +175,7 @@ from tools.can_nt.visibility_constants import (
     VIS_SCOPE_EXPECTED,
 )
 
-# Constants (NetworkTables paths and presence values).
-NT_PATH_PRESENCE_FMT = "dev/{}/presenceConfidence"
+# Constants (presence override buckets and empty values).
 NT_VALUE_EMPTY = ""
 PRESENCE_VALUE_HIGH = "HIGH"
 PRESENCE_VALUE_LOW = "LOW"
@@ -361,7 +359,6 @@ BUTTON_DOWNLOAD_CONFIG = "Download Current Config"
 BUTTON_SHOW_RUNTIME_STATE = "Show Runtime State"
 BUTTON_SHOW_LIFECYCLE_STATE = "Show Lifecycle State"
 CMD_PRINT_CAN_DIAG = "printCANdiag"
-CMD_PRINT_NT_DIAG = "printNTdiag"
 GROUP_SOURCE_MANUAL = "manual"
 GROUP_SOURCE_SELECTED_TEST = "selected test"
 GROUP_SOURCE_LABEL_PREFIX = "Active Group Source: "
@@ -450,7 +447,7 @@ VERSION_APP_NAME = APP_BRINGUP_UI_NAME
 VERSION_TITLE = VERSION_HEADER
 ABOUT_TITLE = "About Bringup Control"
 ABOUT_NAME = "Bringup Control UI"
-ABOUT_DESCRIPTION = "PC-side NetworkTables command panel for RobotV2 bringup."
+ABOUT_DESCRIPTION = "PC-side REST bringup control panel for RobotV2."
 ABOUT_LAUNCH = "Launch via tools/can_nt/run_can_nt.cmd --ui"
 ABOUT_SEPARATOR = "\n"
 BUILD_TITLE = "Build"
@@ -708,7 +705,7 @@ EVIDENCE_VALUE_NOT_APPLICABLE = "n/a"
 EVIDENCE_INTERPRETATION_TEXT = "Final Interpretation"
 EVIDENCE_PRESENCE_TEXT = "Presence Check (Robot Local Snapshot)"
 EVIDENCE_PASSIVE_TEXT = "Passive CAN Evidence (CANable Observer)"
-EVIDENCE_CONSOLE_TEXT = "Console Evidence (Robot/NT)"
+EVIDENCE_CONSOLE_TEXT = "Console Evidence (Robot/Host)"
 EVIDENCE_PROBE_TEXT = "Full Probe (Manual One-Shot)"
 EVIDENCE_MANUAL_TEXT = "Manual Test (Operator / Motion)"
 EVIDENCE_NOTES_TEXT = "Conflicts / Notes"
@@ -732,14 +729,6 @@ EVIDENCE_CAN_TEXT_ERROR_SPIKE = "error spike"
 EVIDENCE_CAN_TEXT_TX_FULL = "tx full"
 EVIDENCE_CONSOLE_SCOPE_DEVICES = "devices"
 EVIDENCE_CONSOLE_SCOPE_SYSTEM = "system"
-EVIDENCE_CONSOLE_KEY_ACTIVE = "Active"
-EVIDENCE_CONSOLE_KEY_COUNT = "Count"
-EVIDENCE_CONSOLE_KEY_LAST_SEEN = "LastSeen"
-EVIDENCE_CONSOLE_KEY_MESSAGE = "Message"
-EVIDENCE_CONSOLE_KEY_SEVERITY = "Severity"
-EVIDENCE_CONSOLE_KEY_WARN = "warnCount"
-EVIDENCE_CONSOLE_KEY_ERROR = "errorCount"
-EVIDENCE_CONSOLE_KEY_FATAL = "fatalCount"
 EVIDENCE_EVENT_TYPE_BUS_FAULT = "BUS_FAULT_SUSPECTED"
 EVIDENCE_TEXT_DEVICE_TIMEOUT = "timeout"
 EVIDENCE_TEXT_STALE = "stale"
@@ -1134,10 +1123,6 @@ def _normalize_loaded_command_metadata(
     normalized_actions = {
         str(name): dict(row) for name, row in actions_by_name.items() if isinstance(row, dict)
     }
-    nt_row = normalized_actions.get(CMD_PRINT_NT_DIAG)
-    if isinstance(nt_row, dict):
-        nt_row[INVENTORY_KEY_SHOW_IN_HOST_UI] = False
-        normalized_actions[CMD_PRINT_NT_DIAG] = nt_row
     can_row = normalized_actions.get(CMD_PRINT_CAN_DIAG)
     if isinstance(can_row, dict):
         can_row[INVENTORY_KEY_ACTION_KIND] = ACTION_KIND_HOST_LOCAL
@@ -1156,8 +1141,6 @@ def _normalize_loaded_command_metadata(
             if not isinstance(row, dict):
                 continue
             name = str(row.get("name", "")).strip()
-            if name == CMD_PRINT_NT_DIAG:
-                continue
             if name == CMD_PRINT_CAN_DIAG and name in normalized_actions:
                 filtered_commands.append(dict(normalized_actions[name]))
                 continue
@@ -1647,6 +1630,89 @@ def _format_test_detail_value(value: object) -> str:
     if isinstance(value, float):
         return f"{value:.3f}"
     return str(value)
+
+
+def _presence_override_from_runtime_device(runtime_device: Dict[str, Any]) -> str:
+    """
+    NAME
+        _presence_override_from_runtime_device - Convert runtime presence confidence into a topology override bucket.
+    """
+    presence_value = runtime_device.get("presenceConfidence")
+    if not isinstance(presence_value, (int, float)):
+        return NT_VALUE_EMPTY
+    if float(presence_value) <= 0.05:
+        return "NONE"
+    if float(presence_value) >= 0.5:
+        return "HIGH"
+    return "LOW"
+
+
+def _build_console_snapshot_from_entries(entries: List[object]) -> Dict[str, Any]:
+    """
+    NAME
+        _build_console_snapshot_from_entries - Build the Evidence console snapshot from host-side console entries.
+    """
+    result: Dict[str, Any] = {
+        EVIDENCE_CONSOLE_SCOPE_DEVICES: {},
+        EVIDENCE_CONSOLE_SCOPE_SYSTEM: [],
+        "systemText": EVIDENCE_SOURCE_NONE,
+        "systemConflict": False,
+    }
+    system_events: List[str] = []
+    for entry in entries:
+        if not bool(getattr(entry, "active", False)):
+            continue
+        severity = str(getattr(entry, "severity", NT_VALUE_EMPTY) or NT_VALUE_EMPTY).strip().upper()
+        event_type = str(getattr(entry, "event_type", NT_VALUE_EMPTY) or NT_VALUE_EMPTY).strip()
+        message = str(getattr(entry, "last_message", NT_VALUE_EMPTY) or NT_VALUE_EMPTY).strip()
+        event_summary = f"[{severity or 'INFO'}] {event_type}"
+        if message:
+            event_summary = f"{event_summary}: {message}"
+        device_label = str(getattr(entry, "device_label", NT_VALUE_EMPTY) or NT_VALUE_EMPTY).strip()
+        event_count = int(getattr(entry, "count", 0) or 0)
+        if device_label:
+            row = result[EVIDENCE_CONSOLE_SCOPE_DEVICES].setdefault(
+                device_label.lower(),
+                {
+                    "events": [],
+                    "summary": EVIDENCE_SOURCE_NONE,
+                    "hasError": False,
+                    "hasWarn": False,
+                    "warnCount": 0,
+                    "errorCount": 0,
+                    "fatalCount": 0,
+                },
+            )
+            row["events"].append(event_summary)
+            if severity == "WARN":
+                row["hasWarn"] = True
+                row["warnCount"] += max(1, event_count)
+            elif severity == "ERROR":
+                row["hasError"] = True
+                row["errorCount"] += max(1, event_count)
+            elif severity == "FATAL":
+                row["hasError"] = True
+                row["fatalCount"] += max(1, event_count)
+            if row["summary"] == EVIDENCE_SOURCE_NONE:
+                row["summary"] = event_summary
+        else:
+            system_events.append(event_summary)
+    for row in result[EVIDENCE_CONSOLE_SCOPE_DEVICES].values():
+        if row["summary"] != EVIDENCE_SOURCE_NONE:
+            continue
+        if row["fatalCount"] > 0 or row["errorCount"] > 0:
+            row["summary"] = f"errors={row['errorCount']} fatal={row['fatalCount']}"
+        elif row["warnCount"] > 0:
+            row["summary"] = f"warn={row['warnCount']}"
+    result[EVIDENCE_CONSOLE_SCOPE_SYSTEM] = system_events
+    result["systemText"] = system_events[0] if system_events else EVIDENCE_SOURCE_NONE
+    result["systemConflict"] = any(
+        EVIDENCE_EVENT_TYPE_BUS_FAULT in entry or EVIDENCE_TEXT_STALE in entry.lower()
+        for entry in system_events
+    )
+    return result
+
+
 class BringupControlUI(tk.Tk):
     """
     NAME
@@ -1654,19 +1720,19 @@ class BringupControlUI(tk.Tk):
 
     DESCRIPTION
         Builds a fixed action list and a scrolling output panel. Commands are
-        sent over NetworkTables via a command sender callback.
+        sent over the shared REST bridge session.
     """
 
     def __init__(
         self,
         ui_table,
         tests_table,
-        diag_table,
         rio_host: str,
         tcp_port: int,
         is_connected: Optional[Callable[[], bool]] = None,
         on_close: Optional[Callable[[], None]] = None,
         visibility_provider: Optional[object] = None,
+        console_monitor: Optional[object] = None,
     ) -> None:
         super().__init__()
         self._print_version_banner()
@@ -1675,7 +1741,6 @@ class BringupControlUI(tk.Tk):
         self.minsize(900, 600)
         self._ui_table = ui_table
         self._tests_table = tests_table
-        self._diag_table = diag_table
         self._on_close = on_close
         self._rio_host = rio_host
         self._is_connected = is_connected
@@ -1688,6 +1753,7 @@ class BringupControlUI(tk.Tk):
         self._last_ack_seq = None
         self._last_out_seq = None
         self._visibility_provider = visibility_provider
+        self._console_monitor = console_monitor
         self._visibility_last_update = 0.0
         self._visibility_sources: List[Dict[str, object]] = []
         self._visibility_columns: List[str] = []
@@ -4324,7 +4390,7 @@ class BringupControlUI(tk.Tk):
     def _poll_presence_overrides(self) -> None:
         """
         NAME
-            _poll_presence_overrides - Read presence confidence from NT diagnostics.
+            _poll_presence_overrides - Apply any host-side presence override source.
         """
         live_views = self._iter_live_views()
         if not live_views:
@@ -4352,20 +4418,18 @@ class BringupControlUI(tk.Tk):
             for live_view in live_views:
                 live_view.set_presence_overrides(overrides or {})
             return
-        if self._diag_table is None:
-            for live_view in live_views:
-                live_view.set_presence_overrides({})
-            return
         overrides: Dict[str, str] = {}
-        for label, device in self._profile_devices.items():
-            label = str(device.get(DEVICE_KEY_LABEL, "")).strip()
-            if not label:
-                continue
-            label_key = encode_label_for_nt(label)
-            path = NT_PATH_PRESENCE_FMT.format(label_key)
-            value = self._diag_table.getEntry(path).getString(NT_VALUE_EMPTY)
-            if value in PRESENCE_VALUES:
-                overrides[label] = value
+        runtime_devices = self.__dict__.get("_latest_runtime_devices", {})
+        if isinstance(runtime_devices, dict):
+            for device in runtime_devices.values():
+                if not isinstance(device, dict):
+                    continue
+                label = str(device.get(DEVICE_KEY_LABEL, "")).strip()
+                if not label:
+                    continue
+                value = _presence_override_from_runtime_device(device)
+                if value in PRESENCE_VALUES:
+                    overrides[label] = value
         for live_view in live_views:
             live_view.set_presence_overrides(overrides)
 
@@ -4640,83 +4704,16 @@ class BringupControlUI(tk.Tk):
     def _collect_console_snapshot(self) -> Dict[str, Any]:
         """
         NAME
-            _collect_console_snapshot - Read the current console-diagnostics summary from NT.
+            _collect_console_snapshot - Read the current host-side console-diagnostics summary.
         """
-        result: Dict[str, Any] = {
-            EVIDENCE_CONSOLE_SCOPE_DEVICES: {},
-            EVIDENCE_CONSOLE_SCOPE_SYSTEM: [],
-            "systemText": EVIDENCE_SOURCE_NONE,
-            "systemConflict": False,
-        }
-        if self._diag_table is None or not self._nt_connected:
-            return result
-        console_table = self._diag_table.getSubTable("console")
-        devices_table = console_table.getSubTable(EVIDENCE_CONSOLE_SCOPE_DEVICES)
-        for label_key in devices_table.getSubTables():
-            label = decode_label_from_nt(label_key).strip()
-            if not label:
-                continue
-            device_table = devices_table.getSubTable(label_key)
-            events: List[str] = []
-            has_error = False
-            has_warn = False
-            for event_type in device_table.getSubTables():
-                event_table = device_table.getSubTable(event_type)
-                if not event_table.getEntry(EVIDENCE_CONSOLE_KEY_ACTIVE).getBoolean(False):
-                    continue
-                severity = str(
-                    event_table.getEntry(EVIDENCE_CONSOLE_KEY_SEVERITY).getString(NT_VALUE_EMPTY)
-                ).strip().upper()
-                message = str(
-                    event_table.getEntry(EVIDENCE_CONSOLE_KEY_MESSAGE).getString(NT_VALUE_EMPTY)
-                ).strip()
-                event_summary = f"[{severity or 'INFO'}] {event_type}"
-                if message:
-                    event_summary = f"{event_summary}: {message}"
-                events.append(event_summary)
-                if severity in ("ERROR", "FATAL"):
-                    has_error = True
-                elif severity == "WARN":
-                    has_warn = True
-            warn_count = int(device_table.getEntry(EVIDENCE_CONSOLE_KEY_WARN).getDouble(0.0))
-            error_count = int(device_table.getEntry(EVIDENCE_CONSOLE_KEY_ERROR).getDouble(0.0))
-            fatal_count = int(device_table.getEntry(EVIDENCE_CONSOLE_KEY_FATAL).getDouble(0.0))
-            summary = EVIDENCE_SOURCE_NONE
-            if events:
-                summary = events[0]
-            elif fatal_count > 0 or error_count > 0:
-                summary = f"errors={error_count} fatal={fatal_count}"
-            elif warn_count > 0:
-                summary = f"warn={warn_count}"
-            result[EVIDENCE_CONSOLE_SCOPE_DEVICES][label.lower()] = {
-                "events": events,
-                "summary": summary,
-                "hasError": has_error or error_count > 0 or fatal_count > 0,
-                "hasWarn": has_warn or warn_count > 0,
-            }
-        system_events: List[str] = []
-        system_table = console_table.getSubTable(EVIDENCE_CONSOLE_SCOPE_SYSTEM)
-        for event_type in system_table.getSubTables():
-            event_table = system_table.getSubTable(event_type)
-            if not event_table.getEntry(EVIDENCE_CONSOLE_KEY_ACTIVE).getBoolean(False):
-                continue
-            severity = str(
-                event_table.getEntry(EVIDENCE_CONSOLE_KEY_SEVERITY).getString(NT_VALUE_EMPTY)
-            ).strip().upper()
-            message = str(
-                event_table.getEntry(EVIDENCE_CONSOLE_KEY_MESSAGE).getString(NT_VALUE_EMPTY)
-            ).strip()
-            event_summary = f"[{severity or 'INFO'}] {event_type}"
-            if message:
-                event_summary = f"{event_summary}: {message}"
-            system_events.append(event_summary)
-        result[EVIDENCE_CONSOLE_SCOPE_SYSTEM] = system_events
-        result["systemText"] = system_events[0] if system_events else EVIDENCE_SOURCE_NONE
-        result["systemConflict"] = any(
-            EVIDENCE_EVENT_TYPE_BUS_FAULT in entry or EVIDENCE_TEXT_STALE in entry.lower()
-            for entry in system_events
-        )
-        return result
+        console_monitor = self.__dict__.get("_console_monitor")
+        if console_monitor is None:
+            return _build_console_snapshot_from_entries([])
+        try:
+            entries = console_monitor.snapshot_entries(time.time())
+        except Exception:
+            entries = []
+        return _build_console_snapshot_from_entries(entries)
 
     def _build_evidence_can_bus_health_text(self, system_console: Dict[str, Any]) -> str:
         """
@@ -6495,7 +6492,7 @@ class BringupControlUI(tk.Tk):
         """
         lines = [
             "Purpose:",
-            "  Send bringup commands to the roboRIO via NetworkTables (bringup/ui).",
+            "  Send bringup commands to the roboRIO over the shared REST control session.",
             "",
             "Basics:",
             "  - Select a test from the dropdown to send selectTestByName.",
@@ -6504,7 +6501,7 @@ class BringupControlUI(tk.Tk):
             "  - Live Topology tab shows read-only runtime overlays.",
             "",
             "Connection:",
-            "  - Status shows NetworkTables link to the RIO.",
+            "  - Status shows the REST session state to the RIO.",
             "  - If disconnected, commands are blocked.",
             "",
             "Launch examples:",
@@ -7632,12 +7629,6 @@ class BringupControlUI(tk.Tk):
             "  This is robot-side vendor API data (not the PC sniffer).",
             "  Output: vendor API status, seen/missing device notes.",
             "",
-            "NT Diagnostics:",
-            "  Prints diagnostics from the PC CAN tool via bringup/diag.",
-            "  Requires the PC sniffer to be running and connected.",
-            "  Use this to verify CAN traffic when the robot can’t see it.",
-            "  Output: PC sniffer status + per-device presence/age/count.",
-            "",
             "Inputs:",
             "  Prints controller status and input bindings state.",
             "  Helpful to confirm button mappings and axis directions.",
@@ -7793,9 +7784,9 @@ class BringupControlUI(tk.Tk):
             "  Wait for pending output or clear the robot state.",
             "  If the robot is disabled, enable to allow commands to run.",
             "",
-            "NT Diagnostics empty:",
+            "CAN visibility mismatch:",
             "  Start the PC tool: tools\\can_nt\\run_can_nt.cmd --profile <profile>",
-            "  Use --channel COMx if auto-detect fails.",
+            "  Use --channel COMx if auto-detect fails, then compare CAN Bus and Visibility.",
         ]
         return "\n".join(lines)
 

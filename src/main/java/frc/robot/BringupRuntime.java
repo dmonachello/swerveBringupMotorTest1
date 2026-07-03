@@ -2,7 +2,6 @@ package frc.robot;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.wpilibj.DriverStation;
 import frc.robot.diag.lifecycle.activation.ActivationMode;
 import frc.robot.diag.lifecycle.activation.ActivationResult;
@@ -85,7 +84,6 @@ public final class BringupRuntime {
   private static final long PERIODIC_LIFECYCLE_REFRESH_DISABLED_MS = 1000L;
 
   private final CanBusHealth canHealth;
-  private final NetworkTable diagTable;
   private final String runTestBindingLabel;
   private final BridgeGroupManager bridgeGroups = new BridgeGroupManager();
   private final BridgeGroupManager.SelectedState bridgeSelected =
@@ -105,15 +103,12 @@ public final class BringupRuntime {
    *
    * PARAMETERS
    *   canHealth - CAN health sampler.
-   *   diagTable - Diagnostics NetworkTables root.
    *   runTestBindingLabel - Human-readable hold-to-run binding label.
    */
   public BringupRuntime(
       CanBusHealth canHealth,
-      NetworkTable diagTable,
       String runTestBindingLabel) {
     this.canHealth = canHealth;
-    this.diagTable = diagTable;
     this.runTestBindingLabel =
         runTestBindingLabel != null && !runTestBindingLabel.isBlank()
             ? runTestBindingLabel
@@ -1430,10 +1425,10 @@ public final class BringupRuntime {
   }
 
   private void replaceCore() {
-    core = new BringupCore(sampledTelemetry, diagTable, deviceLifecycle);
+    core = new BringupCore(sampledTelemetry, deviceLifecycle);
     core.setRunTestBindingLabel(runTestBindingLabel);
     if (diagnostics == null) {
-      diagnostics = new DiagnosticsReporter(core, canHealth, diagTable);
+      diagnostics = new DiagnosticsReporter(core, canHealth);
     } else {
       diagnostics.setCore(core);
     }

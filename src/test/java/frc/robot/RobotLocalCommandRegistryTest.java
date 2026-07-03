@@ -15,6 +15,7 @@ class RobotLocalCommandRegistryTest {
   private static final String JSON_KEY_NAME = "name";
   private static final String JSON_KEY_SHOW_IN_HOST_UI = "showInHostUi";
   private static final String COMMAND_LIFECYCLE_ACTIVATE = "lifecycleActivate";
+  private static final String COMMAND_PRINT_NT_DIAG = "printNTdiag";
   private static final String COMMAND_SHOW_LIFECYCLE_STATE = "showLifecycleState";
 
   @Test
@@ -57,5 +58,11 @@ class RobotLocalCommandRegistryTest {
     assertNotNull(RobotLocalCommandRegistry.definition(COMMAND_SHOW_LIFECYCLE_STATE));
     assertTrue(RobotLocalCommandRegistry.isKnownCommand(COMMAND_LIFECYCLE_ACTIVATE));
     assertTrue(RobotLocalCommandRegistry.isKnownCommand(COMMAND_SHOW_LIFECYCLE_STATE));
+  }
+
+  @Test
+  void registryNoLongerIncludesNtDiagnosticsCommand() {
+    assertFalse(RobotLocalCommandRegistry.isKnownCommand(COMMAND_PRINT_NT_DIAG));
+    assertFalse(RobotLocalCommandRegistry.commandNames().contains(COMMAND_PRINT_NT_DIAG));
   }
 }

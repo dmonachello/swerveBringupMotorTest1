@@ -6,7 +6,6 @@ import com.google.gson.JsonObject;
 import frc.robot.diag.snapshots.BusSnapshot;
 import frc.robot.diag.snapshots.DeviceAttachment;
 import frc.robot.diag.snapshots.DeviceSnapshot;
-import frc.robot.diag.snapshots.PcSnapshot;
 import frc.robot.diag.snapshots.SnapshotBundle;
 import java.util.List;
 
@@ -34,7 +33,6 @@ public final class ReportJsonBuilder {
     JsonObject root = new JsonObject();
     root.addProperty("timestamp", bundle != null ? bundle.timestampSec : 0.0);
     root.add("bus", buildBusJson(bundle != null ? bundle.bus : null));
-    root.add("pc", buildPcJson(bundle != null ? bundle.pc : null));
     root.add("devices", buildDevicesJson(bundle != null ? bundle.devices : null));
     return GSON.toJson(root);
   }
@@ -60,74 +58,6 @@ public final class ReportJsonBuilder {
     out.addProperty("busOff", bus.busOff);
     out.addProperty("busOffDelta", bus.busOffDelta);
     out.addProperty("sampleAgeSec", bus.sampleAgeSec);
-    return out;
-  }
-
-  /**
-   * NAME
-   *   buildPcJson - Build the PC sniffer section JSON.
-   */
-  private JsonObject buildPcJson(PcSnapshot pc) {
-    JsonObject out = new JsonObject();
-    if (pc == null) {
-      out.addProperty("heartbeatAgeSec", -1.0);
-      out.addProperty("openOk", false);
-      out.addProperty("framesPerSec", Double.NaN);
-      out.addProperty("framesTotal", Double.NaN);
-      out.addProperty("readErrors", Double.NaN);
-      out.addProperty("lastFrameAgeSec", Double.NaN);
-      JsonObject summary = new JsonObject();
-      summary.addProperty("missingCount", 0);
-      summary.addProperty("totalCount", 0);
-      summary.addProperty("flappingCount", 0);
-      summary.add("seenNotLocal", new JsonArray());
-      out.add("deviceSummary", summary);
-      return out;
-    }
-    out.addProperty("heartbeatAgeSec", pc.heartbeatAgeSec);
-    out.addProperty("openOk", pc.openOk);
-    out.addProperty("framesPerSec", pc.framesPerSec);
-    out.addProperty("framesTotal", pc.framesTotal);
-    out.addProperty("readErrors", pc.readErrors);
-    out.addProperty("lastFrameAgeSec", pc.lastFrameAgeSec);
-
-    JsonObject summary = new JsonObject();
-    summary.addProperty("missingCount", pc.missingCount);
-    summary.addProperty("totalCount", pc.totalCount);
-    summary.addProperty("flappingCount", pc.flappingCount);
-    JsonArray seenNotLocal = new JsonArray();
-    for (PcSnapshot.SeenNotLocalEntry entry : pc.seenNotLocal) {
-      JsonObject obj = new JsonObject();
-      obj.addProperty("key", entry.key);
-      if (entry.ageSec != null) {
-        obj.addProperty("ageSec", entry.ageSec);
-      }
-      seenNotLocal.add(obj);
-    }
-    JsonArray profileMismatch = new JsonArray();
-    for (PcSnapshot.ProfileMismatchEntry entry : pc.profileMismatch) {
-      JsonObject obj = new JsonObject();
-      obj.addProperty("expected", entry.expected);
-      JsonArray labels = new JsonArray();
-      for (String label : entry.seenLabels) {
-        labels.add(label);
-      }
-      obj.add("seenLabels", labels);
-      profileMismatch.add(obj);
-    }
-    JsonArray staleDevices = new JsonArray();
-    for (PcSnapshot.StaleDeviceEntry entry : pc.staleDevices) {
-      JsonObject obj = new JsonObject();
-      obj.addProperty("key", entry.key);
-      if (entry.ageSec != null) {
-        obj.addProperty("ageSec", entry.ageSec);
-      }
-      staleDevices.add(obj);
-    }
-    summary.add("seenNotLocal", seenNotLocal);
-    summary.add("profileMismatch", profileMismatch);
-    summary.add("staleDevices", staleDevices);
-    out.add("deviceSummary", summary);
     return out;
   }
 

@@ -9,7 +9,6 @@ import com.revrobotics.REVLibError;
 import com.revrobotics.spark.SparkBase;
 import com.revrobotics.spark.SparkFlex;
 import com.revrobotics.spark.SparkMax;
-import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.units.Units;
 import frc.robot.BringupCore;
 import frc.robot.BringupUtil;
@@ -99,7 +98,6 @@ public final class ActiveDevicePresenceProbe {
   private static final String CODE_NO_ACTIVE_WARNINGS = "NO_ACTIVE_WARNINGS";
   private static final String CODE_SWITCHABLE_READ_VALID = "SWITCHABLE_READ_VALID";
   private static final String CODE_POWER_FRESHNESS_GATE = "POWER_FRESHNESS_GATE";
-  private static final String CODE_CONSOLE_EVENT_ACTIVE = "CONSOLE_EVENT_ACTIVE";
   private static final String CODE_EXCEPTION_THROWN = "EXCEPTION_THROWN";
   private static final int MAX_SCORE = 100;
   private static final int PRESENT_THRESHOLD = 70;
@@ -132,19 +130,6 @@ public final class ActiveDevicePresenceProbe {
   private static final double MIN_MEANINGFUL_CURRENT_A = 0.05;
   private static final double MIN_MEANINGFUL_POWER_TEMP_C = 1.0;
   private static final int EXPECTED_RESET_BITS = 0;
-  private static final String NT_CONSOLE = "console";
-  private static final String NT_DEVICES = "devices";
-  private static final String NT_SYSTEM = "system";
-  private static final String NT_ACTIVE = "Active";
-  private static final String NT_MESSAGE = "Message";
-  private static final String NT_SEVERITY = "Severity";
-  private static final String SEVERITY_WARN = "WARN";
-  private static final String SEVERITY_ERROR = "ERROR";
-  private static final String SEVERITY_FATAL = "FATAL";
-  private static final String EVENT_HAL_CAN_RECEIVE_TIMEOUT = "HAL_CAN_RECEIVE_TIMEOUT";
-  private static final String EVENT_PDP_STATUS_READER_TIMEOUT = "PDP_STATUS_READER_TIMEOUT";
-  private static final String EVENT_PDH_STATUS_READER_TIMEOUT = "PDH_STATUS_READER_TIMEOUT";
-  private static final String MESSAGE_CONSOLE_TIMEOUT_PREFIX = "Active console timeout evidence: ";
   private static final String TEXT_SESSION_HEADER = "=== Full Device State Probe ===";
   private static final String TEXT_DURATION_MS = "durationMs";
   private static final String TEXT_TOTAL_DURATION_MS = "totalDurationMs";
@@ -157,7 +142,6 @@ public final class ActiveDevicePresenceProbe {
   private static final String TEXT_STAGE_CLEAR_STICKY = "clearSticky";
   private static final String TEXT_STAGE_VENDOR_READ = "vendorRead";
   private static final String TEXT_STAGE_EVALUATE = "evaluate";
-  private static final String TEXT_STAGE_CONSOLE_EVIDENCE = "consoleEvidence";
   private static final String TEXT_STAGE_SNAPSHOT = "snapshot";
   private static final String TEXT_MS_SUFFIX = " ms";
 
@@ -172,7 +156,7 @@ public final class ActiveDevicePresenceProbe {
    * RETURNS
    *   Session result containing per-device evidence plus text/JSON output.
    */
-  public ProbeSessionResult runOnce(BringupCore core, NetworkTable diagTable, boolean preclearSticky) {
+  public ProbeSessionResult runOnce(BringupCore core, boolean preclearSticky) {
     long sessionStartNs = System.nanoTime();
     if (core == null) {
       ProbeSessionResult result = ProbeSessionResult.failed(TEXT_SESSION_EMPTY);
@@ -197,7 +181,7 @@ public final class ActiveDevicePresenceProbe {
         unsupportedCount++;
         continue;
       }
-      results.add(probeTarget(target, device, diagTable, preclearSticky));
+      results.add(probeTarget(target, device, preclearSticky));
     }
     if (results.isEmpty()) {
       if (canCount == 0) {
@@ -257,7 +241,6 @@ public final class ActiveDevicePresenceProbe {
   private ProbeDeviceResult probeTarget(
       ProbeTarget target,
       DeviceUnit device,
-      NetworkTable diagTable,
       boolean preclearSticky) {
     if (target == null || target.label == null || target.label.isBlank() || target.canId < 0) {
       return invalidTarget(target, TEXT_INVALID_TARGET);
@@ -269,11 +252,11 @@ public final class ActiveDevicePresenceProbe {
       return missingRuntimeDevice(target);
     }
     return switch (target.model) {
-      case MODEL_TALON_FX -> probeTalonFx(target, (CtreTalonFxDevice) device, diagTable, preclearSticky);
-      case MODEL_SPARK_MAX -> probeSparkMax(target, device, diagTable, preclearSticky);
-      case MODEL_SPARK_FLEX -> probeSparkFlex(target, (RevFlexVortexDevice) device, diagTable, preclearSticky);
-      case MODEL_PDP -> probePdp(target, (CtrePdpDevice) device, diagTable, preclearSticky);
-      case MODEL_PDH -> probePdh(target, (RevPdhDevice) device, diagTable, preclearSticky);
+      case MODEL_TALON_FX -> probeTalonFx(target, (CtreTalonFxDevice) device, preclearSticky);
+      case MODEL_SPARK_MAX -> probeSparkMax(target, device, preclearSticky);
+      case MODEL_SPARK_FLEX -> probeSparkFlex(target, (RevFlexVortexDevice) device, preclearSticky);
+      case MODEL_PDP -> probePdp(target, (CtrePdpDevice) device, preclearSticky);
+      case MODEL_PDH -> probePdh(target, (RevPdhDevice) device, preclearSticky);
       default -> unsupportedTarget(target, TEXT_UNSUPPORTED_MODEL_PREFIX + target.model);
     };
   }
@@ -281,7 +264,6 @@ public final class ActiveDevicePresenceProbe {
   private ProbeDeviceResult probeTalonFx(
       ProbeTarget target,
       CtreTalonFxDevice device,
-      NetworkTable diagTable,
       boolean preclearSticky) {
     long deviceStartNs = System.nanoTime();
     ProbeAccumulator acc = new ProbeAccumulator(target);
@@ -409,17 +391,11 @@ public final class ActiveDevicePresenceProbe {
         acc.forceBucket(BUCKET_ABSENT, StatusCatalogGenerated.SS__DEVICE__ABSENT, TEXT_STATUS_FORCE_ABSENT);
       }
       acc.recordStageDuration(TEXT_STAGE_EVALUATE, nanosToMs(System.nanoTime() - stageStartNs));
-      stageStartNs = System.nanoTime();
-      applyConsoleEvidence(acc, target, diagTable);
-      acc.recordStageDuration(TEXT_STAGE_CONSOLE_EVIDENCE, nanosToMs(System.nanoTime() - stageStartNs));
       acc.setTotalDurationMs(nanosToMs(System.nanoTime() - deviceStartNs));
       return acc.finish();
     } catch (Exception ex) {
       acc.error(CODE_EXCEPTION_THROWN, TEXT_EXCEPTION_PREFIX + ex.getClass().getSimpleName(),
           MAX_SCORE, safeExceptionMessage(ex), StatusCatalogGenerated.SS__DEVICE__PROBE_EXCEPTION);
-      stageStartNs = System.nanoTime();
-      applyConsoleEvidence(acc, target, diagTable);
-      acc.recordStageDuration(TEXT_STAGE_CONSOLE_EVIDENCE, nanosToMs(System.nanoTime() - stageStartNs));
       acc.setTotalDurationMs(nanosToMs(System.nanoTime() - deviceStartNs));
       return acc.finish();
     }
@@ -428,7 +404,6 @@ public final class ActiveDevicePresenceProbe {
   private ProbeDeviceResult probeSparkMax(
       ProbeTarget target,
       DeviceUnit device,
-      NetworkTable diagTable,
       boolean preclearSticky) {
     SparkMax spark = null;
     if (device instanceof RevSparkMaxNeoDevice neo) {
@@ -436,21 +411,19 @@ public final class ActiveDevicePresenceProbe {
     } else if (device instanceof RevSparkMaxNeo550Device neo550) {
       spark = neo550.getActiveHandleForProbe();
     }
-    return probeRevSparkBase(target, spark, diagTable, preclearSticky);
+    return probeRevSparkBase(target, spark, preclearSticky);
   }
 
   private ProbeDeviceResult probeSparkFlex(
       ProbeTarget target,
       RevFlexVortexDevice device,
-      NetworkTable diagTable,
       boolean preclearSticky) {
-    return probeRevSparkBase(target, device.getActiveHandleForProbe(), diagTable, preclearSticky);
+    return probeRevSparkBase(target, device.getActiveHandleForProbe(), preclearSticky);
   }
 
   private ProbeDeviceResult probeRevSparkBase(
       ProbeTarget target,
       SparkBase device,
-      NetworkTable diagTable,
       boolean preclearSticky) {
     long deviceStartNs = System.nanoTime();
     ProbeAccumulator acc = new ProbeAccumulator(target);
@@ -566,17 +539,11 @@ public final class ActiveDevicePresenceProbe {
             String.valueOf(lastError), StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK);
       }
       acc.recordStageDuration(TEXT_STAGE_EVALUATE, nanosToMs(System.nanoTime() - stageStartNs));
-      stageStartNs = System.nanoTime();
-      applyConsoleEvidence(acc, target, diagTable);
-      acc.recordStageDuration(TEXT_STAGE_CONSOLE_EVIDENCE, nanosToMs(System.nanoTime() - stageStartNs));
       acc.setTotalDurationMs(nanosToMs(System.nanoTime() - deviceStartNs));
       return acc.finish();
     } catch (Exception ex) {
       acc.error(CODE_EXCEPTION_THROWN, TEXT_EXCEPTION_PREFIX + ex.getClass().getSimpleName(),
           MAX_SCORE, safeExceptionMessage(ex), StatusCatalogGenerated.SS__DEVICE__PROBE_EXCEPTION);
-      long stageStartNs = System.nanoTime();
-      applyConsoleEvidence(acc, target, diagTable);
-      acc.recordStageDuration(TEXT_STAGE_CONSOLE_EVIDENCE, nanosToMs(System.nanoTime() - stageStartNs));
       acc.setTotalDurationMs(nanosToMs(System.nanoTime() - deviceStartNs));
       return acc.finish();
     }
@@ -585,7 +552,6 @@ public final class ActiveDevicePresenceProbe {
   private ProbeDeviceResult probePdp(
       ProbeTarget target,
       CtrePdpDevice device,
-      NetworkTable diagTable,
       boolean preclearSticky) {
     long deviceStartNs = System.nanoTime();
     ProbeAccumulator acc = new ProbeAccumulator(target);
@@ -624,17 +590,11 @@ public final class ActiveDevicePresenceProbe {
         acc.forceBucket(BUCKET_UNKNOWN, StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK, TEXT_PD_WEAK);
       }
       acc.recordStageDuration(TEXT_STAGE_EVALUATE, nanosToMs(System.nanoTime() - stageStartNs));
-      stageStartNs = System.nanoTime();
-      applyConsoleEvidence(acc, target, diagTable);
-      acc.recordStageDuration(TEXT_STAGE_CONSOLE_EVIDENCE, nanosToMs(System.nanoTime() - stageStartNs));
       acc.setTotalDurationMs(nanosToMs(System.nanoTime() - deviceStartNs));
       return acc.finish();
     } catch (Exception ex) {
       acc.warn(CODE_EXCEPTION_THROWN, TEXT_EXCEPTION_PREFIX + ex.getClass().getSimpleName(), 0,
           safeExceptionMessage(ex), StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK);
-      long stageStartNs = System.nanoTime();
-      applyConsoleEvidence(acc, target, diagTable);
-      acc.recordStageDuration(TEXT_STAGE_CONSOLE_EVIDENCE, nanosToMs(System.nanoTime() - stageStartNs));
       acc.forceBucket(BUCKET_UNKNOWN, StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK, TEXT_PD_WEAK);
       acc.setTotalDurationMs(nanosToMs(System.nanoTime() - deviceStartNs));
       return acc.finish();
@@ -644,7 +604,6 @@ public final class ActiveDevicePresenceProbe {
   private ProbeDeviceResult probePdh(
       ProbeTarget target,
       RevPdhDevice device,
-      NetworkTable diagTable,
       boolean preclearSticky) {
     long deviceStartNs = System.nanoTime();
     ProbeAccumulator acc = new ProbeAccumulator(target);
@@ -683,113 +642,15 @@ public final class ActiveDevicePresenceProbe {
         acc.forceBucket(BUCKET_UNKNOWN, StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK, TEXT_PD_WEAK);
       }
       acc.recordStageDuration(TEXT_STAGE_EVALUATE, nanosToMs(System.nanoTime() - stageStartNs));
-      stageStartNs = System.nanoTime();
-      applyConsoleEvidence(acc, target, diagTable);
-      acc.recordStageDuration(TEXT_STAGE_CONSOLE_EVIDENCE, nanosToMs(System.nanoTime() - stageStartNs));
       acc.setTotalDurationMs(nanosToMs(System.nanoTime() - deviceStartNs));
       return acc.finish();
     } catch (Exception ex) {
       acc.warn(CODE_EXCEPTION_THROWN, TEXT_EXCEPTION_PREFIX + ex.getClass().getSimpleName(), 0,
           safeExceptionMessage(ex), StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK);
-      long stageStartNs = System.nanoTime();
-      applyConsoleEvidence(acc, target, diagTable);
-      acc.recordStageDuration(TEXT_STAGE_CONSOLE_EVIDENCE, nanosToMs(System.nanoTime() - stageStartNs));
       acc.forceBucket(BUCKET_UNKNOWN, StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK, TEXT_PD_WEAK);
       acc.setTotalDurationMs(nanosToMs(System.nanoTime() - deviceStartNs));
       return acc.finish();
     }
-  }
-
-  private void applyConsoleEvidence(ProbeAccumulator acc, ProbeTarget target, NetworkTable diagTable) {
-    if (acc == null || target == null || diagTable == null || target.label == null || target.label.isBlank()) {
-      return;
-    }
-    NetworkTable consoleTable = diagTable.getSubTable(NT_CONSOLE);
-    String labelKey = BringupUtil.encodeLabelForNt(target.label);
-    NetworkTable deviceEvents =
-        consoleTable.getSubTable(NT_DEVICES).getSubTable(labelKey);
-    boolean sawStrongTimeout = false;
-    for (String eventType : deviceEvents.getSubTables()) {
-      NetworkTable eventTable = deviceEvents.getSubTable(eventType);
-      if (!eventTable.getEntry(NT_ACTIVE).getBoolean(false)) {
-        continue;
-      }
-      String severity = eventTable.getEntry(NT_SEVERITY).getString(TEXT_EMPTY);
-      String message = eventTable.getEntry(NT_MESSAGE).getString(TEXT_EMPTY);
-      String evidenceMessage = buildConsoleEvidenceMessage(eventType, severity, message);
-      acc.warn(
-          CODE_CONSOLE_EVENT_ACTIVE,
-          evidenceMessage,
-          0,
-          buildConsoleObservedValue(eventType, severity),
-          StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK);
-      if (isStrongTimeoutEvent(eventType, severity)) {
-        sawStrongTimeout = true;
-      }
-    }
-    if (!sawStrongTimeout) {
-      sawStrongTimeout = hasActiveSystemTimeout(consoleTable);
-    }
-    if (sawStrongTimeout && isPowerDistributionModel(target.model)) {
-      acc.forceBucket(BUCKET_UNKNOWN, StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK, TEXT_PD_WEAK);
-    }
-  }
-
-  private boolean hasActiveSystemTimeout(NetworkTable consoleTable) {
-    if (consoleTable == null) {
-      return false;
-    }
-    NetworkTable eventTable =
-        consoleTable.getSubTable(NT_SYSTEM).getSubTable(EVENT_HAL_CAN_RECEIVE_TIMEOUT);
-    if (!eventTable.getEntry(NT_ACTIVE).getBoolean(false)) {
-      return false;
-    }
-    String severity = eventTable.getEntry(NT_SEVERITY).getString(TEXT_EMPTY);
-    return isSeverityWarningOrWorse(severity);
-  }
-
-  private String buildConsoleEvidenceMessage(String eventType, String severity, String message) {
-    StringBuilder sb = new StringBuilder(128);
-    sb.append(MESSAGE_CONSOLE_TIMEOUT_PREFIX);
-    sb.append(eventType != null && !eventType.isBlank() ? eventType : "consoleEvent");
-    if (severity != null && !severity.isBlank()) {
-      sb.append(" [").append(severity).append(']');
-    }
-    if (message != null && !message.isBlank()) {
-      sb.append(": ").append(message);
-    }
-    return sb.toString();
-  }
-
-  private String buildConsoleObservedValue(String eventType, String severity) {
-    StringBuilder sb = new StringBuilder(64);
-    sb.append(eventType != null ? eventType : TEXT_EMPTY);
-    if (severity != null && !severity.isBlank()) {
-      sb.append(':').append(severity);
-    }
-    return sb.toString();
-  }
-
-  private boolean isPowerDistributionModel(String model) {
-    return MODEL_PDP.equals(model) || MODEL_PDH.equals(model);
-  }
-
-  private boolean isStrongTimeoutEvent(String eventType, String severity) {
-    if (!isSeverityWarningOrWorse(severity)) {
-      return false;
-    }
-    return EVENT_PDP_STATUS_READER_TIMEOUT.equals(eventType)
-        || EVENT_PDH_STATUS_READER_TIMEOUT.equals(eventType)
-        || EVENT_HAL_CAN_RECEIVE_TIMEOUT.equals(eventType);
-  }
-
-  private boolean isSeverityWarningOrWorse(String severity) {
-    if (severity == null || severity.isBlank()) {
-      return false;
-    }
-    return SEVERITY_WARN.equalsIgnoreCase(severity)
-        || SEVERITY_ERROR.equalsIgnoreCase(severity)
-        || SEVERITY_FATAL.equalsIgnoreCase(severity);
   }
 
   private void scorePowerStatus(

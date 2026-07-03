@@ -63,6 +63,7 @@ Allowed:
 
 - small scripts whose sole purpose is migration, repair, or one-shot maintenance may use a lower-level compatibility adapter, but that adapter must still be owned by the shared config API package
 - tests may construct in-memory payload fixtures
+- tests that persist a valid temporary `bringup_system.json` file must do so through the shared config API, not direct JSON file writes
 
 Explicitly not allowed:
 

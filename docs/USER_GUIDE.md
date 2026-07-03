@@ -16,7 +16,7 @@ Purpose: Describe the core components and where they live.
 Purpose: Actively run devices and publish robot-side diagnostics.
 - Location: `src/main/java/...` (notably `RobotV2` and `BringupUtil`).
 - Runs on the WPILib 20ms loop, with report output throttled via a report runner.
-- Publishes robot-side diagnostics to NetworkTables.
+- Publishes robot-side diagnostics through the supported robot report and REST surfaces.
 - Includes report commands users run to diagnose issues (e.g., inventory, limits, device state).
 
 ### PC CAN Listener (Python, CANable)
@@ -159,10 +159,10 @@ Purpose: Exercise devices in controlled steps.
 ### 3) Observe Live CAN (Passive on PC)
 Purpose: Independently verify bus traffic.
 - Run `tools/can_nt/can_nt_bridge.py` with a CANable.
-- Passively capture and publish CAN diagnostics to NetworkTables.
+- Passively capture CAN traffic and build host-owned diagnostics.
 - Optionally save PCAPNG and inventory JSON for later diffing.
 - Optional: add `--ui` for the Bringup Control UI and use Help -> Help for command details.
-  - Commands use REST; NetworkTables still provides state/diagnostics visibility.
+  - Commands and supported state/diagnostics surfaces use REST plus host-local services.
 
 ### 4) Troubleshoot Issues
 Purpose: Isolate wiring, configuration, and device problems.
@@ -203,9 +203,9 @@ Purpose: Contrast visualization-only tools with bringup workflows.
 - This system adds profile-driven planning, bringup actions, and passive CAN inventory/diffing in addition to visualization.
 
 ### NetworkTables Inspection
-Purpose: Contrast low-level NT debugging with profile-driven diagnostics.
+Purpose: Contrast low-level NT debugging with the current bringup architecture.
 - OutlineViewer is a utility for viewing, modifying, and adding NetworkTables values during debugging. ?cite?turn3search0?
-- This system uses NetworkTables as a diagnostics transport but focuses on higher-level bringup workflows.
+- This bringup system no longer depends on NetworkTables for supported control or diagnostics workflows.
 
 ### Path Planning Tools
 Purpose: Contrast motion planning tools with hardware bringup.
@@ -221,7 +221,7 @@ Purpose: Contrast system setup tools with bringup diagnostics.
 ## Notes
 Purpose: Call out key rules and constraints.
 - The PC CAN tool must never transmit CAN frames.
-- NetworkTables keys are an API contract; changes must be coordinated.
+- REST payloads and shared host diagnostics models are API contracts; changes must be coordinated.
 - Diagram metadata is editor-only and must not be consumed by robot/PC tools.
 - GUI behavior that affects viewport, drag, zoom, pan, redraw, and pane geometry is governed by `docs/FEATURE_SPEC_GUI_INTERACTION_AND_VIEWPORT_STABILITY.md`.
 

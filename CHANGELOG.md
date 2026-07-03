@@ -2,6 +2,19 @@
 
 All notable user-facing changes are documented in this file.
 
+## 2026-07-02
+
+### Improved - 2026-07-02
+
+- Completed the remaining supported NetworkTables removal work for bringup
+  control and diagnostics by removing legacy NT UI transport/state plumbing,
+  removing `printNTdiag`, moving supported CAN/visibility reporting fully onto
+  host-owned and REST-backed paths, and deleting the dead Python NT publisher
+  path.
+- Hardened the Bridge CLI `profile` command contract so exec mode now formally
+  supports `profile <name>`, correctly supports `profile device show-all
+  <device>`, and rejects invalid shorthand forms instead of misrouting them.
+
 ## 2026-06-09
 
 ### Added - 2026-06-09

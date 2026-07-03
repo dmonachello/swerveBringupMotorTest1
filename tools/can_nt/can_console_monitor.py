@@ -2,17 +2,17 @@ from __future__ import annotations
 
 """
 NAME
-    can_console_monitor.py - roboRIO NetConsole monitor and NT publisher.
+    can_console_monitor.py - roboRIO NetConsole monitor and host-side event aggregator.
 
 SYNOPSIS
     from tools.can_nt.can_console_monitor import ConsoleMonitor
 
 DESCRIPTION
     Listens to NetConsole over TCP or UDP, matches lines against regex rules,
-    aggregates events, and publishes a compact diagnostic view to NetworkTables.
+    and maintains a host-side event snapshot for diagnostics surfaces.
 
 SIDE EFFECTS
-    Opens sockets, optional rotating log files, and publishes to NT.
+    Opens sockets and optional rotating log files.
 """
 
 import logging
@@ -20,10 +20,9 @@ import threading
 from dataclasses import dataclass
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Callable
+from typing import Any, Callable, Dict, List, Optional
 
 from tools.common.json_io import read_json
-from tools.common.nt_labels import encode_label_for_nt
 
 @dataclass
 class ConsoleRule:
@@ -54,11 +53,11 @@ class ConsoleEntry:
 class ConsoleMonitor:
     """
     NAME
-        ConsoleMonitor - Monitor roboRIO NetConsole and publish event summaries.
+        ConsoleMonitor - Monitor roboRIO NetConsole and aggregate event summaries.
 
     DESCRIPTION
         Tracks matched console events with timeouts and exposes counts and
-        latest messages via NetworkTables for diagnostics.
+        latest messages via host-side snapshots for diagnostics.
     """
     def __init__(
         self,
@@ -78,8 +77,6 @@ class ConsoleMonitor:
         self._entries: Dict[str, ConsoleEntry] = {}
         self._lock = threading.Lock()
         self._timeout_s = max(0.1, inactivity_timeout)
-        self._publish_period = 0.5 if publish_rate_hz <= 0 else 1.0 / publish_rate_hz
-        self._last_publish = 0.0
         self._lines_received = 0
         self._lines_matched = 0
         self._packets_received = 0
@@ -95,7 +92,6 @@ class ConsoleMonitor:
         self._recent_timeouts: Dict[int, float] = {}
         self._bus_fault_window_s = 5.0
         self._bus_fault_min_devices = 2
-        self._published_keys: set[Tuple[Optional[str], str]] = set()
         self._reset_requested = False
         self._device_label_resolver = device_label_resolver
         self._init_logger(debug_log_path, debug_log_max_mb, debug_log_max_files)
@@ -279,7 +275,7 @@ class ConsoleMonitor:
             request_reset - Schedule a reset of published console state.
 
         DESCRIPTION
-            Triggers clearing of counters and entries at next publish cycle.
+            Triggers clearing of counters and entries before the next snapshot.
         """
         self._reset_requested = True
 
@@ -505,126 +501,44 @@ class ConsoleMonitor:
             entry.last_message = message
             entry.active = True
 
-    def publish(self, table, now: float) -> None:
-        """
-        NAME
-            publish - Push console summary state to NetworkTables.
-
-        DESCRIPTION
-            Applies inactivity timeouts, handles reset requests, and writes
-            summary counters plus per-event entries.
-
-        PARAMETERS
-            table: NetworkTables base table (bringup/diag).
-            now: Current wall-clock time (seconds).
-
-        SIDE EFFECTS
-            Writes NetworkTables entries.
-        """
-        if (now - self._last_publish) < self._publish_period:
-            return
-        self._last_publish = now
-        if table is None:
-            return
-        with self._lock:
-            entries = list(self._entries.values())
-        for entry in entries:
-            if entry.active and (now - entry.last_seen) > self._timeout_s:
-                entry.active = False
-        console_table = table.getSubTable("console")
-        console_table.getEntry("reset").setBoolean(False)
-        reset_entry = console_table.getEntry("reset")
-        if reset_entry.getBoolean(False) or self._reset_requested:
-            self._reset_requested = False
-            self._reset_console_state(console_table)
-            reset_entry.setBoolean(False)
-        active_count = sum(1 for e in entries if e.active)
-        console_table.getEntry("lastPublish").setDouble(float(now))
-        console_table.getEntry("activeCount").setDouble(float(active_count))
-        console_table.getEntry("totalCount").setDouble(float(len(entries)))
-        console_table.getEntry("rulesLoaded").setDouble(float(len(self._rules)))
-        console_table.getEntry("linesReceived").setDouble(float(self._lines_received))
-        console_table.getEntry("linesMatched").setDouble(float(self._lines_matched))
-        console_table.getEntry("packetsReceived").setDouble(float(self._packets_received))
-        console_table.getEntry("lastSource").setString(self._last_addr or "")
-        device_counts: Dict[str, Dict[str, int]] = {}
-        system_counts = {"WARN": 0, "ERROR": 0, "FATAL": 0}
-        for entry in entries:
-            if entry.device_label:
-                label_key = encode_label_for_nt(entry.device_label)
-                base = (
-                    console_table.getSubTable("devices")
-                    .getSubTable(label_key)
-                    .getSubTable(entry.event_type)
-                )
-            else:
-                base = console_table.getSubTable("system").getSubTable(entry.event_type)
-            base.getEntry("Active").setBoolean(entry.active)
-            base.getEntry("Count").setDouble(float(entry.count))
-            base.getEntry("LastSeen").setDouble(float(entry.last_seen))
-            base.getEntry("Message").setString(entry.last_message)
-            base.getEntry("Severity").setString(entry.severity)
-            self._published_keys.add((entry.device_label, entry.event_type))
-            if entry.active:
-                severity = entry.severity.upper()
-                if entry.device_label:
-                    counts = device_counts.setdefault(entry.device_label, {"WARN": 0, "ERROR": 0, "FATAL": 0})
-                    if severity in counts:
-                        counts[severity] += max(1, entry.count)
-                else:
-                    if severity in system_counts:
-                        system_counts[severity] += max(1, entry.count)
-        devices_table = console_table.getSubTable("devices")
-        for device_label, counts in device_counts.items():
-            if not device_label:
-                continue
-            base = devices_table.getSubTable(encode_label_for_nt(device_label))
-            base.getEntry("warnCount").setDouble(float(counts["WARN"]))
-            base.getEntry("errorCount").setDouble(float(counts["ERROR"]))
-            base.getEntry("fatalCount").setDouble(float(counts["FATAL"]))
-        system_table = console_table.getSubTable("system")
-        system_table.getEntry("warnCount").setDouble(float(system_counts["WARN"]))
-        system_table.getEntry("errorCount").setDouble(float(system_counts["ERROR"]))
-        system_table.getEntry("fatalCount").setDouble(float(system_counts["FATAL"]))
-
-    def snapshot_entries(self) -> List[ConsoleEntry]:
+    def snapshot_entries(self, now: Optional[float] = None) -> List[ConsoleEntry]:
         """
         NAME
             snapshot_entries - Return a snapshot list of console entries.
+
+        PARAMETERS
+            now: Optional wall-clock timestamp used to apply inactivity aging.
 
         RETURNS
             List of ConsoleEntry copies for read-only aggregation.
         """
         with self._lock:
+            self._apply_pending_reset_locked()
+            snapshot_now = float(now) if isinstance(now, (int, float)) else None
+            if snapshot_now is not None:
+                self._apply_inactivity_locked(snapshot_now)
             return list(self._entries.values())
 
-    def _reset_console_state(self, console_table) -> None:
+    def _apply_pending_reset_locked(self) -> None:
         """
         NAME
-            _reset_console_state - Clear published entries in NetworkTables.
-
-        SIDE EFFECTS
-            Writes zeros/empty values to previously published keys.
+            _apply_pending_reset_locked - Clear tracked console state when reset is pending.
         """
-        with self._lock:
-            self._entries.clear()
-        for device_label, event_type in list(self._published_keys):
-            if device_label:
-                base = (
-                    console_table.getSubTable("devices")
-                    .getSubTable(encode_label_for_nt(device_label))
-                    .getSubTable(event_type)
-                )
-            else:
-                base = console_table.getSubTable("system").getSubTable(event_type)
-            base.getEntry("Active").setBoolean(False)
-            base.getEntry("Count").setDouble(0.0)
-            base.getEntry("LastSeen").setDouble(0.0)
-            base.getEntry("Message").setString("")
-            base.getEntry("Severity").setString("")
-        self._published_keys.clear()
+        if not self._reset_requested:
+            return
+        self._reset_requested = False
+        self._entries.clear()
         self._lines_received = 0
         self._lines_matched = 0
         self._packets_received = 0
         self._last_addr = None
         self._recent_timeouts.clear()
+
+    def _apply_inactivity_locked(self, now: float) -> None:
+        """
+        NAME
+            _apply_inactivity_locked - Mark aged console entries inactive.
+        """
+        for entry in self._entries.values():
+            if entry.active and (now - entry.last_seen) > self._timeout_s:
+                entry.active = False

@@ -17,7 +17,7 @@ import threading
 from typing import Dict, List, Optional, Tuple, Iterable
 
 from tools.can_nt.can_frc_defs import decode_frc_ext_id_full
-from tools.can_nt.can_nt_publish import decode_frc_ext_id
+from tools.common.can_id import decode_frc_ext_id as decode_shared_frc_ext_id
 from tools.can_nt.visibility_constants import (
     VIS_KEY_AGE_MS,
     VIS_KEY_API_CLASS,
@@ -266,7 +266,12 @@ class VisibilityProvider:
             key = decoded_key
             if not key:
                 try:
-                    mfg, dtype, did = decode_frc_ext_id(arb_id)
+                    decoded = decode_shared_frc_ext_id(arb_id)
+                    mfg, dtype, did = (
+                        decoded.manufacturer,
+                        decoded.device_type,
+                        decoded.device_id,
+                    )
                     key = _device_key_from_ids(mfg, dtype, did)
                 except Exception:
                     key = _device_key_from_arb(arb_id)

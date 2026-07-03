@@ -11,7 +11,6 @@ class BridgeUiReportCommandsTest {
 
   private static final String CMD_PRINT_SUMMARY = "printSummary";
   private static final String CMD_PRINT_SELECTED_TEST_SOURCE = "printSelectedTestSource";
-  private static final String CMD_PRINT_NT_DIAG = "printNTdiag";
   private static final String CMD_PRINT_CAN_DIAG = "printCANdiag";
   private static final String CMD_DUMP_REPORT = "dumpReport";
   private static final String CMD_SHOW_STATUS = "showStatus";
@@ -25,19 +24,16 @@ class BridgeUiReportCommandsTest {
   private static final String REPORT_PATH = "logs/report.json";
 
   @Test
-  void diagnosticsUnavailableBlocksSummaryNtAndCan() {
+  void diagnosticsUnavailableBlocksSummaryAndCan() {
     TestDeps deps = new TestDeps();
     deps.hasDiagnostics = false;
     BridgeUiReportCommands commands = new BridgeUiReportCommands(deps);
 
     BridgeUiCommandResult summary = commands.execute(ingress(CMD_PRINT_SUMMARY, new JsonObject()), 0.0, false);
-    BridgeUiCommandResult ntDiag = commands.execute(ingress(CMD_PRINT_NT_DIAG, new JsonObject()), 0.0, false);
     BridgeUiCommandResult canDiag = commands.execute(ingress(CMD_PRINT_CAN_DIAG, new JsonObject()), 0.0, false);
 
     assertFalse(summary.ok);
     assertEquals(MSG_DIAG_UNAVAILABLE, summary.message);
-    assertFalse(ntDiag.ok);
-    assertEquals(MSG_DIAG_UNAVAILABLE, ntDiag.message);
     assertFalse(canDiag.ok);
     assertEquals(MSG_DIAG_UNAVAILABLE, canDiag.message);
   }
@@ -174,16 +170,6 @@ class BridgeUiReportCommandsTest {
     @Override
     public String buildSelectedTestSourceReportText() {
       return selectedTestSourceText;
-    }
-
-    @Override
-    public String buildNetworkDiagnosticsReportIfReady() {
-      return "ntdiag";
-    }
-
-    @Override
-    public String appendUiSessionStats(String report) {
-      return report + "+session";
     }
 
     @Override

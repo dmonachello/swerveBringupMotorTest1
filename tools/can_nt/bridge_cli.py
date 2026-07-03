@@ -195,7 +195,13 @@ from tools.common.paths import (
     bindings_deploy_path,
     test_templates_dir,
 )
-from tools.common.config_api import ConfigRepository
+from tools.common.config_api import (
+    ConfigRepository,
+    create_blank_profile,
+    delete_profile as delete_profile_payload,
+    ensure_profile_topology_entry,
+    set_default_profile as set_default_profile_payload,
+)
 from tools.common.config_lifecycle import ConfigLifecycleService
 from tools.common.workflows import Workflow01Service
 from tools.common.tests_domain import collect_available_tests
@@ -2890,6 +2896,18 @@ class BridgeCli:
             return
         self._load_profiles_from_path(path, announce=True)
 
+    def _auto_merge_default_profiles_for_connect(self) -> None:
+        """
+        NAME
+            _auto_merge_default_profiles_for_connect - Silently load canonical profiles before connect-time sync.
+        """
+        if self._local_config is not None:
+            return
+        path = self._config_repository.canonical_path()
+        if not path.exists():
+            return
+        self._load_profiles_from_path(path, announce=False)
+
 
     def _auto_load_default_sources(self) -> None:
         """
@@ -2999,6 +3017,23 @@ class BridgeCli:
             return default_profile
         return self._fallback_profile_name()
 
+    def _connect_target_profile_name(self) -> str:
+        """
+        NAME
+            _connect_target_profile_name - Return the host profile that should be pushed to the robot on connect.
+
+        DESCRIPTION
+            Prefers the current host profile context when that profile exists in
+            local config. Falls back to empty string when the host has no valid
+            local profile context, allowing connect-time robot->host adoption.
+        """
+        payload = self._local_root_payload
+        profiles = payload.get(KEY_PROFILES) if isinstance(payload, dict) else None
+        candidate = self._active_profile_name()
+        if not isinstance(profiles, dict) or not candidate or candidate not in profiles:
+            return EMPTY_STRING
+        return candidate
+
     def _fallback_profile_name(self) -> Optional[str]:
         """
         NAME
@@ -3026,12 +3061,11 @@ class BridgeCli:
             return
         if not profiles:
             default_name = get_default_profile().strip() or CMD_PROFILE
-            profiles[default_name] = {KEY_PROFILE_DEVICES: []}
-            payload[KEY_DEFAULT_PROFILE] = default_name
+            create_blank_profile(payload, default_name, set_default_if_missing=True)
             self._mark_profiles_dirty()
         default_profile = payload.get(KEY_DEFAULT_PROFILE)
         if not isinstance(default_profile, str) or default_profile not in profiles:
-            payload[KEY_DEFAULT_PROFILE] = next(iter(profiles.keys()))
+            set_default_profile_payload(payload, next(iter(profiles.keys())))
         if self._groups_profile:
             if isinstance(self._local_config, dict):
                 by_profile = self._local_config.get(KEY_BRIDGE_BY_PROFILE)
@@ -3355,31 +3389,7 @@ class BridgeCli:
         if key in profiles:
             print(MESSAGE_ERR_PROFILE_EXISTS.format(name=key))
             return StatusResult(code=SS__CONFIG__INVALID)
-        profiles[key] = {KEY_PROFILE_DEVICES: []}
-        default_profile = payload.get(KEY_DEFAULT_PROFILE)
-        if not isinstance(default_profile, str) or not default_profile.strip():
-            payload[KEY_DEFAULT_PROFILE] = key
-        topology_root = payload.get(KEY_TOPOLOGY)
-        if not isinstance(topology_root, dict):
-            topology_root = {
-                KEY_TOPOLOGY_VERSION: COUNT_ONE,
-                KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
-                KEY_TOPOLOGY_PROFILES: {},
-            }
-            payload[KEY_TOPOLOGY] = topology_root
-        topology_profiles = topology_root.get(KEY_TOPOLOGY_PROFILES)
-        if not isinstance(topology_profiles, dict):
-            topology_profiles = {}
-            topology_root[KEY_TOPOLOGY_PROFILES] = topology_profiles
-        topology_profiles.setdefault(
-            key,
-            {
-                KEY_TOPOLOGY_VERSION: COUNT_ONE,
-                KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
-                KEY_TOPOLOGY_NODES: [],
-                KEY_TOPOLOGY_EDGES: [],
-            },
-        )
+        create_blank_profile(payload, key, set_default_if_missing=True)
         self._mark_profiles_dirty()
         self._local_devices_locked = True
         self._groups_profile = key
@@ -3409,22 +3419,14 @@ class BridgeCli:
         if key not in profiles:
             print(MESSAGE_PROFILE_DELETE_MISSING.format(name=key))
             return StatusResult(code=SS__NORMAL)
-        profiles.pop(key, None)
+        delete_profile_payload(payload, key)
         config = payload.get(KEY_BRIDGE_CONFIG)
         if isinstance(config, dict):
             by_profile = config.get(KEY_BRIDGE_BY_PROFILE)
             if isinstance(by_profile, dict):
                 by_profile.pop(key, None)
-        topology_root = payload.get(KEY_TOPOLOGY)
-        if isinstance(topology_root, dict):
-            topology_profiles = topology_root.get(KEY_TOPOLOGY_PROFILES)
-            if isinstance(topology_profiles, dict):
-                topology_profiles.pop(key, None)
-        default_profile = payload.get(KEY_DEFAULT_PROFILE)
-        if default_profile == key:
-            payload.pop(KEY_DEFAULT_PROFILE, None)
-            if profiles:
-                payload[KEY_DEFAULT_PROFILE] = next(iter(profiles.keys()))
+        if KEY_DEFAULT_PROFILE not in payload and profiles:
+            set_default_profile_payload(payload, next(iter(profiles.keys())))
         if self._groups_profile == key:
             self._groups_profile = self._default_profile_name()
         self._mark_profiles_dirty()
@@ -3499,7 +3501,7 @@ class BridgeCli:
         if not isinstance(profiles, dict) or key not in profiles:
             print(MESSAGE_ERR_PROFILE_UNKNOWN.format(name=key))
             return StatusResult(code=SS__CONFIG__INVALID)
-        payload[KEY_DEFAULT_PROFILE] = key
+        set_default_profile_payload(payload, key)
         self._mark_profiles_dirty()
         self._local_devices_locked = True
         self._sync_store_from_local()
@@ -9379,10 +9381,9 @@ class BridgeCli:
                 return StatusResult(code=SS__NETWORK__HANDSHAKE_FAILED, message=message)
             self._proto_mark_connected(now=time.time())
             self._proto_mark_handshake(now=time.time())
-            self._sync_host_profile_context_to_robot(
-                self._query_robot_selected_profile_after_connect(),
-                prompt_user=not self._batch,
-            )
+            result = self._apply_profile_sync_after_connect(prompt_user=not self._batch)
+            if result is not None:
+                return result
             self._start_keepalive()
             print("Connected.")
             return StatusResult(code=SS__NORMAL)
@@ -10938,8 +10939,9 @@ class BridgeCli:
             return EMPTY_STRING
         if text_value:
             return text_value
-        if event.message:
-            return str(event.message).strip()
+        message_value = str(getattr(event, "message", EMPTY_STRING) or EMPTY_STRING).strip()
+        if message_value:
+            return message_value
         return "Lifecycle command failed."
 
     def _is_lifecycle_success_text(self, value: str) -> bool:
@@ -12526,9 +12528,10 @@ class BridgeCli:
         NAME
             _parse_event_json_payload - Parse event JSON payload when present.
         """
-        if event is None or not event.json_text:
+        json_text = getattr(event, "json_text", EMPTY_STRING) if event is not None else EMPTY_STRING
+        if not json_text:
             return {}
-        payload = parse_json_arg(event.json_text)
+        payload = parse_json_arg(json_text)
         return payload if isinstance(payload, dict) else {}
 
     def _sync_host_profile_context_to_robot(self, robot_profile: object, prompt_user: bool) -> None:
@@ -12633,6 +12636,24 @@ class BridgeCli:
             time.sleep(CONNECT_PROFILE_SYNC_SLEEP_SEC)
         return self._query_robot_selected_profile()
 
+    def _apply_profile_sync_after_connect(self, prompt_user: bool) -> Optional[StatusResult]:
+        """
+        NAME
+            _apply_profile_sync_after_connect - Align robot and host profile context after a successful connect.
+        """
+        self._auto_merge_default_profiles_for_connect()
+        connect_profile = self._connect_target_profile_name()
+        if connect_profile:
+            result = self._set_active_profile(connect_profile)
+            if not result.ok():
+                return result
+            return None
+        self._sync_host_profile_context_to_robot(
+            self._query_robot_selected_profile_after_connect(),
+            prompt_user=prompt_user,
+        )
+        return None
+
     def _profile_select_event_error(self, event: Optional[BridgeEvent]) -> str:
         """
         NAME
@@ -12646,7 +12667,9 @@ class BridgeCli:
                 return error_message
         if event is None:
             return EMPTY_STRING
-        message_text = str(event.message or event.text or EMPTY_STRING).strip()
+        message_text = str(
+            getattr(event, "message", EMPTY_STRING) or getattr(event, "text", EMPTY_STRING) or EMPTY_STRING
+        ).strip()
         if message_text.startswith("Profile change blocked:"):
             return message_text
         return EMPTY_STRING
@@ -15073,11 +15096,7 @@ class BridgeCli:
         if not isinstance(profile, dict):
             if not create:
                 return {}
-            profile = {
-                KEY_TOPOLOGY_NODES: [],
-                KEY_TOPOLOGY_EDGES: [],
-            }
-            profiles[profile_name] = profile
+            return ensure_profile_topology_entry(self._local_root_payload, profile_name)
         if not isinstance(profile.get(KEY_TOPOLOGY_NODES), list):
             profile[KEY_TOPOLOGY_NODES] = []
         if not isinstance(profile.get(KEY_TOPOLOGY_EDGES), list):
@@ -18826,20 +18845,25 @@ class BridgeCli:
             if repair:
                 print("INFO: repair mode enabled")
         source_path = Path(path)
+        config_repository = getattr(self, "_config_repository", None)
+        if config_repository is None:
+            config_lifecycle = getattr(self, "_config_lifecycle", None)
+            config_repository = ConfigRepository(config_lifecycle)
+            self._config_repository = config_repository
         try:
-            payload = self._config_repository.load_path(source_path).to_payload()
+            payload = config_repository.load_path(source_path).to_payload()
         except Exception:
             print(MESSAGE_VALIDATE_FILE_LOAD.format(path=path))
             return StatusResult(code=SS__CONFIG__INVALID)
         if not isinstance(payload, dict):
-            print(MESSAGE_VALIDATE_FILE_UNSUPPORTED.format(path=path))
-            return StatusResult(code=SS__CONFIG__INVALID)
+                print(MESSAGE_VALIDATE_FILE_UNSUPPORTED.format(path=path))
+                return StatusResult(code=SS__CONFIG__INVALID)
         if repair:
             repaired, changed = self._repair_profiles_payload(payload)
             if changed:
                 try:
-                    session = self._config_repository.session_for_payload(source_path, repaired)
-                    self._config_repository.save(session, path=source_path)
+                    session = config_repository.session_for_payload(source_path, repaired)
+                    config_repository.save(session, path=source_path)
                 except Exception as exc:
                     print(MESSAGE_ERR_SAVE_WRITE.format(path=path, error=exc))
                     return StatusResult(code=SS__CONFIG__INVALID)

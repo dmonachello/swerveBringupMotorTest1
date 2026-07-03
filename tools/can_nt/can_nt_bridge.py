@@ -7,12 +7,12 @@ SYNOPSIS
     python -m tools.can_nt.can_nt_bridge [options]
 
 DESCRIPTION
-    Runs the PC-side CAN sniffer, optional NetworkTables publishing, optional
-    PCAP logging, and console monitoring. Designed for Windows + CANable slcan.
+    Runs the PC-side CAN sniffer, optional PCAP logging, and host-side
+    diagnostics services. Designed for Windows + CANable slcan.
 
 SIDE EFFECTS
-    Opens the CAN interface, optional NetworkTables client, optional PCAP file
-    or pipe, optional NetConsole sockets, and emits console output.
+    Opens the CAN interface, optional PCAP file or pipe, optional NetConsole
+    sockets, and emits console output.
 
 ERRORS
     Exits nonzero when CAN bus open or incompatible options fail.
@@ -37,8 +37,7 @@ try:
     from tools.can_nt.can_console_monitor import ConsoleMonitor
     from tools.can_nt.can_frc_defs import decode_frc_ext_id_full, classify_frame
     from tools.can_inventory.can_inventory import dump_api_inventory, print_inventory_diff
-    from tools.can_nt.can_nt_client import publish_updates, setup_nt
-    from tools.can_nt.can_nt_publish import decode_frc_ext_id
+    from tools.can_nt.can_nt_client import publish_updates
     from tools.can_nt.can_pcap import build_pcap_comment, setup_pcap, handle_marker_keys
     from tools.can_nt.can_ports import list_ports, maybe_auto_channel
     from tools.can_nt.can_profiles import (
@@ -52,7 +51,6 @@ try:
     from tools.can_nt.can_reporting import (
         build_summary_extra,
         format_frame_line,
-        print_or_dump_nt_keys,
         print_summary,
     )
     from tools.can_nt.can_state import SnifferState
@@ -105,6 +103,7 @@ try:
         format_version_line,
     )
     from tools.common.build_info import build_lines
+    from tools.common.can_id import decode_frc_ext_id as decode_shared_frc_ext_id
     from tools.common.profile_constants import (
         KEY_DEVICE_TYPE,
         KEY_ID,
@@ -121,8 +120,7 @@ except ModuleNotFoundError:
     from tools.can_nt.can_console_monitor import ConsoleMonitor
     from tools.can_nt.can_frc_defs import decode_frc_ext_id_full, classify_frame
     from tools.can_inventory.can_inventory import dump_api_inventory, print_inventory_diff
-    from tools.can_nt.can_nt_client import publish_updates, setup_nt
-    from tools.can_nt.can_nt_publish import decode_frc_ext_id
+    from tools.can_nt.can_nt_client import publish_updates
     from tools.can_nt.can_pcap import build_pcap_comment, setup_pcap, handle_marker_keys
     from tools.can_nt.can_ports import list_ports, maybe_auto_channel
     from tools.can_nt.can_profiles import (
@@ -136,7 +134,6 @@ except ModuleNotFoundError:
     from tools.can_nt.can_reporting import (
         build_summary_extra,
         format_frame_line,
-        print_or_dump_nt_keys,
         print_summary,
     )
     from tools.can_nt.can_state import SnifferState
@@ -189,6 +186,7 @@ except ModuleNotFoundError:
         format_version_line,
     )
     from tools.common.build_info import build_lines
+    from tools.common.can_id import decode_frc_ext_id as decode_shared_frc_ext_id
     from tools.common.profile_constants import (
         KEY_DEVICE_TYPE,
         KEY_ID,
@@ -197,12 +195,6 @@ except ModuleNotFoundError:
     )
     from tools.can_nt.bridge_cli import BridgeCli
     from tools.can_nt.bridge_session import BridgeSession
-
-# Constants (NetworkTables table names).
-NT_TABLE_ROOT = "bringup"
-NT_TABLE_UI = "ui"
-NT_TABLE_TESTS = "tests"
-NT_TABLE_DIAG = "diag"
 
 # Constants (version output).
 VERSION_APP_NAME = APP_CAN_BRIDGE_NAME
@@ -220,6 +212,7 @@ DEVICE_KEY_PREFER_STATUS = "prefer_status"
 CONSOLE_UNKNOWN_LABEL_PREFIX = "UNPROFILED_CONSOLE_"
 EMPTY_STRING = ""
 PROFILE_NONE = "(none)"
+PROFILE_CONTEXT_POLL_SEC = 1.0
 
 # Constants (multi-source CAN).
 SOURCE_DEFAULT_ID = "default"
@@ -323,55 +316,63 @@ def _normalize_profile_name(value: object) -> str:
     return normalized
 
 
-def _resolve_profile_context_name(ui_table, fallback: str) -> str:
+def _decode_device_key(arb_id: int) -> Tuple[int, int, int]:
     """
     NAME
-        _resolve_profile_context_name - Resolve host profile context from robot NT state.
+        _decode_device_key - Decode manufacturer, type, and device ID from an arb ID.
+    """
+    decoded = decode_shared_frc_ext_id(int(arb_id))
+    return decoded.manufacturer, decoded.device_type, decoded.device_id
+
+
+def _resolve_profile_context_name_from_runtime_state(
+    runtime_state: Optional[Dict[str, Any]],
+    fallback: str,
+) -> str:
+    """
+    NAME
+        _resolve_profile_context_name_from_runtime_state - Resolve host profile context from robot runtime state.
 
     DESCRIPTION
         Prefers the robot's active runtime profile, then its selected profile,
         then falls back to the local startup/default profile.
     """
     fallback_name = _normalize_profile_name(fallback)
-    if ui_table is None:
+    if not isinstance(runtime_state, dict):
         return fallback_name
-    active_name = _normalize_profile_name(
-        ui_table.getEntry(NT_UI_STATE_ACTIVE_RUNTIME_PROFILE).getString(EMPTY_STRING)
-    )
+    active_name = _normalize_profile_name(runtime_state.get("activeRuntimeProfile"))
     if active_name:
         return active_name
-    selected_name = _normalize_profile_name(
-        ui_table.getEntry(NT_UI_STATE_SELECTED_PROFILE).getString(EMPTY_STRING)
-    )
+    selected_name = _normalize_profile_name(runtime_state.get("selectedProfile"))
     if selected_name:
         return selected_name
     return fallback_name
 
 
-def _await_profile_context_name(ui_table, fallback: str, timeout_s: float = 1.0) -> str:
+def _fetch_profile_context_name(session: BridgeSession, fallback: str) -> str:
     """
     NAME
-        _await_profile_context_name - Wait briefly for robot-selected profile NT state.
-
-    DESCRIPTION
-        CLI startup can race the robot-side NT publisher. Wait a short bounded
-        interval so the first interactive prompt can use the real robot profile
-        when it is already available, instead of drifting to the local default
-        and correcting later from a background watcher.
+        _fetch_profile_context_name - Resolve host profile context from one runtime-state fetch.
     """
-    deadline = time.time() + max(0.0, float(timeout_s))
-    fallback_name = _normalize_profile_name(fallback)
-    resolved = _resolve_profile_context_name(ui_table, fallback_name)
-    if resolved and _normalize_profile_name(resolved) != fallback_name:
-        return resolved
-    while time.time() < deadline:
-        time.sleep(0.05)
-        candidate = _resolve_profile_context_name(ui_table, fallback_name)
-        if candidate and _normalize_profile_name(candidate) != fallback_name:
-            return candidate
-        if candidate:
-            resolved = candidate
-    return resolved
+    try:
+        runtime_state = session.fetch_runtime_state()
+    except Exception:
+        runtime_state = {}
+    return _resolve_profile_context_name_from_runtime_state(runtime_state, fallback)
+
+
+def _profile_context_poll_due(
+    allow_tracking: bool,
+    now_s: float,
+    last_poll_s: float,
+) -> bool:
+    """
+    NAME
+        _profile_context_poll_due - Decide whether runtime profile context should be polled now.
+    """
+    if not allow_tracking:
+        return False
+    return (now_s - last_poll_s) >= PROFILE_CONTEXT_POLL_SEC
 
 
 @dataclass
@@ -532,7 +533,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
 
     DESCRIPTION
         Parses CLI arguments, opens the CAN bus, configures optional outputs,
-        and runs the sniffer loop with NT publishing and summary printing.
+        and runs the sniffer loop with host-side summary printing.
 
     PARAMETERS
         argv: Optional argument list; defaults to sys.argv when None.
@@ -541,7 +542,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         Process exit code (0 on success, nonzero on error).
 
     SIDE EFFECTS
-        Opens hardware interfaces, sockets, files, and writes NT/PCAP outputs.
+        Opens hardware interfaces, sockets, files, and writes PCAP outputs.
     """
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -577,11 +578,6 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         print("Next: show workspace")
         print("Next: validate profiles --active")
         print("Next: show devices")
-        nt, _ = setup_nt(args)
-        ui_table = None
-        if nt is not None:
-            ui_table = nt.getTable("bringup").getSubTable("ui")
-
         session = BridgeSession(args.rio, args.ui_rest_port)
         cli = BridgeCli(
             session,
@@ -649,9 +645,6 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         ]
     source_config_map: Dict[str, SourceConfig] = {cfg.source_id: cfg for cfg in sources_config}
 
-    if args.list_keys or args.dump_nt:
-        print_or_dump_nt_keys(devices, args.list_keys, args.dump_nt)
-        return 0
     if args.dump_can_config:
         dump_can_config(args.dump_can_config, args, devices)
         print(f"Wrote config to {args.dump_can_config}")
@@ -740,17 +733,13 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         )
     visibility_provider.set_sources(source_infos)
 
-    nt, table = setup_nt(args)
-    ui_table = None
-    tests_table = None
-    diag_table = None
-    if nt is not None:
-        root_table = nt.getTable(NT_TABLE_ROOT)
-        ui_table = root_table.getSubTable(NT_TABLE_UI)
-        tests_table = root_table.getSubTable(NT_TABLE_TESTS)
-        diag_table = root_table.getSubTable(NT_TABLE_DIAG)
-
     profile_context_name = _normalize_profile_name(args.profile)
+    profile_context_session = BridgeSession(
+        args.rio,
+        args.ui_rest_port,
+        auto_handshake=False,
+    )
+    profile_context_poll_state = {"last_poll_s": 0.0}
 
     profile_context_error_name = EMPTY_STRING
 
@@ -796,7 +785,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
 
     allow_robot_profile_context_tracking = not bool(args.cli or args.batch)
     if allow_robot_profile_context_tracking:
-        initial_context = _resolve_profile_context_name(ui_table, profile_context_name)
+        initial_context = _fetch_profile_context_name(profile_context_session, profile_context_name)
         if initial_context and initial_context != profile_context_name:
             _apply_profile_context(initial_context)
 
@@ -838,8 +827,6 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             print(f"ConsoleMonitor: listening on UDP {port} for NetConsole.")
         else:
             print(f"ConsoleMonitor: connecting to TCP {host}:{port} for NetConsole.")
-        if args.console_reset_on_start and table is not None:
-            console_monitor.publish(table, time.time())
 
     analyzer = CanLiveAnalyzer(expected_ids=expected_ids)
     state = SnifferState()
@@ -969,38 +956,6 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     if bus is not None and can is not None:
         tx_thread = start_tx_if_requested(args, bus, can, tx_stop)
 
-    def _send_ui_command(
-        name: str, args_payload: Optional[Dict[str, Any]] = None
-    ) -> Optional[int]:
-        """
-        NAME
-            _send_ui_command - Emit a bringup UI command over NetworkTables.
-        """
-        if ui_table is None:
-            return None
-        if not hasattr(_send_ui_command, "_seq"):
-            _send_ui_command._seq = 0  # type: ignore[attr-defined]
-        _send_ui_command._seq += 1  # type: ignore[attr-defined]
-        seq = int(_send_ui_command._seq)  # type: ignore[attr-defined]
-        ui_table.getEntry("cmd/name").setString(str(name))
-        ui_table.getEntry("cmd/args/json").setString(
-            json.dumps(args_payload) if args_payload else ""
-        )
-        ui_table.getEntry("cmd/ts").setDouble(float(time.time()))
-        ui_table.getEntry("cmd/seq").setInteger(seq)
-        return seq
-
-    def _set_ui_command_seq(value: int) -> None:
-        """
-        NAME
-            _set_ui_command_seq - Seed the UI command sequence counter.
-        """
-        if value < 0:
-            value = 0
-        _send_ui_command._seq = int(value)  # type: ignore[attr-defined]
-
-    _send_ui_command.set_seq = _set_ui_command_seq  # type: ignore[attr-defined]
-
     def _resolve_device_label(key: Tuple[int, int, int]) -> str:
         """
         NAME
@@ -1026,7 +981,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         decoded_key = None
         label = None
         try:
-            mfg, dtype, did = decode_frc_ext_id(arb_id)
+            mfg, dtype, did = _decode_device_key(arb_id)
             decoded_key = _visibility_key_from_ids(mfg, dtype, did)
             label = _resolve_device_label((mfg, dtype, did))
         except Exception:
@@ -1050,7 +1005,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
 
         analyzer.ingest(ts_s, arb_id, data)
 
-        mfg, dtype, did = decode_frc_ext_id(arb_id)
+        mfg, dtype, did = _decode_device_key(arb_id)
         _, _, api_class, api_index, _ = decode_frc_ext_id_full(arb_id)
         key = (mfg, dtype, did)
         seen_can_keys.add(key)
@@ -1172,7 +1127,10 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                         print(f"ERROR: reload failed: {err}")
                         continue
                     if allow_robot_profile_context_tracking:
-                        resolved_context = _resolve_profile_context_name(ui_table, profile_context_name)
+                        resolved_context = _fetch_profile_context_name(
+                            profile_context_session,
+                            profile_context_name,
+                        )
                         if not _apply_profile_context(resolved_context):
                             print(f"Profiles reloaded; context remains {resolved_context or profile_context_name}.")
                     dv = get_profiles_data_version()
@@ -1182,8 +1140,16 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                     if dh:
                         print(f"Profiles data_hash: {dh}")
 
-                if allow_robot_profile_context_tracking:
-                    resolved_context = _resolve_profile_context_name(ui_table, profile_context_name)
+                if _profile_context_poll_due(
+                    allow_robot_profile_context_tracking,
+                    now,
+                    float(profile_context_poll_state["last_poll_s"]),
+                ):
+                    profile_context_poll_state["last_poll_s"] = now
+                    resolved_context = _fetch_profile_context_name(
+                        profile_context_session,
+                        profile_context_name,
+                    )
                     if resolved_context and resolved_context != profile_context_name:
                         if _apply_profile_context(resolved_context):
                             print(f"Profile context -> {resolved_context}")
@@ -1203,7 +1169,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                         args.stale_s,
                         top_n=args.top_n,
                         label_lookup=can_to_label,
-                        decode_device_key=decode_frc_ext_id,
+                        decode_device_key=_decode_device_key,
                     )
                     extra = build_summary_extra(
                         summary,
@@ -1245,10 +1211,8 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                     state=state,
                     devices=devices,
                     label_lookup=can_to_label,
-                    decode_device_key=decode_frc_ext_id,
-                    table=table,
+                    decode_device_key=_decode_device_key,
                     bus=bus,
-                    console_monitor=console_monitor,
                 )
 
         except KeyboardInterrupt:
@@ -1264,7 +1228,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                     stale_s=args.stale_s,
                     top_n=args.top_n,
                     label_lookup=can_to_label,
-                    decode_device_key=decode_frc_ext_id,
+                    decode_device_key=_decode_device_key,
                 )
                 print("=== Final Summary ===")
                 extra = build_summary_extra(
@@ -1474,14 +1438,14 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             thread.start()
         on_close = stop_event.set if stop_event is not None else (lambda: None)
         ui = BringupControlUI(
-            ui_table=ui_table,
-            tests_table=tests_table,
-            diag_table=diag_table,
+            ui_table=None,
+            tests_table=None,
             rio_host=args.rio,
             tcp_port=args.ui_rest_port,
             is_connected=_rest_is_connected,
             on_close=on_close,
             visibility_provider=visibility_provider,
+            console_monitor=console_monitor,
         )
         def _release_ui_lock() -> None:
             try:

@@ -40,9 +40,6 @@ PATH_ALLOWED_PREFIXES = (
     "tools/can_topology/legacy/",
 )
 PATH_IGNORED_PREFIXES = (
-    "tools/can_nt/tests/",
-    "tools/common/tests/",
-    "tools/can_topology/tests/",
     "tools/can_nt/generated/",
 )
 PATH_IGNORED_PARTS = {

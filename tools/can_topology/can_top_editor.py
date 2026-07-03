@@ -496,18 +496,43 @@ except ImportError:  # Allow running as a script from this folder.
     from common.topology_draw import draw_group_overlays, render_topology_canvas_common  # type: ignore
 try:
     from tools.common.paths import profiles_canonical_path, profiles_deploy_path, repo_root
-    from tools.common.config_api import ConfigRepository
+    from tools.common.config_api import (
+        blank_profile_payload,
+        ConfigRepository,
+        create_blank_profile,
+        delete_profile,
+        rename_profile,
+        replace_profile_devices,
+        replace_profile_topology_entry,
+        upsert_profile,
+    )
     from tools.common.profile_io import compute_profiles_hash
 except ImportError:
     try:
         from common.paths import profiles_canonical_path, profiles_deploy_path, repo_root  # type: ignore
-        from common.config_api import ConfigRepository  # type: ignore
+        from common.config_api import (  # type: ignore
+            blank_profile_payload,
+            ConfigRepository,
+            create_blank_profile,
+            delete_profile,
+            rename_profile,
+            replace_profile_devices,
+            replace_profile_topology_entry,
+            upsert_profile,
+        )
         from common.profile_io import compute_profiles_hash  # type: ignore
     except ImportError:
         profiles_canonical_path = None
         profiles_deploy_path = None
         repo_root = None
+        blank_profile_payload = None
         ConfigRepository = None
+        create_blank_profile = None
+        delete_profile = None
+        rename_profile = None
+        replace_profile_devices = None
+        replace_profile_topology_entry = None
+        upsert_profile = None
         compute_profiles_hash = None
 
 try:
@@ -2208,22 +2233,6 @@ class TopologyEditor(tk.Tk):
         profiles = dest.get("profiles")
         if not isinstance(profiles, dict):
             profiles = {}
-        diagram = dest.get("diagram")
-        if not isinstance(diagram, dict):
-            diagram = {}
-        diagram_profiles = diagram.get("profiles")
-        if not isinstance(diagram_profiles, dict):
-            diagram_profiles = {}
-        topology = dest.get(KEY_TOPOLOGY)
-        if not isinstance(topology, dict):
-            topology = {
-                KEY_TOPOLOGY_VERSION: TOPOLOGY_VERSION,
-                KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
-                KEY_TOPOLOGY_PROFILES: {},
-            }
-        topology_profiles = topology.get(KEY_TOPOLOGY_PROFILES)
-        if not isinstance(topology_profiles, dict):
-            topology_profiles = {}
 
         target_name = name
         if target_name in profiles:
@@ -2242,20 +2251,44 @@ class TopologyEditor(tk.Tk):
                     return
                 target_name = new_name
 
-        self._backup_profiles_file(dest_path)
-        profiles[target_name] = profile
+        topology_entry = None
         if incoming_topology is not None:
-            topology_profiles[target_name] = incoming_topology
+            topology_entry = incoming_topology
         elif incoming_diagram is not None:
-            topology_profiles[target_name] = self._topology_entry_from_legacy_diagram(incoming_diagram)
-        dest["profiles"] = profiles
-        dest[KEY_TOPOLOGY] = {
-            KEY_TOPOLOGY_VERSION: TOPOLOGY_VERSION,
-            KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
-            KEY_TOPOLOGY_PROFILES: topology_profiles,
-        }
-        if dest.get("default_profile") is None:
-            dest["default_profile"] = target_name
+            topology_entry = self._topology_entry_from_legacy_diagram(incoming_diagram)
+
+        self._backup_profiles_file(dest_path)
+        if upsert_profile is not None:
+            upsert_profile(
+                dest,
+                target_name,
+                profile,
+                topology_entry=topology_entry,
+                diagram_entry=incoming_diagram if isinstance(incoming_diagram, dict) else None,
+                set_default_if_missing=True,
+            )
+        else:
+            dest["profiles"] = profiles
+            profiles[target_name] = profile
+            topology = dest.get(KEY_TOPOLOGY)
+            if not isinstance(topology, dict):
+                topology = {
+                    KEY_TOPOLOGY_VERSION: TOPOLOGY_VERSION,
+                    KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
+                    KEY_TOPOLOGY_PROFILES: {},
+                }
+            topology_profiles = topology.get(KEY_TOPOLOGY_PROFILES)
+            if not isinstance(topology_profiles, dict):
+                topology_profiles = {}
+            if topology_entry is not None:
+                topology_profiles[target_name] = topology_entry
+            dest[KEY_TOPOLOGY] = {
+                KEY_TOPOLOGY_VERSION: TOPOLOGY_VERSION,
+                KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
+                KEY_TOPOLOGY_PROFILES: topology_profiles,
+            }
+            if dest.get("default_profile") is None:
+                dest["default_profile"] = target_name
         if not self._write_profiles_payload(dest_path, dest, include_extras=True):
             return
         self._refresh_profile_choices(keep_selection=False)
@@ -2355,20 +2388,23 @@ class TopologyEditor(tk.Tk):
             messagebox.showerror("Error", "That profile name already exists.")
             return
         self._backup_profiles_file(path)
-        profiles[new_name] = profiles.pop(old_name)
-        diagram = data.get("diagram")
-        if isinstance(diagram, dict):
-            diagram_profiles = diagram.get("profiles")
-            if isinstance(diagram_profiles, dict) and old_name in diagram_profiles:
-                diagram_profiles[new_name] = diagram_profiles.pop(old_name)
-                data["diagram"] = {"profiles": diagram_profiles}
-        topology = data.get(KEY_TOPOLOGY)
-        if isinstance(topology, dict):
-            topology_profiles = topology.get(KEY_TOPOLOGY_PROFILES)
-            if isinstance(topology_profiles, dict) and old_name in topology_profiles:
-                topology_profiles[new_name] = topology_profiles.pop(old_name)
-                data[KEY_TOPOLOGY] = topology
-        data["profiles"] = profiles
+        if rename_profile is not None:
+            rename_profile(data, old_name, new_name)
+        else:
+            profiles[new_name] = profiles.pop(old_name)
+            diagram = data.get("diagram")
+            if isinstance(diagram, dict):
+                diagram_profiles = diagram.get("profiles")
+                if isinstance(diagram_profiles, dict) and old_name in diagram_profiles:
+                    diagram_profiles[new_name] = diagram_profiles.pop(old_name)
+                    data["diagram"] = {"profiles": diagram_profiles}
+            topology = data.get(KEY_TOPOLOGY)
+            if isinstance(topology, dict):
+                topology_profiles = topology.get(KEY_TOPOLOGY_PROFILES)
+                if isinstance(topology_profiles, dict) and old_name in topology_profiles:
+                    topology_profiles[new_name] = topology_profiles.pop(old_name)
+                    data[KEY_TOPOLOGY] = topology
+            data["profiles"] = profiles
         if not self._write_profiles_payload(path, data, include_extras=True):
             return
         if self._profile_name == old_name:
@@ -2404,20 +2440,23 @@ class TopologyEditor(tk.Tk):
         if not messagebox.askyesno("Delete Profile", f"Delete profile '{target}'?"):
             return
         self._backup_profiles_file(path)
-        profiles.pop(target, None)
-        diagram = data.get("diagram")
-        if isinstance(diagram, dict):
-            diagram_profiles = diagram.get("profiles")
-            if isinstance(diagram_profiles, dict):
-                diagram_profiles.pop(target, None)
-                data["diagram"] = {"profiles": diagram_profiles}
-        topology = data.get(KEY_TOPOLOGY)
-        if isinstance(topology, dict):
-            topology_profiles = topology.get(KEY_TOPOLOGY_PROFILES)
-            if isinstance(topology_profiles, dict):
-                topology_profiles.pop(target, None)
-                data[KEY_TOPOLOGY] = topology
-        data["profiles"] = profiles
+        if delete_profile is not None:
+            delete_profile(data, target)
+        else:
+            profiles.pop(target, None)
+            diagram = data.get("diagram")
+            if isinstance(diagram, dict):
+                diagram_profiles = diagram.get("profiles")
+                if isinstance(diagram_profiles, dict):
+                    diagram_profiles.pop(target, None)
+                    data["diagram"] = {"profiles": diagram_profiles}
+            topology = data.get(KEY_TOPOLOGY)
+            if isinstance(topology, dict):
+                topology_profiles = topology.get(KEY_TOPOLOGY_PROFILES)
+                if isinstance(topology_profiles, dict):
+                    topology_profiles.pop(target, None)
+                    data[KEY_TOPOLOGY] = topology
+            data["profiles"] = profiles
         if not self._write_profiles_payload(path, data, include_extras=True):
             return
         if self._profile_name == target:
@@ -2446,6 +2485,8 @@ class TopologyEditor(tk.Tk):
         NAME
             _blank_profile_payload - Build a blank profile object.
         """
+        if blank_profile_payload is not None:
+            return blank_profile_payload()
         return {KEY_DEVICES: []}
 
     def _blank_topology_entry(self) -> Dict[str, object]:
@@ -2503,25 +2544,31 @@ class TopologyEditor(tk.Tk):
             return
         if not self._confirm_discard():
             return
-        topology = data.get(KEY_TOPOLOGY)
-        if not isinstance(topology, dict):
-            topology = {
+        self._backup_profiles_file(target_path)
+        if create_blank_profile is not None:
+            create_blank_profile(
+                data,
+                new_name,
+            )
+        else:
+            topology = data.get(KEY_TOPOLOGY)
+            if not isinstance(topology, dict):
+                topology = {
+                    KEY_TOPOLOGY_VERSION: TOPOLOGY_VERSION,
+                    KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
+                    KEY_TOPOLOGY_PROFILES: {},
+                }
+            topology_profiles = topology.get(KEY_TOPOLOGY_PROFILES)
+            if not isinstance(topology_profiles, dict):
+                topology_profiles = {}
+            profiles[new_name] = self._blank_profile_payload()
+            topology_profiles[new_name] = self._blank_topology_entry()
+            data[KEY_PROFILES] = profiles
+            data[KEY_TOPOLOGY] = {
                 KEY_TOPOLOGY_VERSION: TOPOLOGY_VERSION,
                 KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
-                KEY_TOPOLOGY_PROFILES: {},
+                KEY_TOPOLOGY_PROFILES: topology_profiles,
             }
-        topology_profiles = topology.get(KEY_TOPOLOGY_PROFILES)
-        if not isinstance(topology_profiles, dict):
-            topology_profiles = {}
-        self._backup_profiles_file(target_path)
-        profiles[new_name] = self._blank_profile_payload()
-        topology_profiles[new_name] = self._blank_topology_entry()
-        data[KEY_PROFILES] = profiles
-        data[KEY_TOPOLOGY] = {
-            KEY_TOPOLOGY_VERSION: TOPOLOGY_VERSION,
-            KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
-            KEY_TOPOLOGY_PROFILES: topology_profiles,
-        }
         if not self._write_profiles_payload(target_path, data, include_extras=True):
             return
         self._refresh_profile_choices(keep_selection=False)
@@ -3221,22 +3268,6 @@ class TopologyEditor(tk.Tk):
         profiles = data.get("profiles")
         if not isinstance(profiles, dict):
             profiles = {}
-        diagram = data.get("diagram")
-        if not isinstance(diagram, dict):
-            diagram = {}
-        diagram_profiles = diagram.get("profiles")
-        if not isinstance(diagram_profiles, dict):
-            diagram_profiles = {}
-        topology = data.get(KEY_TOPOLOGY)
-        if not isinstance(topology, dict):
-            topology = {
-                KEY_TOPOLOGY_VERSION: TOPOLOGY_VERSION,
-                KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
-                KEY_TOPOLOGY_PROFILES: {},
-            }
-        topology_profiles = topology.get(KEY_TOPOLOGY_PROFILES)
-        if not isinstance(topology_profiles, dict):
-            topology_profiles = {}
 
         if prompt_replace and profile_name in profiles:
             replace = messagebox.askyesno(
@@ -3261,19 +3292,45 @@ class TopologyEditor(tk.Tk):
                 entry_profile[KEY_DEVICES] = [
                     label for label in devices if str(label).strip() not in pending
                 ]
+            topology = data.get(KEY_TOPOLOGY)
+            topology_profiles = topology.get(KEY_TOPOLOGY_PROFILES) if isinstance(topology, dict) else None
+            if not isinstance(topology_profiles, dict):
+                topology_profiles = {}
             for topology_entry in topology_profiles.values():
                 if not isinstance(topology_entry, dict):
                     continue
                 self._prune_topology_entry_device_refs(topology_entry, pending)
 
-        profiles[profile_name] = self._profile_from_nodes()
-        data["profiles"] = profiles
-        topology_profiles[profile_name] = self._topology_snapshot()
-        data[KEY_TOPOLOGY] = {
-            KEY_TOPOLOGY_VERSION: TOPOLOGY_VERSION,
-            KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
-            KEY_TOPOLOGY_PROFILES: topology_profiles,
-        }
+        saved_profile = self._merge_saved_profile_fields(
+            profiles.get(profile_name),
+            self._profile_from_nodes(),
+        )
+        if upsert_profile is not None:
+            upsert_profile(
+                data,
+                profile_name,
+                saved_profile,
+                topology_entry=self._topology_snapshot(),
+            )
+        else:
+            topology = data.get(KEY_TOPOLOGY)
+            if not isinstance(topology, dict):
+                topology = {
+                    KEY_TOPOLOGY_VERSION: TOPOLOGY_VERSION,
+                    KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
+                    KEY_TOPOLOGY_PROFILES: {},
+                }
+            topology_profiles = topology.get(KEY_TOPOLOGY_PROFILES)
+            if not isinstance(topology_profiles, dict):
+                topology_profiles = {}
+            profiles[profile_name] = saved_profile
+            data["profiles"] = profiles
+            topology_profiles[profile_name] = self._topology_snapshot()
+            data[KEY_TOPOLOGY] = {
+                KEY_TOPOLOGY_VERSION: TOPOLOGY_VERSION,
+                KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
+                KEY_TOPOLOGY_PROFILES: topology_profiles,
+            }
         if self.var_set_default.get() or "default_profile" not in data:
             data["default_profile"] = profile_name
         default_name = data.get("default_profile")
@@ -3284,7 +3341,8 @@ class TopologyEditor(tk.Tk):
         self._dirty = False
         if update_source:
             self._profile_source_path = str(path)
-        self._set_profile_names(sorted(profiles.keys()))
+        updated_profiles = data.get(KEY_PROFILES)
+        self._set_profile_names(sorted(updated_profiles.keys()) if isinstance(updated_profiles, dict) else [])
         self._refresh_profile_choices(keep_selection=False)
         self._refresh_default_checkbox()
         messagebox.showinfo("Saved", f"Updated {path} with profile '{profile_name}'.")
@@ -3413,6 +3471,22 @@ class TopologyEditor(tk.Tk):
                 if label and label not in labels:
                     labels.append(label)
         return {"devices": labels}
+
+    def _merge_saved_profile_fields(
+        self,
+        existing_profile: object,
+        updated_profile: Dict[str, object],
+    ) -> Dict[str, object]:
+        """
+        NAME
+            _merge_saved_profile_fields - Preserve non-topology profile metadata while rewriting devices.
+        """
+        devices = updated_profile.get(KEY_DEVICES, [])
+        if replace_profile_devices is None:
+            merged = dict(existing_profile) if isinstance(existing_profile, dict) else {}
+            merged.update(updated_profile)
+            return merged
+        return replace_profile_devices(existing_profile, devices if isinstance(devices, list) else [])
 
     def _sync_non_topology_profile_labels(self, profile: Dict[str, object]) -> None:
         """
@@ -4730,22 +4804,29 @@ class TopologyEditor(tk.Tk):
             return
         if not self._confirm_neighbors_current_for_save():
             return
-        topology = data.get(KEY_TOPOLOGY)
-        if not isinstance(topology, dict):
-            topology = {
+        if replace_profile_topology_entry is not None:
+            replace_profile_topology_entry(
+                data,
+                profile_name,
+                self._topology_snapshot_minimal(),
+            )
+        else:
+            topology = data.get(KEY_TOPOLOGY)
+            if not isinstance(topology, dict):
+                topology = {
+                    KEY_TOPOLOGY_VERSION: TOPOLOGY_VERSION,
+                    KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
+                    KEY_TOPOLOGY_PROFILES: {},
+                }
+            topology_profiles = topology.get(KEY_TOPOLOGY_PROFILES)
+            if not isinstance(topology_profiles, dict):
+                topology_profiles = {}
+            topology_profiles[profile_name] = self._topology_snapshot_minimal()
+            data[KEY_TOPOLOGY] = {
                 KEY_TOPOLOGY_VERSION: TOPOLOGY_VERSION,
                 KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
-                KEY_TOPOLOGY_PROFILES: {},
+                KEY_TOPOLOGY_PROFILES: topology_profiles,
             }
-        topology_profiles = topology.get(KEY_TOPOLOGY_PROFILES)
-        if not isinstance(topology_profiles, dict):
-            topology_profiles = {}
-        topology_profiles[profile_name] = self._topology_snapshot_minimal()
-        data[KEY_TOPOLOGY] = {
-            KEY_TOPOLOGY_VERSION: TOPOLOGY_VERSION,
-            KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
-            KEY_TOPOLOGY_PROFILES: topology_profiles,
-        }
         try:
             self._save_config_payload(path, data)
         except Exception as exc:

@@ -61,6 +61,8 @@ from tools.can_nt.bridge_cli import (
     KEY_TESTS,
     SOURCE_NAME_TESTS,
     KEY_TOPOLOGY,
+    KEY_TOPOLOGY_EDGES,
+    KEY_TOPOLOGY_NODES,
     KEY_VISIBILITY,
     KEY_TOPOLOGY_PROFILES,
     KEY_TOPOLOGY_SOURCE,
@@ -70,8 +72,9 @@ from tools.can_nt.bridge_cli import (
     BRIDGE_CONFIG_SCHEMA_VERSION,
 )
 from tools.can_nt.bridge_session import BridgeEvent
-from tools.can_nt.bridge_cli_parser import BridgeCliParser
+from tools.can_nt.bridge_cli_parser import BridgeCliParser, CliParseError
 from tools.can_nt.status import SS__CONFIG__INVALID, SS__CONFIG__SAVED, SS__NORMAL, StatusResult
+from tools.common.tests.config_api_test_helper import load_profiles_payload, write_profiles_payload
 
 
 PROFILE_NAME = "demo"
@@ -166,6 +169,22 @@ class _FakeTextArea:
 
 
 class BridgeCliVisibilityTests(unittest.TestCase):
+    @staticmethod
+    def _success_event(name: str) -> BridgeEvent:
+        return BridgeEvent(
+            type="out",
+            seq=1,
+            name=name,
+            status="ok",
+            message="",
+            text="OK",
+            json_text='{"success":true}',
+            ts=0.0,
+            session_id="",
+            state={},
+            raw={},
+        )
+
     def _build_cli(self, connected: bool = False) -> BridgeCli:
         cli = BridgeCli(_FakeSession(connected=connected), batch=True)
         cli._local_root_payload = {
@@ -208,6 +227,58 @@ class BridgeCliVisibilityTests(unittest.TestCase):
         cli._mark_profiles_dirty()
 
         self.assertIn(PROMPT_DIRTY_MARK, cli._prompt())
+
+    def test_ensure_default_profile_context_creates_blank_profile_through_shared_contract(self) -> None:
+        cli = self._build_cli()
+        cli._local_root_payload[KEY_DEFAULT_PROFILE] = EMPTY_STRING  # type: ignore[index]
+        cli._local_root_payload[KEY_PROFILES] = {}  # type: ignore[index]
+        cli._local_root_payload[KEY_TOPOLOGY][KEY_TOPOLOGY_PROFILES] = {}  # type: ignore[index]
+
+        cli._ensure_default_profile_context()
+
+        default_name = cli._local_root_payload[KEY_DEFAULT_PROFILE]
+        self.assertIsInstance(default_name, str)
+        self.assertIn(default_name, cli._local_root_payload[KEY_PROFILES])
+        topology_entry = cli._local_root_payload[KEY_TOPOLOGY][KEY_TOPOLOGY_PROFILES][default_name]
+        self.assertEqual([], topology_entry[KEY_TOPOLOGY_NODES])
+        self.assertEqual([], topology_entry[KEY_TOPOLOGY_EDGES])
+
+    def test_create_profile_creates_blank_topology_entry(self) -> None:
+        cli = self._build_cli()
+
+        result = cli._create_profile("alpha")
+
+        self.assertEqual(SS__NORMAL, result.code)
+        self.assertIn("alpha", cli._local_root_payload[KEY_PROFILES])
+        topology_entry = cli._local_root_payload[KEY_TOPOLOGY][KEY_TOPOLOGY_PROFILES]["alpha"]
+        self.assertEqual([], topology_entry[KEY_TOPOLOGY_NODES])
+        self.assertEqual([], topology_entry[KEY_TOPOLOGY_EDGES])
+
+    def test_delete_profile_rehomes_default_through_shared_contract(self) -> None:
+        cli = self._build_cli()
+        cli._local_root_payload[KEY_PROFILES]["alpha"] = {KEY_PROFILE_DEVICES: []}  # type: ignore[index]
+        cli._local_root_payload[KEY_TOPOLOGY][KEY_TOPOLOGY_PROFILES]["alpha"] = {  # type: ignore[index]
+            KEY_TOPOLOGY_NODES: [],
+            KEY_TOPOLOGY_EDGES: [],
+        }
+        cli._local_root_payload[KEY_DEFAULT_PROFILE] = "alpha"  # type: ignore[index]
+
+        result = cli._delete_profile("alpha")
+
+        self.assertEqual(SS__NORMAL, result.code)
+        self.assertEqual(PROFILE_NAME, cli._local_root_payload[KEY_DEFAULT_PROFILE])
+        self.assertNotIn("alpha", cli._local_root_payload[KEY_PROFILES])
+        self.assertNotIn("alpha", cli._local_root_payload[KEY_TOPOLOGY][KEY_TOPOLOGY_PROFILES])
+
+    def test_active_topology_profile_create_bootstraps_shared_blank_topology(self) -> None:
+        cli = self._build_cli()
+        cli._local_root_payload[KEY_TOPOLOGY][KEY_TOPOLOGY_PROFILES] = {}  # type: ignore[index]
+
+        topology_profile = cli._active_topology_profile(create=True)
+
+        self.assertEqual([], topology_profile[KEY_TOPOLOGY_NODES])
+        self.assertEqual([], topology_profile[KEY_TOPOLOGY_EDGES])
+        self.assertIn(PROFILE_NAME, cli._local_root_payload[KEY_TOPOLOGY][KEY_TOPOLOGY_PROFILES])
 
     def test_show_workspace_json_includes_provenance(self) -> None:
         cli = self._build_cli()
@@ -444,7 +515,7 @@ class BridgeCliVisibilityTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "bringup_system.json"
-            path.write_text(json.dumps(payload), encoding="utf-8")
+            write_profiles_payload(path, payload, stamp=False)
 
             with contextlib.redirect_stdout(io.StringIO()):
                 result = cli._load_profiles_from_path(path, announce=False)
@@ -472,8 +543,9 @@ class BridgeCliVisibilityTests(unittest.TestCase):
 
         self.assertTrue(cli._recovery_mode)
         self.assertIsInstance(cli._local_root_payload, dict)
-        self.assertEqual(cli._local_root_payload[KEY_DEVICES], [])
-        self.assertEqual(cli._local_root_payload[KEY_PROFILES], {})
+        self.assertIsInstance(cli._local_root_payload[KEY_DEVICES], list)
+        self.assertIsInstance(cli._local_root_payload[KEY_PROFILES], dict)
+        self.assertIn(KEY_DEFAULT_PROFILE, cli._local_root_payload)
 
     def test_show_instantiated_json_reports_local_unavailable_state(self) -> None:
         cli = self._build_cli()
@@ -532,6 +604,31 @@ class BridgeCliVisibilityTests(unittest.TestCase):
             ["runtime", "deactivate"],
         )
 
+    def test_parser_accepts_exec_profile_switch_and_show_all(self) -> None:
+        parser = BridgeCliParser()
+
+        self.assertEqual(parser.parse("profile demo", mode="exec").tokens, ["profile", "demo"])
+        self.assertEqual(
+            parser.parse("profile device show-all lmtSw0", mode="exec").tokens,
+            ["profile", "device", "show-all", "lmtSw0"],
+        )
+
+    def test_parser_rejects_invalid_exec_profile_device_shorthand(self) -> None:
+        parser = BridgeCliParser()
+
+        with self.assertRaises(CliParseError):
+            parser.parse("profile device lmtSw0", mode="exec")
+
+    def test_exec_profile_completion_requires_show_all_before_device_name(self) -> None:
+        cli = self._build_cli()
+
+        self.assertIn("<name>", cli._suggest_next_args(["profile"]))
+        self.assertEqual(["show-all"], cli._suggest_next_args(["profile", "device"]))
+        self.assertEqual(
+            ["<name>"],
+            cli._suggest_next_args(["profile", "device", "show-all"]),
+        )
+
     def test_parser_accepts_lifecycle_commands(self) -> None:
         parser = BridgeCliParser()
 
@@ -568,7 +665,7 @@ class BridgeCliVisibilityTests(unittest.TestCase):
 
     def test_lifecycle_activate_uses_lifecycle_command_path(self) -> None:
         cli = self._build_cli(connected=True)
-        cli._wait_for_seq = lambda seq, timeout_sec=None: object()  # type: ignore[method-assign]
+        cli._wait_for_seq = lambda seq, timeout_sec=None: self._success_event("lifecycleActivate")  # type: ignore[method-assign]
         cli._event_failed = lambda event, command_name: False  # type: ignore[method-assign]
 
         with patch("tools.can_nt.bridge_cli.lifecycle_activate", return_value=9):
@@ -588,7 +685,7 @@ class BridgeCliVisibilityTests(unittest.TestCase):
 
     def test_lifecycle_deactivate_uses_lifecycle_command_path(self) -> None:
         cli = self._build_cli(connected=True)
-        cli._wait_for_seq = lambda seq, timeout_sec=None: object()  # type: ignore[method-assign]
+        cli._wait_for_seq = lambda seq, timeout_sec=None: self._success_event("lifecycleDeactivate")  # type: ignore[method-assign]
         cli._event_failed = lambda event, command_name: False  # type: ignore[method-assign]
 
         with patch("tools.can_nt.bridge_cli.lifecycle_deactivate", return_value=10):
@@ -598,7 +695,7 @@ class BridgeCliVisibilityTests(unittest.TestCase):
 
     def test_lifecycle_deactivate_active_uses_lifecycle_command_path(self) -> None:
         cli = self._build_cli(connected=True)
-        cli._wait_for_seq = lambda seq, timeout_sec=None: object()  # type: ignore[method-assign]
+        cli._wait_for_seq = lambda seq, timeout_sec=None: self._success_event("lifecycleDeactivateActive")  # type: ignore[method-assign]
         cli._event_failed = lambda event, command_name: False  # type: ignore[method-assign]
 
         with patch("tools.can_nt.bridge_cli.lifecycle_deactivate_active", return_value=11):
@@ -728,7 +825,7 @@ class BridgeCliVisibilityTests(unittest.TestCase):
 
     def test_set_active_profile_syncs_robot_when_connected(self) -> None:
         cli = self._build_cli(connected=True)
-        cli._wait_for_seq = lambda seq, timeout_sec=None: object()  # type: ignore[method-assign]
+        cli._wait_for_seq = lambda seq, timeout_sec=None: self._success_event("selectProfile")  # type: ignore[method-assign]
         cli._event_failed = lambda returned, command_name: False  # type: ignore[method-assign]
 
         with patch("tools.can_nt.bridge_cli.select_profile", return_value=21) as mock_select:
@@ -741,7 +838,7 @@ class BridgeCliVisibilityTests(unittest.TestCase):
 
     def test_exec_profile_command_sets_current_profile_when_connected(self) -> None:
         cli = self._build_cli(connected=True)
-        cli._wait_for_seq = lambda seq, timeout_sec=None: object()  # type: ignore[method-assign]
+        cli._wait_for_seq = lambda seq, timeout_sec=None: self._success_event("selectProfile")  # type: ignore[method-assign]
         cli._event_failed = lambda returned, command_name: False  # type: ignore[method-assign]
 
         with patch("tools.can_nt.bridge_cli.select_profile", return_value=21) as mock_select:
@@ -775,13 +872,17 @@ class BridgeCliVisibilityTests(unittest.TestCase):
         self.assertEqual(profiles_output.getvalue(), profile_output.getvalue())
         self.assertIn("selected=demo", profiles_output.getvalue())
 
-    def test_connect_batch_syncs_host_context_to_robot_selected_profile(self) -> None:
+    def test_connect_batch_adopts_robot_profile_when_host_context_invalid(self) -> None:
         cli = self._build_cli(connected=False)
         cli._groups_profile = "local-profile"
 
+        def _connect_stub(_session):
+            cli._session.connected = True
+            return True
+
         with (
-            patch("tools.can_nt.bridge_cli.connect", return_value=True),
-            patch.object(cli, "_query_robot_selected_profile", return_value=PROFILE_NAME),
+            patch("tools.can_nt.bridge_cli.connect", side_effect=_connect_stub),
+            patch.object(cli, "_query_robot_selected_profile_after_connect", return_value=PROFILE_NAME),
             patch("builtins.print") as mock_print,
         ):
             result = cli._exec_command(["connect"])
@@ -797,36 +898,145 @@ class BridgeCliVisibilityTests(unittest.TestCase):
             )
         )
 
-    def test_connect_adopts_empty_host_context_and_announces_robot_profile(self) -> None:
+    def test_connect_pushes_valid_host_profile_to_robot(self) -> None:
+        cli = self._build_cli(connected=False)
+        cli._groups_profile = PROFILE_NAME
+        cli._wait_for_seq = lambda seq, timeout_sec=None: self._success_event("selectProfile")  # type: ignore[method-assign]
+        cli._event_failed = lambda returned, command_name: False  # type: ignore[method-assign]
+
+        def _connect_stub(_session):
+            cli._session.connected = True
+            return True
+
+        with (
+            patch("tools.can_nt.bridge_cli.connect", side_effect=_connect_stub),
+            patch("tools.can_nt.bridge_cli.select_profile", return_value=31) as mock_select,
+            patch.object(cli, "_query_robot_selected_profile_after_connect") as mock_query,
+        ):
+            result = cli._exec_command(["connect"])
+
+        self.assertEqual(result.code, SS__NORMAL)
+        mock_select.assert_called_once_with(cli._session, PROFILE_NAME)
+        mock_query.assert_not_called()
+        self.assertEqual(PROFILE_NAME, cli._groups_profile)
+        self.assertEqual(PROFILE_NAME, cli._robot_selected_profile)
+
+    def test_connect_pushes_default_host_profile_to_robot_when_no_explicit_selection(self) -> None:
         cli = self._build_cli(connected=False)
         cli._batch = False
         cli._groups_profile = None
+        cli._wait_for_seq = lambda seq, timeout_sec=None: self._success_event("selectProfile")  # type: ignore[method-assign]
+        cli._event_failed = lambda returned, command_name: False  # type: ignore[method-assign]
+
+        def _connect_stub(_session):
+            cli._session.connected = True
+            return True
 
         with (
-            patch("tools.can_nt.bridge_cli.connect", return_value=True),
-            patch.object(cli, "_query_robot_selected_profile_after_connect", return_value=PROFILE_NAME),
-            patch("builtins.print") as mock_print,
+            patch("tools.can_nt.bridge_cli.connect", side_effect=_connect_stub),
+            patch("tools.can_nt.bridge_cli.select_profile", return_value=21) as mock_select,
+            patch.object(cli, "_query_robot_selected_profile_after_connect") as mock_query,
         ):
             result = cli._exec_command(["connect"])
 
         self.assertEqual(result.code, SS__NORMAL)
         self.assertEqual(PROFILE_NAME, cli._groups_profile)
         self.assertEqual(PROFILE_NAME, cli._robot_selected_profile)
-        self.assertTrue(
-            any(
-                "Profile context -> demo" in str(call.args[0])
-                for call in mock_print.call_args_list
-                if call.args
-            )
+        mock_select.assert_called_once_with(cli._session, PROFILE_NAME)
+        mock_query.assert_not_called()
+
+    def test_connect_silently_auto_loads_default_profiles_before_pushing_host_profile(self) -> None:
+        cli = BridgeCli(_FakeSession(connected=False), batch=True)
+        cli._wait_for_seq = lambda seq, timeout_sec=None: self._success_event("selectProfile")  # type: ignore[method-assign]
+        cli._event_failed = lambda returned, command_name: False  # type: ignore[method-assign]
+
+        def _connect_stub(_session):
+            cli._session.connected = True
+            return True
+
+        payload = {
+            KEY_SCHEMA_VERSION: PROFILE_SCHEMA_VERSION,
+            KEY_DEFAULT_PROFILE: PROFILE_NAME,
+            KEY_PROFILES: {PROFILE_NAME: {KEY_PROFILE_DEVICES: []}},
+            KEY_DEVICES: [],
+            KEY_TOPOLOGY: {
+                KEY_TOPOLOGY_VERSION: 1,
+                KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
+                KEY_TOPOLOGY_PROFILES: {},
+            },
+            KEY_DATA_VERSION: "test-version",
+            KEY_DATA_HASH: EMPTY_STRING,
+        }
+        bridge_config = {
+            KEY_BRIDGE_SCHEMA_VERSION: BRIDGE_CONFIG_SCHEMA_VERSION,
+            KEY_BRIDGE_GENERATED_AT: None,
+            KEY_BRIDGE_BY_PROFILE: {
+                PROFILE_NAME: {
+                    KEY_GROUPS: [],
+                    KEY_SELECTED_DEVICE: {KEY_DEVICE: EMPTY_STRING, KEY_ENABLED: False},
+                }
+            },
+        }
+
+        def _load_profiles_stub(_path, announce=True):
+            cli._local_root_payload = payload
+            cli._local_config = bridge_config
+            cli._groups_profile = None
+            cli._sync_store_from_local()
+            return None
+
+        with (
+            patch("tools.can_nt.bridge_cli.connect", side_effect=_connect_stub),
+            patch("tools.can_nt.bridge_cli.select_profile", return_value=21) as mock_select,
+            patch.object(cli._config_repository, "canonical_path", return_value=Path("C:/fake/bringup_system.json")),
+            patch("pathlib.Path.exists", return_value=True),
+            patch.object(cli, "_load_profiles_from_path", side_effect=_load_profiles_stub) as mock_load,
+            patch.object(cli, "_query_robot_selected_profile_after_connect") as mock_query,
+        ):
+            result = cli._exec_command(["connect"])
+
+        self.assertEqual(SS__NORMAL, result.code)
+        mock_load.assert_called_once()
+        mock_select.assert_called_once_with(cli._session, PROFILE_NAME)
+        mock_query.assert_not_called()
+        self.assertEqual(PROFILE_NAME, cli._groups_profile)
+        self.assertEqual(PROFILE_NAME, cli._robot_selected_profile)
+
+    def test_connect_adopts_robot_profile_when_no_valid_local_profile_exists(self) -> None:
+        cli = self._build_cli(connected=False)
+        cli._batch = False
+        cli._local_root_payload = {}
+        cli._groups_profile = None
+
+        def _connect_stub(_session):
+            cli._session.connected = True
+            return True
+
+        with (
+            patch("tools.can_nt.bridge_cli.connect", side_effect=_connect_stub),
+            patch.object(cli, "_query_robot_selected_profile_after_connect", return_value=PROFILE_NAME),
+            patch("builtins.print") as mock_print,
+        ):
+            result = cli._exec_command(["connect"])
+
+        self.assertEqual(result.code, SS__NORMAL)
+        self.assertEqual(PROFILE_NAME, cli._robot_selected_profile)
+        self.assertIsNone(cli._groups_profile)
+        self.assertFalse(
+            any("local profiles" in str(call.args[0]) for call in mock_print.call_args_list if call.args)
         )
 
-    def test_connect_interactive_prompts_before_syncing_host_context(self) -> None:
+    def test_connect_interactive_adopts_robot_profile_only_when_host_context_invalid(self) -> None:
         cli = self._build_cli(connected=False)
         cli._batch = False
         cli._groups_profile = "local-profile"
 
+        def _connect_stub(_session):
+            cli._session.connected = True
+            return True
+
         with (
-            patch("tools.can_nt.bridge_cli.connect", return_value=True),
+            patch("tools.can_nt.bridge_cli.connect", side_effect=_connect_stub),
             patch.object(cli, "_query_robot_selected_profile_after_connect", return_value=PROFILE_NAME),
             patch.object(cli, "_confirm_yes_default", return_value=True) as mock_confirm,
         ):
@@ -837,28 +1047,33 @@ class BridgeCliVisibilityTests(unittest.TestCase):
         self.assertEqual(PROFILE_NAME, cli._robot_selected_profile)
         mock_confirm.assert_called_once()
 
-    def test_execute_line_connect_uses_ast_connect_profile_sync(self) -> None:
+    def test_execute_line_connect_uses_ast_connect_and_pushes_default_host_profile(self) -> None:
         cli = self._build_cli(connected=False)
         cli._batch = False
         cli._groups_profile = None
+        cli._wait_for_seq = lambda seq, timeout_sec=None: self._success_event("selectProfile")  # type: ignore[method-assign]
+        cli._event_failed = lambda returned, command_name: False  # type: ignore[method-assign]
+
+        def _connect_stub(_session):
+            cli._session.connected = True
+            return True
 
         with (
-            patch("tools.can_nt.bridge_cli_ast.connect", return_value=True),
+            patch("tools.can_nt.bridge_cli_ast.connect", side_effect=_connect_stub),
             patch.object(cli._session, "ensure_handshake", return_value=True),
-            patch.object(cli, "_query_robot_selected_profile_after_connect", return_value=PROFILE_NAME),
+            patch("tools.can_nt.bridge_cli.select_profile", return_value=21) as mock_select,
+            patch.object(cli, "_query_robot_selected_profile_after_connect") as mock_query,
             patch("builtins.print") as mock_print,
         ):
             result = cli._execute_line("connect")
 
         self.assertEqual(SS__NORMAL, result.code)
+        mock_select.assert_called_once_with(cli._session, PROFILE_NAME)
+        mock_query.assert_not_called()
         self.assertEqual(PROFILE_NAME, cli._groups_profile)
         self.assertEqual(PROFILE_NAME, cli._robot_selected_profile)
         self.assertTrue(
-            any(
-                "Profile context -> demo" in str(call.args[0])
-                for call in mock_print.call_args_list
-                if call.args
-            )
+            any("Connected." in str(call.args[0]) for call in mock_print.call_args_list if call.args)
         )
 
     def test_show_profiles_local_reports_no_selected_context_when_none_chosen(self) -> None:
@@ -921,6 +1136,28 @@ class BridgeCliVisibilityTests(unittest.TestCase):
 
         self.assertNotEqual(SS__NORMAL, result.code)
         self.assertEqual("local-profile", cli._groups_profile)
+
+    def test_exec_profile_device_show_all_runs_in_exec_mode(self) -> None:
+        cli = self._build_cli()
+        cli._local_root_payload[KEY_DEVICES] = [  # type: ignore[index]
+            {KEY_LABEL: "lmtSw0", KEY_DEVICE_TYPE: "limitSwitch", KEY_ID: 0},
+            {KEY_LABEL: "motor1", KEY_DEVICE_TYPE: "motor", KEY_ID: 1},
+        ]
+        cli._local_root_payload[KEY_PROFILES][PROFILE_NAME][KEY_PROFILE_DEVICES] = [  # type: ignore[index]
+            "lmtSw0",
+            "lmtSw0",
+        ]
+
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            result = cli._execute_line("profile device show-all lmtSw0")
+
+        self.assertEqual(SS__NORMAL, result.code)
+        text = output.getvalue()
+        self.assertIn("Profile device entries:", text)
+        self.assertIn("label=lmtSw0", text)
+        self.assertIn("Profile device list:", text)
+        self.assertIn("lmtSw0 x2", text)
 
     def test_query_robot_selected_profile_parses_text_fallback(self) -> None:
         cli = self._build_cli(connected=True)
@@ -1128,7 +1365,7 @@ class BridgeCliVisibilityTests(unittest.TestCase):
                     }
                 ],
             }
-            load_path.write_text(json.dumps(load_payload), encoding="utf-8")
+            write_profiles_payload(load_path, load_payload, stamp=False)
 
             command_expectations = [
                 ("bindings show", "Local bindings config:"),
@@ -1171,7 +1408,7 @@ class BridgeCliVisibilityTests(unittest.TestCase):
                     "inputAliases": {},
                 },
             )
-            saved_payload = json.loads(save_path.read_text(encoding="utf-8"))
+            saved_payload = load_profiles_payload(save_path)
             self.assertEqual(
                 saved_payload,
                 {
