@@ -60,7 +60,6 @@ public final class RobotLocalCommandRegistry {
   public static final String COMMAND_PRINT_INPUTS = "printInputs";
   public static final String COMMAND_PRINT_BINDINGS = "printBindings";
   public static final String COMMAND_PRINT_PROFILE_DEVICES = "printProfileDevices";
-  public static final String COMMAND_PRINT_NT_DIAG = "printNTdiag";
   public static final String COMMAND_PRINT_CAN_DIAG = "printCANdiag";
   public static final String COMMAND_ACTIVE_PRESENCE_PROBE = "activePresenceProbe";
   public static final String COMMAND_DUMP_REPORT = "dumpReport";
@@ -277,7 +276,6 @@ public final class RobotLocalCommandRegistry {
     register(rows, reportDefinition(COMMAND_PRINT_TESTS_OVERVIEW, "Tests Overview", "Print enabled/selected tests.", reportGroup.printTestsOverview()));
     register(rows, reportDefinition(COMMAND_PRINT_SELECTED_TEST_SOURCE, "Test Source", "Print the stored DSL source for the selected test.", reportGroup.printSelectedTestSource()));
     register(rows, reportDefinition(COMMAND_PRINT_NEXT_TEST, "Print Next", "Print the selected test contract/report.", reportGroup.printNextTest()));
-    register(rows, reportDefinition(COMMAND_PRINT_NT_DIAG, "NT Diagnostics", "Print NetworkTables diagnostics report.", reportGroup.printNtDiagnostics()));
     register(rows, reportDefinition(COMMAND_PRINT_CAN_DIAG, "CAN Bus", "Print CAN diagnostics report.", reportGroup.printCanDiagnostics()));
     register(rows, reportDefinition(COMMAND_ACTIVE_PRESENCE_PROBE, "Active Presence Probe", "Run a one-shot active vendor-API presence probe for supported runtime devices.", reportGroup.activePresenceProbe()));
     register(rows, reportDefinition(COMMAND_DUMP_REPORT, "Dump", "Dump the JSON diagnostics report.", reportGroup.dumpReport()));

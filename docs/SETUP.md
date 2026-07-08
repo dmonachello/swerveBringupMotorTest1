@@ -23,11 +23,11 @@ python -m tools.validate_sync
 3. Sanity-check the PC tool starts (offline):
 ```powershell
 python -m tools.can_nt.can_nt_bridge --version
-python -m tools.can_nt.can_nt_bridge --cli --no-can --no-nt
+python -m tools.can_nt.can_nt_bridge --cli --no-can
 ```
 
 ## PC Tool Setup (Windows)
-Purpose: Run passive CAN sniffing and publish diagnostics to NetworkTables.
+Purpose: Run passive CAN sniffing and host-side diagnostics on Windows.
 
 ### Hardware
 - CANable (slcan firmware, COM port).
@@ -47,7 +47,7 @@ Purpose: Use module-based entrypoints (portable on Windows).
 python -m tools.can_nt.can_nt_bridge --list-ports
 ```
 
-- Run with CAN + NT:
+- Run with CAN + host diagnostics:
 ```powershell
 python -m tools.can_nt.can_nt_bridge --rio 10.xx.yy.2 --port COM5
 ```
@@ -59,7 +59,7 @@ python -m tools.can_nt.can_nt_bridge --ui --rio 10.xx.yy.2 --port COM5
 
 Notes:
 - The PC tool is read-only on CAN by design.
-- If CAN or NT are unavailable, you can use `--no-can` and/or `--no-nt` for offline validation.
+- If CAN is unavailable, you can use `--no-can` for offline validation.
 
 ## Robot Setup (WPILib Java, roboRIO)
 Purpose: Build and deploy the bringup harness using the standard GradleRIO workflow.

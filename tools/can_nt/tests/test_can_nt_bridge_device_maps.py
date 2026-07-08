@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import unittest
 
-from tools.can_nt.can_nt_bridge import _build_device_maps
+from tools.can_nt.can_nt_bridge import (
+    _build_device_maps,
+    _profile_context_poll_due,
+    _resolve_profile_context_name_from_runtime_state,
+)
 
 
 class CanNtBridgeDeviceMapTests(unittest.TestCase):
@@ -33,6 +37,38 @@ class CanNtBridgeDeviceMapTests(unittest.TestCase):
         self.assertEqual(can_to_label[(4, 2, 9)], "FALCON 9")
         self.assertEqual(id_to_labels[25], ["SPARKMAX/NEO 25"])
         self.assertEqual(id_to_labels[9], ["FALCON 9"])
+
+    def test_resolve_profile_context_name_from_runtime_state_prefers_active_then_selected(self) -> None:
+        self.assertEqual(
+            "runtime_profile",
+            _resolve_profile_context_name_from_runtime_state(
+                {
+                    "activeRuntimeProfile": "runtime_profile",
+                    "selectedProfile": "selected_profile",
+                },
+                "fallback_profile",
+            ),
+        )
+        self.assertEqual(
+            "selected_profile",
+            _resolve_profile_context_name_from_runtime_state(
+                {
+                    "activeRuntimeProfile": "",
+                    "selectedProfile": "selected_profile",
+                },
+                "fallback_profile",
+            ),
+        )
+        self.assertEqual(
+            "fallback_profile",
+            _resolve_profile_context_name_from_runtime_state({}, "fallback_profile"),
+        )
+
+    def test_profile_context_poll_due_obeys_tracking_flag_and_interval(self) -> None:
+        self.assertFalse(_profile_context_poll_due(False, 5.0, 0.0))
+        self.assertFalse(_profile_context_poll_due(True, 0.5, 0.0))
+        self.assertTrue(_profile_context_poll_due(True, 1.0, 0.0))
+        self.assertTrue(_profile_context_poll_due(True, 2.5, 1.0))
 
 
 if __name__ == "__main__":

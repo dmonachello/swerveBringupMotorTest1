@@ -10,6 +10,5 @@ import java.util.List;
 public final class SnapshotBundle {
   public double timestampSec = 0.0;
   public BusSnapshot bus;
-  public PcSnapshot pc;
   public final List<DeviceSnapshot> devices = new ArrayList<>();
 }

@@ -978,7 +978,7 @@ PY_GEN_CLI_CHEATSHEET_PDF_L312, "       What it does: Prevents invalid profiles 
 PY_GEN_CLI_CHEATSHEET_PDF_L42, "    Required so relative paths resolve consistently."
 PY_GEN_CLI_CHEATSHEET_PDF_L57, "  [--list-ports] [--no-can] [--rio RIO] [--no-nt] [--timeout TIMEOUT]\n"
 PY_GEN_CLI_CHEATSHEET_PDF_L62, "  [--console-timeout CONSOLE_TIMEOUT] [--console-rate CONSOLE_RATE]\n"
-PY_GEN_CLI_CHEATSHEET_PDF_L67, "  [--list-keys] [--dump-nt DUMP_NT] [--publish-unknown] [--dump-profile DUMP_PROFILE]\n"
+PY_GEN_CLI_CHEATSHEET_PDF_L67, "  [--publish-unknown] [--dump-profile DUMP_PROFILE]\n"
 PY_GEN_CLI_CHEATSHEET_PDF_L69, "  [--dump-profile-include-unknown] [--dump-api-inventory DUMP_API_INVENTORY]\n"
 PY_GROUP_CODES_L15, "Group not found: {group}."
 PY_GROUP_CODES_L17, "Group member not found: {device}."

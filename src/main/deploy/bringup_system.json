@@ -256,17 +256,17 @@
     {
       "label": "pdp",
       "deviceInterface": "CAN",
+      "terminator": true,
       "id": 20,
       "manufacturer": 4,
       "deviceType": 8,
       "model": "PDP",
-      "type": "",
-      "terminator": true
+      "type": ""
     }
   ],
-  "data_version": "2026-06-30_162546",
-  "data_hash": "666ad86a8cb5c65271d694b259ffd53a9033bb9ea91cc2eddd4e2c9c70a0d698",
-  "default_profile": "2026_no_swyfts",
+  "data_version": "2026-07-02_125403",
+  "data_hash": "fe6c0a8c43861f7e72726617ac27d03847af7e8ed1766b4834328ac9fcd1f9f3",
+  "default_profile": "test_minimal_25_9",
   "bridgeConfig": {
     "schemaVersion": 2,
     "generatedAt": null,
@@ -1999,8 +1999,8 @@
         "runnable": true
       },
       "xxx25_leftY": {
-        "source": "test \"xxx25_leftY\"\n\ndevice \"SPARKMAX/NEO 25\"\ndevice \"controller0\"\n\ninit:\n\nmain:\n\tset \"SPARKMAX/NEO 25\".output_percent_cmd = controller0.leftY deadband 0.08 scaled 0.25 default 0.0\n\n\tuntil timer.elapsed >= 10.0\n\n",
-        "sourceHash": "ae55998031fdbd6222448dd06e51499d35ca99adffb9abb3ae1b09535f41278c",
+        "source": "test \"xxx25_leftY\"\n\ndevice \"SPARKMAX/NEO 25\"\ndevice \"controller0\"\n\ninit:\n\nmain:\n\tset \"SPARKMAX/NEO 25\".output_percent_cmd = controller0.leftY deadband 0.08 scaled 0.25 default 0.0\n\n\tuntil timer.elapsed >= 10.0\n\n\trequire \"SPARKMAX/NEO 25\".position_delta outside -1.0 1.0\n\trequire \"SPARKMAX/NEO 25\".current_actual_max > 0.1\n",
+        "sourceHash": "54d24d97dccb43fd7d99f43c32e932ef0d3a20166b4db605f5ff2ded1f54a0b8",
         "normalized": {
           "name": "xxx25_leftY",
           "devices": [
@@ -2064,7 +2064,43 @@
                 }
               }
             ],
-            "requires": []
+            "requires": [
+              {
+                "id": "require_1",
+                "kind": "require",
+                "text": "require \"SPARKMAX/NEO 25\".position_delta outside -1.0 1.0",
+                "reference": {
+                  "device": "SPARKMAX/NEO 25",
+                  "signal": "position_delta",
+                  "text": "SPARKMAX/NEO 25.position_delta"
+                },
+                "mode": "outside",
+                "lowLiteral": {
+                  "value": -1.0,
+                  "valueType": "number"
+                },
+                "highLiteral": {
+                  "value": 1.0,
+                  "valueType": "number"
+                }
+              },
+              {
+                "id": "require_2",
+                "kind": "require",
+                "text": "require \"SPARKMAX/NEO 25\".current_actual_max > 0.1",
+                "reference": {
+                  "device": "SPARKMAX/NEO 25",
+                  "signal": "current_actual_max",
+                  "text": "SPARKMAX/NEO 25.current_actual_max"
+                },
+                "mode": "comparison",
+                "operator": ">",
+                "literal": {
+                  "value": 0.1,
+                  "valueType": "number"
+                }
+              }
+            ]
           },
           "close": {
             "sets": [],
@@ -3795,8 +3831,8 @@
             "layout": {
               "bus": 0,
               "row": 0,
-              "x": 100.0,
-              "y": -76.0,
+              "x": 87.59090909090908,
+              "y": -66.06016042780749,
               "yRelative": true
             }
           },
@@ -3810,7 +3846,7 @@
               "bus": 0,
               "row": 1,
               "x": 887.7058823529412,
-              "y": 68.97994652406418,
+              "y": 82.84893048128342,
               "yRelative": true
             }
           },
@@ -3823,8 +3859,8 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 448.5962566844921,
-              "y": 97.81283422459893,
+              "x": 438.3770053475932,
+              "y": 106.93716577540107,
               "yRelative": true
             }
           },
@@ -3917,6 +3953,30 @@
           },
           {
             "id": "edge_6",
+            "fromNode": 2,
+            "fromPort": "power",
+            "toNode": 6,
+            "toPort": "power",
+            "edgeType": "power"
+          },
+          {
+            "id": "edge_7",
+            "fromNode": 2,
+            "fromPort": "power",
+            "toNode": 4,
+            "toPort": "power",
+            "edgeType": "power"
+          },
+          {
+            "id": "edge_8",
+            "fromNode": 1,
+            "fromPort": "power",
+            "toNode": 2,
+            "toPort": "power",
+            "edgeType": "power"
+          },
+          {
+            "id": "edge_9",
             "fromNode": 4,
             "fromPort": "attachment",
             "toNode": 5,

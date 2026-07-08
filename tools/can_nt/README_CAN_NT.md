@@ -1,20 +1,18 @@
 # CAN-NT-BRIDGE(1)
 
 NAME
-    can_nt_bridge.py - CAN -> NetworkTables bridge for RobotV2
+    can_nt_bridge.py - Host-side CAN diagnostics bridge for RobotV2
 
 SYNOPSIS
     python tools\\can_nt\\can_nt_bridge.py [options]
     tools\can_nt\run_can_nt.cmd [python.exe] [options]
 
 DESCRIPTION
-    Reads FRC CAN traffic from a CANable (SLCAN) and publishes diagnostics
-    under bringup/diag for RobotV2. Can optionally write PCAP/PCAPNG or
+    Reads FRC CAN traffic from a CANable (SLCAN) and feeds host-owned
+    diagnostics surfaces for RobotV2. Can optionally write PCAP/PCAPNG or
     stream live PCAPNG into Wireshark via a Windows named pipe.
 
 INSTALL
-    py -m pip install pyntcore
-    py -m pip install pynetworktables
     py -m pip install python-can
     py -m pip install pyserial
     py -m pip install prompt_toolkit
@@ -127,10 +125,6 @@ EXAMPLES
     Publish unknown devices seen on the bus:
         python tools\\can_nt\\can_nt_bridge.py --profile demo_home_022326 --publish-unknown
 
-    List or dump the published NT keys:
-        python tools\\can_nt\\can_nt_bridge.py --profile demo_home_022326 --list-keys
-        python tools\\can_nt\\can_nt_bridge.py --profile demo_home_022326 --dump-nt tools\can_nt\nt_keys.json
-
     List serial ports:
         python tools\\can_nt\\can_nt_bridge.py --list-ports
 
@@ -164,14 +158,14 @@ COMMON COMMANDS
     PCAP/PCAPNG file capture:
         python tools\\can_nt\\can_nt_bridge.py --pcap tools\can_nt\logs\robot_run.pcapng
 
-    Summary JSON + console summary prints:
-        python tools\\can_nt\\can_nt_bridge.py --publish-can-summary --print-summary-period 2
+    Console summary prints:
+        python tools\\can_nt\\can_nt_bridge.py --print-summary-period 2
 
     Print device seen/missing transitions:
         python tools\\can_nt\\can_nt_bridge.py --print-publish
 
-    Capture only (no NetworkTables):
-        python tools\\can_nt\\can_nt_bridge.py --no-nt --pcap tools\can_nt\logs\capture.pcapng
+    Capture only (host diagnostics still enabled):
+        python tools\\can_nt\\can_nt_bridge.py --pcap tools\can_nt\logs\capture.pcapng
 
 REAL-TIME NOTES (WHY OUTPUT IS THROTTLED)
     The robot runs a 20ms periodic loop. Console printing is slow and can cause overruns.
@@ -183,7 +177,7 @@ UI COMMAND PROTOCOL
 
     Transport:
     - HTTP/JSON over port 5805 by default (set with --ui-rest-port).
-    - NetworkTables remains in use for state/diagnostics visibility.
+    - Supported UI/CLI state and diagnostics are REST-driven or host-local.
 
     Session/control endpoints:
     - `GET /health`
@@ -207,18 +201,11 @@ UI COMMAND PROTOCOL
     - sessionId (string)
     - state (object: enabled/estopped/mode)
 
-    State/heartbeat (NT, roboRIO -> PC):
-    - bringup/ui/state/enabled (bool)
-    - bringup/ui/state/estopped (bool)
-    - bringup/ui/state/mode (string)
-    - bringup/ui/state/lastAckMs (double)
-    - bringup/ui_tcp/enabled (bool, compatibility subtree name for protocol monitor state)
-    - bringup/ui_tcp/connected (bool)
-    - bringup/ui_tcp/lastSeq (int)
-    - bringup/ui_tcp/lastName (string)
-    - bringup/ui_tcp/lastStatus (string)
-    - bringup/ui_tcp/lastMessage (string)
-    - bringup/ui_tcp/activeClientId (string)
+    State/heartbeat (REST, roboRIO -> PC):
+    - `GET /runtime/state`
+    - `GET /tests/state`
+    - `GET /session`
+    - `GET /inventory/commands`
 
     Send/receive rules:
     - Commands are half-duplex: send one, wait for ACK + OUT.
@@ -315,12 +302,6 @@ UI OUTPUT EXAMPLES
     List serial ports:
         python tools\\can_nt\\can_nt_bridge.py --list-ports
 
-    List NT keys it publishes:
-        python tools\\can_nt\\can_nt_bridge.py --list-keys
-
-    Dump NT key inventory to JSON:
-        python tools\\can_nt\\can_nt_bridge.py --dump-nt tools\can_nt\nt_keys.json
-
     Publish unknown devices seen on bus:
         python tools\\can_nt\\can_nt_bridge.py --publish-unknown
 
@@ -362,8 +343,6 @@ OPTIONS
     --print-publish           Print when a device is seen or goes missing.
     --print-summary-period N  Print CAN summary every N seconds (0 disables).
     --publish-unknown         Publish devices not in profile as UNKNOWN.
-    --list-keys               Print published NT keys and exit.
-    --dump-nt PATH            Write JSON list of published NT keys and exit.
     --auto-match TEXT         Substring used to auto-detect the serial device.
     --no-prompt               Disable port selection prompt when multiple matches.
     --list-ports              Print available serial ports and exit.
@@ -383,38 +362,19 @@ OPTIONS
     --disable-markers         Disable keyboard marker injection.
     --marker-id 0x1FFC0D00    Marker arbitration ID (extended).
     --capture-note TEXT       Pcapng section header comment.
-    --no-nt                   Disable NetworkTables publishing (capture only).
+    --no-nt                   Accepted for compatibility; ignored by the REST-only host bridge.
     --cli                     Launch the interactive bridge CLI.
     --batch                   Run the bridge CLI in batch mode (requires --script).
     --script PATH             Script file to execute in batch mode.
     --conflict-policy POLICY  Device ownership policy: error (default) or move.
 
 PUBLISHED KEYS
-    bringup/diag/busErrorCount
-    bringup/diag/dev/<labelKey>/label
-    bringup/diag/dev/<labelKey>/status
-    bringup/diag/dev/<labelKey>/presenceSource
-    bringup/diag/dev/<labelKey>/presenceConfidence
-    bringup/diag/dev/<labelKey>/ageSec
-    bringup/diag/dev/<labelKey>/trafficAgeSec
-    bringup/diag/dev/<labelKey>/statusAgeSec
-    bringup/diag/dev/<labelKey>/msgCount
-    bringup/diag/dev/<labelKey>/lastSeen
-    bringup/diag/can/summary/json
-    bringup/diag/can/pc/heartbeat
-    bringup/diag/can/pc/openOk
-    bringup/diag/can/pc/framesPerSec
-    bringup/diag/can/pc/framesTotal
-    bringup/diag/can/pc/readErrors
-    bringup/diag/can/pc/lastFrameAgeSec
-    bringup/diag/console/(dynamic keys per rule/device)
-    bringup/diag/console/reset
-    bringup/diag/console/system/warnCount
-    bringup/diag/console/system/errorCount
-    bringup/diag/console/system/fatalCount
-    bringup/diag/console/devices/<labelKey>/warnCount
-    bringup/diag/console/devices/<labelKey>/errorCount
-    bringup/diag/console/devices/<labelKey>/fatalCount
+    The legacy `bringup/diag/...` NetworkTables contract is retired.
+    Supported diagnostics now flow through:
+    - REST `/runtime/state`
+    - REST `/tests/state`
+    - host-local `VisibilityProvider`
+    - host-local `ConsoleMonitor`
 
 NOTES
 - Device identity is label-only in NT and inventory outputs; bringup_system.json is the
@@ -428,7 +388,6 @@ NOTES
       score/label using console warn/error/fatal counters.
     - --dump-profile cannot distinguish NEO vs FLEX or Kraken vs Falcon.
     - RobotV2 prints status=NO_DATA, ageSec=-, msgCount=- until a device is seen.
-    - can/pc/heartbeat increments once per publish; can/pc/lastFrameAgeSec is seconds since last frame.
     - CANable Pro V2 ships with slcan firmware by default.
 
 

@@ -20,8 +20,6 @@ Purpose: Explain what the installer configures.
 - Installs required Python packages:
   - `python-can`
   - `pyserial`
-  - `pyntcore`
-  - `pynetworktables`
   - `reportlab`
   - `prompt_toolkit` (CLI inline `?` prefill)
 - Creates log folders:
@@ -42,4 +40,3 @@ Purpose: Quick commands to confirm the install works.
 Purpose: Known requirements and constraints.
 
 - Python install is required before running the installer.
-- If `pyntcore` fails due to missing DLLs, install the VS 2022 Redistributable.

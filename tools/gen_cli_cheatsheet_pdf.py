@@ -64,7 +64,7 @@ def _build_sections() -> List[Tuple[str, Iterable[str]]]:
                     "  [--console-log-max-mb CONSOLE_LOG_MAX_MB] [--console-log-max-files CONSOLE_LOG_MAX_FILES]\n"
                     "  [--startup-summary-after STARTUP_SUMMARY_AFTER] [--print-publish] [--stale-s STALE_S]\n"
                     "  [--top-n TOP_N] [--dump-can-expected-ids DUMP_CAN_EXPECTED_IDS] [--dump-after DUMP_AFTER]\n"
-                    "  [--list-keys] [--dump-nt DUMP_NT] [--publish-unknown] [--dump-profile DUMP_PROFILE]\n"
+                    "  [--publish-unknown] [--dump-profile DUMP_PROFILE]\n"
                     "  [--dump-profile-name DUMP_PROFILE_NAME] [--dump-profile-after DUMP_PROFILE_AFTER]\n"
                     "  [--dump-profile-include-unknown] [--dump-api-inventory DUMP_API_INVENTORY]\n"
                     "  [--dump-api-inventory-after DUMP_API_INVENTORY_AFTER] [--dump-can-config DUMP_CAN_CONFIG]\n"

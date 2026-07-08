@@ -376,10 +376,9 @@ class BridgeCliAstExecutor:
         now = time.time()
         self._cli._proto_mark_connected(now=now)
         self._cli._proto_mark_handshake(now=now)
-        self._cli._sync_host_profile_context_to_robot(
-            self._cli._query_robot_selected_profile_after_connect(),
-            prompt_user=not self._cli._batch,
-        )
+        result = self._cli._apply_profile_sync_after_connect(prompt_user=not self._cli._batch)
+        if result is not None:
+            return result
         self._cli._start_keepalive()
         print(AST_EXEC_SPEC["msg_connected"])
         return StatusResult(code=SS__NORMAL)

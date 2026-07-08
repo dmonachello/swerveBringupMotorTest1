@@ -19,6 +19,7 @@ NOTES
 
 import argparse
 import io
+import os
 import sys
 from contextlib import redirect_stdout
 from dataclasses import dataclass
@@ -43,6 +44,9 @@ from tools.can_nt.status import (
 
 DEFAULT_RIO = "172.22.11.2"
 DEFAULT_UI_REST_PORT = 5805
+ARG_VERBOSE = "--verbose"
+ENV_REGRESSION_VERBOSE = "BRINGUP_REGRESSION_VERBOSE"
+TEXT_TRUE = "1"
 
 CMD_PING = "ping"
 CMD_CONNECT = "connect"
@@ -92,7 +96,7 @@ class CommandCheck:
     required_substrings: Tuple[str, ...]
 
 
-def _parse_args() -> argparse.Namespace:
+def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     """
     NAME
         _parse_args - Parse command-line options.
@@ -107,7 +111,8 @@ def _parse_args() -> argparse.Namespace:
         default=DEFAULT_UI_REST_PORT,
         help="Robot REST command port.",
     )
-    return parser.parse_args()
+    parser.add_argument(ARG_VERBOSE, action="store_true", help="Print per-command progress and output.")
+    return parser.parse_args(argv)
 
 
 def _run_command(cli: BridgeCli, command: str) -> Tuple[int, str]:
@@ -146,16 +151,22 @@ def _append_check_result(
     results: List[CheckResult],
     cli: BridgeCli,
     check: CommandCheck,
+    *,
+    verbose: bool = False,
 ) -> None:
     """
     NAME
         _append_check_result - Run one command check and append result.
     """
     code, out = _run_command(cli, check.command)
+    if verbose:
+        print(f"CHECK {check.label}: {check.command}")
+        if out.strip():
+            print(out.rstrip())
     results.append(_evaluate_command(check, code, out))
 
 
-def _initial_connect(cli: BridgeCli, results: List[CheckResult]) -> bool:
+def _initial_connect(cli: BridgeCli, results: List[CheckResult], *, verbose: bool = False) -> bool:
     """
     NAME
         _initial_connect - Attempt connection and record a deterministic result.
@@ -170,6 +181,10 @@ def _initial_connect(cli: BridgeCli, results: List[CheckResult]) -> bool:
         required_substrings=tuple(),
     )
     code, out = _run_command(cli, connect_check.command)
+    if verbose:
+        print(f"CHECK {connect_check.label}: {connect_check.command}")
+        if out.strip():
+            print(out.rstrip())
     results.append(_evaluate_command(connect_check, code, out))
     if code == SS__NORMAL:
         return True
@@ -220,7 +235,7 @@ def _non_motion_checks() -> Sequence[CommandCheck]:
     )
 
 
-def _run_regression(rio: str, rest_port: int) -> List[CheckResult]:
+def _run_regression(rio: str, rest_port: int, *, verbose: bool = False) -> List[CheckResult]:
     """
     NAME
         _run_regression - Execute connected non-motion regression sequence.
@@ -228,11 +243,21 @@ def _run_regression(rio: str, rest_port: int) -> List[CheckResult]:
     results: List[CheckResult] = []
     session = BridgeSession(rio, int(rest_port), auto_handshake=False)
     cli = BridgeCli(session, batch=True)
-    if not _initial_connect(cli, results):
+    if not _initial_connect(cli, results, verbose=verbose):
         return results
     for check in _non_motion_checks():
-        _append_check_result(results, cli, check)
+        _append_check_result(results, cli, check, verbose=verbose)
     return results
+
+
+def _verbose_enabled(args: argparse.Namespace) -> bool:
+    """
+    NAME
+        _verbose_enabled - Resolve verbose mode from CLI flags or regression env.
+    """
+    if bool(getattr(args, "verbose", False)):
+        return True
+    return os.environ.get(ENV_REGRESSION_VERBOSE) == TEXT_TRUE
 
 
 def _print_results(results: List[CheckResult]) -> int:
@@ -252,13 +277,17 @@ def _print_results(results: List[CheckResult]) -> int:
     return 0 if failure_count == 0 else 1
 
 
-def main() -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     """
     NAME
         main - Entrypoint for connected non-motion regression script.
     """
-    args = _parse_args()
-    results = _run_regression(str(args.rio), int(args.ui_rest_port))
+    args = _parse_args(argv)
+    results = _run_regression(
+        str(args.rio),
+        int(args.ui_rest_port),
+        verbose=_verbose_enabled(args),
+    )
     return _print_results(results)
 
 

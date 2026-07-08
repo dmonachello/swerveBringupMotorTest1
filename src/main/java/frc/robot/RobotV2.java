@@ -1,8 +1,6 @@
 package frc.robot;
 
 //import edu.wpi.first.cameraserver.CameraServer;
-import edu.wpi.first.networktables.NetworkTable;
-import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.XboxController;
@@ -28,8 +26,8 @@ import java.util.Set;
  *   diagnostics reporting, JSON snapshots, and CAN health sampling.
  *
  * SIDE EFFECTS
- *   Drives motors/sensors through vendor APIs and publishes NetworkTables
- *   telemetry for diagnostics.
+ *   Drives motors/sensors through vendor APIs and serves diagnostics over the
+ *   supported REST/UI paths.
  */
 public class RobotV2 extends TimedRobot {
 
@@ -71,12 +69,6 @@ public class RobotV2 extends TimedRobot {
   private BringupRuntime runtime;
   // Samples roboRIO CAN controller health.
   private final CanBusHealth canHealth = new CanBusHealth();
-  // Builds reports, JSON snapshots, and optional NT telemetry.
-  private final NetworkTable diagTable =
-      NetworkTableInstance.getDefault().getTable("bringup").getSubTable("diag");
-  private static final NetworkTable TESTS_TABLE_DISABLED = null;
-  private static final NetworkTable UI_TABLE_DISABLED = null;
-  private static final NetworkTable UI_PROTOCOL_TABLE_DISABLED = null;
   private BridgeUiCommandHandler uiHandler;
   // Edge-detect state for buttons that should fire once per press.
   private final EdgeTrigger edge = new EdgeTrigger();
@@ -117,14 +109,10 @@ public class RobotV2 extends TimedRobot {
     BringupUtil.applyProfileFromArgs();
     runtime = new BringupRuntime(
         canHealth,
-        diagTable,
         bindings.describeBinding(COMMAND_RUN_TEST));
     uiHandler = new BridgeUiCommandHandler(
         runtime,
         bindings,
-        TESTS_TABLE_DISABLED,
-        UI_TABLE_DISABLED,
-        UI_PROTOCOL_TABLE_DISABLED,
         profileToggleAction,
         profileActivateAction,
         profileDeactivateAction);

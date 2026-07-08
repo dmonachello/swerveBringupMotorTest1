@@ -11,7 +11,6 @@ import frc.robot.diag.snapshots.LimitsAttachment;
 import frc.robot.diag.snapshots.MotorSpecAttachment;
 import frc.robot.manufacturers.ctre.diag.PdpStatusAttachment;
 import frc.robot.manufacturers.rev.diag.PdhStatusAttachment;
-import frc.robot.diag.snapshots.PcSnapshot;
 import frc.robot.manufacturers.rev.diag.RevMotorAttachment;
 import frc.robot.diag.snapshots.SnapshotBundle;
 import frc.robot.diag.app.AppStatusTracker;
@@ -28,7 +27,6 @@ import java.util.List;
  */
 public final class ReportTextBuilder {
   private static final double HIGH_UTILIZATION_PCT = 80.0;
-  private static final double PC_STALE_DEVICE_AGE_SEC = 2.0;
   private static final String LIMITS_PREFIX = " limits=";
   private static final String LIMITS_SEPARATOR = ",";
   private static final String LIMITS_DIO_PREFIX = "DIO";
@@ -76,7 +74,6 @@ public final class ReportTextBuilder {
     ReportTextUtil.appendLine(sb, buildSummaryLine(bundle));
     appendBusSnapshot(sb, bundle.bus);
     ReportTextUtil.appendLine(sb, "Bus Health: (see CAN Bus Diagnostics summary above)");
-    appendPcToolSection(sb, bundle.pc);
     appendDeviceHealth(sb, bundle.devices);
     appendLedLegend(sb, bundle.devices);
     appendAppStatus(sb);
@@ -90,8 +87,7 @@ public final class ReportTextBuilder {
    */
   private String buildSummaryLine(SnapshotBundle bundle) {
     String bus = summaryBusStatus(bundle.bus);
-    String pc = summaryPcStatus(bundle.pc);
-    return "Summary: bus=" + bus + " pc=" + pc;
+    return "Summary: bus=" + bus;
   }
 
   /**
@@ -119,17 +115,6 @@ public final class ReportTextBuilder {
 
   /**
    * NAME
-   *   summaryPcStatus - Summarize PC sniffer health into a status token.
-   */
-  private String summaryPcStatus(PcSnapshot pc) {
-    if (pc == null || pc.heartbeatAgeSec < 0 || !pc.openOk) {
-      return "PC_TOOL_MISSING";
-    }
-    return "OK";
-  }
-
-  /**
-   * NAME
    *   appendBusSnapshot - Append bus diagnostics section.
    */
   private void appendBusSnapshot(StringBuilder sb, BusSnapshot bus) {
@@ -145,55 +130,6 @@ public final class ReportTextBuilder {
     ReportTextUtil.appendLine(sb, String.format("Bus off count: %d (delta %d)", bus.busOff, bus.busOffDelta));
     ReportTextUtil.appendLine(sb, String.format("Sample age: %.2fs", bus.sampleAgeSec));
     ReportTextUtil.appendLine(sb, "===========================");
-  }
-
-  /**
-   * NAME
-   *   appendPcToolSection - Append PC tool diagnostics section.
-   */
-  private void appendPcToolSection(StringBuilder sb, PcSnapshot pc) {
-    ReportTextUtil.appendLine(sb, "PC Tool:");
-    if (pc == null) {
-      ReportTextUtil.appendLine(sb, "  Status: PC tool not connected");
-      return;
-    }
-
-    String heartbeatAgeText = (pc.heartbeatAgeSec < 0)
-        ? "STALE (no data)"
-        : String.format("%.2fs", pc.heartbeatAgeSec);
-    if (pc.heartbeatAgeSec < 0 || !pc.openOk) {
-      ReportTextUtil.appendLine(sb, "  Status: PC tool not connected");
-    } else {
-      ReportTextUtil.appendLine(sb, "  Status: OK");
-    }
-
-    ReportTextUtil.appendLine(sb, "  Heartbeat age: " + heartbeatAgeText);
-    ReportTextUtil.appendLine(sb, "  Open OK: " + (pc.openOk ? "YES" : "NO"));
-    ReportTextUtil.appendLine(sb, "  Frames/sec: " + formatDoubleOrDash(pc.framesPerSec, 1));
-    ReportTextUtil.appendLine(sb, "  Frames total: " + formatDoubleOrDash(pc.framesTotal, 0));
-    ReportTextUtil.appendLine(sb, "  Read errors: " + formatDoubleOrDash(pc.readErrors, 0));
-    ReportTextUtil.appendLine(sb, "  Last frame age: " + formatDoubleOrDash(pc.lastFrameAgeSec, 2) + "s");
-
-    ReportTextUtil.appendLine(
-        sb,
-        "  Missing devices (PC): " + pc.missingCount + " / " + pc.totalCount);
-    ReportTextUtil.appendLine(sb, "  Flapping devices (PC): " + pc.flappingCount);
-    if (!pc.seenNotLocal.isEmpty()) {
-      ReportTextUtil.appendLine(
-          sb,
-          "  Seen on wire, not local: " + String.join(", ", formatSeenNotLocal(pc.seenNotLocal)));
-    }
-    if (!pc.profileMismatch.isEmpty()) {
-      ReportTextUtil.appendLine(
-          sb,
-          "  Profile mismatch candidates: " + String.join("; ", formatProfileMismatch(pc.profileMismatch)));
-    }
-    if (!pc.staleDevices.isEmpty()) {
-      ReportTextUtil.appendLine(
-          sb,
-          "  Stale devices (PC): " + String.join(", ", formatStaleDevices(pc.staleDevices))
-              + " (age > " + String.format("%.1f", PC_STALE_DEVICE_AGE_SEC) + "s)");
-    }
   }
 
   /**
@@ -748,41 +684,5 @@ public final class ReportTextBuilder {
     return value == null ? "" : value;
   }
 
-  /**
-   * NAME
-   *   formatSeenNotLocal - Format entries for seen-not-local devices.
-   */
-  private List<String> formatSeenNotLocal(List<PcSnapshot.SeenNotLocalEntry> entries) {
-    List<String> out = new java.util.ArrayList<>();
-    for (PcSnapshot.SeenNotLocalEntry entry : entries) {
-      String ageText = entry.ageSec == null ? "?" : String.format("%.2f", entry.ageSec);
-      out.add(entry.key + " age=" + ageText + "s");
-    }
-    return out;
-  }
-
-  /**
-   * NAME
-   *   formatProfileMismatch - Format profile mismatch entries.
-   */
-  private List<String> formatProfileMismatch(List<PcSnapshot.ProfileMismatchEntry> entries) {
-    List<String> out = new java.util.ArrayList<>();
-    for (PcSnapshot.ProfileMismatchEntry entry : entries) {
-      out.add(entry.expected + " missing, saw labels " + entry.seenLabels + " on wire");
-    }
-    return out;
-  }
-
-  /**
-   * NAME
-   *   formatStaleDevices - Format stale device entries.
-   */
-  private List<String> formatStaleDevices(List<PcSnapshot.StaleDeviceEntry> entries) {
-    List<String> out = new java.util.ArrayList<>();
-    for (PcSnapshot.StaleDeviceEntry entry : entries) {
-      out.add(entry.key + " age=" + String.format("%.2f", entry.ageSec) + "s");
-    }
-    return out;
-  }
 }
 

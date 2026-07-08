@@ -4,7 +4,6 @@ import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
-import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.Filesystem;
 import edu.wpi.first.wpilibj.livewindow.LiveWindow;
@@ -57,8 +56,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  *   BridgeUiCommandHandler - UI command handler for bringup controls.
  *
  * DESCRIPTION
- *   Owns UI protocol state, command execution, and NetworkTables publishing
- *   for the bringup UI/CLI surfaces.
+ *   Owns UI protocol state and command execution for the bringup UI/CLI
+ *   surfaces.
  */
 public class BridgeUiCommandHandler {
   public static final class RestCommandResult {
@@ -255,12 +254,6 @@ public class BridgeUiCommandHandler {
       "deactivateSelectedTestDevices";
   private static final String CMD_SHOW_LIFECYCLE_STATE = "showLifecycleState";
   private static final String CMD_PROFILES_RELOAD = "profilesReload";
-  private static final String UI_STATE_ENABLED_KEY = "state/enabled";
-  private static final String UI_STATE_ESTOPPED_KEY = "state/estopped";
-  private static final String UI_STATE_MODE_KEY = "state/mode";
-  private static final String UI_STATE_LAST_ACK_MS_KEY = "state/lastAckMs";
-  private static final String UI_STATE_SELECTED_PROFILE_KEY = "state/selectedProfile";
-  private static final String UI_STATE_ACTIVE_RUNTIME_PROFILE_KEY = "state/activeRuntimeProfile";
   private static final String TEXT_SAFETY_LATCH = "  safetyLatch=";
   private static final String TEXT_REASON_PREFIX = " reason=";
   private static final int INDEX_START = 0;
@@ -308,14 +301,6 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_RUN_STARTED_AT_MS = "startedAtMs";
   private static final String JSON_KEY_RUN_FINISHED_AT_MS = "finishedAtMs";
   private static final String JSON_KEY_RUN_DETAILS = "details";
-  private static final String TESTS_ENTRY_RUN_ID = "runId";
-  private static final String TESTS_ENTRY_RUN_STATE = "runState";
-  private static final String TESTS_ENTRY_RUN_TEST = "runTest";
-  private static final String TESTS_ENTRY_RUN_RESULT = "runResult";
-  private static final String TESTS_ENTRY_RUN_STATUS = "runStatus";
-  private static final String TESTS_ENTRY_RUN_MESSAGE = "runMessage";
-  private static final String TESTS_ENTRY_RUN_STARTED_AT_MS = "runStartedAtMs";
-  private static final String TESTS_ENTRY_RUN_FINISHED_AT_MS = "runFinishedAtMs";
   private static final String JSON_KEY_SOURCES = "sources";
   private static final String JSON_KEY_SOURCES_NAME = "name";
   private static final String JSON_KEY_SOURCES_PATH = "path";
@@ -396,9 +381,6 @@ public class BridgeUiCommandHandler {
 
   private final BringupRuntime runtime;
   private final BindingsManager bindings;
-  private final NetworkTable testsTable;
-  private final NetworkTable uiTable;
-  private final NetworkTable uiProtocolTable;
   private final BridgeUiIngressPolicy uiIngressPolicy;
   private final BridgeUiCommandDispatcher uiCommandDispatcher;
   private final BridgeUiCommandExecutor uiExecuteFacade;
@@ -406,7 +388,6 @@ public class BridgeUiCommandHandler {
   private final RobotLocalCommandExecutor robotLocalExecutor;
   private final RobotLocalControllerValueProvider controllerValueProvider;
   private final RobotLocalControllerGateway controllerGateway;
-  private final BridgeUiOutputFacade uiOutputFacade;
   private final Runnable profileToggleAction;
   private final Runnable profileActivateAction;
   private final Runnable profileDeactivateAction;
@@ -416,7 +397,6 @@ public class BridgeUiCommandHandler {
   private long lastStartupPrintMs = 0L;
   private int lastTestsCount = 0;
   private long lastUiSeq = -1;
-  private long lastUiAckMs = 0L;
   private String uiSessionId = UUID.randomUUID().toString();
   private String activeUiClientId = null;
   private boolean stopLatchActive = false;
@@ -437,17 +417,11 @@ public class BridgeUiCommandHandler {
   public BridgeUiCommandHandler(
       BringupRuntime runtime,
       BindingsManager bindings,
-      NetworkTable testsTable,
-      NetworkTable uiTable,
-      NetworkTable uiProtocolTable,
       Runnable profileToggleAction,
       Runnable profileActivateAction,
       Runnable profileDeactivateAction) {
     this.runtime = runtime;
     this.bindings = bindings;
-    this.testsTable = testsTable;
-    this.uiTable = uiTable;
-    this.uiProtocolTable = uiProtocolTable;
     this.profileToggleAction = profileToggleAction;
     this.profileActivateAction = profileActivateAction;
     this.profileDeactivateAction = profileDeactivateAction;
@@ -528,11 +502,6 @@ public class BridgeUiCommandHandler {
       @Override
       public void setUiProtocolMonitorEnabled(boolean enabled) {
         uiProtocolMonitorEnabled = enabled;
-      }
-
-      @Override
-      public NetworkTable getUiProtocolTable() {
-        return uiProtocolTable;
       }
 
       @Override
@@ -1030,43 +999,28 @@ public class BridgeUiCommandHandler {
           public frc.robot.diag.lifecycle.activation.ActivationResult activateLifecycle(
               String label,
               frc.robot.diag.lifecycle.activation.ActivationMode mode) {
-            frc.robot.diag.lifecycle.activation.ActivationResult result =
-                runtime.activateControlledBringupLifecycle(label, mode);
-            BridgeUiCommandHandler.this.publishTestsOverview(core().buildTestsOverview());
-            return result;
+            return runtime.activateControlledBringupLifecycle(label, mode);
           }
 
           @Override
           public frc.robot.diag.lifecycle.activation.ActivationResult activateSelectedTestDevices(
               frc.robot.diag.lifecycle.activation.ActivationMode mode) {
-            frc.robot.diag.lifecycle.activation.ActivationResult result =
-                runtime.activateSelectedTestDevices(mode);
-            BridgeUiCommandHandler.this.publishTestsOverview(core().buildTestsOverview());
-            return result;
+            return runtime.activateSelectedTestDevices(mode);
           }
 
           @Override
           public frc.robot.diag.lifecycle.activation.DeactivateResult deactivateLifecycle(String label) {
-            frc.robot.diag.lifecycle.activation.DeactivateResult result =
-                runtime.deactivateControlledBringupLifecycle(label);
-            BridgeUiCommandHandler.this.publishTestsOverview(core().buildTestsOverview());
-            return result;
+            return runtime.deactivateControlledBringupLifecycle(label);
           }
 
           @Override
           public frc.robot.diag.lifecycle.activation.DeactivateResult deactivateSelectedTestDevices() {
-            frc.robot.diag.lifecycle.activation.DeactivateResult result =
-                runtime.deactivateSelectedTestDevices();
-            BridgeUiCommandHandler.this.publishTestsOverview(core().buildTestsOverview());
-            return result;
+            return runtime.deactivateSelectedTestDevices();
           }
 
           @Override
           public frc.robot.diag.lifecycle.activation.DeactivateResult deactivateActiveLifecycle() {
-            frc.robot.diag.lifecycle.activation.DeactivateResult result =
-                runtime.deactivateActiveControlledBringupLifecycle();
-            BridgeUiCommandHandler.this.publishTestsOverview(core().buildTestsOverview());
-            return result;
+            return runtime.deactivateActiveControlledBringupLifecycle();
           }
 
           @Override
@@ -1124,16 +1078,6 @@ public class BridgeUiCommandHandler {
       @Override
       public String buildSelectedTestSourceReportText() {
         return core().buildSelectedTestSourceReportText();
-      }
-
-      @Override
-      public String buildNetworkDiagnosticsReportIfReady() {
-        return diagnostics().buildNetworkDiagnosticsReportIfReady();
-      }
-
-      @Override
-      public String appendUiSessionStats(String report) {
-        return BridgeUiCommandHandler.this.appendUiSessionStats(report);
       }
 
       @Override
@@ -1353,17 +1297,6 @@ public class BridgeUiCommandHandler {
           }
 
           @Override
-          public void printNtDiagnostics() {
-            String report = diagnostics() != null ? diagnostics().buildNetworkDiagnosticsReportIfReady() : null;
-            if (report == null) {
-              report = "Network diagnostics rate-limited; try again shortly.";
-            } else {
-              report = appendUiSessionStats(report);
-            }
-            runtime.requestTextReport(report, 4);
-          }
-
-          @Override
           public void printCanDiagnostics() {
             String report = diagnostics() != null ? diagnostics().buildCanDiagnosticsReportIfReady() : null;
             if (report == null) {
@@ -1510,7 +1443,6 @@ public class BridgeUiCommandHandler {
     this.robotLocalExecutor = new RobotLocalCommandExecutor(robotLocalHost);
     this.controllerValueProvider = new RobotLocalControllerValueProvider();
     this.controllerGateway = new RobotLocalControllerGateway(robotLocalExecutor, controllerValueProvider);
-    this.uiOutputFacade = uiTable != null ? new BridgeUiOutputFacade(uiTable, UI_PROTOCOL_VERSION) : null;
   }
 
   /**
@@ -1664,24 +1596,6 @@ public class BridgeUiCommandHandler {
         result.outText,
         result.outJson,
         running);
-  }
-
-  public void handleUiCommands() {
-    if (uiTable == null) {
-      return;
-    }
-    long seq = (long) uiTable.getEntry("cmd/seq").getInteger(-1);
-    if (seq <= lastUiSeq) {
-      return;
-    }
-    lastUiSeq = seq;
-    String name = uiTable.getEntry("cmd/name").getString("");
-    String argsJson = uiTable.getEntry("cmd/args/json").getString("");
-    double cmdTs = uiTable.getEntry("cmd/ts").getDouble(0.0);
-    String clientId = uiTable.getEntry("cmd/clientId").getString("");
-    BridgeUiCommandResult result = executeUnifiedUiCommand(name, argsJson, cmdTs, clientId, false);
-    publishUiAck(seq, result.ok, result.message, name, cmdTs);
-    publishUiOut(seq, name, result.outText, cmdTs, result.outJson);
   }
 
   /**
@@ -2394,59 +2308,6 @@ public class BridgeUiCommandHandler {
     latch.addProperty(JSON_KEY_ACTIVE, stopLatchActive);
     latch.addProperty(JSON_KEY_REASON, stopLatchReason != null ? stopLatchReason : TEXT_EMPTY);
     return latch;
-  }
-
-  /**
-   * NAME
-   *   publishUiAck - Publish UI command acknowledgements to NetworkTables.
-   */
-  private void publishUiAck(long seq, boolean ok, String message, String name, double cmdTs) {
-    if (uiOutputFacade == null) {
-      lastUiAckMs = System.currentTimeMillis();
-      return;
-    }
-    lastUiAckMs =
-        uiOutputFacade.publishUiAck(seq, ok, message, name, cmdTs, uiSessionId, activeUiClientId);
-  }
-
-  /**
-   * NAME
-   *   publishUiOut - Publish UI command output to NetworkTables.
-   *
-   * DESCRIPTION
-   *   Emits at least one output entry per command to release the UI.
-   */
-  private void publishUiOut(long seq, String name, String text, double cmdTs, String jsonText) {
-    if (uiOutputFacade == null) {
-      return;
-    }
-    uiOutputFacade.publishUiOut(seq, name, text, cmdTs, jsonText);
-  }
-
-  /**
-   * NAME
-   *   publishUiRobotState - Publish driver station state for UI feedback.
-   */
-  public void publishUiRobotState() {
-    if (uiTable == null) {
-      return;
-    }
-    boolean enabled = DriverStation.isEnabled();
-    boolean estopped = DriverStation.isEStopped();
-    String mode = "disabled";
-    if (DriverStation.isAutonomous()) {
-      mode = "auto";
-    } else if (DriverStation.isTeleop()) {
-      mode = "teleop";
-    } else if (DriverStation.isTest()) {
-      mode = "test";
-    }
-    uiTable.getEntry(UI_STATE_ENABLED_KEY).setBoolean(enabled);
-    uiTable.getEntry(UI_STATE_ESTOPPED_KEY).setBoolean(estopped);
-    uiTable.getEntry(UI_STATE_MODE_KEY).setString(mode);
-    uiTable.getEntry(UI_STATE_LAST_ACK_MS_KEY).setDouble(System.currentTimeMillis());
-    uiTable.getEntry(UI_STATE_SELECTED_PROFILE_KEY).setString(BringupUtil.getSelectedCanProfileLabel());
-    uiTable.getEntry(UI_STATE_ACTIVE_RUNTIME_PROFILE_KEY).setString(BringupUtil.getActiveRuntimeProfileLabel());
   }
 
   /**
@@ -4514,29 +4375,6 @@ public class BridgeUiCommandHandler {
 
   /**
    * NAME
-   *   appendUiSessionStats - Append UI session stats to an existing report.
-   *
-   * PARAMETERS
-   *   report - Base report text.
-   *
-   * RETURNS
-   *   Report with a UI session stats block appended.
-   */
-  private String appendUiSessionStats(String report) {
-    StringBuilder sb = new StringBuilder(256);
-    sb.append(report == null ? "" : report.trim());
-    if (sb.length() > 0) {
-      sb.append('\n');
-    }
-    sb.append("UI session stats:\n");
-    sb.append("  sessionId=").append(uiSessionId != null ? uiSessionId : TEXT_EMPTY)
-        .append(" activeClientId=").append(activeUiClientId != null ? activeUiClientId : TEXT_EMPTY)
-        .append(" monitorEnabled=").append(uiProtocolMonitorEnabled);
-    return sb.toString();
-  }
-
-  /**
-   * NAME
    *   formatProfileValue - Render empty profile state values consistently.
    */
   private String formatProfileValue(String value) {
@@ -4691,13 +4529,12 @@ public class BridgeUiCommandHandler {
    *   Full tests overview report text.
    *
    * SIDE EFFECTS
-   *   Enqueues a text report and updates NetworkTables.
+   *   Enqueues a text report for the supported host/UI output path.
    */
   public String printTestsOverview() {
     BringupCore.TestsOverview overview = core().buildTestsOverview();
     String text = core().formatTestsOverview(overview);
     runtime.requestTextReport(text, 6);
-    publishTestsOverview(overview);
     return text;
   }
 
@@ -4715,117 +4552,6 @@ public class BridgeUiCommandHandler {
     String text = core().buildSelectedTestSourceReportText();
     runtime.requestTextReport(text, 4);
     return text;
-  }
-
-  /**
-   * NAME
-   *   publishTestsOverview - Publish test rows to NetworkTables.
-   *
-   * PARAMETERS
-   *   overview - Snapshot of current test sets and rows.
-   *
-   * SIDE EFFECTS
-   *   Writes NetworkTables entries under bringup/tests.
-   */
-  public void publishTestsOverview(BringupCore.TestsOverview overview) {
-    if (testsTable == null) {
-      return;
-    }
-    if (overview == null) {
-      return;
-    }
-    testsTable.getEntry("activeSet")
-        .setString(overview.activeTestSet != null ? overview.activeTestSet : "");
-    testsTable.getEntry("defaultSet")
-        .setString(overview.defaultTestSet != null ? overview.defaultTestSet : "");
-    testsTable.getEntry("usingTestSets").setBoolean(overview.usingTestSets);
-    testsTable.getEntry("totalCount").setNumber(overview.totalCount);
-    testsTable.getEntry("enabledCount").setNumber(overview.enabledCount);
-    testsTable.getEntry("selectedIndex").setNumber(core().getSelectedBringupTestIndex());
-    testsTable.getEntry("selectedName").setString(core().getSelectedBringupTestName());
-    testsTable.getEntry("activeName").setString(core().getActiveBringupTestName());
-    testsTable.getEntry("activeStatus").setString(core().getActiveBringupTestStatus());
-    testsTable.getEntry("runAllActive").setBoolean(core().isRunAllActive());
-    publishTestsRunSnapshot(overview.run);
-    NetworkTable rowsTable = testsTable.getSubTable("rows");
-    int count = overview.rows.size();
-    for (int i = 0; i < count; i++) {
-      BringupCore.TestRow row = overview.rows.get(i);
-      NetworkTable rowTable = rowsTable.getSubTable(String.valueOf(i));
-      rowTable.getEntry("index").setNumber(row.index);
-      rowTable.getEntry("name").setString(row.name != null ? row.name : "");
-      rowTable.getEntry("enabled").setBoolean(row.enabled);
-      rowTable.getEntry("selected").setBoolean(row.selected);
-      rowTable.getEntry("type").setString(row.type != null ? row.type : "");
-      rowTable.getEntry("status").setString(row.status != null ? row.status : "");
-      rowTable.getEntry("runnableNow").setBoolean(row.runnableNow);
-      rowTable.getEntry("blockedReason").setString(row.blockedReason != null ? row.blockedReason : "");
-      String requiredDevices =
-          (row.requiredDevices == null || row.requiredDevices.isEmpty())
-              ? ""
-              : String.join(", ", row.requiredDevices);
-      rowTable.getEntry("requiredDevices").setString(requiredDevices);
-    }
-    for (int i = count; i < lastTestsCount; i++) {
-      NetworkTable rowTable = rowsTable.getSubTable(String.valueOf(i));
-      rowTable.getEntry("index").setNumber(-1);
-      rowTable.getEntry("name").setString("");
-      rowTable.getEntry("enabled").setBoolean(false);
-      rowTable.getEntry("selected").setBoolean(false);
-      rowTable.getEntry("type").setString("");
-      rowTable.getEntry("status").setString("");
-      rowTable.getEntry("runnableNow").setBoolean(false);
-      rowTable.getEntry("blockedReason").setString("");
-      rowTable.getEntry("requiredDevices").setString("");
-    }
-    lastTestsCount = count;
-  }
-
-  /**
-   * NAME
-   *   publishTestsSelectionStatus - Publish lightweight test selection/running status.
-   *
-   * SIDE EFFECTS
-   *   Writes selected and active test info to NetworkTables.
-   */
-  public void publishTestsSelectionStatus() {
-    if (testsTable == null) {
-      return;
-    }
-    testsTable.getEntry("selectedIndex").setNumber(core().getSelectedBringupTestIndex());
-    testsTable.getEntry("selectedName").setString(core().getSelectedBringupTestName());
-    testsTable.getEntry("activeName").setString(core().getActiveBringupTestName());
-    testsTable.getEntry("activeStatus").setString(core().getActiveBringupTestStatus());
-    testsTable.getEntry("runAllActive").setBoolean(core().isRunAllActive());
-    publishTestsRunSnapshot(core().getLatestTestRunSnapshot());
-  }
-
-  /**
-   * NAME
-   *   publishTestsRunSnapshot - Publish the latest test-run snapshot to NetworkTables.
-   *
-   * PARAMETERS
-   *   run - Snapshot to publish.
-   *
-   * SIDE EFFECTS
-   *   Writes flat run status fields under bringup/tests.
-   */
-  private void publishTestsRunSnapshot(BringupCore.TestRunSnapshot run) {
-    BringupCore.TestRunSnapshot snapshot =
-        run != null ? run : BringupCore.TestRunSnapshot.idle();
-    testsTable.getEntry(TESTS_ENTRY_RUN_ID).setNumber(snapshot.runId);
-    testsTable.getEntry(TESTS_ENTRY_RUN_STATE)
-        .setString(snapshot.state != null ? snapshot.state : TEXT_EMPTY);
-    testsTable.getEntry(TESTS_ENTRY_RUN_TEST)
-        .setString(snapshot.test != null ? snapshot.test : TEXT_EMPTY);
-    testsTable.getEntry(TESTS_ENTRY_RUN_RESULT)
-        .setString(snapshot.result != null ? snapshot.result : TEXT_EMPTY);
-    testsTable.getEntry(TESTS_ENTRY_RUN_STATUS)
-        .setString(snapshot.status != null ? snapshot.status : TEXT_EMPTY);
-    testsTable.getEntry(TESTS_ENTRY_RUN_MESSAGE)
-        .setString(snapshot.message != null ? snapshot.message : TEXT_EMPTY);
-    testsTable.getEntry(TESTS_ENTRY_RUN_STARTED_AT_MS).setNumber(snapshot.startedAtMs);
-    testsTable.getEntry(TESTS_ENTRY_RUN_FINISHED_AT_MS).setNumber(snapshot.finishedAtMs);
   }
 
   //@SuppressWarnings("removal")

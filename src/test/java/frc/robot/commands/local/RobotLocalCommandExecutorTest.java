@@ -235,9 +235,6 @@ class RobotLocalCommandExecutorTest {
     public void printCANCoder() {}
 
     @Override
-    public void printNtDiagnostics() {}
-
-    @Override
     public void printCanDiagnostics() {}
 
     @Override

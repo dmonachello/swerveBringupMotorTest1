@@ -11,6 +11,8 @@ from unittest.mock import patch
 import tools.can_topology.can_top_editor as can_top_editor
 from tools.can_topology.can_top_editor import TopologyEditor
 from tools.can_topology.can_top_models import GENERIC_CATEGORY, INTERFACE_CAN, INTERFACE_DIO, Node
+from tools.common.profile_io import compute_profiles_hash
+from tools.common.tests.config_api_test_helper import load_profiles_payload, write_profiles_payload
 from tools.common.topology_draw import GROUP_OVERLAY_WIDTH, draw_group_overlays, draw_links
 from tools.config.schema_store import ConfigSchemaStore, DOC_PROFILES
 
@@ -628,6 +630,68 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
 
         self.assertEqual(before_payload, after_payload)
 
+    def test_save_profile_preserves_dsl_test_set_metadata(self) -> None:
+        profile_name = "test_minimal_25_9"
+        payload = {
+            "schema_version": 5,
+            "data_version": "test_fixture",
+            "data_hash": "",
+            "default_profile": profile_name,
+            "profiles": {
+                profile_name: {
+                    "devices": ["SPARKMAX/NEO 25", "controller0"],
+                    "dslTestSet": "test_minimal_25_9",
+                }
+            },
+            "devices": [
+                {
+                    "label": "SPARKMAX/NEO 25",
+                    "deviceInterface": "CAN",
+                    "manufacturer": 5,
+                    "deviceType": 2,
+                    "id": 25,
+                    "model": "REV NEO",
+                    "type": "motor",
+                },
+                {
+                    "label": "controller0",
+                    "deviceInterface": "USB",
+                    "id": 0,
+                    "model": "Xbox Controller",
+                    "type": "xboxController",
+                },
+            ],
+        }
+        payload["data_hash"] = compute_profiles_hash(payload)
+        original_messagebox = can_top_editor.messagebox
+        can_top_editor.messagebox = _MessageBoxStub
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_path = Path(temp_dir) / "bringup_system.json"
+                write_profiles_payload(temp_path, payload, stamp=False)
+                editor = self._headless_editor(profile_name)
+                editor._load_profile_from_path(
+                    str(temp_path),
+                    ask_profile=False,
+                    confirm_discard=False,
+                    selected_name=profile_name,
+                )
+                editor.entry_profile.set(profile_name)
+                editor.var_set_default.set(True)
+                editor._save_profile_to_path(
+                    temp_path,
+                    prompt_replace=False,
+                    update_source=True,
+                )
+                saved = load_profiles_payload(temp_path)
+        finally:
+            can_top_editor.messagebox = original_messagebox
+
+        self.assertEqual(
+            "test_minimal_25_9",
+            saved["profiles"][profile_name]["dslTestSet"],
+        )
+
     def test_editor_set_component_values_validate_and_roundtrip(self) -> None:
         profile_name = "component_values"
         original_messagebox = can_top_editor.messagebox
@@ -689,7 +753,7 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
                 editor.var_set_default.set(True)
 
                 editor._save_profile_to_path(temp_path, prompt_replace=False, update_source=True)
-                saved_payload = json.loads(temp_path.read_text(encoding="utf-8"))
+                saved_payload = load_profiles_payload(temp_path)
                 store = ConfigSchemaStore()
                 store._db.set_payload(DOC_PROFILES, saved_payload)
                 validation = store.validate(strict=True)
@@ -1221,7 +1285,7 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
         }
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir) / "bringup_system.json"
-            temp_path.write_text(json.dumps(payload), encoding="utf-8")
+            write_profiles_payload(temp_path, payload, stamp=False)
             editor._profile_source_path = str(temp_path)
             editor._default_profiles_path = lambda: temp_path
             editor._refresh_list()
@@ -2491,14 +2555,14 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
                         },
                     },
                 }
-                temp_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+                write_profiles_payload(temp_path, payload, stamp=False)
                 editor = self._headless_editor("robot_2026_swerve")
                 editor._profile_source_path = str(temp_path)
                 editor._confirm_discard = lambda: True
 
                 editor._new_blank_profile()
 
-                saved = json.loads(temp_path.read_text(encoding="utf-8"))
+                saved = load_profiles_payload(temp_path)
         finally:
             can_top_editor.messagebox = original_messagebox
             can_top_editor.simpledialog.askstring = original_askstring
@@ -2567,7 +2631,7 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
                         },
                     },
                 }
-                temp_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+                write_profiles_payload(temp_path, payload, stamp=False)
                 editor = self._headless_editor("robot_2026_swerve")
                 editor._profile_source_path = str(temp_path)
                 editor._confirm_discard = lambda: True
@@ -2582,7 +2646,7 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
 
                 editor._new_blank_profile()
 
-                saved = json.loads(temp_path.read_text(encoding="utf-8"))
+                saved = load_profiles_payload(temp_path)
         finally:
             can_top_editor.messagebox = original_messagebox
             can_top_editor.simpledialog.askstring = original_askstring
@@ -2619,7 +2683,7 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
                     ],
                     "topology": {"version": 1, "source": "local", "profiles": {}},
                 }
-                temp_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+                write_profiles_payload(temp_path, payload, stamp=False)
                 editor = self._headless_editor("robot_2026_swerve")
                 editor._default_profiles_path = lambda: temp_path
 

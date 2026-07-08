@@ -70,15 +70,6 @@ final class RobotLocalReportCommandGroup {
         "Printed next test.");
   }
 
-  RobotLocalCommand printNtDiagnostics() {
-    return new RobotLocalHostVoidCommand(
-        false,
-        "",
-        "",
-        "printNtDiagnostics",
-        "Printed NT diagnostics.");
-  }
-
   RobotLocalCommand printCanDiagnostics() {
     return new RobotLocalHostVoidCommand(
         false,

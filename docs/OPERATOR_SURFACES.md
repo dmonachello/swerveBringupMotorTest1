@@ -35,7 +35,7 @@ Purpose: Define and visualize device topology and layout.
 Dashboards (Shuffleboard/Glass)
 Purpose: Visualize runtime status and diagnostics.
 - Owns: Layout and visualization only.
-- Uses: NetworkTables data published by robot and PC tools.
+- Uses: supported robot runtime/state data and any dashboard-specific telemetry still owned by the robot.
 
 Shared Layers
 Purpose: Define the shared modules used by multiple surfaces.
@@ -59,7 +59,7 @@ Data Ownership
 Purpose: Specify who owns which data.
 - devices table + profiles + diagram: owned by topology editor or manual JSON edits.
 - Per-profile bridge metadata (groups, bindings, selected device): shared between topology editor, CLI, and runtime tools.
-- Runtime state: owned by robot (REST command server) and published to NT for dashboards.
+- Runtime state: owned by robot (REST command server) and consumed by supported UI/CLI surfaces over REST.
 
 Host vs Robot Context
 Purpose: Prevent "active profile" confusion across surfaces.
@@ -126,7 +126,7 @@ Output and Contracts
 Purpose: List stable contracts and keys.
 - bringup_system.json schema_version 5.
 - bridgeConfig schemaVersion 2.
-- NetworkTables keys remain under bringup/diag/...
+- REST payload schemas and shared host diagnostics models remain stable for supported surfaces.
 
 Tradeoffs
 Purpose: Document known design tradeoffs.

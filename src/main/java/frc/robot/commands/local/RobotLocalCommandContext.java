@@ -41,8 +41,6 @@ public interface RobotLocalCommandContext {
 
   void printNextTest();
 
-  void printNtDiagnostics();
-
   void printCanDiagnostics();
 
   void dumpReport();

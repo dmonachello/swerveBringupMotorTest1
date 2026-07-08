@@ -17,7 +17,7 @@ This document covers:
 
 - the host-side CLI
 - the Bringup Control UI
-- the passive CAN and NetworkTables bridge
+- the passive CAN diagnostics bridge
 - shared Python service/domain modules
 - topology and visibility support
 - test authoring and DSL support
@@ -35,7 +35,7 @@ Purpose: describe the major host-side subsystems in one place.
 The host software is not one single app. It is a set of cooperating Python surfaces and shared modules:
 
 1. `tools/can_nt/can_nt_bridge.py`
-   The runtime host process. It can listen to CAN through CANable, publish diagnostics to NetworkTables, capture PCAP/PCAPNG, monitor console output, and optionally host the CLI or launch the UI workflow around the robot connection.
+   The runtime host process. It can listen to CAN through CANable, feed host-side diagnostics/visibility models, capture PCAP/PCAPNG, monitor console output, and optionally host the CLI or launch the UI workflow around the robot connection.
 2. `tools/can_nt/bridge_cli.py`
    The main command-line operator surface. It owns the Cisco-style CLI experience, command parsing, local config editing, config validation, and many host-side workflows.
 3. `tools/can_nt/bringup_ui.py`
@@ -56,7 +56,7 @@ Purpose: tie the big chunks above to the actual command-line entrypoints.
 There are three practical host app entrypoints a developer usually runs:
 
 1. Bridge CLI
-   This is not a separate executable. It is a mode of the CAN/NT host app.
+   This is not a separate executable. It is a mode of the CAN host app.
 
    Common launch commands:
 
@@ -122,7 +122,7 @@ The host side has three jobs:
 
 - talk to the robot safely
 - manage and inspect local config and test definitions
-- observe the system from the outside through CAN, NetworkTables, logs, and runtime snapshots
+- observe the system from the outside through CAN, logs, and runtime snapshots
 
 Those jobs are split into two kinds of code:
 
@@ -152,7 +152,7 @@ What it does:
 - opens the CANable SLCAN connection
 - reads CAN traffic passively
 - classifies and summarizes observed traffic
-- publishes diagnostics to NetworkTables under `bringup/diag/...`
+- feeds host-owned diagnostics and visibility surfaces
 - optionally writes PCAP or PCAPNG capture output
 - optionally runs console monitoring
 - can expose the CLI workflow in the same host process
@@ -160,7 +160,6 @@ What it does:
 Important supporting modules:
 
 - [tools/can_nt/can_analyzer.py](/abs/path/tools/can_nt/can_analyzer.py)
-- [tools/can_nt/can_nt_publish.py](/abs/path/tools/can_nt/can_nt_publish.py)
 - [tools/can_nt/can_nt_client.py](/abs/path/tools/can_nt/can_nt_client.py)
 - [tools/can_nt/can_reporting.py](/abs/path/tools/can_nt/can_reporting.py)
 - [tools/can_nt/can_pcap.py](/abs/path/tools/can_nt/can_pcap.py)
@@ -413,7 +412,7 @@ Purpose: show how host-side evidence becomes visible to operators.
 There are several observation inputs:
 
 - passive CAN from CANable
-- NetworkTables state and diagnostics
+- host-local visibility and console snapshots
 - robot REST runtime state snapshots
 - robot console/log output
 - local config/topology files
@@ -568,7 +567,7 @@ Examples in this repo:
 
 - `bridge_session.py` for REST command transport
 - CANable and CAN parsing modules under `tools/can_nt/`
-- NetworkTables publishing/client code
+- legacy external protocol publishing/client code when present
 - JSON file IO and path resolution helpers
 - capture/logging adapters such as PCAP output and console monitoring
 

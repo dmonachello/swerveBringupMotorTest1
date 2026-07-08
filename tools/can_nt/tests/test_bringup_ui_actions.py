@@ -17,7 +17,6 @@ from tools.can_nt.bringup_ui import (
     ATTACHMENT_TYPE_ACTIVE_PRESENCE_PROBE,
     BringupControlUI,
     CMD_PRINT_CAN_DIAG,
-    CMD_PRINT_NT_DIAG,
     CMD_SHOW_LIFECYCLE_STATE,
     GROUP_ACTIVE_NAME,
     GROUP_RUN_ARG_GROUP,
@@ -292,7 +291,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
     def test_nt_diagnostics_action_hidden_from_loaded_sections(self) -> None:
         sections = _action_sections()
         flattened = [command for _section, items in sections for _label, command in items]
-        self.assertNotIn(CMD_PRINT_NT_DIAG, flattened)
+        self.assertNotIn("printNTdiag", flattened)
 
     def test_dispatch_host_local_action_handles_can_bus_report(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
@@ -2570,6 +2569,84 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertFalse(ui._state_stale)
         self.assertEqual([], close_calls)
         self.assertFalse(any("robot state stale" in line.lower() for line in output_lines))
+
+    def test_poll_presence_overrides_uses_runtime_presence_confidence(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        applied: list[dict[str, str]] = []
+
+        class _LiveViewStub:
+            def set_presence_overrides(self, overrides):
+                applied.append(dict(overrides))
+
+        ui._iter_live_views = lambda: [_LiveViewStub()]
+        ui._live_enabled_var = _ValueVarStub(True)
+        ui._live_source_var = _StringVarStub("runtime")
+        ui._presence_overrides_file = {}
+        ui._presence_timeline = []
+        ui._latest_runtime_devices = {
+            "falcon 9": {"label": "FALCON 9", "presenceConfidence": 1.0},
+            "sparkmax/neo 25": {"label": "SPARKMAX/NEO 25", "presenceConfidence": 0.2},
+            "lmtsw0": {"label": "lmtSw0", "presenceConfidence": 0.0},
+        }
+
+        ui._poll_presence_overrides()
+
+        self.assertEqual(
+            {
+                "FALCON 9": "HIGH",
+                "SPARKMAX/NEO 25": "LOW",
+                "lmtSw0": "NONE",
+            },
+            applied[-1],
+        )
+
+    def test_collect_console_snapshot_uses_console_monitor_entries(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._console_monitor = type(
+            "ConsoleMonitorStub",
+            (),
+            {
+                "snapshot_entries": staticmethod(
+                    lambda _now: [
+                        type(
+                            "EntryStub",
+                            (),
+                            {
+                                "active": True,
+                                "severity": "WARN",
+                                "event_type": "SPARK_STATUS_TIMEOUT",
+                                "last_message": "device 25 timed out",
+                                "device_label": "SPARKMAX/NEO 25",
+                                "count": 2,
+                            },
+                        )(),
+                        type(
+                            "EntryStub",
+                            (),
+                            {
+                                "active": True,
+                                "severity": "ERROR",
+                                "event_type": "BUS_FAULT_SUSPECTED",
+                                "last_message": "multiple device timeouts",
+                                "device_label": "",
+                                "count": 1,
+                            },
+                        )(),
+                    ]
+                )
+            },
+        )()
+
+        snapshot = ui._collect_console_snapshot()
+
+        device_row = snapshot["devices"]["sparkmax/neo 25"]
+        self.assertTrue(device_row["hasWarn"])
+        self.assertEqual("[WARN] SPARK_STATUS_TIMEOUT: device 25 timed out", device_row["summary"])
+        self.assertEqual(
+            ["[ERROR] BUS_FAULT_SUSPECTED: multiple device timeouts"],
+            snapshot["system"],
+        )
+        self.assertTrue(snapshot["systemConflict"])
 
     def test_handle_close_logs_manual_duty_popup_close_reason(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)

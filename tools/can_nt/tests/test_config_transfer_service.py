@@ -25,6 +25,7 @@ from tools.common.profile_constants import (
     PROFILE_SCHEMA_VERSION,
 )
 from tools.common.profile_io import compute_profiles_hash
+from tools.common.tests.config_api_test_helper import write_profiles_payload
 
 
 class _Plan:
@@ -118,7 +119,7 @@ class ConfigTransferServiceTests(unittest.TestCase):
         payload = _valid_payload()
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "bringup_system.json"
-            path.write_text(json.dumps(payload), encoding="utf-8")
+            write_profiles_payload(path, payload, stamp=False)
             apply_json = json.dumps(
                 {
                     "message": "Config pushed to robot.",

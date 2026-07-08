@@ -5,8 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.google.gson.JsonObject;
-import edu.wpi.first.networktables.NetworkTable;
-import edu.wpi.first.networktables.NetworkTableInstance;
 import java.time.ZoneId;
 import org.junit.jupiter.api.Test;
 
@@ -14,6 +12,7 @@ class BridgeUiSessionCommandsTest {
 
   private static final String CMD_UI_HANDSHAKE = "uiHandshake";
   private static final String CMD_UI_DISCONNECT = "uiDisconnect";
+  private static final String CMD_UI_MONITOR_DISABLE = "uiMonitorDisable";
 
   @Test
   void handshakePopulatesSessionPayload() {
@@ -90,6 +89,31 @@ class BridgeUiSessionCommandsTest {
     assertFalse(result.outJson.contains("session0"));
   }
 
+  @Test
+  void monitorDisableDoesNotRequireProtocolTable() {
+    SessionDeps deps = new SessionDeps();
+    deps.uiProtocolMonitorEnabled = true;
+    BridgeUiSessionCommands commands = new BridgeUiSessionCommands(deps);
+    BridgeUiIngressPolicy.Ingress ingress = new BridgeUiIngressPolicy.Ingress(
+        CMD_UI_MONITOR_DISABLE,
+        new JsonObject(),
+        "clientA",
+        true,
+        false,
+        true,
+        false,
+        false,
+        true,
+        true,
+        false);
+
+    BridgeUiCommandResult result = commands.execute(ingress, 0.0, false);
+
+    assertTrue(result.ok);
+    assertFalse(deps.uiProtocolMonitorEnabled);
+    assertEquals("Protocol monitor disabled.", result.message);
+  }
+
   private static final class SessionDeps implements BridgeUiSessionCommands.Dependencies {
     private String activeClientId = "";
     private boolean uiProtocolMonitorEnabled;
@@ -114,11 +138,6 @@ class BridgeUiSessionCommandsTest {
     @Override
     public void setUiProtocolMonitorEnabled(boolean enabled) {
       this.uiProtocolMonitorEnabled = enabled;
-    }
-
-    @Override
-    public NetworkTable getUiProtocolTable() {
-      return NetworkTableInstance.getDefault().getTable("testSessionCommands");
     }
 
     @Override

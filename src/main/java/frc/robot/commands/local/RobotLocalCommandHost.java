@@ -27,8 +27,6 @@ public interface RobotLocalCommandHost {
 
   void printCANCoder();
 
-  void printNtDiagnostics();
-
   void printCanDiagnostics();
 
   void printBindings();
