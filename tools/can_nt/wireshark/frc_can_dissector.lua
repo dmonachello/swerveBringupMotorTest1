@@ -37,6 +37,8 @@ local f_did = ProtoField.uint8("frccan.device_id", "Device ID", base.DEC) -- Dev
 local f_rtr = ProtoField.bool("frccan.rtr", "Remote Transmission Request", base.NONE) -- RTR flag if present.
 local f_broadcast = ProtoField.bool("frccan.is_broadcast", "Broadcast Message", base.NONE) -- Broadcast/system message marker.
 local f_heartbeat = ProtoField.bool("frccan.is_heartbeat", "RoboRIO Heartbeat", base.NONE) -- Heartbeat frame marker.
+local f_vendor_role = ProtoField.string("frccan.vendor_role", "Observed Vendor Family Role") -- Observed purpose/family role.
+local f_vendor_hint = ProtoField.string("frccan.vendor_hint", "Observed Vendor Hint") -- Additional observed protocol hint.
 
 -- J1939-style PF/PS fields used by CTRE Phoenix protocol (Unverified).
 -- We show these for visibility even when the FRC fields are also decoded.
@@ -65,11 +67,19 @@ local DEVTYPE_MOTOR_CONTROLLER = 2 -- Generic motor controller type.
 local API_CLASS_BROADCAST = 0 -- Broadcast/system API class.
 local API_CLASS_SPEED = 1 -- Example: speed control class.
 local API_CLASS_PERIODIC_STATUS = 6 -- Periodic status frames.
+local API_CLASS_REV_OBSERVED_STATUS = 46 -- Observed REV per-device periodic status family.
+local API_CLASS_REV_OBSERVED_HOUSEKEEPING = 47 -- Observed REV low-rate heartbeat/housekeeping family.
 
 -- J1939 PF/PS values used by CTRE (Unverified).
 local J1939_PF_CONTROL = 0xEF -- CTRE control PDU1 (destination specific).
 local J1939_PF_STATUS = 0xFF -- CTRE status PDU2 (broadcast status pages).
 local J1939_STATUS_PS_MAX = 0x07 -- Status pages 0x00..0x07.
+local J1939_PF_PHOENIX_SENSOR = 0x50 -- Observed CTRE Phoenix passive sensor/status family (Unverified).
+
+-- Observed REV command family indexes (Unverified but strongly supported by capture comparison).
+local REV_CMD_DUTY = 2 -- Observed duty-cycle command family.
+local REV_CMD_VOLTAGE = 5 -- Observed voltage command family.
+local REV_CMD_CURRENT = 6 -- Observed current command family.
 
 -- REV periodic status frame index values (Unverified).
 -- These correspond to "Periodic Status 0..6" used by Spark MAX / Flex devices.
@@ -147,7 +157,7 @@ local f_ctre_aux_stat = ProtoField.uint8("frccan.ctre.aux_status", "CTRE Aux Sta
 -- Register all fields with Wireshark for display.
 frccan.fields = {
     f_ext, f_arb, f_mfg, f_mfg_name, f_dtype, f_dtype_name, f_apic, f_apic_name, f_apix, f_apix_name, f_did,
-    f_rtr, f_broadcast, f_heartbeat, f_pf, f_ps,
+    f_rtr, f_broadcast, f_heartbeat, f_vendor_role, f_vendor_hint, f_pf, f_ps,
     f_rev_applied_out, f_rev_faults, f_rev_sticky_faults, f_rev_is_follower, f_rev_velocity, f_rev_temp,
     f_rev_voltage_raw, f_rev_current_raw, f_rev_position, f_rev_analog_volt, f_rev_analog_vel, f_rev_analog_pos,
     f_rev_alt_vel, f_rev_alt_pos, f_rev_duty_pos, f_rev_duty_angle, f_rev_duty_vel, f_rev_duty_freq,
@@ -199,6 +209,7 @@ local DEVICE_TYPE_NAMES = {
     [11] = "IO Breakout",
     [12] = "Servo Controller",
     [13] = "Color Sensor",
+    [21] = "Vendor Sensor/IMU (Observed)",
     [31] = "Firmware Update",       -- Special update channel.
 }
 
@@ -214,6 +225,8 @@ local API_CLASS_NAMES = {
     [6] = "Periodic Status",
     [7] = "Configuration",
     [8] = "Ack",
+    [46] = "Observed Vendor Status Family",
+    [47] = "Observed Vendor Housekeeping Family",
 }
 
 -- Example API index meanings for motor-controller speed control mode.
@@ -230,6 +243,13 @@ local API_INDEX_SPEED = {
     [8] = "Trusted Set No Ack",
     [10] = "Trusted Set Setpoint No Ack",
     [11] = "Set Setpoint No Ack",
+}
+
+-- REV motor-controller API index names for the observed command family.
+local REV_COMMAND_API_INDEX = {
+    [2] = "Observed Duty-Cycle Command",
+    [5] = "Observed Voltage Command",
+    [6] = "Observed Current Command",
 }
 
 -- Broadcast API index meanings (system-level commands).
@@ -261,6 +281,56 @@ end
 local can_id_f = field_new("can.id") or field_new("can.arbitration_id")
 local can_rtr_f = field_new("can.flags.rtr") or field_new("can.rtr")
 
+local function rev_observed_role(device_type, api_class, api_index, device_id)
+    if device_type ~= DEVTYPE_MOTOR_CONTROLLER then
+        return nil, nil
+    end
+
+    if api_class == API_CLASS_BROADCAST and (
+        api_index == REV_CMD_DUTY or
+        api_index == REV_CMD_VOLTAGE or
+        api_index == REV_CMD_CURRENT
+    ) then
+        return "controller_emitted_command", "Observed REV control family from capture comparison"
+    end
+
+    if device_id == 0 then
+        return "shared_bus_control", "Observed REV deviceId=0 shared/system family"
+    end
+
+    if api_class == API_CLASS_REV_OBSERVED_STATUS then
+        if api_index == 0 then
+            return "device_emitted_primary_status", "Observed REV per-device primary status family"
+        end
+        return "device_emitted_secondary_status", "Observed REV per-device secondary status family"
+    end
+
+    if api_class == API_CLASS_REV_OBSERVED_HOUSEKEEPING and api_index == 0 then
+        return "device_emitted_heartbeat_housekeeping", "Observed REV low-rate heartbeat/housekeeping family"
+    end
+
+    return nil, nil
+end
+
+local function ctre_observed_role(pf, ps, device_type)
+    if pf == J1939_PF_CONTROL then
+        return "controller_or_gateway_control", "Observed CTRE control/gateway family"
+    end
+
+    if pf == J1939_PF_STATUS and ps <= J1939_STATUS_PS_MAX then
+        return "device_emitted_periodic_status", "Observed CTRE periodic status family"
+    end
+
+    if pf == J1939_PF_PHOENIX_SENSOR then
+        if device_type == 21 then
+            return "device_emitted_periodic_sensor_status", "Observed CTRE Phoenix sensor/IMU passive status family"
+        end
+        return "device_emitted_periodic_sensor_status", "Observed CTRE Phoenix passive sensor/status family"
+    end
+
+    return nil, nil
+end
+
 function frccan.dissector(tvb, pinfo, tree)
     -- Resolve the CAN ID for this packet.
     local can_id = can_id_f()
@@ -286,6 +356,14 @@ function frccan.dissector(tvb, pinfo, tree)
     local is_heartbeat = (arb == HEARTBEAT_CAN_ID)
     local pf = bit.band(bit.rshift(arb, 16), 0xFF)
     local ps = bit.band(bit.rshift(arb, 8), 0xFF)
+    local vendor_role = nil
+    local vendor_hint = nil
+
+    if manufacturer == MFG_REV then
+        vendor_role, vendor_hint = rev_observed_role(device_type, api_class, api_index, device_id)
+    elseif manufacturer == MFG_CTRE then
+        vendor_role, vendor_hint = ctre_observed_role(pf, ps, device_type)
+    end
 
     -- Build the main tree for this frame.
     local subtree = tree:add(frccan, "FRC CAN (Ext ID)")
@@ -303,6 +381,9 @@ function frccan.dissector(tvb, pinfo, tree)
     if device_type == DEVTYPE_MOTOR_CONTROLLER and api_class == API_CLASS_SPEED then
         subtree:add(f_apix_name, API_INDEX_SPEED[api_index] or "Unknown")
     end
+    if manufacturer == MFG_REV and device_type == DEVTYPE_MOTOR_CONTROLLER and api_class == API_CLASS_BROADCAST then
+        subtree:add(f_apix_name, REV_COMMAND_API_INDEX[api_index] or "Unknown")
+    end
     if is_broadcast then
         subtree:add(f_apix_name, BROADCAST_API_INDEX[api_index] or "Unknown")
     end
@@ -315,6 +396,12 @@ function frccan.dissector(tvb, pinfo, tree)
     if pf ~= 0x00 or ps ~= 0x00 then
         subtree:add(f_pf, pf)
         subtree:add(f_ps, ps)
+    end
+    if vendor_role then
+        subtree:add(f_vendor_role, vendor_role)
+    end
+    if vendor_hint then
+        subtree:add(f_vendor_hint, vendor_hint)
     end
 
     -- Report Remote Transmission Request flag when available.
@@ -449,6 +536,9 @@ function frccan.dissector(tvb, pinfo, tree)
         if rtr_val and rtr_val.value then
             pinfo.cols.info:append(" [RTR]")
         end
+    end
+    if vendor_role then
+        pinfo.cols.info:append(" [" .. vendor_role .. "]")
     end
 
     -- Append payload data bytes for quick inspection.

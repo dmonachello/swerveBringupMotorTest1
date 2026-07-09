@@ -2,6 +2,19 @@
 
 All notable user-facing changes are documented in this file.
 
+## 2026-07-08
+
+### Added - 2026-07-08
+
+- Added first-pass passive CAN device discovery research artifacts, including a
+  dedicated passive discovery spec, CTRE diagnostic inventory notes, and a REV
+  USB gateway attack plan focused on classifying device-emitted periodic status
+  traffic versus host-originated command and shared bus-control traffic.
+- Added a REV USB bridge conversion tool and regression coverage so USBPcap
+  captures from the REV Hardware Client path can be converted into
+  Wireshark-readable SocketCAN `pcapng` files for the same CAN-family analysis
+  workflow used by direct passive captures.
+
 ## 2026-07-02
 
 ### Improved - 2026-07-02
