@@ -56,6 +56,7 @@ try:
     from tools.can_nt.can_state import SnifferState
     from tools.can_nt.can_tx import start_tx_if_requested
     from tools.can_nt.visibility_provider import VisibilityProvider, SourceInfo
+    from tools.passive_discovery_poc.readers import build_normalized_frame
     from tools.can_nt.visibility_constants import (
         VIS_KEY_SEPARATOR,
         VIS_MS_PER_SEC,
@@ -139,6 +140,7 @@ except ModuleNotFoundError:
     from tools.can_nt.can_state import SnifferState
     from tools.can_nt.can_tx import start_tx_if_requested
     from tools.can_nt.visibility_provider import VisibilityProvider, SourceInfo
+    from tools.passive_discovery_poc.readers import build_normalized_frame
     from tools.can_nt.visibility_constants import (
         VIS_KEY_SEPARATOR,
         VIS_MS_PER_SEC,
@@ -259,6 +261,8 @@ NT_UI_STATE_SELECTED_PROFILE = "state/selectedProfile"
 NT_UI_STATE_ACTIVE_RUNTIME_PROFILE = "state/activeRuntimeProfile"
 NT_UI_MODE_DISABLED = "disabled"
 CAN_MSG_DATA_ATTR = "data"
+CAN_MSG_IS_EXTENDED_ATTR = "is_extended_id"
+CAN_MSG_IS_REMOTE_ATTR = "is_remote_frame"
 
 
 def _print_version_banner() -> None:
@@ -975,6 +979,8 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         msg = item.msg
         arb_id = int(msg.arbitration_id)
         data = bytes(getattr(msg, CAN_MSG_DATA_ATTR, EMPTY_BYTES) or EMPTY_BYTES)
+        is_extended = bool(getattr(msg, CAN_MSG_IS_EXTENDED_ATTR, True))
+        is_rtr = bool(getattr(msg, CAN_MSG_IS_REMOTE_ATTR, False))
         ts_s = item.ts_s
         ts_ms = int(ts_s * VIS_MS_PER_SEC)
 
@@ -994,6 +1000,14 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             ts_ms,
             decoded_key=decoded_key,
             label=label,
+            normalized_frame=build_normalized_frame(
+                timestamp_s=ts_s,
+                can_id=arb_id,
+                data_bytes=data,
+                is_extended=is_extended,
+                is_rtr=is_rtr,
+                observer_source=item.source_id,
+            ),
         )
 
         if item.source_id != primary_source_id:

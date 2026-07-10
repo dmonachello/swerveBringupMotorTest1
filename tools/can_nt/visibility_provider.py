@@ -13,11 +13,13 @@ DESCRIPTION
 """
 
 from dataclasses import dataclass, field
+from collections import deque
 import threading
-from typing import Dict, List, Optional, Tuple, Iterable
+from typing import Deque, Dict, Iterable, List, Optional, Tuple
 
 from tools.can_nt.can_frc_defs import decode_frc_ext_id_full
 from tools.common.can_id import decode_frc_ext_id as decode_shared_frc_ext_id
+from tools.passive_discovery_poc.models import NormalizedFrame
 from tools.can_nt.visibility_constants import (
     VIS_KEY_AGE_MS,
     VIS_KEY_API_CLASS,
@@ -71,6 +73,7 @@ from tools.can_nt.visibility_constants import (
     VIS_HEX_PREFIX,
     VIS_HEX_FORMAT,
     VIS_RETENTION_MS_DEFAULT,
+    VIS_RECENT_FRAME_HISTORY_DEFAULT,
     VIS_TIMEOUT_MS_DEFAULT,
 )
 
@@ -166,6 +169,7 @@ class VisibilityProvider:
         *,
         timeout_ms: int = VIS_TIMEOUT_MS_DEFAULT,
         observed_retention_ms: int = VIS_RETENTION_MS_DEFAULT,
+        recent_frame_history_limit: int = VIS_RECENT_FRAME_HISTORY_DEFAULT,
     ) -> None:
         self._sources: Dict[str, SourceInfo] = {}
         self._source_order: List[str] = []
@@ -175,6 +179,8 @@ class VisibilityProvider:
         self._next_discovered_label = DISCOVERED_LABEL_START
         self._timeout_ms = int(timeout_ms)
         self._observed_retention_ms = int(observed_retention_ms)
+        self._recent_frame_history_limit = max(VIS_INT_ONE, int(recent_frame_history_limit))
+        self._recent_frames: Deque[NormalizedFrame] = deque(maxlen=self._recent_frame_history_limit)
         self._lock = threading.Lock()
 
     def set_sources(self, sources: Iterable[SourceInfo]) -> None:
@@ -255,6 +261,7 @@ class VisibilityProvider:
         ts_ms: int,
         decoded_key: Optional[str] = None,
         label: Optional[str] = None,
+        normalized_frame: Optional[NormalizedFrame] = None,
     ) -> None:
         """
         NAME
@@ -295,6 +302,16 @@ class VisibilityProvider:
                 raw_state.first_seen_ms = ts_ms
             raw_state.last_seen_ms = ts_ms
             raw_state.msg_count += VIS_INT_ONE
+            if normalized_frame is not None:
+                self._recent_frames.append(normalized_frame)
+
+    def recent_frames(self) -> List[NormalizedFrame]:
+        """
+        NAME
+            recent_frames - Return the bounded recent normalized-frame history.
+        """
+        with self._lock:
+            return list(self._recent_frames)
 
     def resolve_label(self, identity_key: str, suggested_label: Optional[str] = None) -> str:
         """

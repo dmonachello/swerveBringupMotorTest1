@@ -38,6 +38,10 @@ from tools.can_nt.bringup_ui import (
     _format_runtime_probe_score,
     _merge_host_ui_actions,
 )
+from tools.can_nt.passive_discovery_integration_service import (
+    ENGINE_LABEL_LEGACY,
+    ENGINE_LABEL_NEW,
+)
 from tools.can_nt.dsl_reference import (
     TEST_SOURCE_REFERENCE_CATEGORY_DEVICES,
     TEST_SOURCE_REFERENCE_OVERVIEW,
@@ -152,6 +156,18 @@ class _PanelStub:
             self.bg = kwargs["bg"]
         if "highlightbackground" in kwargs:
             self.highlightbackground = kwargs["highlightbackground"]
+
+
+class _LiveViewTitleStub:
+    def __init__(self) -> None:
+        self.title_text = ""
+        self.fit_calls = 0
+
+    def set_title_text(self, title_text: str) -> None:
+        self.title_text = title_text
+
+    def schedule_fit_to_window(self) -> None:
+        self.fit_calls += 1
 
 
 class _ListboxStub:
@@ -326,6 +342,10 @@ class BringupUiActionMetadataTests(unittest.TestCase):
     def test_test_source_command_hidden_from_left_rail_but_tracked_in_tests_activity(self) -> None:
         self.assertIn("printSelectedTestSource", HIDDEN_LEFT_RAIL_COMMANDS)
         self.assertIn("printselectedtestsource", TEST_ACTIVITY_COMMANDS)
+
+    def test_incremental_add_commands_hidden_from_left_rail(self) -> None:
+        self.assertIn("addMotor", HIDDEN_LEFT_RAIL_COMMANDS)
+        self.assertIn("addAll", HIDDEN_LEFT_RAIL_COMMANDS)
 
     def test_print_next_command_hidden_from_left_rail_but_tracked_in_tests_activity(self) -> None:
         self.assertIn("printNextTest", HIDDEN_LEFT_RAIL_COMMANDS)
@@ -533,6 +553,65 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertEqual(2, len(rows))
         self.assertFalse(rows[0]["invalid"])
         self.assertFalse(rows[1]["invalid"])
+
+    def test_refresh_profile_devices_restores_new_engine_label_after_profile_none_startup(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._profile_devices = {}
+        ui._visibility_provider = None
+        ui._visibility_last_update = 0.0
+        ui._evidence_engine_status = {
+            "engineLabel": "MIXED",
+            "sections": {
+                "profileInventory": "NEW",
+                "passive": "NEW",
+            },
+        }
+        ui._evidence_engine_banner_var = _StringVarStub("")
+
+        ui._refresh_profile_devices(PROFILE_NONE)
+        self.assertEqual(
+            ENGINE_LABEL_NEW,
+            ui._evidence_engine_status["sections"]["profileInventory"],
+        )
+
+        ui._refresh_profile_devices("test_minimal_25_9")
+        self.assertEqual(
+            ENGINE_LABEL_NEW,
+            ui._evidence_engine_status["sections"]["profileInventory"],
+        )
+        self.assertIn("profileInventory=NEW", ui._evidence_engine_banner_var.get())
+        self.assertIn("presenceCheck=NEW", ui._evidence_engine_banner_var.get())
+        self.assertIn("passive=NEW", ui._evidence_engine_banner_var.get())
+        self.assertIn("console=NEW", ui._evidence_engine_banner_var.get())
+        self.assertIn("probe=NEW", ui._evidence_engine_banner_var.get())
+        self.assertIn("manual=NEW", ui._evidence_engine_banner_var.get())
+        self.assertIn("topologyView=NEW", ui._evidence_engine_banner_var.get())
+        self.assertIn("interpretation=NEW", ui._evidence_engine_banner_var.get())
+        self.assertIn("Evidence Engine: NEW", ui._evidence_engine_banner_var.get())
+
+    def test_set_evidence_engine_section_label_updates_live_view_title_when_overall_status_changes(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._evidence_engine_status = {
+            "engineLabel": "MIXED",
+            "sections": {
+                "profileInventory": "NEW",
+                "presenceCheck": "NEW",
+                "passive": "NEW",
+                "console": "NEW",
+                "probe": "NEW",
+                "manual": "NEW",
+                "topologyView": "LEGACY",
+                "interpretation": "LEGACY",
+            },
+        }
+        ui._evidence_engine_banner_var = _StringVarStub("")
+        ui._evidence_live_view = _LiveViewTitleStub()
+
+        ui._set_evidence_engine_section_label("topologyView", ENGINE_LABEL_NEW)
+        ui._set_evidence_engine_section_label("interpretation", ENGINE_LABEL_NEW)
+
+        self.assertEqual("Device Evidence [NEW]", ui._evidence_live_view.title_text)
+        self.assertIn("Evidence Engine: NEW", ui._evidence_engine_banner_var.get())
 
     def test_clear_test_selection_ui_clears_current_test_and_lists(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
@@ -1174,6 +1253,23 @@ class BringupUiActionMetadataTests(unittest.TestCase):
 
         self.assertTrue(ui._activate_scope_button.disabled)
 
+    def test_on_right_notebook_changed_fits_evidence_topology_when_switching_tabs(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._last_right_tab_text = "Output"
+        ui._current_right_tab_text = lambda: "Evidence"
+        ui._handle_tests_boundary_transition = lambda _previous, _current: None
+        ui._sync_test_selection_visibility = lambda: None
+        ui._refresh_scope_context_label = lambda: None
+        ui._refresh_selected_test_scope_status = lambda: None
+        ui._refresh_evidence_view = lambda: None
+        ui._evidence_live_view = _LiveViewTitleStub()
+        ui._live_view = None
+        ui._visibility_live_view = None
+
+        ui._on_right_notebook_changed(None)
+
+        self.assertEqual(1, ui._evidence_live_view.fit_calls)
+
     def test_live_runtime_notice_suppresses_lifecycle_prompt_in_manual_mode(self) -> None:
         class _LiveView:
             def __init__(self) -> None:
@@ -1672,6 +1768,56 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertFalse(ui._evidence_probe_pending)
         self.assertEqual(1, ui._evidence_probe_complete_count)
         self.assertIn("refresh", refresh_calls)
+        self.assertIn("runtime", refresh_calls)
+
+    def test_add_all_ack_requests_runtime_refresh(self) -> None:
+        refresh_calls = []
+
+        class _Tracker:
+            def is_pending(self) -> bool:
+                return False
+
+            def handle_event(self, _event) -> None:
+                return None
+
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._runtime_state_pending_seq = None
+        ui._is_handshake_required = lambda _event: False
+        ui._handle_handshake_required = lambda: None
+        ui._is_owner_required = lambda _event: False
+        ui._handle_owner_required = lambda: None
+        ui._notify_ui_failure = lambda *_args, **_kwargs: None
+        ui._append_output = lambda _line: None
+        ui._append_test_output = lambda _line: None
+        ui._apply_runtime_group_command_payload = lambda _data: None
+        ui._apply_robot_profile_context_from_command_event = lambda *_args: None
+        ui._remember_out_line = lambda _line: None
+        ui._apply_live_runtime_notice_from_ack = lambda *_args: None
+        ui.after_idle = lambda callback, *args, **kwargs: callback(*args, **kwargs)
+        ui._tracker = _Tracker()
+        ui._log_poll_seq = None
+        ui._log_poll_inflight = False
+        ui._last_cmd = ("addAll", {})
+        ui._pending_tests_boundary_transition = None
+        ui._request_runtime_state_refresh = lambda: refresh_calls.append("runtime")
+        ui._is_test_activity_command = lambda _name: False
+
+        ui._handle_tcp_response(
+            BridgeEvent(
+                type="ack",
+                seq=25,
+                name="addAll",
+                status="ok",
+                message="Added all devices.",
+                text="",
+                json_text="",
+                ts=0.0,
+                session_id="",
+                state={},
+                raw={},
+            )
+        )
+
         self.assertIn("runtime", refresh_calls)
 
     def test_activate_scope_from_tests_uses_selected_test_lifecycle_path(self) -> None:

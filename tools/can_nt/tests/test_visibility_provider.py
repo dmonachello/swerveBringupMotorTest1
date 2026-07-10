@@ -21,6 +21,7 @@ from tools.can_nt.visibility_constants import (
     VIS_KEY_UNEXPECTED,
     VIS_SCOPE_BOTH,
 )
+from tools.passive_discovery_poc.models import NormalizedFrame
 from tools.can_nt.visibility_provider import SourceInfo, VisibilityProvider
 
 
@@ -34,6 +35,7 @@ TEST_EXPECTED_IDENTITY = "1:2:9"
 TEST_DISCOVERED_IDENTITY = "99:88:77"
 TEST_DISCOVERED_LABEL = "UNPROFILED_DEVICE_1"
 TEST_RENAMED_LABEL = "rear-can-observer"
+TEST_OBSERVER_SOURCE = "src0"
 
 
 class VisibilityProviderTests(unittest.TestCase):
@@ -159,6 +161,37 @@ class VisibilityProviderTests(unittest.TestCase):
 
         self.assertEqual(source_metric[VIS_KEY_FRAMES_PER_SEC], 0.0)
         self.assertEqual(raw_id[VIS_KEY_FRAMES_PER_SEC], 0.0)
+
+    def test_recent_frames_retains_normalized_frame_history(self) -> None:
+        provider = self._build_provider()
+        frame = NormalizedFrame(
+            timestamp_s=1.25,
+            can_id=0,
+            dlc=8,
+            data_hex="0011223344556677",
+            is_extended=True,
+            is_rtr=False,
+            manufacturer=5,
+            device_type=2,
+            api_class=46,
+            api_index=0,
+            device_id=25,
+            observer_source=TEST_OBSERVER_SOURCE,
+        )
+
+        provider.ingest_frame(
+            TEST_SOURCE_ID,
+            arb_id=0,
+            ts_ms=TEST_SEEN_MS,
+            decoded_key="5:2:25",
+            label="SPARKMAX/NEO 25",
+            normalized_frame=frame,
+        )
+
+        recent = provider.recent_frames()
+
+        self.assertEqual(1, len(recent))
+        self.assertEqual(frame, recent[0])
 
 
 if __name__ == "__main__":

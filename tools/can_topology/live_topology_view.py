@@ -19,6 +19,36 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import tkinter as tk
 from tkinter import ttk
 
+from tools.can_nt.passive_discovery_integration_service import (
+    DETAIL_SNAPSHOT_APPLIED_DUTY,
+    DETAIL_SNAPSHOT_CMD_DUTY,
+    DETAIL_SNAPSHOT_CURRENT_A,
+    DETAIL_SNAPSHOT_CURRENT_AVG_A,
+    DETAIL_SNAPSHOT_CURRENT_NONZERO,
+    DETAIL_SNAPSHOT_CURRENT_PEAK_A,
+    DETAIL_SNAPSHOT_CURRENT_SAMPLES,
+    DETAIL_SNAPSHOT_FULL_PROBE_AGE,
+    DETAIL_SNAPSHOT_FULL_PROBE_BUCKET,
+    DETAIL_SNAPSHOT_FULL_PROBE_MESSAGE,
+    DETAIL_SNAPSHOT_FULL_PROBE_SCORE,
+    DETAIL_SNAPSHOT_FULL_PROBE_STATUS,
+    DETAIL_SNAPSHOT_LAST_SEEN,
+    DETAIL_SNAPSHOT_LIFECYCLE_STATE,
+    DETAIL_SNAPSHOT_NOT_TESTABLE_REASON,
+    DETAIL_SNAPSHOT_OVERRIDE_ACTIVE,
+    DETAIL_SNAPSHOT_OVERRIDE_FAILURE,
+    DETAIL_SNAPSHOT_OVERRIDE_ORIGINATED,
+    DETAIL_SNAPSHOT_POSITION_DELTA_ROT,
+    DETAIL_SNAPSHOT_POSITION_ROT,
+    DETAIL_SNAPSHOT_PRESENCE,
+    DETAIL_SNAPSHOT_PRESENCE_AGE,
+    DETAIL_SNAPSHOT_PRESENCE_SOURCE,
+    DETAIL_SNAPSHOT_PRESENCE_STATUS,
+    DETAIL_SNAPSHOT_TEMP_C,
+    DETAIL_SNAPSHOT_TESTABLE,
+    DETAIL_SNAPSHOT_VEL_RPM,
+    build_runtime_device_detail_snapshot,
+)
 from tools.common.config_api.repository import ConfigRepository
 from tools.common.paths import (
     repo_root,
@@ -288,6 +318,7 @@ RUNTIME_PROBE_AGE_STALE = "stale"
 RUNTIME_PROBE_AGE_AGING = "aging"
 RUNTIME_PROBE_AGE_FRESH = "fresh"
 TITLE_TEXT_DEFAULT = "Live Topology"
+FIT_RETRY_DELAY_MS = 25
 SELECTION_FRAME_TEXT = "Selection"
 ACTIVE_GROUP_NAME = "active-group"
 ACTIVE_GROUP_FRAME_TEXT = "Active Group"
@@ -924,11 +955,14 @@ class LiveTopologyView(ttk.Frame):
         on_selection_changed: Optional[Callable[[Optional[LiveNode]], None]] = None,
         show_selection_panel: bool = True,
         title_text: str = TITLE_TEXT_DEFAULT,
+        fit_on_load: bool = False,
     ) -> None:
         super().__init__(parent)
         self._profile_name = profile_name
         self._title_text = str(title_text or TITLE_TEXT_DEFAULT)
         self._show_selection_panel = bool(show_selection_panel)
+        self._fit_on_load = bool(fit_on_load)
+        self._fit_pending = False
         self._nodes: List[LiveNode] = []
         self._diagram_meta: Dict[str, object] = {}
         self._runtime_state: Dict[str, Dict[str, object]] = {}
@@ -985,9 +1019,8 @@ class LiveTopologyView(ttk.Frame):
 
         header = ttk.Frame(self)
         header.pack(fill="x", padx=8, pady=(8, 0))
-        ttk.Label(header, text=self._title_text, font=("Trebuchet MS", 13)).pack(
-            side="left"
-        )
+        self._title_label = ttk.Label(header, text=self._title_text, font=("Trebuchet MS", 13))
+        self._title_label.pack(side="left")
         self._status_label = ttk.Label(header, text="Profile: --")
         self._status_label.pack(side="left", padx=(12, 0))
         filter_frame = ttk.Frame(header)
@@ -1262,6 +1295,37 @@ class LiveTopologyView(ttk.Frame):
 
         self.reload_profile(profile_name)
 
+    def set_title_text(self, title_text: str) -> None:
+        """
+        NAME
+            set_title_text - Update the visible topology panel title text.
+        """
+        self._title_text = str(title_text or TITLE_TEXT_DEFAULT)
+        self._title_label.configure(text=self._title_text)
+
+    def schedule_fit_to_window(self) -> None:
+        """
+        NAME
+            schedule_fit_to_window - Fit the diagram after geometry settles.
+        """
+        self._fit_pending = True
+        self.after_idle(self._apply_pending_fit_to_window)
+
+    def _apply_pending_fit_to_window(self) -> None:
+        """
+        NAME
+            _apply_pending_fit_to_window - Apply one deferred fit-to-window request.
+        """
+        if not self._fit_pending:
+            return
+        width = max(self._canvas.winfo_width(), 1)
+        height = max(self._canvas.winfo_height(), 1)
+        if width <= 1 or height <= 1:
+            self.after(FIT_RETRY_DELAY_MS, self._apply_pending_fit_to_window)
+            return
+        self._fit_pending = False
+        self._fit_to_window()
+
     def reload_profile(self, profile_name: Optional[str] = None) -> None:
         """
         NAME
@@ -1347,6 +1411,8 @@ class LiveTopologyView(ttk.Frame):
         self._bridge_groups = parse_bridge_groups(payload, self._profile_name)
         self._update_details()
         self._redraw()
+        if self._fit_on_load:
+            self.schedule_fit_to_window()
 
     def _bind_vertical_mousewheel(self, widget: tk.Widget, canvas: tk.Canvas) -> None:
         """
@@ -2163,130 +2229,38 @@ class LiveTopologyView(ttk.Frame):
         live = self._runtime_state.get(node.label.lower())
         manual_observation = self._manual_test_observations.get(node.label.strip().lower(), {})
         if live:
-            now_ms = int(time.time() * 1000)
-            presence = live.get("presenceConfidence")
-            last_seen = live.get("lastSeenMs")
-            presence_check = _runtime_presence_check_attachment(live)
-            probe = _runtime_active_probe_attachment(live)
-            lifecycle_state = str(live.get("lifecycleState", "--")).strip() or "--"
-            testable = live.get("testable")
-            override_active = live.get("overrideActive")
-            override_originated = live.get("overrideOriginated")
-            override_failure = live.get("overrideFailure")
-            not_testable_reason = str(live.get("notTestableReason", "--")).strip() or "--"
-            current_a = _runtime_display_current_a(live)
-            current_avg_a = _runtime_device_field(live, RUNTIME_KEY_CURRENT_AVG_A)
-            current_peak_a = _runtime_device_field(live, RUNTIME_KEY_CURRENT_PEAK_A)
-            current_nonzero = _runtime_device_field(live, RUNTIME_KEY_CURRENT_NONZERO_RATIO)
-            current_samples = _runtime_device_field(live, RUNTIME_KEY_CURRENT_SAMPLE_COUNT)
-            cmd_duty = _runtime_device_field(live, "cmdDuty")
-            applied_duty = _runtime_device_field(live, "appliedDuty")
-            vel_rpm = _runtime_device_field(live, "velRpm")
-            position_rot = _runtime_device_field(live, RUNTIME_KEY_POSITION_ROT)
-            temp_c = _runtime_device_field(live, "tempC")
-            position_delta_rot = None
-            if _manual_observation_is_live(manual_observation):
-                position_delta_rot = manual_observation.get("positionDeltaRot")
-                max_abs_position_delta_rot = manual_observation.get("maxAbsPositionDeltaRot")
-                if (
-                    not isinstance(position_delta_rot, (int, float))
-                    and isinstance(max_abs_position_delta_rot, (int, float))
-                ):
-                    position_delta_rot = max_abs_position_delta_rot
-            self._detail_vars[DETAIL_KEY_PRESENCE].set(
-                f"{float(presence):.2f}" if isinstance(presence, (int, float)) else "--"
+            detail_snapshot = build_runtime_device_detail_snapshot(
+                live,
+                manual_observation=manual_observation,
+                now_s=time.time(),
             )
-            presence_status = (
-                str(presence_check.get(RUNTIME_KEY_PRESENCE_CHECK_STATUS, "--")).strip()
-                if isinstance(presence_check, dict)
-                else "--"
-            )
-            presence_source = (
-                str(presence_check.get(RUNTIME_KEY_PRESENCE_CHECK_SOURCE, "--")).strip()
-                if isinstance(presence_check, dict)
-                else "--"
-            )
-            presence_age = _runtime_presence_age_text(live) if isinstance(live, dict) else "--"
-            full_probe_bucket = (
-                str(probe.get(RUNTIME_KEY_ACTIVE_PROBE_BUCKET, "--")).strip()
-                if isinstance(probe, dict)
-                else "--"
-            )
-            full_probe_age = _runtime_probe_age_text(live) if isinstance(live, dict) else "--"
-            full_probe_status = (
-                str(probe.get(RUNTIME_KEY_ACTIVE_PROBE_STATUS, "--")).strip()
-                if isinstance(probe, dict)
-                else "--"
-            )
-            full_probe_message = (
-                str(probe.get(RUNTIME_KEY_ACTIVE_PROBE_MESSAGE, "--")).strip()
-                if isinstance(probe, dict)
-                else "--"
-            )
-            full_probe_score = "--"
-            if isinstance(probe, dict):
-                score_value = probe.get(RUNTIME_KEY_ACTIVE_PROBE_SCORE)
-                max_score_value = probe.get(RUNTIME_KEY_ACTIVE_PROBE_MAX_SCORE)
-                if isinstance(score_value, (int, float)) and isinstance(max_score_value, (int, float)):
-                    full_probe_score = f"{int(score_value)}/{int(max_score_value)}"
-                elif isinstance(score_value, (int, float)):
-                    full_probe_score = str(int(score_value))
-            self._detail_vars[DETAIL_KEY_PRESENCE_STATUS].set(presence_status or "--")
-            self._detail_vars[DETAIL_KEY_PRESENCE_AGE].set(presence_age)
-            self._detail_vars[DETAIL_KEY_PRESENCE_SOURCE].set(presence_source or "--")
-            self._detail_vars[DETAIL_KEY_FULL_PROBE_BUCKET].set(full_probe_bucket or "--")
-            self._detail_vars[DETAIL_KEY_FULL_PROBE_AGE].set(full_probe_age)
-            self._detail_vars[DETAIL_KEY_FULL_PROBE_SCORE].set(full_probe_score)
-            self._detail_vars[DETAIL_KEY_FULL_PROBE_STATUS].set(full_probe_status or "--")
-            self._detail_vars[DETAIL_KEY_FULL_PROBE_MESSAGE].set(full_probe_message or "--")
-            self._detail_vars[DETAIL_KEY_LIFECYCLE_STATE].set(lifecycle_state)
-            self._detail_vars[DETAIL_KEY_TESTABLE].set("yes" if bool(testable) else "no")
-            self._detail_vars[DETAIL_KEY_OVERRIDE_ACTIVE].set(
-                "yes" if bool(override_active) else "no"
-            )
-            self._detail_vars[DETAIL_KEY_OVERRIDE_ORIGINATED].set(
-                "yes" if bool(override_originated) else "no"
-            )
-            self._detail_vars[DETAIL_KEY_OVERRIDE_FAILURE].set(
-                "yes" if bool(override_failure) else "no"
-            )
-            self._detail_vars[DETAIL_KEY_NOT_TESTABLE_REASON].set(not_testable_reason)
-            self._detail_vars[DETAIL_KEY_LAST_SEEN].set(_format_last_seen(last_seen, now_ms))
-            self._detail_vars[DETAIL_KEY_CURRENT_A].set(
-                f"{float(current_a):.2f}" if isinstance(current_a, (int, float)) else "--"
-            )
-            self._detail_vars[DETAIL_KEY_CURRENT_AVG_A].set(
-                f"{float(current_avg_a):.2f}"
-                if isinstance(current_avg_a, (int, float))
-                else "--"
-            )
-            self._detail_vars[DETAIL_KEY_CURRENT_PEAK_A].set(
-                f"{float(current_peak_a):.2f}"
-                if isinstance(current_peak_a, (int, float))
-                else "--"
-            )
-            self._detail_vars[DETAIL_KEY_CURRENT_NONZERO].set(
-                f"{float(current_nonzero):.2f}"
-                if isinstance(current_nonzero, (int, float))
-                else "--"
-            )
-            self._detail_vars[DETAIL_KEY_CURRENT_SAMPLES].set(
-                str(int(current_samples))
-                if isinstance(current_samples, (int, float))
-                else "--"
-            )
-            self._detail_vars[DETAIL_KEY_CMD_DUTY].set(
-                f"{float(cmd_duty):.2f}" if isinstance(cmd_duty, (int, float)) else "--"
-            )
-            self._detail_vars[DETAIL_KEY_APPLIED_DUTY].set(
-                f"{float(applied_duty):.2f}" if isinstance(applied_duty, (int, float)) else "--"
-            )
-            self._detail_vars[DETAIL_KEY_VEL_RPM].set(self._format_group_rpm(vel_rpm))
-            self._detail_vars[DETAIL_KEY_POSITION_ROT].set(self._format_group_rot(position_rot))
-            self._detail_vars[DETAIL_KEY_POSITION_DELTA_ROT].set(self._format_group_rot(position_delta_rot))
-            self._detail_vars[DETAIL_KEY_TEMP_C].set(
-                f"{float(temp_c):.1f}" if isinstance(temp_c, (int, float)) else "--"
-            )
+            self._detail_vars[DETAIL_KEY_PRESENCE].set(detail_snapshot[DETAIL_SNAPSHOT_PRESENCE] or "--")
+            self._detail_vars[DETAIL_KEY_PRESENCE_STATUS].set(detail_snapshot[DETAIL_SNAPSHOT_PRESENCE_STATUS] or "--")
+            self._detail_vars[DETAIL_KEY_PRESENCE_AGE].set(detail_snapshot[DETAIL_SNAPSHOT_PRESENCE_AGE] or "--")
+            self._detail_vars[DETAIL_KEY_PRESENCE_SOURCE].set(detail_snapshot[DETAIL_SNAPSHOT_PRESENCE_SOURCE] or "--")
+            self._detail_vars[DETAIL_KEY_FULL_PROBE_BUCKET].set(detail_snapshot[DETAIL_SNAPSHOT_FULL_PROBE_BUCKET] or "--")
+            self._detail_vars[DETAIL_KEY_FULL_PROBE_AGE].set(detail_snapshot[DETAIL_SNAPSHOT_FULL_PROBE_AGE] or "--")
+            self._detail_vars[DETAIL_KEY_FULL_PROBE_SCORE].set(detail_snapshot[DETAIL_SNAPSHOT_FULL_PROBE_SCORE] or "--")
+            self._detail_vars[DETAIL_KEY_FULL_PROBE_STATUS].set(detail_snapshot[DETAIL_SNAPSHOT_FULL_PROBE_STATUS] or "--")
+            self._detail_vars[DETAIL_KEY_FULL_PROBE_MESSAGE].set(detail_snapshot[DETAIL_SNAPSHOT_FULL_PROBE_MESSAGE] or "--")
+            self._detail_vars[DETAIL_KEY_LIFECYCLE_STATE].set(detail_snapshot[DETAIL_SNAPSHOT_LIFECYCLE_STATE] or "--")
+            self._detail_vars[DETAIL_KEY_TESTABLE].set(detail_snapshot[DETAIL_SNAPSHOT_TESTABLE] or "--")
+            self._detail_vars[DETAIL_KEY_OVERRIDE_ACTIVE].set(detail_snapshot[DETAIL_SNAPSHOT_OVERRIDE_ACTIVE] or "--")
+            self._detail_vars[DETAIL_KEY_OVERRIDE_ORIGINATED].set(detail_snapshot[DETAIL_SNAPSHOT_OVERRIDE_ORIGINATED] or "--")
+            self._detail_vars[DETAIL_KEY_OVERRIDE_FAILURE].set(detail_snapshot[DETAIL_SNAPSHOT_OVERRIDE_FAILURE] or "--")
+            self._detail_vars[DETAIL_KEY_NOT_TESTABLE_REASON].set(detail_snapshot[DETAIL_SNAPSHOT_NOT_TESTABLE_REASON] or "--")
+            self._detail_vars[DETAIL_KEY_LAST_SEEN].set(detail_snapshot[DETAIL_SNAPSHOT_LAST_SEEN] or "--")
+            self._detail_vars[DETAIL_KEY_CURRENT_A].set(detail_snapshot[DETAIL_SNAPSHOT_CURRENT_A] or "--")
+            self._detail_vars[DETAIL_KEY_CURRENT_AVG_A].set(detail_snapshot[DETAIL_SNAPSHOT_CURRENT_AVG_A] or "--")
+            self._detail_vars[DETAIL_KEY_CURRENT_PEAK_A].set(detail_snapshot[DETAIL_SNAPSHOT_CURRENT_PEAK_A] or "--")
+            self._detail_vars[DETAIL_KEY_CURRENT_NONZERO].set(detail_snapshot[DETAIL_SNAPSHOT_CURRENT_NONZERO] or "--")
+            self._detail_vars[DETAIL_KEY_CURRENT_SAMPLES].set(detail_snapshot[DETAIL_SNAPSHOT_CURRENT_SAMPLES] or "--")
+            self._detail_vars[DETAIL_KEY_CMD_DUTY].set(detail_snapshot[DETAIL_SNAPSHOT_CMD_DUTY] or "--")
+            self._detail_vars[DETAIL_KEY_APPLIED_DUTY].set(detail_snapshot[DETAIL_SNAPSHOT_APPLIED_DUTY] or "--")
+            self._detail_vars[DETAIL_KEY_VEL_RPM].set(detail_snapshot[DETAIL_SNAPSHOT_VEL_RPM] or "--")
+            self._detail_vars[DETAIL_KEY_POSITION_ROT].set(detail_snapshot[DETAIL_SNAPSHOT_POSITION_ROT] or "--")
+            self._detail_vars[DETAIL_KEY_POSITION_DELTA_ROT].set(detail_snapshot[DETAIL_SNAPSHOT_POSITION_DELTA_ROT] or "--")
+            self._detail_vars[DETAIL_KEY_TEMP_C].set(detail_snapshot[DETAIL_SNAPSHOT_TEMP_C] or "--")
         else:
             self._detail_vars[DETAIL_KEY_PRESENCE].set("--")
             self._detail_vars[DETAIL_KEY_PRESENCE_STATUS].set("--")

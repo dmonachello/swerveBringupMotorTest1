@@ -56,12 +56,14 @@ class _PanelStub:
 
 
 class _CanvasStub:
-    def __init__(self) -> None:
+    def __init__(self, width: int = 800, height: int = 600) -> None:
         self.mark = None
         self.drag = None
         self.xview = None
         self.yview = None
         self.scrollregion = "0 0 1000 1000"
+        self.width = width
+        self.height = height
 
     def scan_mark(self, x: int, y: int) -> None:
         self.mark = (x, y)
@@ -80,10 +82,10 @@ class _CanvasStub:
             self.scrollregion = " ".join(str(value) for value in region)
 
     def winfo_width(self) -> int:
-        return 800
+        return self.width
 
     def winfo_height(self) -> int:
-        return 600
+        return self.height
 
     def canvasx(self, value: int) -> float:
         return float(value)
@@ -125,6 +127,8 @@ class LiveTopologyViewTests(unittest.TestCase):
     def _make_view(self) -> live_view_module.LiveTopologyView:
         view = live_view_module.LiveTopologyView.__new__(live_view_module.LiveTopologyView)
         view._profile_name = "demo"
+        view._fit_on_load = False
+        view._fit_pending = False
         view._nodes = []
         view._diagram_meta = {}
         view._bridge_groups = []
@@ -163,6 +167,8 @@ class LiveTopologyViewTests(unittest.TestCase):
         }
         view._status_label = _LabelStub()
         view._canvas = _CanvasStub()
+        view.after_idle = lambda callback: callback()
+        view.after = lambda _delay_ms, callback: callback()
         view.update_idletasks = lambda: None
         view._redraw = lambda *_args, **_kwargs: None
         return view
@@ -434,6 +440,35 @@ class LiveTopologyViewTests(unittest.TestCase):
         self.assertLessEqual(view._zoom, live_view_module.ZOOM_MAX)
         self.assertIsNotNone(view._canvas.xview)
         self.assertEqual(view._canvas.yview, 0.0)
+
+    def test_schedule_fit_to_window_runs_deferred_fit_once_geometry_exists(self) -> None:
+        view = self._make_view()
+        fit_calls = []
+        view._fit_to_window = lambda: fit_calls.append(True)
+
+        view.schedule_fit_to_window()
+
+        self.assertEqual([True], fit_calls)
+        self.assertFalse(view._fit_pending)
+
+    def test_pending_fit_retries_with_timed_callback_when_canvas_is_not_ready(self) -> None:
+        view = self._make_view()
+        view._canvas = _CanvasStub(width=1, height=1)
+        retry_calls = []
+        fit_calls = []
+
+        def _after(delay_ms: int, callback) -> None:
+            retry_calls.append(delay_ms)
+
+        view.after = _after
+        view._fit_pending = True
+        view._fit_to_window = lambda: fit_calls.append(True)
+
+        view._apply_pending_fit_to_window()
+
+        self.assertEqual([live_view_module.FIT_RETRY_DELAY_MS], retry_calls)
+        self.assertEqual([], fit_calls)
+        self.assertTrue(view._fit_pending)
 
     def test_selected_canvas_shape_overlay_draws_halo_and_outline(self) -> None:
         canvas = _ShapeCanvasStub()
