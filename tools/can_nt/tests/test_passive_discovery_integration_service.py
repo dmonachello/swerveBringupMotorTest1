@@ -10,6 +10,7 @@ import unittest
 from tools.can_nt.passive_discovery_integration_service import (
     ENGINE_LABEL_NEW,
     SECTION_CONSOLE,
+    SECTION_ENRICHMENT,
     SECTION_INTERPRETATION,
     SECTION_MANUAL,
     SECTION_PASSIVE,
@@ -17,6 +18,7 @@ from tools.can_nt.passive_discovery_integration_service import (
     SECTION_PROFILE_INVENTORY,
     SECTION_PROBE,
     SECTION_TOPOLOGY_VIEW,
+    build_enrichment_run_snapshot,
     build_console_snapshot_from_entries,
     build_interpreted_evidence_row,
     build_manual_snapshot,
@@ -57,6 +59,7 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
         self.assertEqual(ENGINE_LABEL_NEW, status["sections"][SECTION_CONSOLE])
         self.assertEqual(ENGINE_LABEL_NEW, status["sections"][SECTION_PROBE])
         self.assertEqual(ENGINE_LABEL_NEW, status["sections"][SECTION_MANUAL])
+        self.assertEqual(ENGINE_LABEL_NEW, status["sections"][SECTION_ENRICHMENT])
         self.assertEqual(ENGINE_LABEL_NEW, status["sections"][SECTION_TOPOLOGY_VIEW])
         self.assertEqual(ENGINE_LABEL_NEW, status["sections"][SECTION_INTERPRETATION])
 
@@ -70,6 +73,7 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
         self.assertIn("console=NEW", banner)
         self.assertIn("probe=NEW", banner)
         self.assertIn("manual=NEW", banner)
+        self.assertIn("enrichment=NEW", banner)
         self.assertIn("topologyView=NEW", banner)
         self.assertIn("interpretation=NEW", banner)
 
@@ -90,6 +94,7 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
                 "console": "NEW",
                 "probe": "NEW",
                 "manual": "NEW",
+                "enrichment": "NEW",
                 "topologyView": "NEW",
                 "interpretation": "NEW",
             },
@@ -188,6 +193,95 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
         self.assertEqual("localSnapshot", spark["source"])
         self.assertEqual("0.5s ago", spark["ageText"])
 
+    def test_build_enrichment_run_snapshot_collects_topology_and_marks_missing_live_sources(self) -> None:
+        profile_devices = load_profile_device_catalog("test_minimal_25_9")
+
+        snapshot = build_enrichment_run_snapshot(
+            profile_devices=profile_devices,
+            profile_name="test_minimal_25_9",
+            rio_host="",
+            output_log_text="",
+            now_s=10.0,
+        )
+
+        self.assertIn("devices", snapshot)
+        self.assertIn("metadata", snapshot)
+        self.assertEqual("ok", snapshot["metadata"]["topology"]["status"])
+        self.assertEqual("unavailable", snapshot["metadata"]["ctreHttp"]["status"])
+        self.assertEqual("empty", snapshot["metadata"]["consoleLog"]["status"])
+
+    def test_build_interpreted_evidence_row_presence_text_calls_out_runtime_scope_lens(self) -> None:
+        row = build_interpreted_evidence_row(
+            label=TEST_SPARK_LABEL,
+            presence_entry={
+                "bucket": "absent",
+                "score": 0.0,
+                "source": "localSnapshot",
+                "updatedAtMs": 1500.0,
+                "message": "Runtime snapshot did not observe device present.",
+                "existence": "ABSENT",
+                "confidence": "LOW",
+                "ageText": "0.5s ago",
+            },
+            passive_device=None,
+            visibility_device=None,
+            runtime_device=None,
+            console_entry=None,
+            system_console={},
+            manual_entry=None,
+            manual_observation=None,
+            manual_motion=None,
+            probe_pending=False,
+            last_probe_completed_at=0.0,
+            probe_run_count=0,
+            now_s=2.0,
+        )
+
+        self.assertIn(
+            "Lens=robot-local runtime snapshot; result applies only to the current runtime/test scope.",
+            row["presenceText"],
+        )
+        self.assertIn("bucket=absent", row["presenceText"])
+
+    def test_build_interpreted_evidence_row_uses_ctre_enrichment_for_corroboration(self) -> None:
+        row = build_interpreted_evidence_row(
+            label="FALCON 9",
+            presence_entry=None,
+            passive_device=None,
+            enrichment_snapshot={
+                "ranAtEpochSec": 1.0,
+                "devices": {
+                    "falcon 9": {
+                        "ctre": {
+                            "model": "Talon FX",
+                            "firmware": "1.2.3",
+                            "faultsTrue": [],
+                            "stickyFaultsTrue": [],
+                        }
+                    }
+                },
+                "metadata": {},
+                "ageText": "0.0s ago",
+            },
+            visibility_device=None,
+            runtime_device=None,
+            console_entry=None,
+            system_console={},
+            manual_entry=None,
+            manual_observation=None,
+            manual_motion=None,
+            probe_pending=False,
+            last_probe_completed_at=0.0,
+            probe_run_count=0,
+            now_s=2.0,
+        )
+
+        self.assertEqual("PRESENT", row["existence"])
+        self.assertEqual("MATCHING", row["identity"])
+        self.assertIn("runStatus=Enrichment: ran 1.0s ago", row["enrichmentText"])
+        self.assertIn("ctreHttp=present", row["enrichmentText"])
+        self.assertIn("deviceContribution=ctreHttp", row["enrichmentText"])
+
     def test_build_runtime_probe_snapshot_formats_cached_probe_attachment(self) -> None:
         runtime_device = {
             "instantiated": True,
@@ -232,6 +326,25 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
         self.assertEqual("unknown", snapshot["bucket"])
         self.assertIn("Not probed in current motion-test scope.", snapshot["text"])
         self.assertIn("Infrastructure device; evaluated from passive/runtime evidence instead.", snapshot["text"])
+
+    def test_build_runtime_probe_snapshot_uses_runtime_infrastructure_detail_when_singleton_telemetry_exists(self) -> None:
+        snapshot = build_runtime_probe_snapshot(
+            {
+                "instantiated": True,
+                "busV": 12.3,
+                "totalCurrentA": 1.5,
+                "lifecycleState": "instantiated-present",
+            },
+            label="pdp",
+            probe_pending=False,
+            last_probe_completed_at=20.0,
+            probe_run_count=1,
+            now_s=40.0,
+        )
+
+        self.assertEqual("unknown", snapshot["bucket"])
+        self.assertIn("Not probed in current motion-test scope.", snapshot["text"])
+        self.assertIn("using singleton runtime telemetry", snapshot["text"])
 
     def test_build_manual_snapshot_formats_auto_rotation_observation(self) -> None:
         snapshot = build_manual_snapshot(
@@ -343,8 +456,9 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
         self.assertEqual("PRESENT", row["existence"])
         self.assertEqual("MEDIUM", row["confidence"])
         self.assertEqual("degraded", row["state"])
+        self.assertFalse(row["conflicted"])
         self.assertIn(
-            "robot-local presence snapshot did not observe this device",
+            "Infrastructure device observed by passive CAN even though the current motion-test scope did not include it.",
             row["notesText"],
         )
 
@@ -376,6 +490,192 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
         self.assertEqual("unknown", row["state"])
         self.assertIn(
             "Infrastructure device is outside the current motion-test scope",
+            row["notesText"],
+        )
+
+    def test_interpreted_row_marks_infrastructure_present_from_visibility_metrics(self) -> None:
+        row = build_interpreted_evidence_row(
+            label="roborio",
+            presence_entry={
+                "bucket": "absent",
+                "score": 0.0,
+                "ageText": "1.0s ago",
+                "existence": "ABSENT",
+                "confidence": "MEDIUM",
+            },
+            passive_device=None,
+            visibility_device={
+                "label": "roborio",
+                "visibility": {"observerA": None},
+                "metrics": {
+                    "observerA": {
+                        "msgCount": 5518,
+                        "lastSeenMs": 1000,
+                        "framesPerSec": 333.3,
+                    }
+                },
+            },
+            runtime_device=None,
+            console_entry=None,
+            system_console={},
+            manual_entry=None,
+            manual_observation=None,
+            manual_motion=None,
+            probe_pending=False,
+            last_probe_completed_at=20.0,
+            probe_run_count=1,
+            now_s=40.0,
+            visibility_last_seen_text="0.0s",
+            visibility_packet_count_text="5518",
+            visibility_packet_rate_text="333.3/s",
+        )
+
+        self.assertEqual("PRESENT", row["existence"])
+        self.assertEqual("degraded", row["state"])
+        self.assertIn("lastSeen=0.0s", row["passive"])
+        self.assertIn(
+            "Infrastructure device observed by passive CAN",
+            row["notesText"],
+        )
+
+    def test_interpreted_row_marks_infrastructure_present_from_runtime_singleton_telemetry(self) -> None:
+        row = build_interpreted_evidence_row(
+            label="pdp",
+            presence_entry={
+                "bucket": "absent",
+                "score": 0.0,
+                "ageText": "1.0s ago",
+                "existence": "ABSENT",
+                "confidence": "MEDIUM",
+            },
+            passive_device=None,
+            visibility_device=None,
+            runtime_device={
+                "instantiated": True,
+                "lifecycleState": "instantiated-present",
+                "busV": 12.4,
+                "totalCurrentA": 1.2,
+                "lastSeenMs": 1000,
+            },
+            console_entry=None,
+            system_console={},
+            manual_entry=None,
+            manual_observation=None,
+            manual_motion=None,
+            probe_pending=False,
+            last_probe_completed_at=20.0,
+            probe_run_count=1,
+            now_s=40.0,
+        )
+
+        self.assertEqual("PRESENT", row["existence"])
+        self.assertEqual("degraded", row["state"])
+        self.assertEqual("MEDIUM", row["confidence"])
+        self.assertIn("singleton runtime telemetry is present", row["notesText"])
+
+    def test_interpreted_row_keeps_infrastructure_unknown_when_passive_profile_row_is_missing_without_packets(self) -> None:
+        passive_device = DeviceRecord(
+            identity=DeviceIdentity(manufacturer=1, device_type=1, device_id=0),
+            expected_status="missing",
+            manufacturer_name="NI",
+            device_type_name="Robot Controller",
+            model_name="roborio",
+            profile_label="roborio",
+            presence_confidence="none",
+            presence_score=0,
+            inventory_confidence="low",
+            inventory_score=0,
+            health_confidence="low",
+            health_score=0,
+            health="unknown",
+            evidence_sources=(),
+            evidence_family_keys=(),
+            evidence_family_summaries=(),
+            evidence_gaps=(),
+            notes=(),
+        )
+
+        row = build_interpreted_evidence_row(
+            label="roborio",
+            presence_entry={
+                "bucket": "absent",
+                "score": 0.0,
+                "ageText": "1.0s ago",
+                "existence": "ABSENT",
+                "confidence": "MEDIUM",
+            },
+            passive_device=passive_device,
+            visibility_device=None,
+            runtime_device=None,
+            console_entry=None,
+            system_console={},
+            manual_entry=None,
+            manual_observation=None,
+            manual_motion=None,
+            probe_pending=False,
+            last_probe_completed_at=20.0,
+            probe_run_count=1,
+            now_s=40.0,
+        )
+
+        self.assertEqual("UNKNOWN", row["existence"])
+        self.assertEqual("unknown", row["state"])
+        self.assertEqual("LOW", row["confidence"])
+
+    def test_interpreted_row_marks_no_rotation_motor_failure_as_failed_state(self) -> None:
+        row = build_interpreted_evidence_row(
+            label="FALCON 9",
+            presence_entry={
+                "bucket": "present",
+                "score": 1.0,
+                "ageText": "0.0s ago",
+                "existence": "PRESENT",
+                "confidence": "HIGH",
+            },
+            passive_device=None,
+            visibility_device=None,
+            runtime_device={
+                "cmdDuty": 0.25,
+                "appliedDuty": 0.0,
+                "velRpm": 0.7,
+                "motorCurrentA": 0.0,
+                "positionRot": 2531.01,
+            },
+            console_entry={
+                "hasWarn": True,
+                "hasError": False,
+                "events": ["[WARN] TALON_STATUS_SIGNAL_STALE: tCAN message is stale"],
+                "summary": "[WARN] TALON_STATUS_SIGNAL_STALE: tCAN message is stale",
+            },
+            system_console={},
+            manual_entry=None,
+            manual_observation={
+                "autoResult": "no_rotation_detected",
+                "recordedAt": "19:54:49",
+                "recordedAtEpochSec": 90.0,
+                "cmdDuty": 0.25,
+                "appliedDuty": 0.0,
+                "velRpm": 0.7,
+                "positionRot": 2531.01,
+                "positionDeltaRot": 0.0,
+                "motorCurrentA": 0.0,
+            },
+            manual_motion={
+                "startedAt": 99.0,
+                "duty": 0.25,
+                "sawMotion": False,
+                "startPositionRot": 2531.01,
+            },
+            probe_pending=False,
+            last_probe_completed_at=0.0,
+            probe_run_count=0,
+            now_s=100.0,
+        )
+
+        self.assertEqual("FAILED", row["operability"])
+        self.assertEqual("failed", row["state"])
+        self.assertIn(
+            "Motor commanded with little current and no motion; possible electrical/output-path issue.",
             row["notesText"],
         )
 

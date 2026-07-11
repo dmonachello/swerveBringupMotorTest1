@@ -12,8 +12,10 @@ DESCRIPTION
     marked as legacy until frame-backed integration is ready.
 """
 
+import os
+import tempfile
 from pathlib import Path
-from typing import Any, Dict, Mapping, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from tools.common.config_api.repository import ConfigRepository
 from tools.common.motor_runtime_verdict import (
@@ -25,8 +27,8 @@ from tools.common.motor_runtime_verdict import (
 )
 from tools.common.profile_constants import KEY_ID, KEY_LABEL, KEY_MANUFACTURER, KEY_MODEL
 from tools.passive_discovery_poc.discovery import analyze_frames
-from tools.passive_discovery_poc.enrichment import enrich_topology
-from tools.passive_discovery_poc.models import DeviceRecord, RunResult
+from tools.passive_discovery_poc.enrichment import enrich_console_log, enrich_ctre, enrich_topology
+from tools.passive_discovery_poc.models import DeviceRecord, EnrichmentRecord, RunResult
 from tools.passive_discovery_poc.profile import load_profile
 
 ENGINE_LABEL_LEGACY = "LEGACY"
@@ -47,6 +49,7 @@ SECTION_PASSIVE = "passive"
 SECTION_CONSOLE = "console"
 SECTION_PROBE = "probe"
 SECTION_MANUAL = "manual"
+SECTION_ENRICHMENT = "enrichment"
 SECTION_TOPOLOGY_VIEW = "topologyView"
 SECTION_INTERPRETATION = "interpretation"
 
@@ -99,6 +102,12 @@ EVIDENCE_CONFIDENCE_LOW = "LOW"
 EVIDENCE_SOURCE_NONE = "--"
 RUNTIME_DEVICE_KEY_ATTACHMENTS = "attachments"
 RUNTIME_DEVICE_KEY_PRESENCE_CONFIDENCE = "presenceConfidence"
+RUNTIME_DEVICE_KEY_INSTANTIATED = "instantiated"
+RUNTIME_DEVICE_KEY_LAST_SEEN_MS = "lastSeenMs"
+RUNTIME_DEVICE_KEY_LIFECYCLE_STATE = "lifecycleState"
+RUNTIME_DEVICE_KEY_BUS_V = "busV"
+RUNTIME_DEVICE_KEY_TOTAL_CURRENT_A = "totalCurrentA"
+RUNTIME_DEVICE_KEY_TEMP_C = "tempC"
 TEXT_SECONDS_AGO_FORMAT = "{value:.1f}s ago"
 PRESENCE_SCORE_HIGH_THRESHOLD = 0.5
 PRESENCE_SCORE_LOW_THRESHOLD = 0.05
@@ -143,6 +152,7 @@ PROBE_NO_DEVICE_RESULT = "No device-specific full-probe result for this device."
 PROBE_NOT_IN_RUNTIME_SET = "This device was not part of the active runtime probe set when Full Probe ran."
 PROBE_INFRA_SCOPE_NOTE = "Not probed in current motion-test scope."
 PROBE_INFRA_SCOPE_DETAIL = "Infrastructure device; evaluated from passive/runtime evidence instead."
+PROBE_INFRA_RUNTIME_DETAIL = "No device-specific Full Probe result; using singleton runtime telemetry and passive/runtime evidence instead."
 PROBE_TEXT_FIELD = "text"
 PROBE_SUMMARY_FIELD = "summary"
 PROBE_SCORE_TEXT_FIELD = "scoreText"
@@ -214,6 +224,7 @@ INTERPRET_KEY_PASSIVE_TEXT = "passiveText"
 INTERPRET_KEY_CONSOLE_TEXT = "consoleText"
 INTERPRET_KEY_PROBE_TEXT = "probeText"
 INTERPRET_KEY_MANUAL_TEXT = "manualText"
+INTERPRET_KEY_ENRICHMENT_TEXT = "enrichmentText"
 INTERPRET_KEY_NOTES_TEXT = "notesText"
 INTERPRET_KEY_STATE = "state"
 INTERPRET_KEY_CONFLICTED = "conflicted"
@@ -221,6 +232,7 @@ EVIDENCE_NOTE_SEPARATOR = " | "
 EVIDENCE_TEXT_DEVICE_TIMEOUT = "timeout"
 EVIDENCE_STATE_OK = "ok"
 EVIDENCE_STATE_DEGRADED = "degraded"
+EVIDENCE_STATE_FAILED = "failed"
 EVIDENCE_STATE_MISSING = "missing"
 EVIDENCE_STATE_UNKNOWN = "unknown"
 EVIDENCE_STATE_IDENTITY = "identity"
@@ -238,7 +250,52 @@ EVIDENCE_PROBE_NOTE_ONE_SHOT = "Full Probe is a cached manual one-shot diagnosti
 EVIDENCE_NOTE_PASSIVE_WITHOUT_PROBE_RESULT = "Passive CAN traffic is present, but Full Probe did not produce a device-specific result here."
 EVIDENCE_NOTE_PASSIVE_OVERRIDES_RUNTIME_ABSENCE = "Passive CAN shows recurring device-emitted traffic even though the robot-local presence snapshot did not observe this device."
 EVIDENCE_NOTE_INFRA_SCOPE_ABSENCE = "Infrastructure device is outside the current motion-test scope; local snapshot absence is not treated as definitive missing evidence."
+EVIDENCE_NOTE_INFRA_RUNTIME_PRESENT = "Infrastructure singleton runtime telemetry is present even though the current motion-test scope did not include this device."
 EVIDENCE_NOTE_NONE = "No major source conflict."
+ENRICHMENT_SOURCE_CTRE = "ctreHttp"
+ENRICHMENT_SOURCE_TOPOLOGY = "topology"
+ENRICHMENT_SOURCE_CONSOLE_LOG = "consoleLog"
+ENRICHMENT_STATUS_NOT_RUN = "not_run"
+ENRICHMENT_STATUS_OK = "ok"
+ENRICHMENT_STATUS_EMPTY = "empty"
+ENRICHMENT_STATUS_UNAVAILABLE = "unavailable"
+ENRICHMENT_DEVICE_KEY_CTRE = "ctre"
+ENRICHMENT_DEVICE_KEY_TOPOLOGY = "topology"
+ENRICHMENT_DEVICE_KEY_CONSOLE = "console"
+ENRICHMENT_METADATA_BASE_URL = "baseUrl"
+ENRICHMENT_METADATA_PROFILE_NAME = "profileName"
+ENRICHMENT_METADATA_DEVICE_COUNT = "devices"
+ENRICHMENT_METADATA_RECORD_COUNT = "records"
+ENRICHMENT_CTRE_KEY_MODEL = "model"
+ENRICHMENT_CTRE_KEY_FIRMWARE = "firmware"
+ENRICHMENT_CTRE_KEY_FAULTS_TRUE = "faultsTrue"
+ENRICHMENT_CTRE_KEY_STICKY_FAULTS_TRUE = "stickyFaultsTrue"
+CONSOLE_RECORD_KEY_CANDIDATE_PROFILE_NODE = "candidateProfileNode"
+CONSOLE_RECORD_KEY_SEVERITY = "severity"
+CONSOLE_RECORD_KEY_PARSED_EVIDENCE_TYPE = "parsedEvidenceType"
+CONSOLE_RECORD_KEY_RAW_MESSAGE = "rawMessage"
+ENRICHMENT_RUN_AGE_KEY = "ageText"
+ENRICHMENT_RUN_STATUS_KEY = "status"
+ENRICHMENT_RUN_SUMMARY_KEY = "summary"
+ENRICHMENT_RUN_WARNINGS_KEY = "warnings"
+ENRICHMENT_RUN_METADATA_KEY = "metadata"
+ENRICHMENT_RUN_DEVICES_KEY = "devices"
+ENRICHMENT_RUN_RECORDS_KEY = "records"
+ENRICHMENT_RUN_AT_EPOCH_KEY = "ranAtEpochSec"
+ENRICHMENT_RUN_LABEL = "Run Enrichment"
+ENRICHMENT_STATUS_LABEL_PREFIX = "Enrichment: "
+ENRICHMENT_STATUS_NOT_RUN_TEXT = "Enrichment: not run"
+ENRICHMENT_STATUS_FMT = "Enrichment: ran {age} | deviceMatches={devices} | warnings={warnings}"
+ENRICHMENT_PANEL_EMPTY = "Not run yet."
+ENRICHMENT_PANEL_LENS = "Lens=host-side corroboration/enrichment sources; results are additive and not active-group scoped."
+ENRICHMENT_PANEL_DEVICE_NONE = "deviceContribution=none for selected device"
+ENRICHMENT_PANEL_DEVICE_PRESENT_FMT = "deviceContribution={sources}"
+ENRICHMENT_CTRE_BASE_URL_FMT = "http://{host}:1250"
+ENRICHMENT_NOTE_CTRE_CONFIRMED = "CTRE HTTP corroborated this CTRE device."
+ENRICHMENT_NOTE_CTRE_ONLY = "CTRE HTTP reported this CTRE device even though passive CAN evidence was weak or absent."
+ENRICHMENT_NOTE_CTRE_FAULTS = "CTRE HTTP reported active or sticky fault fields."
+ENRICHMENT_NOTE_CONSOLE_ENRICHMENT_ERROR = "Console-log enrichment found device-specific warning/error evidence."
+ENRICHMENT_NOTE_TOPOLOGY_CONFIRMED = "Topology enrichment confirms this device is part of the selected profile layout."
 DETAIL_SNAPSHOT_PRESENCE = "presence"
 DETAIL_SNAPSHOT_PRESENCE_STATUS = "presenceStatus"
 DETAIL_SNAPSHOT_PRESENCE_AGE = "presenceAge"
@@ -302,6 +359,7 @@ def default_evidence_engine_status() -> Dict[str, Any]:
             SECTION_CONSOLE: ENGINE_LABEL_NEW,
             SECTION_PROBE: ENGINE_LABEL_NEW,
             SECTION_MANUAL: ENGINE_LABEL_NEW,
+            SECTION_ENRICHMENT: ENGINE_LABEL_NEW,
             SECTION_TOPOLOGY_VIEW: ENGINE_LABEL_NEW,
             SECTION_INTERPRETATION: ENGINE_LABEL_NEW,
         },
@@ -326,6 +384,7 @@ def evidence_engine_banner_text(status: Dict[str, Any]) -> str:
             SECTION_CONSOLE,
             SECTION_PROBE,
             SECTION_MANUAL,
+            SECTION_ENRICHMENT,
             SECTION_TOPOLOGY_VIEW,
             SECTION_INTERPRETATION,
         ):
@@ -382,6 +441,34 @@ def normalize_evidence_engine_status(status: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(sections, dict):
         sections = {}
         status["sections"] = sections
+    existing_section_labels = [
+        str(value).strip() or ENGINE_LABEL_LEGACY
+        for value in sections.values()
+        if isinstance(value, str)
+    ]
+    fallback_label = str(status.get("engineLabel", ENGINE_LABEL_LEGACY)).strip() or ENGINE_LABEL_LEGACY
+    if existing_section_labels and all(label == existing_section_labels[0] for label in existing_section_labels):
+        fallback_label = existing_section_labels[0]
+    elif existing_section_labels:
+        label_counts: Dict[str, int] = {}
+        for label in existing_section_labels:
+            label_counts[label] = label_counts.get(label, 0) + 1
+        fallback_label = max(
+            sorted(label_counts.keys()),
+            key=lambda candidate: label_counts.get(candidate, 0),
+        )
+    for section_key in (
+        SECTION_PROFILE_INVENTORY,
+        SECTION_PRESENCE_CHECK,
+        SECTION_PASSIVE,
+        SECTION_CONSOLE,
+        SECTION_PROBE,
+        SECTION_MANUAL,
+        SECTION_ENRICHMENT,
+        SECTION_TOPOLOGY_VIEW,
+        SECTION_INTERPRETATION,
+    ):
+        sections.setdefault(section_key, fallback_label)
     labels = [
         str(sections.get(section_key, ENGINE_LABEL_LEGACY)).strip() or ENGINE_LABEL_LEGACY
         for section_key in (
@@ -391,6 +478,7 @@ def normalize_evidence_engine_status(status: Dict[str, Any]) -> Dict[str, Any]:
             SECTION_CONSOLE,
             SECTION_PROBE,
             SECTION_MANUAL,
+            SECTION_ENRICHMENT,
             SECTION_TOPOLOGY_VIEW,
             SECTION_INTERPRETATION,
         )
@@ -454,9 +542,200 @@ def load_profile_device_catalog(
     return catalog
 
 
+def default_enrichment_run_snapshot() -> Dict[str, Any]:
+    """
+    NAME
+        default_enrichment_run_snapshot - Return the empty host-side enrichment snapshot shape.
+    """
+    return {
+        ENRICHMENT_RUN_AT_EPOCH_KEY: 0.0,
+        ENRICHMENT_RUN_AGE_KEY: EVIDENCE_SOURCE_NONE,
+        ENRICHMENT_RUN_DEVICES_KEY: {},
+        ENRICHMENT_RUN_RECORDS_KEY: (),
+        ENRICHMENT_RUN_WARNINGS_KEY: (),
+        ENRICHMENT_RUN_METADATA_KEY: {
+            ENRICHMENT_SOURCE_CTRE: {
+                ENRICHMENT_RUN_STATUS_KEY: ENRICHMENT_STATUS_NOT_RUN,
+                ENRICHMENT_RUN_SUMMARY_KEY: ENRICHMENT_PANEL_EMPTY,
+            },
+            ENRICHMENT_SOURCE_TOPOLOGY: {
+                ENRICHMENT_RUN_STATUS_KEY: ENRICHMENT_STATUS_NOT_RUN,
+                ENRICHMENT_RUN_SUMMARY_KEY: ENRICHMENT_PANEL_EMPTY,
+            },
+            ENRICHMENT_SOURCE_CONSOLE_LOG: {
+                ENRICHMENT_RUN_STATUS_KEY: ENRICHMENT_STATUS_NOT_RUN,
+                ENRICHMENT_RUN_SUMMARY_KEY: ENRICHMENT_PANEL_EMPTY,
+            },
+        },
+    }
+
+
+def refresh_enrichment_run_snapshot_age(
+    snapshot: Optional[Mapping[str, Any]],
+    *,
+    now_s: Optional[float] = None,
+) -> Dict[str, Any]:
+    """
+    NAME
+        refresh_enrichment_run_snapshot_age - Return one enrichment snapshot copy with a fresh age text field.
+    """
+    result = dict(snapshot) if isinstance(snapshot, Mapping) else default_enrichment_run_snapshot()
+    if now_s is None:
+        import time
+
+        now_s = time.time()
+    ran_at = result.get(ENRICHMENT_RUN_AT_EPOCH_KEY)
+    if isinstance(ran_at, (int, float)) and float(ran_at) > 0.0:
+        age_sec = max(0.0, float(now_s) - float(ran_at))
+        result[ENRICHMENT_RUN_AGE_KEY] = _format_age_text(age_sec)
+    elif str(result.get(ENRICHMENT_RUN_AGE_KEY, TEXT_EMPTY)).strip() == TEXT_EMPTY:
+        result[ENRICHMENT_RUN_AGE_KEY] = EVIDENCE_SOURCE_NONE
+    return result
+
+
+def enrichment_run_status_text(
+    snapshot: Optional[Mapping[str, Any]],
+    *,
+    now_s: Optional[float] = None,
+) -> str:
+    """
+    NAME
+        enrichment_run_status_text - Build one concise host-visible enrichment run status line.
+    """
+    refreshed = refresh_enrichment_run_snapshot_age(snapshot, now_s=now_s)
+    ran_at = refreshed.get(ENRICHMENT_RUN_AT_EPOCH_KEY)
+    if not isinstance(ran_at, (int, float)) or float(ran_at) <= 0.0:
+        return ENRICHMENT_STATUS_NOT_RUN_TEXT
+    devices = refreshed.get(ENRICHMENT_RUN_DEVICES_KEY)
+    warnings = refreshed.get(ENRICHMENT_RUN_WARNINGS_KEY)
+    return ENRICHMENT_STATUS_FMT.format(
+        age=str(refreshed.get(ENRICHMENT_RUN_AGE_KEY, EVIDENCE_SOURCE_NONE)).strip() or EVIDENCE_SOURCE_NONE,
+        devices=len(devices) if isinstance(devices, Mapping) else 0,
+        warnings=len(tuple(warnings)) if isinstance(warnings, (list, tuple)) else 0,
+    )
+
+
+def build_enrichment_run_snapshot(
+    *,
+    profile_devices: Mapping[str, Mapping[str, Any]],
+    profile_path: str = PROFILE_PATH_AUTO,
+    profile_name: str = TEXT_EMPTY,
+    rio_host: str = TEXT_EMPTY,
+    output_log_text: str = TEXT_EMPTY,
+    now_s: Optional[float] = None,
+) -> Dict[str, Any]:
+    """
+    NAME
+        build_enrichment_run_snapshot - Run host-side corroboration sources and normalize one shared snapshot.
+    """
+    if now_s is None:
+        import time
+
+        now_s = time.time()
+    snapshot = default_enrichment_run_snapshot()
+    snapshot[ENRICHMENT_RUN_AT_EPOCH_KEY] = float(now_s)
+    snapshot[ENRICHMENT_RUN_AGE_KEY] = _format_age_text(0.0)
+    resolved_path = _resolve_profile_path(profile_path)
+    devices_by_label: Dict[str, Dict[str, Any]] = {}
+    warnings: List[str] = []
+    records: List[EnrichmentRecord] = []
+
+    topology_record = enrich_topology(resolved_path, profile_name=profile_name)
+    records.append(topology_record)
+    topology_by_label = _index_topology_by_label(topology_record)
+    snapshot[ENRICHMENT_RUN_METADATA_KEY][ENRICHMENT_SOURCE_TOPOLOGY] = {
+        ENRICHMENT_RUN_STATUS_KEY: ENRICHMENT_STATUS_OK,
+        ENRICHMENT_RUN_SUMMARY_KEY: (
+            f"profile={topology_record.metadata.get(ENRICHMENT_METADATA_PROFILE_NAME, profile_name or TEXT_EMPTY)}"
+            + TEXT_UPDATE_DELIM
+            + f"nodes={int(topology_record.metadata.get('topologyNodeCount', 0) or 0)}"
+            + TEXT_UPDATE_DELIM
+            + f"edges={int(topology_record.metadata.get('topologyEdgeCount', 0) or 0)}"
+        ),
+    }
+    for label_key, topology_info in topology_by_label.items():
+        device_entry = devices_by_label.setdefault(label_key, {})
+        device_entry[ENRICHMENT_DEVICE_KEY_TOPOLOGY] = dict(topology_info)
+
+    ctre_base_url = _ctre_base_url_for_rio(rio_host)
+    ctre_rows: Dict[Tuple[int, int, int], Dict[str, object]] = {}
+    if ctre_base_url:
+        ctre_rows, ctre_warnings = enrich_ctre(ctre_base_url)
+        warnings.extend(str(item) for item in ctre_warnings)
+        snapshot[ENRICHMENT_RUN_METADATA_KEY][ENRICHMENT_SOURCE_CTRE] = {
+            ENRICHMENT_RUN_STATUS_KEY: ENRICHMENT_STATUS_OK if ctre_rows else ENRICHMENT_STATUS_UNAVAILABLE,
+            ENRICHMENT_RUN_SUMMARY_KEY: (
+                f"baseUrl={ctre_base_url}"
+                + TEXT_UPDATE_DELIM
+                + f"devices={len(ctre_rows)}"
+            ),
+            "baseUrl": ctre_base_url,
+        }
+        if ctre_rows or ctre_warnings:
+            records.append(
+                EnrichmentRecord(
+                    plugin_id=ENRICHMENT_SOURCE_CTRE,
+                    source_class="enrichment",
+                    source_mode="live",
+                    metadata={ENRICHMENT_METADATA_BASE_URL: ctre_base_url},
+                    device_enrichment=dict(ctre_rows),
+                    warnings=tuple(str(item) for item in ctre_warnings),
+                )
+            )
+        for label_key, profile_device in profile_devices.items():
+            identity_key = _device_identity_key_from_profile_device(profile_device)
+            if identity_key is None:
+                continue
+            ctre_entry = ctre_rows.get(identity_key)
+            if not isinstance(ctre_entry, dict):
+                continue
+            device_entry = devices_by_label.setdefault(label_key, {})
+            device_entry[ENRICHMENT_DEVICE_KEY_CTRE] = dict(ctre_entry)
+    else:
+        snapshot[ENRICHMENT_RUN_METADATA_KEY][ENRICHMENT_SOURCE_CTRE] = {
+            ENRICHMENT_RUN_STATUS_KEY: ENRICHMENT_STATUS_UNAVAILABLE,
+            ENRICHMENT_RUN_SUMMARY_KEY: "CTRE HTTP base URL unavailable.",
+        }
+
+    console_text = str(output_log_text or TEXT_EMPTY)
+    console_record = _collect_console_log_enrichment(
+        output_log_text=console_text,
+        profile_path=resolved_path,
+        profile_name=profile_name,
+    )
+    if console_record is not None:
+        records.append(console_record)
+        warnings.extend(str(item) for item in console_record.warnings)
+        console_by_label = _index_console_enrichment_by_label(console_record)
+        snapshot[ENRICHMENT_RUN_METADATA_KEY][ENRICHMENT_SOURCE_CONSOLE_LOG] = {
+            ENRICHMENT_RUN_STATUS_KEY: ENRICHMENT_STATUS_OK if console_by_label else ENRICHMENT_STATUS_EMPTY,
+            ENRICHMENT_RUN_SUMMARY_KEY: (
+                f"{ENRICHMENT_METADATA_RECORD_COUNT}={len(tuple(console_record.evidence_records))}"
+                + TEXT_UPDATE_DELIM
+                + f"warnings={len(tuple(console_record.warnings))}"
+            ),
+        }
+        for label_key, console_info in console_by_label.items():
+            device_entry = devices_by_label.setdefault(label_key, {})
+            device_entry[ENRICHMENT_DEVICE_KEY_CONSOLE] = dict(console_info)
+    else:
+        snapshot[ENRICHMENT_RUN_METADATA_KEY][ENRICHMENT_SOURCE_CONSOLE_LOG] = {
+            ENRICHMENT_RUN_STATUS_KEY: ENRICHMENT_STATUS_EMPTY,
+            ENRICHMENT_RUN_SUMMARY_KEY: "No output log text available to parse.",
+        }
+
+    snapshot[ENRICHMENT_RUN_DEVICES_KEY] = devices_by_label
+    snapshot[ENRICHMENT_RUN_RECORDS_KEY] = tuple(records)
+    snapshot[ENRICHMENT_RUN_WARNINGS_KEY] = tuple(warnings)
+    return snapshot
+
+
 def build_live_passive_result(
     visibility_provider: Any,
     profile_devices: Mapping[str, Mapping[str, Any]],
+    *,
+    ctre_enrichment: Optional[Mapping[Tuple[int, int, int], Mapping[str, object]]] = None,
+    enrichment_records: Optional[Tuple[EnrichmentRecord, ...]] = None,
 ) -> Optional[RunResult]:
     """
     NAME
@@ -473,6 +752,8 @@ def build_live_passive_result(
     return analyze_frames(
         frames,
         expected_rows=_expected_rows_from_profile_devices(profile_devices),
+        ctre_enrichment=dict(ctre_enrichment or {}),
+        enrichment_records=tuple(enrichment_records or ()),
         run_metadata={
             RUN_METADATA_SOURCE: RUN_METADATA_FRAME_PROVIDER,
             RUN_METADATA_SOURCE_KIND: RUN_METADATA_HOST_PASSIVE,
@@ -751,6 +1032,7 @@ def build_interpreted_evidence_row(
     label: str,
     presence_entry: Optional[Mapping[str, Any]],
     passive_device: Optional[Any],
+    enrichment_snapshot: Optional[Mapping[str, Any]] = None,
     visibility_device: Optional[Mapping[str, Any]],
     runtime_device: Optional[Mapping[str, Any]],
     console_entry: Optional[Mapping[str, Any]],
@@ -810,6 +1092,11 @@ def build_interpreted_evidence_row(
     passive_expected_status = TEXT_EMPTY
     passive_gaps: list[str] = []
     passive_family_summaries: Tuple[str, ...] = ()
+    visibility_metrics = (
+        visibility_device.get("metrics")
+        if isinstance(visibility_device, Mapping) and isinstance(visibility_device.get("metrics"), Mapping)
+        else {}
+    )
     if passive_device is not None:
         passive_summary = EVIDENCE_NOTE_SEPARATOR.join(
             (
@@ -826,9 +1113,29 @@ def build_interpreted_evidence_row(
         passive_gaps = list(getattr(passive_device, "evidence_gaps", ()) or ())
         passive_family_summaries = tuple(getattr(passive_device, "evidence_family_summaries", ()) or ())
     elif isinstance(visibility_device, Mapping):
-        passive_summary = " / ".join((visibility_last_seen_text, visibility_packet_rate_text))
         visibility = visibility_device.get("visibility") if isinstance(visibility_device.get("visibility"), Mapping) else {}
-        passive_visible = any(value is True for value in visibility.values())
+        metric_packet_count = 0
+        metric_last_seen_present = False
+        for metric_entry in visibility_metrics.values():
+            if not isinstance(metric_entry, Mapping):
+                continue
+            packet_count = metric_entry.get("msgCount")
+            if isinstance(packet_count, (int, float)):
+                metric_packet_count += int(packet_count)
+            if isinstance(metric_entry.get("lastSeenMs"), (int, float)):
+                metric_last_seen_present = True
+        passive_visible = (
+            any(value is True for value in visibility.values())
+            or metric_packet_count > 0
+            or metric_last_seen_present
+        )
+        passive_summary = EVIDENCE_NOTE_SEPARATOR.join(
+            (
+                f"lastSeen={visibility_last_seen_text}",
+                f"packets={visibility_packet_count_text}",
+                f"rate={visibility_packet_rate_text}",
+            )
+        )
         if visibility_identity_text != VIS_IDENTITY_UNKNOWN:
             passive_identity = EVIDENCE_STATUS_MATCHING
     elif isinstance(runtime_device, Mapping) and isinstance(runtime_device.get("lastSeenMs"), (int, float)):
@@ -837,6 +1144,7 @@ def build_interpreted_evidence_row(
     console_events = console_entry.get(CONSOLE_KEY_EVENTS, []) if isinstance(console_entry, Mapping) else []
     console_has_error = bool(console_entry.get(CONSOLE_KEY_HAS_ERROR)) if isinstance(console_entry, Mapping) else False
     console_has_warn = bool(console_entry.get(CONSOLE_KEY_HAS_WARN)) if isinstance(console_entry, Mapping) else False
+    enrichment_entry = _enrichment_device_entry(enrichment_snapshot, label)
     manual_auto_result = (
         str(manual_observation.get("autoResult", TEXT_EMPTY)).strip()
         if isinstance(manual_observation, Mapping)
@@ -903,6 +1211,9 @@ def build_interpreted_evidence_row(
         motion_detected = True
         manual_motion_failed = False
     is_infrastructure_device = _is_infrastructure_device(label)
+    runtime_infrastructure_present = (
+        is_infrastructure_device and _runtime_infrastructure_signal_present(runtime_device)
+    )
     passive_supports_presence_override = (
         passive_visible
         and passive_confidence in (EVIDENCE_CONFIDENCE_HIGH, EVIDENCE_CONFIDENCE_MEDIUM)
@@ -921,13 +1232,24 @@ def build_interpreted_evidence_row(
                 existence = EVIDENCE_STATUS_PRESENT
                 confidence = EVIDENCE_CONFIDENCE_MEDIUM
                 evidence_state = EVIDENCE_STATE_DEGRADED
-                evidence_conflicted = True
-                notes.append(EVIDENCE_NOTE_PASSIVE_OVERRIDES_RUNTIME_ABSENCE)
+                if is_infrastructure_device:
+                    notes.append(
+                        "Infrastructure device observed by passive CAN even though the current motion-test scope did not include it."
+                    )
+                else:
+                    evidence_conflicted = True
+                    notes.append(EVIDENCE_NOTE_PASSIVE_OVERRIDES_RUNTIME_ABSENCE)
             elif is_infrastructure_device:
-                existence = EVIDENCE_STATUS_UNKNOWN
-                confidence = EVIDENCE_CONFIDENCE_LOW
-                evidence_state = EVIDENCE_STATE_UNKNOWN
-                notes.append(EVIDENCE_NOTE_INFRA_SCOPE_ABSENCE)
+                if runtime_infrastructure_present:
+                    existence = EVIDENCE_STATUS_PRESENT
+                    confidence = EVIDENCE_CONFIDENCE_MEDIUM
+                    evidence_state = EVIDENCE_STATE_DEGRADED
+                    notes.append(EVIDENCE_NOTE_INFRA_RUNTIME_PRESENT)
+                else:
+                    existence = EVIDENCE_STATUS_UNKNOWN
+                    confidence = EVIDENCE_CONFIDENCE_LOW
+                    evidence_state = EVIDENCE_STATE_UNKNOWN
+                    notes.append(EVIDENCE_NOTE_INFRA_SCOPE_ABSENCE)
             else:
                 existence = EVIDENCE_STATUS_ABSENT
                 confidence = presence_confidence
@@ -971,14 +1293,61 @@ def build_interpreted_evidence_row(
             confidence = EVIDENCE_CONFIDENCE_MEDIUM
         elif confidence == EVIDENCE_CONFIDENCE_MEDIUM:
             confidence = EVIDENCE_CONFIDENCE_LOW
+    ctre_enrichment_entry = enrichment_entry.get(ENRICHMENT_DEVICE_KEY_CTRE)
+    if isinstance(ctre_enrichment_entry, Mapping):
+        if existence in (EVIDENCE_STATUS_UNKNOWN, EVIDENCE_STATUS_ABSENT):
+            existence = EVIDENCE_STATUS_PRESENT
+            confidence = EVIDENCE_CONFIDENCE_MEDIUM
+            evidence_state = EVIDENCE_STATE_DEGRADED if not passive_visible else evidence_state
+            evidence_conflicted = evidence_conflicted or not passive_visible
+            notes.append(ENRICHMENT_NOTE_CTRE_ONLY if not passive_visible else ENRICHMENT_NOTE_CTRE_CONFIRMED)
+        else:
+            notes.append(ENRICHMENT_NOTE_CTRE_CONFIRMED)
+        if identity == EVIDENCE_STATUS_UNKNOWN:
+            identity = EVIDENCE_STATUS_MATCHING
+        if str(ctre_enrichment_entry.get(ENRICHMENT_CTRE_KEY_MODEL, TEXT_EMPTY)).strip():
+            confidence = EVIDENCE_CONFIDENCE_HIGH if confidence != EVIDENCE_CONFIDENCE_LOW else EVIDENCE_CONFIDENCE_MEDIUM
+        if ctre_enrichment_entry.get(ENRICHMENT_CTRE_KEY_FAULTS_TRUE) or ctre_enrichment_entry.get(ENRICHMENT_CTRE_KEY_STICKY_FAULTS_TRUE):
+            operability = EVIDENCE_STATUS_DEGRADED if operability == EVIDENCE_STATUS_UNKNOWN else operability
+            evidence_state = EVIDENCE_STATE_DEGRADED
+            notes.append(ENRICHMENT_NOTE_CTRE_FAULTS)
+    topology_enrichment_entry = enrichment_entry.get(ENRICHMENT_DEVICE_KEY_TOPOLOGY)
+    if isinstance(topology_enrichment_entry, Mapping) and existence == EVIDENCE_STATUS_PRESENT:
+        if identity == EVIDENCE_STATUS_UNKNOWN:
+            identity = EVIDENCE_STATUS_MATCHING
+        notes.append(ENRICHMENT_NOTE_TOPOLOGY_CONFIRMED)
+    console_enrichment_entry = enrichment_entry.get(ENRICHMENT_DEVICE_KEY_CONSOLE)
+    if isinstance(console_enrichment_entry, Mapping):
+        if bool(console_enrichment_entry.get(CONSOLE_KEY_HAS_ERROR)) or bool(console_enrichment_entry.get(CONSOLE_KEY_HAS_WARN)):
+            if operability == EVIDENCE_STATUS_UNKNOWN:
+                operability = EVIDENCE_STATUS_DEGRADED
+            if evidence_state in (EVIDENCE_STATE_UNKNOWN, EVIDENCE_STATE_OK):
+                evidence_state = EVIDENCE_STATE_DEGRADED
+            confidence = EVIDENCE_CONFIDENCE_MEDIUM if confidence == EVIDENCE_CONFIDENCE_HIGH else confidence
+            notes.append(ENRICHMENT_NOTE_CONSOLE_ENRICHMENT_ERROR)
+    if existence == EVIDENCE_STATUS_UNKNOWN and runtime_infrastructure_present:
+        existence = EVIDENCE_STATUS_PRESENT
+        confidence = EVIDENCE_CONFIDENCE_MEDIUM
+        evidence_state = EVIDENCE_STATE_DEGRADED
+        notes.append(EVIDENCE_NOTE_INFRA_RUNTIME_PRESENT)
     if existence == EVIDENCE_STATUS_UNKNOWN and passive_visible:
         existence = EVIDENCE_STATUS_PRESENT
         confidence = passive_confidence if passive_device is not None else EVIDENCE_CONFIDENCE_MEDIUM
-        evidence_state = EVIDENCE_STATE_OK
+        if is_infrastructure_device and passive_device is None:
+            evidence_state = EVIDENCE_STATE_DEGRADED
+            notes.append("Infrastructure device observed by passive CAN, but active test-scope/runtime evidence is limited.")
+        else:
+            evidence_state = EVIDENCE_STATE_OK
     elif existence == EVIDENCE_STATUS_UNKNOWN and passive_device is not None and passive_expected_status == "missing":
-        existence = EVIDENCE_STATUS_ABSENT
-        confidence = passive_confidence
-        evidence_state = EVIDENCE_STATE_MISSING
+        if is_infrastructure_device:
+            existence = EVIDENCE_STATUS_UNKNOWN
+            confidence = EVIDENCE_CONFIDENCE_LOW
+            evidence_state = EVIDENCE_STATE_UNKNOWN
+            notes.append(EVIDENCE_NOTE_INFRA_SCOPE_ABSENCE)
+        else:
+            existence = EVIDENCE_STATUS_ABSENT
+            confidence = passive_confidence
+            evidence_state = EVIDENCE_STATE_MISSING
     if console_has_error:
         if existence == EVIDENCE_STATUS_PRESENT:
             operability = EVIDENCE_STATUS_DEGRADED
@@ -1105,6 +1474,8 @@ def build_interpreted_evidence_row(
             evidence_state = EVIDENCE_STATE_IDENTITY
     elif identity != EVIDENCE_STATUS_WRONG:
         identity = EVIDENCE_STATUS_UNKNOWN
+    if operability == EVIDENCE_STATUS_FAILED:
+        evidence_state = EVIDENCE_STATE_FAILED
     if (
         not is_infrastructure_device
         and probe_bucket in (VIS_IDENTITY_UNKNOWN, PROBE_BUCKET_NOT_RUN)
@@ -1133,6 +1504,11 @@ def build_interpreted_evidence_row(
     )
     probe_text = str(probe_snapshot.get(PROBE_TEXT_FIELD, EVIDENCE_SOURCE_NONE))
     manual_text = str(manual_snapshot.get(PROBE_TEXT_FIELD, MANUAL_PLACEHOLDER))
+    enrichment_text = _build_enrichment_text(
+        enrichment_snapshot=enrichment_snapshot,
+        enrichment_entry=enrichment_entry,
+        now_s=now_s,
+    )
     return {
         INTERPRET_KEY_LABEL: label,
         INTERPRET_KEY_PASSIVE: passive_summary,
@@ -1149,6 +1525,7 @@ def build_interpreted_evidence_row(
         INTERPRET_KEY_CONSOLE_TEXT: console_text,
         INTERPRET_KEY_PROBE_TEXT: probe_text,
         INTERPRET_KEY_MANUAL_TEXT: manual_text,
+        INTERPRET_KEY_ENRICHMENT_TEXT: enrichment_text,
         INTERPRET_KEY_NOTES_TEXT: EVIDENCE_NOTE_SEPARATOR.join(notes),
         INTERPRET_KEY_STATE: evidence_state,
         INTERPRET_KEY_CONFLICTED: evidence_conflicted,
@@ -1346,6 +1723,7 @@ def _build_presence_text(
     """
     if isinstance(presence_entry, Mapping):
         lines = [
+            "Lens=robot-local runtime snapshot; result applies only to the current runtime/test scope.",
             EVIDENCE_NOTE_SEPARATOR.join(
                 (
                     f"bucket={presence_bucket}",
@@ -1360,12 +1738,17 @@ def _build_presence_text(
             lines.append(message_text)
         return "\n".join(lines)
     if isinstance(presence_value, (int, float)):
-        return EVIDENCE_NOTE_SEPARATOR.join(
+        return "\n".join(
             (
-                f"bucket={presence_bucket}",
-                f"score={float(presence_value):.2f}",
-                f"updated={presence_age_text}",
-                "source=runtimeState",
+                "Lens=robot-local runtime snapshot; result applies only to the current runtime/test scope.",
+                EVIDENCE_NOTE_SEPARATOR.join(
+                    (
+                        f"bucket={presence_bucket}",
+                        f"score={float(presence_value):.2f}",
+                        f"updated={presence_age_text}",
+                        "source=runtimeState",
+                    )
+                ),
             )
         )
     return EVIDENCE_SOURCE_NONE
@@ -1453,6 +1836,206 @@ def _format_last_seen_text(last_seen_ms: Any, now_s: float) -> str:
         return EVIDENCE_SOURCE_NONE
     age_sec = max(0.0, float(now_s) - (float(last_seen_ms) / 1000.0))
     return _format_age_text(age_sec)
+
+
+def _ctre_base_url_for_rio(rio_host: str) -> str:
+    """
+    NAME
+        _ctre_base_url_for_rio - Build the default CTRE diagnostic base URL for one connected roboRIO host.
+    """
+    clean_host = str(rio_host or TEXT_EMPTY).strip()
+    if not clean_host:
+        return TEXT_EMPTY
+    return ENRICHMENT_CTRE_BASE_URL_FMT.format(host=clean_host)
+
+
+def _device_identity_key_from_profile_device(
+    profile_device: Mapping[str, Any],
+) -> Optional[Tuple[int, int, int]]:
+    """
+    NAME
+        _device_identity_key_from_profile_device - Resolve one passive identity key from a profile-device row.
+    """
+    try:
+        return (
+            int(profile_device.get(KEY_MANUFACTURER)),
+            int(profile_device.get(KEY_DEVICE_TYPE)),
+            int(profile_device.get(KEY_ID)),
+        )
+    except Exception:
+        return None
+
+
+def _collect_console_log_enrichment(
+    *,
+    output_log_text: str,
+    profile_path: str,
+    profile_name: str,
+) -> Optional[EnrichmentRecord]:
+    """
+    NAME
+        _collect_console_log_enrichment - Parse the current host output pane as one console-log enrichment source.
+    """
+    clean_text = str(output_log_text or TEXT_EMPTY).strip()
+    if not clean_text:
+        return None
+    temp_path = TEXT_EMPTY
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            newline="\n",
+            suffix="_bringup_console.log",
+            delete=False,
+        ) as handle:
+            handle.write(clean_text)
+            temp_path = str(handle.name)
+        return enrich_console_log(
+            temp_path,
+            profile_path=profile_path,
+            profile_name=profile_name,
+        )
+    finally:
+        if temp_path:
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
+
+
+def _index_console_enrichment_by_label(record: EnrichmentRecord) -> Dict[str, Dict[str, Any]]:
+    """
+    NAME
+        _index_console_enrichment_by_label - Group parsed console-log enrichment rows by device label.
+    """
+    indexed: Dict[str, Dict[str, Any]] = {}
+    for row in tuple(record.evidence_records):
+        if not isinstance(row, dict):
+            continue
+        label = str(row.get(CONSOLE_RECORD_KEY_CANDIDATE_PROFILE_NODE, TEXT_EMPTY)).strip()
+        if not label:
+            continue
+        key = label.lower()
+        entry = indexed.setdefault(
+            key,
+            {
+                KEY_LABEL: label,
+                CONSOLE_KEY_EVENTS: [],
+                CONSOLE_KEY_SUMMARY: EVIDENCE_SOURCE_NONE,
+                CONSOLE_KEY_HAS_ERROR: False,
+                CONSOLE_KEY_HAS_WARN: False,
+            },
+        )
+        severity = str(row.get(CONSOLE_RECORD_KEY_SEVERITY, TEXT_EMPTY)).strip().upper()
+        parsed_type = str(row.get(CONSOLE_RECORD_KEY_PARSED_EVIDENCE_TYPE, TEXT_EMPTY)).strip()
+        raw_message = str(row.get(CONSOLE_RECORD_KEY_RAW_MESSAGE, TEXT_EMPTY)).strip()
+        summary = parsed_type or raw_message or EVIDENCE_SOURCE_NONE
+        entry[CONSOLE_KEY_EVENTS].append(summary)
+        if severity in (CONSOLE_SEVERITY_ERROR, CONSOLE_SEVERITY_FATAL):
+            entry[CONSOLE_KEY_HAS_ERROR] = True
+        elif severity == CONSOLE_SEVERITY_WARN:
+            entry[CONSOLE_KEY_HAS_WARN] = True
+        if entry[CONSOLE_KEY_SUMMARY] == EVIDENCE_SOURCE_NONE:
+            entry[CONSOLE_KEY_SUMMARY] = summary
+    return indexed
+
+
+def _enrichment_device_entry(
+    enrichment_snapshot: Optional[Mapping[str, Any]],
+    label: str,
+) -> Dict[str, Any]:
+    """
+    NAME
+        _enrichment_device_entry - Return the normalized enrichment bundle for one device label.
+    """
+    if not isinstance(enrichment_snapshot, Mapping):
+        return {}
+    devices = enrichment_snapshot.get(ENRICHMENT_RUN_DEVICES_KEY)
+    if not isinstance(devices, Mapping):
+        return {}
+    entry = devices.get(str(label or TEXT_EMPTY).strip().lower())
+    return dict(entry) if isinstance(entry, Mapping) else {}
+
+
+def _build_enrichment_text(
+    *,
+    enrichment_snapshot: Optional[Mapping[str, Any]],
+    enrichment_entry: Mapping[str, Any],
+    now_s: Optional[float] = None,
+) -> str:
+    """
+    NAME
+        _build_enrichment_text - Format one shared enrichment evidence block.
+    """
+    if not isinstance(enrichment_snapshot, Mapping):
+        return ENRICHMENT_PANEL_EMPTY
+    refreshed_snapshot = refresh_enrichment_run_snapshot_age(enrichment_snapshot, now_s=now_s)
+    metadata = refreshed_snapshot.get(ENRICHMENT_RUN_METADATA_KEY)
+    age_text = str(refreshed_snapshot.get(ENRICHMENT_RUN_AGE_KEY, EVIDENCE_SOURCE_NONE)).strip() or EVIDENCE_SOURCE_NONE
+    lines: List[str] = [
+        ENRICHMENT_PANEL_LENS,
+        f"runStatus={enrichment_run_status_text(refreshed_snapshot, now_s=now_s)}",
+        f"runAge={age_text}",
+    ]
+    if isinstance(metadata, Mapping):
+        for source_key in (
+            ENRICHMENT_SOURCE_CTRE,
+            ENRICHMENT_SOURCE_TOPOLOGY,
+            ENRICHMENT_SOURCE_CONSOLE_LOG,
+        ):
+            source_row = metadata.get(source_key)
+            if not isinstance(source_row, Mapping):
+                continue
+            status_text = str(source_row.get(ENRICHMENT_RUN_STATUS_KEY, ENRICHMENT_STATUS_NOT_RUN)).strip() or ENRICHMENT_STATUS_NOT_RUN
+            summary_text = str(source_row.get(ENRICHMENT_RUN_SUMMARY_KEY, ENRICHMENT_PANEL_EMPTY)).strip() or ENRICHMENT_PANEL_EMPTY
+            lines.append(f"{source_key}={status_text} | {summary_text}")
+    device_sources: List[str] = []
+    ctre_entry = enrichment_entry.get(ENRICHMENT_DEVICE_KEY_CTRE)
+    if isinstance(ctre_entry, Mapping):
+        device_sources.append(ENRICHMENT_SOURCE_CTRE)
+        lines.append(
+            EVIDENCE_NOTE_SEPARATOR.join(
+                (
+                    "ctreHttp=present",
+                    f"model={str(ctre_entry.get(ENRICHMENT_CTRE_KEY_MODEL, TEXT_EMPTY)).strip() or EVIDENCE_SOURCE_NONE}",
+                    f"firmware={str(ctre_entry.get(ENRICHMENT_CTRE_KEY_FIRMWARE, TEXT_EMPTY)).strip() or EVIDENCE_SOURCE_NONE}",
+                )
+            )
+        )
+    topology_entry = enrichment_entry.get(ENRICHMENT_DEVICE_KEY_TOPOLOGY)
+    if isinstance(topology_entry, Mapping):
+        device_sources.append(ENRICHMENT_SOURCE_TOPOLOGY)
+        lines.append(
+            EVIDENCE_NOTE_SEPARATOR.join(
+                (
+                    "topology=present",
+                    f"nodeType={str(topology_entry.get(KEY_TOPOLOGY_NODE_TYPE, TEXT_EMPTY)).strip() or EVIDENCE_SOURCE_NONE}",
+                    f"neighbors={str(topology_entry.get(KEY_TOPOLOGY_NEIGHBOR_COUNT, EVIDENCE_SOURCE_NONE))}",
+                )
+            )
+        )
+    console_entry = enrichment_entry.get(ENRICHMENT_DEVICE_KEY_CONSOLE)
+    if isinstance(console_entry, Mapping):
+        device_sources.append(ENRICHMENT_SOURCE_CONSOLE_LOG)
+        lines.append(
+            EVIDENCE_NOTE_SEPARATOR.join(
+                (
+                    "consoleLog=present",
+                    f"summary={str(console_entry.get(CONSOLE_KEY_SUMMARY, EVIDENCE_SOURCE_NONE)).strip() or EVIDENCE_SOURCE_NONE}",
+                )
+            )
+        )
+    if device_sources:
+        lines.append(
+            ENRICHMENT_PANEL_DEVICE_PRESENT_FMT.format(
+                sources=TEXT_COMMA_DELIM.join(device_sources)
+            )
+        )
+    else:
+        lines.append(ENRICHMENT_PANEL_DEVICE_NONE)
+    if len(lines) == 2 and not isinstance(metadata, Mapping):
+        return ENRICHMENT_PANEL_EMPTY
+    return "\n".join(lines)
 
 
 def _index_topology_by_label(topology_record: Any) -> Dict[str, Dict[str, Any]]:
@@ -1737,14 +2320,46 @@ def _probe_missing_text(
         _probe_missing_text - Explain why no device-specific probe result exists.
     """
     if is_infrastructure_device:
+        if _runtime_infrastructure_signal_present(runtime_device):
+            return TEXT_UPDATE_DELIM.join((PROBE_INFRA_SCOPE_NOTE, PROBE_INFRA_RUNTIME_DETAIL))
         return TEXT_UPDATE_DELIM.join((PROBE_INFRA_SCOPE_NOTE, PROBE_INFRA_SCOPE_DETAIL))
     if float(last_probe_completed_at or 0.0) <= 0.0:
         return PROBE_NOT_RUN_YET
     if not isinstance(runtime_device, Mapping):
         return PROBE_NOT_IN_RUNTIME_SET
-    if not bool(runtime_device.get("instantiated", False)):
+    if not bool(runtime_device.get(RUNTIME_DEVICE_KEY_INSTANTIATED, False)):
         return PROBE_NOT_IN_RUNTIME_SET
     return PROBE_NO_DEVICE_RESULT
+
+
+def _runtime_infrastructure_signal_present(
+    runtime_device: Optional[Mapping[str, Any]],
+) -> bool:
+    """
+    NAME
+        _runtime_infrastructure_signal_present - Return whether singleton runtime telemetry provides real presence evidence.
+    """
+    if not isinstance(runtime_device, Mapping):
+        return False
+    if bool(runtime_device.get(RUNTIME_DEVICE_KEY_INSTANTIATED, False)):
+        return True
+    lifecycle_state = str(runtime_device.get(RUNTIME_DEVICE_KEY_LIFECYCLE_STATE, TEXT_EMPTY)).strip().lower()
+    if lifecycle_state.startswith("instantiated") or lifecycle_state.startswith("controlled"):
+        return True
+    last_seen_ms = runtime_device.get(RUNTIME_DEVICE_KEY_LAST_SEEN_MS)
+    if isinstance(last_seen_ms, (int, float)) and float(last_seen_ms) > 0.0:
+        return True
+    bus_v = runtime_device.get(RUNTIME_DEVICE_KEY_BUS_V)
+    if isinstance(bus_v, (int, float)) and float(bus_v) > 1.0:
+        return True
+    total_current_a = runtime_device.get(RUNTIME_DEVICE_KEY_TOTAL_CURRENT_A)
+    if isinstance(total_current_a, (int, float)) and float(total_current_a) > 0.05:
+        return True
+    temp_c = runtime_device.get(RUNTIME_DEVICE_KEY_TEMP_C)
+    if isinstance(temp_c, (int, float)) and float(temp_c) > 1.0:
+        return True
+    attachments = runtime_device.get(RUNTIME_DEVICE_KEY_ATTACHMENTS)
+    return isinstance(attachments, list) and len(attachments) > 0
 
 
 def _is_infrastructure_device(label: object) -> bool:

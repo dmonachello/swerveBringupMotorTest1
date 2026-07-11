@@ -27,6 +27,10 @@ from tools.can_nt.bringup_ui import (
     MANUAL_DUTY_ARG_DUTY,
     MANUAL_GROUP_DUTY_CMD_SET,
     PROFILE_NONE,
+    RUNNABLE_SCOPE_PANEL_DISCONNECTED_DETAIL,
+    TEST_SCOPE_PANEL_ERROR_BG,
+    TEST_SCOPE_PANEL_INACTIVE_BG,
+    TEST_SCOPE_PANEL_READY_BG,
     TEST_ACTIVITY_COMMANDS,
     TEST_SOURCE_COMPLETION_MODE_CLEAR,
     TEST_SOURCE_COMPLETION_MODE_NONE,
@@ -156,6 +160,22 @@ class _PanelStub:
             self.bg = kwargs["bg"]
         if "highlightbackground" in kwargs:
             self.highlightbackground = kwargs["highlightbackground"]
+
+
+class _TextStub:
+    def __init__(self) -> None:
+        self.content = ""
+        self.state = None
+
+    def configure(self, **kwargs) -> None:
+        if "state" in kwargs:
+            self.state = kwargs["state"]
+
+    def delete(self, start, end) -> None:
+        self.content = ""
+
+    def insert(self, index, text) -> None:
+        self.content += str(text)
 
 
 class _LiveViewTitleStub:
@@ -1270,6 +1290,93 @@ class BringupUiActionMetadataTests(unittest.TestCase):
 
         self.assertEqual(1, ui._evidence_live_view.fit_calls)
 
+    def test_run_evidence_enrichment_rebuilds_snapshot_and_refreshes_selection(self) -> None:
+        class _OutputStub:
+            def get(self, _start: str, _end: str) -> str:
+                return "[Spark Max] IDs: 25, timed out while waiting for Period Status 0"
+
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._profile_box = _ProfileBoxStub("test_minimal_25_9", ("test_minimal_25_9",))
+        ui._profile_devices = {"sparkmax/neo 25": {"label": "SPARKMAX/NEO 25"}}
+        ui._rio_host = "172.22.11.2"
+        ui._output = _OutputStub()
+        ui._evidence_selected_title_var = _StringVarStub("SPARKMAX/NEO 25")
+        ui._evidence_enrichment_status_var = _StringVarStub("")
+        refresh_calls = []
+        selection_calls = []
+        ui._refresh_evidence_view = lambda: refresh_calls.append("refresh")
+        ui._apply_evidence_selection = lambda label: selection_calls.append(label)
+
+        with patch(
+            "tools.can_nt.bringup_ui.build_enrichment_run_snapshot",
+            return_value={
+                "ranAtEpochSec": 10.0,
+                "devices": {},
+                "records": (),
+                "warnings": (),
+                "metadata": {},
+            },
+        ) as build_snapshot, patch("tools.can_nt.bringup_ui.time.time", return_value=11.0):
+            ui._run_evidence_enrichment()
+
+        self.assertEqual(1, len(refresh_calls))
+        self.assertEqual(["SPARKMAX/NEO 25"], selection_calls)
+        self.assertEqual(
+            "Enrichment: ran 1.0s ago | deviceMatches=0 | warnings=0",
+            ui._evidence_enrichment_status_var.get(),
+        )
+        self.assertEqual(
+            {
+                "ranAtEpochSec": 10.0,
+                "devices": {},
+                "records": (),
+                "warnings": (),
+                "metadata": {},
+            },
+            ui._evidence_enrichment_snapshot,
+        )
+        build_snapshot.assert_called_once()
+
+    def test_run_can_fault_check_writes_ranked_candidate_result(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._fault_finder_status_var = _StringVarStub("")
+        ui._fault_finder_text = _TextStub()
+        ui._build_evidence_rows = lambda: [
+            {
+                "label": "FALCON 9",
+                "existence": "ABSENT",
+                "operability": "FAILED",
+                "identity": "MATCHING",
+                "confidence": "HIGH",
+                "state": "missing",
+                "notesText": "Runtime snapshot did not observe device.",
+            },
+            {
+                "label": "SPARKMAX/NEO 25",
+                "existence": "PRESENT",
+                "operability": "OK",
+                "identity": "MATCHING",
+                "confidence": "HIGH",
+                "state": "ok",
+            },
+        ]
+        ui._collect_console_snapshot = lambda: {}
+        ui._current_topology_profile = lambda: {}
+
+        with patch("tools.can_nt.bringup_ui.time.time", return_value=10.0):
+            ui._run_can_fault_check()
+
+        self.assertIn("candidates=1", ui._fault_finder_status_var.get())
+        self.assertIn("single_device_unreachable", ui._fault_finder_text.content)
+        self.assertIn(
+            "Inspect power and CAN connectors at FALCON 9 first.",
+            ui._fault_finder_text.content,
+        )
+        self.assertEqual(
+            ["FALCON 9"],
+            ui._fault_finder_result["candidates"][0]["affectedDevices"],
+        )
+
     def test_live_runtime_notice_suppresses_lifecycle_prompt_in_manual_mode(self) -> None:
         class _LiveView:
             def __init__(self) -> None:
@@ -1381,6 +1488,50 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         )
         self.assertIsNone(live_view.notice)
 
+    def test_live_runtime_notice_uses_runtime_active_group_payload_when_device_rows_lack_group_label(self) -> None:
+        class _LiveView:
+            def __init__(self) -> None:
+                self.notice = None
+
+            def set_runtime_state_notice(self, text, level) -> None:
+                self.notice = (text, level)
+
+            def clear_runtime_state_notice(self) -> None:
+                self.notice = None
+
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._group_owner_mode = "manual"
+        ui._runtime_active_known = False
+        ui._controlled_lifecycle_active_known = True
+        ui._latest_runtime_devices = {
+            "falcon 9": {"label": "FALCON 9", "presenceConfidence": 1.0},
+            "sparkmax/neo 25": {"label": "SPARKMAX/NEO 25", "presenceConfidence": 1.0},
+        }
+        ui._latest_runtime_state_payload = {
+            "groups": [
+                {
+                    "name": GROUP_ACTIVE_NAME,
+                    "members": [
+                        {"label": "FALCON 9", "enabled": True},
+                        {"label": "SPARKMAX/NEO 25", "enabled": True},
+                    ],
+                }
+            ]
+        }
+        recorded = []
+        live_view = _LiveView()
+        ui._set_runtime_state_notice = lambda text, level="warn": recorded.append((text, level))
+        ui._clear_runtime_state_notice = lambda: recorded.append(("__clear__", "clear"))
+        ui._iter_live_views = lambda: [live_view]
+
+        ui._apply_live_runtime_notice_from_nt_state(True, False, False)
+
+        self.assertEqual(
+            [("__clear__", "clear")],
+            recorded,
+        )
+        self.assertIsNone(live_view.notice)
+
     def test_live_runtime_notice_surfaces_empty_manual_active_group(self) -> None:
         class _LiveView:
             def __init__(self) -> None:
@@ -1444,10 +1595,84 @@ class BringupUiActionMetadataTests(unittest.TestCase):
             [("Robot disabled. Enable teleop to run motors.", "info")],
             recorded,
         )
+
+    def test_live_runtime_notice_blocks_ready_when_robot_connection_is_lost(self) -> None:
+        class _LiveView:
+            def __init__(self) -> None:
+                self.notice = None
+
+            def set_runtime_state_notice(self, text, level) -> None:
+                self.notice = (text, level)
+
+            def clear_runtime_state_notice(self) -> None:
+                self.notice = None
+
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._tcp_connected = False
+        ui._scope_activation_notice_text = lambda: "Activate Group first."
+        ui._scope_is_currently_active = lambda: True
+        ui._manual_active_group_is_empty = lambda: False
+        recorded = []
+        live_view = _LiveView()
+        ui._set_runtime_state_notice = lambda text, level="warn": recorded.append((text, level))
+        ui._clear_runtime_state_notice = lambda: recorded.append(("__clear__", "clear"))
+        ui._iter_live_views = lambda: [live_view]
+
+        ui._apply_live_runtime_notice_from_nt_state(True, False, False)
+
         self.assertEqual(
-            ("Robot disabled. Enable teleop to run motors.", "info"),
+            [(RUNNABLE_SCOPE_PANEL_DISCONNECTED_DETAIL, "error")],
+            recorded,
+        )
+        self.assertEqual(
+            (RUNNABLE_SCOPE_PANEL_DISCONNECTED_DETAIL, "error"),
             live_view.notice,
         )
+
+    def test_refresh_output_runtime_notice_updates_output_and_evidence_panels_with_shared_colors(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._tcp_connected = True
+        ui._handshake_done = True
+        ui._runtime_state_seen = True
+        ui._runtime_state_notice_text = "Activate Group first."
+        ui._runtime_state_notice_level = "warn"
+        ui._runtime_event_notice_text = ""
+        ui._runtime_event_notice_level = "warn"
+        ui._output_scope_panel = _PanelStub()
+        ui._output_scope_title_label = _LabelStub()
+        ui._output_scope_headline_label = _LabelStub()
+        ui._output_scope_detail_label = _LabelStub()
+        ui._output_scope_headline_var = _StringVarStub("")
+        ui._output_scope_detail_var = _StringVarStub("")
+        ui._evidence_scope_panel = _PanelStub()
+        ui._evidence_scope_title_label = _LabelStub()
+        ui._evidence_scope_headline_label = _LabelStub()
+        ui._evidence_scope_detail_label = _LabelStub()
+        ui._evidence_scope_headline_var = _StringVarStub("")
+        ui._evidence_scope_detail_var = _StringVarStub("")
+
+        ui._refresh_output_runtime_notice()
+
+        self.assertEqual(TEST_SCOPE_PANEL_INACTIVE_BG, ui._output_scope_panel.bg)
+        self.assertEqual(TEST_SCOPE_PANEL_INACTIVE_BG, ui._evidence_scope_panel.bg)
+        self.assertEqual("NOT RUNNABLE", ui._output_scope_headline_var.get())
+        self.assertEqual("NOT RUNNABLE", ui._evidence_scope_headline_var.get())
+        self.assertEqual("Activate Group first.", ui._output_scope_detail_var.get())
+        self.assertEqual("Activate Group first.", ui._evidence_scope_detail_var.get())
+
+        ui._runtime_state_notice_text = "Robot E-Stop. Manual run blocked."
+        ui._runtime_state_notice_level = "error"
+        ui._refresh_output_runtime_notice()
+
+        self.assertEqual(TEST_SCOPE_PANEL_ERROR_BG, ui._output_scope_panel.bg)
+        self.assertEqual(TEST_SCOPE_PANEL_ERROR_BG, ui._evidence_scope_panel.bg)
+
+        ui._runtime_state_notice_text = ""
+        ui._runtime_event_notice_text = ""
+        ui._refresh_output_runtime_notice()
+
+        self.assertEqual(TEST_SCOPE_PANEL_READY_BG, ui._output_scope_panel.bg)
+        self.assertEqual(TEST_SCOPE_PANEL_READY_BG, ui._evidence_scope_panel.bg)
 
     def test_output_runtime_notice_waits_for_runtime_state_before_showing_ready(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
@@ -1457,6 +1682,12 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._output_scope_title_label = _LabelStub()
         ui._output_scope_headline_label = _LabelStub()
         ui._output_scope_detail_label = _LabelStub()
+        ui._evidence_scope_panel = None
+        ui._evidence_scope_headline_var = None
+        ui._evidence_scope_detail_var = None
+        ui._evidence_scope_title_label = None
+        ui._evidence_scope_headline_label = None
+        ui._evidence_scope_detail_label = None
         ui._tcp_connected = True
         ui._handshake_done = True
         ui._runtime_state_seen = False
@@ -1470,6 +1701,35 @@ class BringupUiActionMetadataTests(unittest.TestCase):
             "waiting for robot runtime state",
             ui._output_scope_detail_var.get(),
         )
+
+    def test_output_runtime_notice_blocks_ready_when_robot_connection_is_lost(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._output_scope_panel = _PanelStub()
+        ui._output_scope_headline_var = _StringVarStub("")
+        ui._output_scope_detail_var = _StringVarStub("")
+        ui._output_scope_title_label = _LabelStub()
+        ui._output_scope_headline_label = _LabelStub()
+        ui._output_scope_detail_label = _LabelStub()
+        ui._evidence_scope_panel = None
+        ui._evidence_scope_headline_var = None
+        ui._evidence_scope_detail_var = None
+        ui._evidence_scope_title_label = None
+        ui._evidence_scope_headline_label = None
+        ui._evidence_scope_detail_label = None
+        ui._tcp_connected = False
+        ui._handshake_done = True
+        ui._runtime_state_seen = True
+        ui._runtime_state_notice_text = ""
+        ui._runtime_event_notice_text = ""
+
+        ui._refresh_output_runtime_notice()
+
+        self.assertEqual("NOT RUNNABLE", ui._output_scope_headline_var.get())
+        self.assertEqual(
+            RUNNABLE_SCOPE_PANEL_DISCONNECTED_DETAIL,
+            ui._output_scope_detail_var.get(),
+        )
+        self.assertEqual(TEST_SCOPE_PANEL_ERROR_BG, ui._output_scope_panel.bg)
 
     def test_apply_runtime_state_payload_marks_runtime_state_seen(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)

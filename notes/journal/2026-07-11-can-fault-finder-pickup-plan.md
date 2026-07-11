@@ -1,0 +1,32 @@
+- Current state:
+  - The false-red and false-missing behavior around `roborio` / `pdp` is improved enough to checkpoint.
+  - The code still feels too complex, especially where infrastructure evidence is blended into the general per-device interpretation path.
+  - The main risk is inconsistent results from too many overlapping heuristics.
+
+- Tomorrow's goal:
+  - Make the evidence model smaller, more explicit, and easier to trust.
+
+- Tomorrow's plan:
+  - Write one short source-priority table for each device class:
+    - motion devices
+    - infrastructure devices
+    - unprofiled devices
+  - Separate infrastructure presence evaluation into one explicit path instead of layering more exceptions into the motor-device flow.
+  - Reduce the number of "soft override" cases.
+    - Prefer a small number of named rules over many interacting heuristics.
+  - Add truth-table tests for the important combinations:
+    - passive seen / not seen
+    - runtime singleton telemetry present / absent
+    - full probe fresh / stale / out of scope
+    - console clean / warning / error
+  - Make UI wording match the exact reason:
+    - present from passive CAN
+    - present from singleton runtime telemetry
+    - not probed because outside motion scope
+    - unknown because evidence is insufficient
+  - Re-check whether `CAN Fault Finder`, `Evidence`, and `Live Topology` are all reading the same interpreted state instead of composing their own slightly different meanings.
+
+- Definition of progress for tomorrow:
+  - Fewer special cases.
+  - Fewer conflicts that are really just scope mismatches.
+  - A result matrix that can be explained in a few sentences without caveats.

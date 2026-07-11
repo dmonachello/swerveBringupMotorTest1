@@ -20,6 +20,8 @@ import tkinter as tk
 from tkinter import ttk
 
 from tools.can_nt.passive_discovery_integration_service import (
+    ATTACHMENT_KEY_TYPE,
+    ATTACHMENT_TYPE_PRESENCE_CHECK,
     DETAIL_SNAPSHOT_APPLIED_DUTY,
     DETAIL_SNAPSHOT_CMD_DUTY,
     DETAIL_SNAPSHOT_CURRENT_A,
@@ -47,6 +49,7 @@ from tools.can_nt.passive_discovery_integration_service import (
     DETAIL_SNAPSHOT_TEMP_C,
     DETAIL_SNAPSHOT_TESTABLE,
     DETAIL_SNAPSHOT_VEL_RPM,
+    PRESENCE_KEY_STATUS,
     build_runtime_device_detail_snapshot,
 )
 from tools.common.config_api.repository import ConfigRepository
@@ -147,7 +150,17 @@ PRESENCE_CONF_LOW = "LOW"
 PRESENCE_CONF_NONE = "NONE"
 PRESENCE_COLOR_HIGH = "#2f7a2f"
 PRESENCE_COLOR_LOW = "#f59e0b"
-PRESENCE_COLOR_NONE = "#dc2626"
+PRESENCE_COLOR_NONE = "#9ca3af"
+PRESENCE_COLOR_ERROR = "#dc2626"
+PRESENCE_STATUS_OK = "ok"
+PRESENCE_STATUS_WARNING = "warning"
+PRESENCE_STATUS_WARN = "warn"
+PRESENCE_STATUS_ERROR = "error"
+PRESENCE_STATUS_FAILED = "failed"
+PRESENCE_STATUS_MISSING = "missing"
+PRESENCE_STATUS_ABSENT = "absent"
+PRESENCE_STATUS_CONFLICT = "conflict"
+RUNTIME_DEVICE_KEY_ATTACHMENTS = "attachments"
 NOTICE_COLOR_INFO_BG = "#eff6ff"
 NOTICE_COLOR_INFO_FG = "#1d4ed8"
 NOTICE_COLOR_WARN_BG = "#fff7ed"
@@ -165,10 +178,12 @@ RUNNABLE_PANEL_MANUAL_NOT_ACTIVATED_DETAIL = (
 )
 RUNNABLE_PANEL_READY_BG = "#dcfce7"
 RUNNABLE_PANEL_READY_FG = "#166534"
-RUNNABLE_PANEL_INACTIVE_BG = "#fee2e2"
-RUNNABLE_PANEL_INACTIVE_FG = "#991b1b"
-RUNNABLE_PANEL_NEUTRAL_BG = "#e5e7eb"
-RUNNABLE_PANEL_NEUTRAL_FG = "#374151"
+RUNNABLE_PANEL_INACTIVE_BG = "#fef3c7"
+RUNNABLE_PANEL_INACTIVE_FG = "#92400e"
+RUNNABLE_PANEL_NEUTRAL_BG = "#fef3c7"
+RUNNABLE_PANEL_NEUTRAL_FG = "#92400e"
+RUNNABLE_PANEL_ERROR_BG = "#fee2e2"
+RUNNABLE_PANEL_ERROR_FG = "#991b1b"
 RUNNABLE_PANEL_BORDER = "#cbd5e1"
 RUNNABLE_PANEL_WRAP = 320
 RUNNABLE_PANEL_PAD_X = 12
@@ -220,11 +235,13 @@ VIS_COLOR_NONE = "#dc2626"
 VIS_COLOR_UNKNOWN = "#9ca3af"
 EVIDENCE_STATE_OK = "ok"
 EVIDENCE_STATE_DEGRADED = "degraded"
+EVIDENCE_STATE_FAILED = "failed"
 EVIDENCE_STATE_MISSING = "missing"
 EVIDENCE_STATE_UNKNOWN = "unknown"
 EVIDENCE_STATE_IDENTITY = "identity"
 EVIDENCE_COLOR_OK = "#2f7a2f"
 EVIDENCE_COLOR_DEGRADED = "#d97706"
+EVIDENCE_COLOR_FAILED = "#dc2626"
 EVIDENCE_COLOR_MISSING = "#dc2626"
 EVIDENCE_COLOR_UNKNOWN = "#9ca3af"
 EVIDENCE_COLOR_IDENTITY = "#c2410c"
@@ -954,6 +971,8 @@ class LiveTopologyView(ttk.Frame):
         on_left_click: Optional[Callable[[Optional[LiveNode], tk.Event], None]] = None,
         on_selection_changed: Optional[Callable[[Optional[LiveNode]], None]] = None,
         show_selection_panel: bool = True,
+        show_runnable_panel: bool = True,
+        manage_runtime_notice_internally: bool = True,
         title_text: str = TITLE_TEXT_DEFAULT,
         fit_on_load: bool = False,
     ) -> None:
@@ -961,6 +980,8 @@ class LiveTopologyView(ttk.Frame):
         self._profile_name = profile_name
         self._title_text = str(title_text or TITLE_TEXT_DEFAULT)
         self._show_selection_panel = bool(show_selection_panel)
+        self._show_runnable_panel = bool(show_runnable_panel)
+        self._manage_runtime_notice_internally = bool(manage_runtime_notice_internally)
         self._fit_on_load = bool(fit_on_load)
         self._fit_pending = False
         self._nodes: List[LiveNode] = []
@@ -1037,48 +1058,53 @@ class LiveTopologyView(ttk.Frame):
 
         self._runnable_scope_headline_var = tk.StringVar(value=RUNNABLE_PANEL_WAITING_HEADLINE)
         self._runnable_scope_detail_var = tk.StringVar(value=RUNNABLE_PANEL_WAITING_DETAIL)
-        notice_row = ttk.Frame(self)
-        notice_row.pack(fill="x", padx=8, pady=(8, 0))
-        self._notice_panel = tk.Frame(
-            notice_row,
-            bg=RUNNABLE_PANEL_NEUTRAL_BG,
-            highlightbackground=RUNNABLE_PANEL_BORDER,
-            highlightthickness=1,
-            bd=0,
-            padx=RUNNABLE_PANEL_PAD_X,
-            pady=RUNNABLE_PANEL_PAD_Y,
-        )
-        self._notice_panel.pack(side="right", anchor="e")
-        self._notice_title_label = tk.Label(
-            self._notice_panel,
-            text=RUNNABLE_PANEL_TITLE,
-            bg=RUNNABLE_PANEL_NEUTRAL_BG,
-            fg=RUNNABLE_PANEL_NEUTRAL_FG,
-            anchor="w",
-            font=RUNNABLE_PANEL_DETAIL_FONT,
-        )
-        self._notice_title_label.pack(anchor="w")
-        self._notice_headline_label = tk.Label(
-            self._notice_panel,
-            textvariable=self._runnable_scope_headline_var,
-            bg=RUNNABLE_PANEL_NEUTRAL_BG,
-            fg=RUNNABLE_PANEL_NEUTRAL_FG,
-            anchor="w",
-            justify="left",
-            font=RUNNABLE_PANEL_HEADLINE_FONT,
-        )
-        self._notice_headline_label.pack(anchor="w", pady=(2, 0))
-        self._notice_detail_label = tk.Label(
-            self._notice_panel,
-            textvariable=self._runnable_scope_detail_var,
-            bg=RUNNABLE_PANEL_NEUTRAL_BG,
-            fg=RUNNABLE_PANEL_NEUTRAL_FG,
-            anchor="w",
-            justify="left",
-            wraplength=RUNNABLE_PANEL_WRAP,
-            font=RUNNABLE_PANEL_DETAIL_FONT,
-        )
-        self._notice_detail_label.pack(anchor="w", pady=(2, 0))
+        self._notice_panel = None
+        self._notice_title_label = None
+        self._notice_headline_label = None
+        self._notice_detail_label = None
+        if self._show_runnable_panel:
+            notice_row = ttk.Frame(self)
+            notice_row.pack(fill="x", padx=8, pady=(8, 0))
+            self._notice_panel = tk.Frame(
+                notice_row,
+                bg=RUNNABLE_PANEL_NEUTRAL_BG,
+                highlightbackground=RUNNABLE_PANEL_BORDER,
+                highlightthickness=1,
+                bd=0,
+                padx=RUNNABLE_PANEL_PAD_X,
+                pady=RUNNABLE_PANEL_PAD_Y,
+            )
+            self._notice_panel.pack(side="right", anchor="e")
+            self._notice_title_label = tk.Label(
+                self._notice_panel,
+                text=RUNNABLE_PANEL_TITLE,
+                bg=RUNNABLE_PANEL_NEUTRAL_BG,
+                fg=RUNNABLE_PANEL_NEUTRAL_FG,
+                anchor="w",
+                font=RUNNABLE_PANEL_DETAIL_FONT,
+            )
+            self._notice_title_label.pack(anchor="w")
+            self._notice_headline_label = tk.Label(
+                self._notice_panel,
+                textvariable=self._runnable_scope_headline_var,
+                bg=RUNNABLE_PANEL_NEUTRAL_BG,
+                fg=RUNNABLE_PANEL_NEUTRAL_FG,
+                anchor="w",
+                justify="left",
+                font=RUNNABLE_PANEL_HEADLINE_FONT,
+            )
+            self._notice_headline_label.pack(anchor="w", pady=(2, 0))
+            self._notice_detail_label = tk.Label(
+                self._notice_panel,
+                textvariable=self._runnable_scope_detail_var,
+                bg=RUNNABLE_PANEL_NEUTRAL_BG,
+                fg=RUNNABLE_PANEL_NEUTRAL_FG,
+                anchor="w",
+                justify="left",
+                wraplength=RUNNABLE_PANEL_WRAP,
+                font=RUNNABLE_PANEL_DETAIL_FONT,
+            )
+            self._notice_detail_label.pack(anchor="w", pady=(2, 0))
 
         body = ttk.Frame(self)
         body.pack(fill="both", expand=True, padx=8, pady=8)
@@ -1647,6 +1673,49 @@ class LiveTopologyView(ttk.Frame):
             return PRESENCE_COLOR_NONE
         return None
 
+    def _presence_fill_from_runtime_device(
+        self,
+        live: Dict[str, object],
+        now_ms: int,
+    ) -> Optional[str]:
+        """
+        NAME
+            _presence_fill_from_runtime_device - Resolve one runtime-backed fill using the same presence lens as the inspector.
+        """
+        presence_status = EMPTY_STRING
+        attachments = live.get(RUNTIME_DEVICE_KEY_ATTACHMENTS)
+        if isinstance(attachments, list):
+            for attachment in attachments:
+                if not isinstance(attachment, dict):
+                    continue
+                if str(attachment.get(ATTACHMENT_KEY_TYPE, EMPTY_STRING)).strip() != ATTACHMENT_TYPE_PRESENCE_CHECK:
+                    continue
+                presence_status = str(attachment.get(PRESENCE_KEY_STATUS, EMPTY_STRING)).strip().lower()
+                break
+        if presence_status in {PRESENCE_STATUS_WARNING, PRESENCE_STATUS_WARN}:
+            return PRESENCE_COLOR_LOW
+        if presence_status in {
+            PRESENCE_STATUS_ERROR,
+            PRESENCE_STATUS_FAILED,
+            PRESENCE_STATUS_MISSING,
+            PRESENCE_STATUS_ABSENT,
+            PRESENCE_STATUS_CONFLICT,
+        }:
+            return PRESENCE_COLOR_ERROR
+        presence = live.get("presenceConfidence")
+        last_seen = live.get("lastSeenMs")
+        if isinstance(presence, (int, float)) and presence <= PRESENCE_MIN_CONF:
+            return PRESENCE_COLOR_NONE
+        if isinstance(last_seen, (int, float)) and now_ms - int(last_seen) > PRESENCE_STALE_MS:
+            return PRESENCE_COLOR_LOW
+        if isinstance(presence, (int, float)):
+            return PRESENCE_COLOR_HIGH if presence >= PRESENCE_HIGH_CONF else PRESENCE_COLOR_LOW
+        if isinstance(last_seen, (int, float)):
+            return PRESENCE_COLOR_HIGH
+        if presence_status == PRESENCE_STATUS_OK:
+            return PRESENCE_COLOR_HIGH
+        return None
+
     def update_runtime_state(self, payload: Optional[Dict[str, object]]) -> bool:
         """
         NAME
@@ -1783,12 +1852,13 @@ class LiveTopologyView(ttk.Frame):
         self._controlled_lifecycle_active = controlled_lifecycle_active
         self._selected_label = selected_label
         self._selected_enabled = selected_enabled
-        self._apply_runtime_notice_from_state(
-            runtime_active,
-            controlled_lifecycle_active,
-            robot_enabled,
-            robot_estopped,
-        )
+        if self._manage_runtime_notice_internally:
+            self._apply_runtime_notice_from_state(
+                runtime_active,
+                controlled_lifecycle_active,
+                robot_enabled,
+                robot_estopped,
+            )
         self._update_details()
         if fingerprint == self._runtime_fingerprint:
             return False
@@ -1918,13 +1988,21 @@ class LiveTopologyView(ttk.Frame):
             detail = RUNNABLE_PANEL_WAITING_DETAIL
         elif self._runtime_state_notice_text:
             headline = RUNNABLE_PANEL_INACTIVE_HEADLINE
-            bg = RUNNABLE_PANEL_INACTIVE_BG
-            fg = RUNNABLE_PANEL_INACTIVE_FG
+            if self._runtime_state_notice_level == "error":
+                bg = RUNNABLE_PANEL_ERROR_BG
+                fg = RUNNABLE_PANEL_ERROR_FG
+            else:
+                bg = RUNNABLE_PANEL_INACTIVE_BG
+                fg = RUNNABLE_PANEL_INACTIVE_FG
             detail = self._runtime_state_notice_text
         elif self._runtime_event_notice_text:
             headline = RUNNABLE_PANEL_INACTIVE_HEADLINE
-            bg = RUNNABLE_PANEL_INACTIVE_BG
-            fg = RUNNABLE_PANEL_INACTIVE_FG
+            if self._runtime_event_notice_level == "error":
+                bg = RUNNABLE_PANEL_ERROR_BG
+                fg = RUNNABLE_PANEL_ERROR_FG
+            else:
+                bg = RUNNABLE_PANEL_INACTIVE_BG
+                fg = RUNNABLE_PANEL_INACTIVE_FG
             detail = self._runtime_event_notice_text
         else:
             headline = RUNNABLE_PANEL_READY_HEADLINE
@@ -1933,13 +2011,16 @@ class LiveTopologyView(ttk.Frame):
             detail = RUNNABLE_PANEL_READY_DETAIL
         self._runnable_scope_headline_var.set(headline)
         self._runnable_scope_detail_var.set(detail)
+        if self._notice_panel is None:
+            return
         self._notice_panel.configure(bg=bg, highlightbackground=RUNNABLE_PANEL_BORDER)
         for label in (
             self._notice_title_label,
             self._notice_headline_label,
             self._notice_detail_label,
         ):
-            label.configure(bg=bg, fg=fg)
+            if label is not None:
+                label.configure(bg=bg, fg=fg)
 
     def _apply_runtime_notice_from_state(
         self,
@@ -2883,17 +2964,7 @@ class LiveTopologyView(ttk.Frame):
         live = self._runtime_state.get(node.label.lower())
         if not live:
             return None
-        presence = live.get("presenceConfidence")
-        last_seen = live.get("lastSeenMs")
-        if isinstance(presence, (int, float)) and presence <= PRESENCE_MIN_CONF:
-            return PRESENCE_COLOR_NONE
-        if isinstance(last_seen, (int, float)) and now_ms - int(last_seen) > PRESENCE_STALE_MS:
-            return PRESENCE_COLOR_LOW
-        if isinstance(presence, (int, float)):
-            return PRESENCE_COLOR_HIGH if presence >= PRESENCE_HIGH_CONF else PRESENCE_COLOR_LOW
-        if isinstance(last_seen, (int, float)):
-            return PRESENCE_COLOR_HIGH
-        return None
+        return self._presence_fill_from_runtime_device(live, now_ms)
 
     def _evidence_fill(self, node: LiveNode) -> Optional[str]:
         """
@@ -2905,6 +2976,8 @@ class LiveTopologyView(ttk.Frame):
             return EVIDENCE_COLOR_OK
         if state == EVIDENCE_STATE_DEGRADED:
             return EVIDENCE_COLOR_DEGRADED
+        if state == EVIDENCE_STATE_FAILED:
+            return EVIDENCE_COLOR_FAILED
         if state == EVIDENCE_STATE_MISSING:
             return EVIDENCE_COLOR_MISSING
         if state == EVIDENCE_STATE_IDENTITY:

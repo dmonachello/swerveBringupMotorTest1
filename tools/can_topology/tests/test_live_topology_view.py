@@ -129,11 +129,13 @@ class LiveTopologyViewTests(unittest.TestCase):
         view._profile_name = "demo"
         view._fit_on_load = False
         view._fit_pending = False
+        view._manage_runtime_notice_internally = True
         view._nodes = []
         view._diagram_meta = {}
         view._bridge_groups = []
         view._runtime_state = {}
         view._presence_overrides = {}
+        view._evidence_state = {}
         view._visibility_enabled = False
         view._visibility_state = {}
         view._visibility_sources = {}
@@ -220,6 +222,28 @@ class LiveTopologyViewTests(unittest.TestCase):
 
         self.assertTrue(view._runtime_state_seen)
 
+    def test_update_runtime_state_skips_internal_notice_when_host_managed(self) -> None:
+        view = self._make_view()
+        view._manage_runtime_notice_internally = False
+        calls = []
+        view._apply_runtime_notice_from_state = (
+            lambda *_args: calls.append("called")
+        )
+        view._update_details = lambda: None
+
+        view.update_runtime_state(
+            {
+                "enabled": False,
+                "estopped": False,
+                "runtimeActive": True,
+                "controlledLifecycleActive": True,
+                "devices": [],
+                "groups": [],
+            }
+        )
+
+        self.assertEqual([], calls)
+
     def test_active_group_members_not_editable_before_runtime_state(self) -> None:
         view = self._make_view()
         view._runtime_state_seen = False
@@ -263,6 +287,96 @@ class LiveTopologyViewTests(unittest.TestCase):
         view._apply_runtime_notice_from_state(False, True, True, False)
 
         self.assertEqual([("__clear__", "clear")], notices)
+
+    def test_runtime_notice_warning_uses_attention_palette(self) -> None:
+        view = self._make_view()
+        view._runtime_state_seen = True
+        view._runnable_scope_headline_var = _StringVarStub("")
+        view._runnable_scope_detail_var = _StringVarStub("")
+        view._notice_panel = _PanelStub()
+        view._notice_title_label = _LabelStub()
+        view._notice_headline_label = _LabelStub()
+        view._notice_detail_label = _LabelStub()
+        view.set_runtime_state_notice("Activate Group first.", "warn")
+
+        self.assertEqual(
+            live_view_module.RUNNABLE_PANEL_INACTIVE_BG,
+            view._notice_panel.bg,
+        )
+
+    def test_runtime_notice_error_uses_error_palette(self) -> None:
+        view = self._make_view()
+        view._runtime_state_seen = True
+        view._runnable_scope_headline_var = _StringVarStub("")
+        view._runnable_scope_detail_var = _StringVarStub("")
+        view._notice_panel = _PanelStub()
+        view._notice_title_label = _LabelStub()
+        view._notice_headline_label = _LabelStub()
+        view._notice_detail_label = _LabelStub()
+        view.set_runtime_state_notice("Robot E-Stop. Manual run blocked.", "error")
+
+        self.assertEqual(
+            live_view_module.RUNNABLE_PANEL_ERROR_BG,
+            view._notice_panel.bg,
+        )
+
+    def test_evidence_fill_uses_failed_color_for_failed_state(self) -> None:
+        view = self._make_view()
+        node = type("NodeStub", (), {"label": "FALCON 9"})()
+        view._evidence_state = {"falcon 9": "failed"}
+
+        self.assertEqual(
+            live_view_module.EVIDENCE_COLOR_FAILED,
+            view._evidence_fill(node),
+        )
+
+    def test_live_fill_uses_warning_color_when_presence_status_is_warning(self) -> None:
+        view = self._make_view()
+        node = type("NodeStub", (), {"label": "roborio", "interface": "CAN"})()
+        view._runtime_state = {
+            "roborio": {
+                "presenceConfidence": 0.0,
+                "attachments": [
+                    {"type": "presenceCheck", "status": "warning"},
+                ],
+            }
+        }
+
+        self.assertEqual(
+            live_view_module.PRESENCE_COLOR_LOW,
+            view._live_fill(node, 0),
+        )
+
+    def test_live_fill_uses_neutral_none_color_when_presence_confidence_is_zero_without_error_status(self) -> None:
+        view = self._make_view()
+        node = type("NodeStub", (), {"label": "pdp", "interface": "CAN"})()
+        view._runtime_state = {
+            "pdp": {
+                "presenceConfidence": 0.0,
+            }
+        }
+
+        self.assertEqual(
+            live_view_module.PRESENCE_COLOR_NONE,
+            view._live_fill(node, 0),
+        )
+
+    def test_live_fill_uses_error_color_when_presence_status_is_error(self) -> None:
+        view = self._make_view()
+        node = type("NodeStub", (), {"label": "pdp", "interface": "CAN"})()
+        view._runtime_state = {
+            "pdp": {
+                "presenceConfidence": 0.0,
+                "attachments": [
+                    {"type": "presenceCheck", "status": "error"},
+                ],
+            }
+        }
+
+        self.assertEqual(
+            live_view_module.PRESENCE_COLOR_ERROR,
+            view._live_fill(node, 0),
+        )
 
     def test_runtime_notice_prefers_disabled_over_activation_blocker(self) -> None:
         view = self._make_view()

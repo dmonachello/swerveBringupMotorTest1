@@ -34,10 +34,12 @@ from .command_catalog_service import (
 )
 from .command_workflow_service import send_tracked_command
 from .can_bus_report_service import build_host_can_bus_report
+from .can_fault_inference import build_fault_diagnosis, render_fault_diagnosis
 from .passive_discovery_integration_service import (
     ENGINE_LABEL_LEGACY,
     ENGINE_LABEL_NEW,
     SECTION_CONSOLE,
+    SECTION_ENRICHMENT,
     SECTION_INTERPRETATION,
     SECTION_MANUAL,
     SECTION_PASSIVE,
@@ -47,14 +49,17 @@ from .passive_discovery_integration_service import (
     SECTION_TOPOLOGY_VIEW,
     build_interpreted_evidence_row,
     build_console_snapshot_from_entries as build_console_snapshot_from_entries_shared,
+    build_enrichment_run_snapshot,
     build_live_passive_result,
     build_manual_snapshot,
     build_runtime_probe_snapshot,
     build_runtime_presence_catalog,
+    default_enrichment_run_snapshot,
     default_evidence_engine_status,
     evidence_engine_banner_text,
     evidence_overall_title,
     evidence_section_title,
+    enrichment_run_status_text,
     index_run_result_by_identity,
     load_profile_device_catalog,
     normalize_evidence_engine_status,
@@ -63,6 +68,7 @@ from .passive_discovery_integration_service import (
     INTERPRET_KEY_CONSOLE,
     INTERPRET_KEY_CONSOLE_TEXT,
     INTERPRET_KEY_CONFIDENCE,
+    INTERPRET_KEY_ENRICHMENT_TEXT,
     INTERPRET_KEY_EXISTENCE,
     INTERPRET_KEY_IDENTITY,
     INTERPRET_KEY_LABEL,
@@ -92,6 +98,10 @@ from .passive_discovery_integration_service import (
     MANUAL_SUMMARY_FIELD,
     PROBE_SUMMARY_FIELD,
     PROBE_TEXT_FIELD,
+    ENRICHMENT_RUN_DEVICES_KEY,
+    ENRICHMENT_RUN_LABEL,
+    ENRICHMENT_RUN_RECORDS_KEY,
+    ENRICHMENT_DEVICE_KEY_CTRE,
 )
 from .bridge_ops import (
     _resolve_device_type_label,
@@ -136,6 +146,7 @@ from tools.common.json_io import read_json, write_json
 from tools.common.config_api import ConfigEditSession, ConfigRepository
 from tools.common.paths import repo_root, tests_deploy_path
 from tools.common.profile_constants import KEY_DEFAULT_PROFILE, KEY_DSL_TESTS
+from tools.common.topology_parse import topology_profile_from_payload
 from tools.common.tests_domain import collect_available_tests
 from tools.common.config_lifecycle import LocalConfigQueryService
 from tools.common.profiles import list_profile_names
@@ -559,6 +570,15 @@ VIS_RATE_FMT = "{value:.1f}/s"
 VIS_TABLE_SPLIT_ORIENT = "vertical"
 VIS_RAW_EMPTY_MESSAGE = "Select a CTRE row to inspect contributing raw IDs."
 LIVE_TOPOLOGY_TAB_LABEL = "Live Topology"
+CAN_FAULT_FINDER_TAB_LABEL = "CAN Fault Finder"
+CAN_FAULT_FINDER_TITLE = "CAN Fault Finder"
+CAN_FAULT_FINDER_RUN_BUTTON = "Run CAN Break Check"
+CAN_FAULT_FINDER_STATUS_NOT_RUN = "Not run yet."
+CAN_FAULT_FINDER_STATUS_FMT = "Last run: {age} ago | candidates={count}"
+CAN_FAULT_FINDER_TEXT_NOT_RUN = (
+    "Run CAN Break Check to freeze the current evidence window and rank CAN fault candidates."
+)
+CAN_FAULT_FINDER_TEXT_ERROR_FMT = "CAN Fault Finder failed: {error}"
 VIS_RAW_COL_ARB = "Arb ID"
 VIS_RAW_COL_PACKETS = "Packets"
 VIS_RAW_COL_RATE = "Rate"
@@ -734,6 +754,7 @@ EVIDENCE_SUMMARY_TABLE_HEIGHT = 4
 EVIDENCE_TEXT_HEIGHT_DEFAULT = 4
 EVIDENCE_TEXT_HEIGHT_PROBE = 8
 EVIDENCE_TEXT_HEIGHT_MANUAL = 8
+EVIDENCE_TEXT_HEIGHT_ENRICHMENT = 6
 EVIDENCE_TEXT_HEIGHT_NOTES = 5
 EVIDENCE_PROBE_DETAIL_LIMIT = 4
 EVIDENCE_INSPECTOR_PANED_WEIGHT_DEFAULT = 2
@@ -767,11 +788,12 @@ EVIDENCE_MANUAL_AUTO_RESULT_LABELS = {
 }
 EVIDENCE_VALUE_NOT_APPLICABLE = "n/a"
 EVIDENCE_INTERPRETATION_TEXT = "Final Interpretation"
-EVIDENCE_PRESENCE_TEXT = "Presence Check (Robot Local Snapshot)"
+EVIDENCE_PRESENCE_TEXT = "Robot Runtime Scope Check (Local Snapshot Lens)"
 EVIDENCE_PASSIVE_TEXT = "Passive CAN Evidence (CANable Observer)"
 EVIDENCE_CONSOLE_TEXT = "Console Evidence (Robot/Host)"
 EVIDENCE_PROBE_TEXT = "Full Probe (Manual One-Shot)"
 EVIDENCE_MANUAL_TEXT = "Manual Test (Operator / Motion)"
+EVIDENCE_ENRICHMENT_TEXT = "Enrichment Evidence (Host Corroboration)"
 EVIDENCE_NOTES_TEXT = "Conflicts / Notes"
 EVIDENCE_LABEL_EXISTENCE = "Existence"
 EVIDENCE_LABEL_OPERABILITY = "Operability"
@@ -1005,12 +1027,17 @@ TEST_SCOPE_PANEL_WAITING_HEADLINE = "WAITING FOR STATE"
 RUNNABLE_SCOPE_PANEL_TITLE = "Runnable State"
 RUNNABLE_SCOPE_PANEL_READY_DETAIL = "manual/group controls available - ready to run"
 RUNNABLE_SCOPE_PANEL_WAITING_DETAIL = "waiting for robot runtime state"
+RUNNABLE_SCOPE_PANEL_DISCONNECTED_DETAIL = (
+    "Robot connection unavailable. Power the robot and reconnect before running."
+)
 TEST_SCOPE_PANEL_READY_BG = "#dcfce7"
 TEST_SCOPE_PANEL_READY_FG = "#166534"
-TEST_SCOPE_PANEL_INACTIVE_BG = "#fee2e2"
-TEST_SCOPE_PANEL_INACTIVE_FG = "#991b1b"
-TEST_SCOPE_PANEL_NEUTRAL_BG = "#e5e7eb"
-TEST_SCOPE_PANEL_NEUTRAL_FG = "#374151"
+TEST_SCOPE_PANEL_INACTIVE_BG = "#fef3c7"
+TEST_SCOPE_PANEL_INACTIVE_FG = "#92400e"
+TEST_SCOPE_PANEL_NEUTRAL_BG = "#fef3c7"
+TEST_SCOPE_PANEL_NEUTRAL_FG = "#92400e"
+TEST_SCOPE_PANEL_ERROR_BG = "#fee2e2"
+TEST_SCOPE_PANEL_ERROR_FG = "#991b1b"
 TEST_SCOPE_PANEL_BORDER = "#cbd5e1"
 TEST_SCOPE_PANEL_WRAP = 320
 TEST_SCOPE_PANEL_PAD_X = 12
@@ -1775,12 +1802,20 @@ class BringupControlUI(tk.Tk):
         self._visibility_enabled_var = tk.BooleanVar(value=False)
         self._latest_visibility_snapshot: Dict[str, Any] = {}
         self._latest_visibility_summary: Dict[str, Any] = {}
+        self._fault_finder_status_var = tk.StringVar(value=CAN_FAULT_FINDER_STATUS_NOT_RUN)
+        self._fault_finder_text: Optional[tk.Text] = None
+        self._fault_finder_last_run_at = 0.0
+        self._fault_finder_result: Dict[str, Any] = {}
         self._evidence_panel: Optional[ttk.Frame] = None
         self._evidence_live_view: Optional[LiveTopologyView] = None
         self._evidence_table: Optional[ttk.Treeview] = None
         self._evidence_engine_status: Dict[str, Any] = default_evidence_engine_status()
         self._evidence_engine_banner_var = tk.StringVar(
             value=evidence_engine_banner_text(self._evidence_engine_status)
+        )
+        self._evidence_enrichment_snapshot: Dict[str, Any] = default_enrichment_run_snapshot()
+        self._evidence_enrichment_status_var = tk.StringVar(
+            value=enrichment_run_status_text(self._evidence_enrichment_snapshot)
         )
         self._evidence_summary_var = tk.StringVar(value=EVIDENCE_SUMMARY_DEFAULT)
         self._evidence_filter_var = tk.StringVar(value=EVIDENCE_FILTER_ALL)
@@ -2153,6 +2188,10 @@ class BringupControlUI(tk.Tk):
         notebook.add(live_panel, text="Live Topology")
         self._build_live_panel(live_panel)
 
+        fault_finder_panel = ttk.Frame(notebook)
+        notebook.add(fault_finder_panel, text=CAN_FAULT_FINDER_TAB_LABEL)
+        self._build_can_fault_finder_panel(fault_finder_panel)
+
         visibility_panel = ttk.Frame(notebook)
         self._visibility_panel = visibility_panel
         self._build_visibility_panel(visibility_panel)
@@ -2238,10 +2277,41 @@ class BringupControlUI(tk.Tk):
             on_active_group_member_toggled=self._on_active_group_member_toggled,
             on_override_action=self._on_live_override_action,
             on_left_click=self._on_live_view_left_click,
+            manage_runtime_notice_internally=False,
         )
         self._live_view.set_show_groups(self._live_groups_var.get())
         self._live_view.set_visibility_enabled(self._visibility_enabled_var.get())
         self._live_view.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+
+    def _build_can_fault_finder_panel(self, parent: tk.Widget) -> None:
+        """
+        NAME
+            _build_can_fault_finder_panel - Build the dedicated CAN fault-finder tab.
+        """
+        header = ttk.Frame(parent)
+        header.pack(fill=VIS_FILL_X, padx=8, pady=(8, 4))
+        ttk.Label(header, text=CAN_FAULT_FINDER_TITLE, font=("Trebuchet MS", 13)).pack(
+            side=VIS_PACK_SIDE_LEFT
+        )
+        ttk.Button(
+            header,
+            text=CAN_FAULT_FINDER_RUN_BUTTON,
+            command=self._run_can_fault_check,
+        ).pack(side=VIS_PACK_SIDE_RIGHT)
+        ttk.Label(header, textvariable=self._fault_finder_status_var).pack(
+            side=VIS_PACK_SIDE_RIGHT,
+            padx=(0, 8),
+        )
+        body = ttk.Frame(parent)
+        body.pack(fill=VIS_FILL_BOTH, expand=True, padx=8, pady=(0, 8))
+        text = tk.Text(body, height=20, wrap="word", state="normal")
+        text.insert("1.0", CAN_FAULT_FINDER_TEXT_NOT_RUN)
+        text.configure(state="disabled")
+        text.pack(side=VIS_PACK_SIDE_LEFT, fill=VIS_FILL_BOTH, expand=True)
+        scroll = ttk.Scrollbar(body, command=text.yview)
+        scroll.pack(side=VIS_PACK_SIDE_RIGHT, fill="y")
+        text.configure(yscrollcommand=scroll.set)
+        self._fault_finder_text = text
 
     def _build_test_library_panel(self, parent: tk.Widget) -> None:
         """
@@ -2635,6 +2705,7 @@ class BringupControlUI(tk.Tk):
             on_active_group_member_toggled=self._on_active_group_member_toggled,
             on_override_action=self._on_live_override_action,
             on_left_click=self._on_live_view_left_click,
+            manage_runtime_notice_internally=False,
         )
         self._visibility_live_view.set_show_groups(self._live_groups_var.get())
         self._visibility_live_view.set_visibility_enabled(True)
@@ -2718,6 +2789,18 @@ class BringupControlUI(tk.Tk):
         NAME
             _build_evidence_panel - Build the topology-first device evidence tab.
         """
+        header = ttk.Frame(parent)
+        header.pack(fill=VIS_FILL_X, padx=8, pady=(8, 0))
+        ttk.Button(
+            header,
+            text=ENRICHMENT_RUN_LABEL,
+            command=self._run_evidence_enrichment,
+        ).pack(side=VIS_PACK_SIDE_RIGHT)
+        ttk.Label(
+            header,
+            textvariable=self._evidence_enrichment_status_var,
+        ).pack(side=VIS_PACK_SIDE_RIGHT, padx=(0, 8))
+
         body = ttk.Panedwindow(parent, orient="vertical")
         body.pack(fill=VIS_FILL_BOTH, expand=True, padx=8, pady=8)
 
@@ -2744,6 +2827,8 @@ class BringupControlUI(tk.Tk):
             on_left_click=self._on_live_view_left_click,
             on_selection_changed=self._on_evidence_topology_selected,
             show_selection_panel=False,
+            show_runnable_panel=False,
+            manage_runtime_notice_internally=False,
             title_text=evidence_overall_title(
                 EVIDENCE_TITLE_TEXT,
                 self._evidence_engine_status,
@@ -2816,6 +2901,51 @@ class BringupControlUI(tk.Tk):
         NAME
             _build_evidence_inspector - Build the selected-device evidence inspector.
         """
+        self._evidence_scope_headline_var = tk.StringVar(value=TEST_SCOPE_PANEL_WAITING_HEADLINE)
+        self._evidence_scope_detail_var = tk.StringVar(value=RUNNABLE_SCOPE_PANEL_WAITING_DETAIL)
+        status_row = ttk.Frame(parent)
+        status_row.pack(fill=VIS_FILL_X, pady=(0, 8))
+        evidence_status_panel = tk.Frame(
+            status_row,
+            bg=TEST_SCOPE_PANEL_NEUTRAL_BG,
+            highlightbackground=TEST_SCOPE_PANEL_BORDER,
+            highlightthickness=1,
+            bd=0,
+            padx=TEST_SCOPE_PANEL_PAD_X,
+            pady=TEST_SCOPE_PANEL_PAD_Y,
+        )
+        evidence_status_panel.pack(side=VIS_PACK_SIDE_RIGHT, anchor="e")
+        self._evidence_scope_panel = evidence_status_panel
+        self._evidence_scope_title_label = tk.Label(
+            evidence_status_panel,
+            text=RUNNABLE_SCOPE_PANEL_TITLE,
+            bg=TEST_SCOPE_PANEL_NEUTRAL_BG,
+            fg=TEST_SCOPE_PANEL_NEUTRAL_FG,
+            anchor="w",
+            font=TEST_SCOPE_PANEL_DETAIL_FONT,
+        )
+        self._evidence_scope_title_label.pack(anchor="w")
+        self._evidence_scope_headline_label = tk.Label(
+            evidence_status_panel,
+            textvariable=self._evidence_scope_headline_var,
+            bg=TEST_SCOPE_PANEL_NEUTRAL_BG,
+            fg=TEST_SCOPE_PANEL_NEUTRAL_FG,
+            anchor="w",
+            justify="left",
+            font=TEST_SCOPE_PANEL_HEADLINE_FONT,
+        )
+        self._evidence_scope_headline_label.pack(anchor="w", pady=(2, 0))
+        self._evidence_scope_detail_label = tk.Label(
+            evidence_status_panel,
+            textvariable=self._evidence_scope_detail_var,
+            bg=TEST_SCOPE_PANEL_NEUTRAL_BG,
+            fg=TEST_SCOPE_PANEL_NEUTRAL_FG,
+            anchor="w",
+            justify="left",
+            wraplength=TEST_SCOPE_PANEL_WRAP,
+            font=TEST_SCOPE_PANEL_DETAIL_FONT,
+        )
+        self._evidence_scope_detail_label.pack(anchor="w", pady=(2, 0))
         ttk.Label(parent, text="Selected Device", font=("Trebuchet MS", 12)).pack(anchor=VIS_TREE_ANCHOR_W)
         ttk.Label(parent, textvariable=self._evidence_selected_title_var, font=("Segoe UI", 10, "bold")).pack(
             anchor=VIS_TREE_ANCHOR_W,
@@ -2863,20 +2993,25 @@ class BringupControlUI(tk.Tk):
         sections = ttk.Panedwindow(parent, orient="vertical")
         sections.pack(fill=VIS_FILL_BOTH, expand=True)
         for title in (
+            EVIDENCE_ENRICHMENT_TEXT,
             EVIDENCE_CONSOLE_TEXT,
             EVIDENCE_PROBE_TEXT,
             EVIDENCE_MANUAL_TEXT,
             EVIDENCE_NOTES_TEXT,
         ):
             section_weight = EVIDENCE_INSPECTOR_PANED_WEIGHT_DEFAULT
-            if title == EVIDENCE_PROBE_TEXT:
+            if title == EVIDENCE_ENRICHMENT_TEXT:
+                section_weight = EVIDENCE_INSPECTOR_PANED_WEIGHT_DEFAULT
+            elif title == EVIDENCE_PROBE_TEXT:
                 section_weight = EVIDENCE_INSPECTOR_PANED_WEIGHT_PROBE
             elif title == EVIDENCE_MANUAL_TEXT:
                 section_weight = EVIDENCE_INSPECTOR_PANED_WEIGHT_MANUAL
             elif title == EVIDENCE_NOTES_TEXT:
                 section_weight = EVIDENCE_INSPECTOR_PANED_WEIGHT_NOTES
             text_height = EVIDENCE_TEXT_HEIGHT_DEFAULT
-            if title == EVIDENCE_PROBE_TEXT:
+            if title == EVIDENCE_ENRICHMENT_TEXT:
+                text_height = EVIDENCE_TEXT_HEIGHT_ENRICHMENT
+            elif title == EVIDENCE_PROBE_TEXT:
                 text_height = EVIDENCE_TEXT_HEIGHT_PROBE
             elif title == EVIDENCE_MANUAL_TEXT:
                 text_height = EVIDENCE_TEXT_HEIGHT_MANUAL
@@ -2972,6 +3107,8 @@ class BringupControlUI(tk.Tk):
             return SECTION_PASSIVE
         if title == EVIDENCE_CONSOLE_TEXT:
             return SECTION_CONSOLE
+        if title == EVIDENCE_ENRICHMENT_TEXT:
+            return SECTION_ENRICHMENT
         if title == EVIDENCE_PROBE_TEXT:
             return SECTION_PROBE
         if title == EVIDENCE_MANUAL_TEXT:
@@ -3423,6 +3560,8 @@ class BringupControlUI(tk.Tk):
         """
         if self.__dict__.get("_controlled_lifecycle_active_known") is not True:
             return False
+        if self._runtime_active_group_members():
+            return True
         latest_runtime_devices = self.__dict__.get("_latest_runtime_devices", {})
         if not isinstance(latest_runtime_devices, dict):
             return False
@@ -3683,7 +3822,9 @@ class BringupControlUI(tk.Tk):
         name = _normalize_profile_name(profile_name)
         if name == PROFILE_NONE:
             self._profile_devices = {}
+            self._evidence_enrichment_snapshot = default_enrichment_run_snapshot()
             self._set_evidence_engine_section_label(SECTION_PROFILE_INVENTORY, ENGINE_LABEL_NEW)
+            self._set_evidence_engine_section_label(SECTION_ENRICHMENT, ENGINE_LABEL_NEW)
             self._set_evidence_engine_section_label(SECTION_TOPOLOGY_VIEW, ENGINE_LABEL_NEW)
             self._set_evidence_engine_section_label(SECTION_INTERPRETATION, ENGINE_LABEL_NEW)
             if self._visibility_provider is not None:
@@ -3699,6 +3840,7 @@ class BringupControlUI(tk.Tk):
                 devices, _expected = get_profile(name)
             except Exception:
                 self._profile_devices = {}
+                self._evidence_enrichment_snapshot = default_enrichment_run_snapshot()
                 self._set_evidence_engine_section_label(SECTION_PROFILE_INVENTORY, ENGINE_LABEL_LEGACY)
                 if self._visibility_provider is not None:
                     self._visibility_provider.set_expected_devices([])
@@ -3711,6 +3853,7 @@ class BringupControlUI(tk.Tk):
                     continue
                 mapping[label.lower()] = device
         self._profile_devices = mapping
+        self._evidence_enrichment_snapshot = default_enrichment_run_snapshot()
         self._set_evidence_engine_section_label(
             SECTION_PROFILE_INVENTORY,
             ENGINE_LABEL_NEW if loaded_from_passive_discovery else ENGINE_LABEL_LEGACY,
@@ -3730,6 +3873,10 @@ class BringupControlUI(tk.Tk):
             )
             self._set_evidence_engine_section_label(
                 SECTION_MANUAL,
+                ENGINE_LABEL_NEW,
+            )
+            self._set_evidence_engine_section_label(
+                SECTION_ENRICHMENT,
                 ENGINE_LABEL_NEW,
             )
             self._set_evidence_engine_section_label(
@@ -5170,6 +5317,7 @@ class BringupControlUI(tk.Tk):
             label=label,
             presence_entry=presence_entry,
             passive_device=passive_device,
+            enrichment_snapshot=self._evidence_enrichment_snapshot,
             visibility_device=visibility_device,
             runtime_device=runtime_device,
             console_entry=console_entry,
@@ -5187,6 +5335,141 @@ class BringupControlUI(tk.Tk):
             visibility_packet_rate_text=self._format_visibility_packet_rate(metrics),
         )
 
+    def _current_output_text(self) -> str:
+        """
+        NAME
+            _current_output_text - Return the current output-pane text for console-log enrichment parsing.
+        """
+        output_widget = self.__dict__.get("_output")
+        if output_widget is None:
+            return NT_VALUE_EMPTY
+        try:
+            return str(output_widget.get("1.0", "end")).strip()
+        except Exception:
+            return NT_VALUE_EMPTY
+
+    def _ctre_enrichment_rows_from_snapshot(self) -> Dict[Tuple[int, int, int], Dict[str, Any]]:
+        """
+        NAME
+            _ctre_enrichment_rows_from_snapshot - Rebuild CTRE device-enrichment rows from the cached enrichment snapshot.
+        """
+        result: Dict[Tuple[int, int, int], Dict[str, Any]] = {}
+        devices = self._evidence_enrichment_snapshot.get(ENRICHMENT_RUN_DEVICES_KEY, {})
+        if not isinstance(devices, dict):
+            return result
+        for label_key, profile_device in self._profile_devices.items():
+            if not isinstance(profile_device, dict):
+                continue
+            try:
+                identity = (
+                    int(profile_device.get(KEY_MANUFACTURER)),
+                    int(profile_device.get(KEY_DEVICE_TYPE)),
+                    int(profile_device.get(KEY_ID)),
+                )
+            except Exception:
+                continue
+            device_snapshot = devices.get(label_key)
+            if not isinstance(device_snapshot, dict):
+                continue
+            ctre_entry = device_snapshot.get(ENRICHMENT_DEVICE_KEY_CTRE)
+            if isinstance(ctre_entry, dict):
+                result[identity] = dict(ctre_entry)
+        return result
+
+    def _run_evidence_enrichment(self) -> None:
+        """
+        NAME
+            _run_evidence_enrichment - Run host-side enrichment sources and refresh the Evidence view.
+        """
+        profile_name = str(self._profile_box.get()).strip()
+        self._evidence_enrichment_snapshot = build_enrichment_run_snapshot(
+            profile_devices=self._profile_devices,
+            profile_name=profile_name,
+            rio_host=str(getattr(self, "_rio_host", NT_VALUE_EMPTY)).strip(),
+            output_log_text=self._current_output_text(),
+        )
+        self._refresh_evidence_enrichment_status()
+        self._refresh_evidence_view()
+        selected_label = str(self._evidence_selected_title_var.get()).strip()
+        if selected_label:
+            self._apply_evidence_selection(selected_label)
+
+    def _refresh_evidence_enrichment_status(self) -> None:
+        """
+        NAME
+            _refresh_evidence_enrichment_status - Refresh the shared Evidence-tab enrichment run status line.
+        """
+        status_var = self.__dict__.get("_evidence_enrichment_status_var")
+        if status_var is None:
+            return
+        status_var.set(
+            enrichment_run_status_text(
+                self.__dict__.get("_evidence_enrichment_snapshot"),
+                now_s=time.time(),
+            )
+        )
+
+    def _set_fault_finder_text(self, text_value: str) -> None:
+        """
+        NAME
+            _set_fault_finder_text - Replace the read-only CAN Fault Finder text output.
+        """
+        widget = self.__dict__.get("_fault_finder_text")
+        if widget is None:
+            return
+        widget.configure(state="normal")
+        widget.delete("1.0", "end")
+        widget.insert("1.0", text_value or CAN_FAULT_FINDER_TEXT_NOT_RUN)
+        widget.configure(state="disabled")
+
+    def _current_topology_profile(self) -> Dict[str, object]:
+        """
+        NAME
+            _current_topology_profile - Return the selected profile's local topology graph.
+        """
+        profile_name = self._selected_real_profile()
+        if not profile_name:
+            return {}
+        try:
+            payload = self._load_local_profiles_payload()
+        except Exception:
+            return {}
+        topology_profile = topology_profile_from_payload(payload, profile_name)
+        return dict(topology_profile) if isinstance(topology_profile, dict) else {}
+
+    def _run_can_fault_check(self) -> None:
+        """
+        NAME
+            _run_can_fault_check - Freeze current evidence and rank CAN fault candidates.
+        """
+        now_s = time.time()
+        try:
+            rows = self._build_evidence_rows()
+            console_snapshot = self._collect_console_snapshot()
+            result = build_fault_diagnosis(
+                evidence_rows=rows,
+                console_snapshot=console_snapshot,
+                topology_profile=self._current_topology_profile(),
+                now_s=now_s,
+            )
+        except Exception as exc:
+            self._fault_finder_last_run_at = now_s
+            self._fault_finder_result = {}
+            self._fault_finder_status_var.set(CAN_FAULT_FINDER_STATUS_NOT_RUN)
+            self._set_fault_finder_text(CAN_FAULT_FINDER_TEXT_ERROR_FMT.format(error=exc))
+            return
+        self._fault_finder_last_run_at = now_s
+        self._fault_finder_result = dict(result)
+        candidates = result.get("candidates")
+        candidate_count = len(candidates) if isinstance(candidates, list) else 0
+        self._fault_finder_status_var.set(
+            CAN_FAULT_FINDER_STATUS_FMT.format(
+                age=_format_age_seconds(0.0),
+                count=candidate_count,
+            )
+        )
+        self._set_fault_finder_text(render_fault_diagnosis(result))
+
     def _build_evidence_rows(self) -> List[Dict[str, Any]]:
         """
         NAME
@@ -5195,6 +5478,8 @@ class BringupControlUI(tk.Tk):
         passive_result = build_live_passive_result(
             self._visibility_provider,
             self._profile_devices,
+            ctre_enrichment=self._ctre_enrichment_rows_from_snapshot(),
+            enrichment_records=tuple(self._evidence_enrichment_snapshot.get(ENRICHMENT_RUN_RECORDS_KEY, ()) or ()),
         )
         passive_devices_by_identity = index_run_result_by_identity(passive_result)
         presence_entries_by_label = build_runtime_presence_catalog(
@@ -5304,6 +5589,7 @@ class BringupControlUI(tk.Tk):
         self._set_evidence_text(EVIDENCE_PRESENCE_TEXT, str(row.get("presenceText", EVIDENCE_SOURCE_NONE)))
         self._set_evidence_text(EVIDENCE_PASSIVE_TEXT, str(row.get("passiveText", EVIDENCE_SOURCE_NONE)))
         self._set_evidence_text(EVIDENCE_CONSOLE_TEXT, str(row.get("consoleText", EVIDENCE_SOURCE_NONE)))
+        self._set_evidence_text(EVIDENCE_ENRICHMENT_TEXT, str(row.get("enrichmentText", EVIDENCE_SOURCE_NONE)))
         self._set_evidence_text(EVIDENCE_PROBE_TEXT, str(row.get("probeText", EVIDENCE_SOURCE_NONE)))
         self._set_evidence_text(EVIDENCE_MANUAL_TEXT, str(row.get("manualText", EVIDENCE_MANUAL_PLACEHOLDER)))
         self._set_evidence_text(EVIDENCE_NOTES_TEXT, str(row.get("notesText", EVIDENCE_NOTE_NONE)))
@@ -5313,6 +5599,7 @@ class BringupControlUI(tk.Tk):
         NAME
             _refresh_evidence_view - Rebuild the Evidence table, topology overlay, and inspector.
         """
+        self._refresh_evidence_enrichment_status()
         table = self._evidence_table
         live_view = self._evidence_live_view
         if table is None or live_view is None:
@@ -9838,38 +10125,80 @@ class BringupControlUI(tk.Tk):
         NAME
             _refresh_output_runtime_notice - Render the highest-priority next-step notice under Output.
         """
-        panel = getattr(self, "_output_scope_panel", None)
-        if panel is None:
+        self._refresh_scope_notice_panel(
+            panel_attr="_output_scope_panel",
+            title_attr="_output_scope_title_label",
+            headline_attr="_output_scope_headline_label",
+            detail_attr="_output_scope_detail_label",
+            headline_var_attr="_output_scope_headline_var",
+            detail_var_attr="_output_scope_detail_var",
+        )
+        self._refresh_scope_notice_panel(
+            panel_attr="_evidence_scope_panel",
+            title_attr="_evidence_scope_title_label",
+            headline_attr="_evidence_scope_headline_label",
+            detail_attr="_evidence_scope_detail_label",
+            headline_var_attr="_evidence_scope_headline_var",
+            detail_var_attr="_evidence_scope_detail_var",
+        )
+
+    def _refresh_scope_notice_panel(
+        self,
+        *,
+        panel_attr: str,
+        title_attr: str,
+        headline_attr: str,
+        detail_attr: str,
+        headline_var_attr: str,
+        detail_var_attr: str,
+    ) -> None:
+        """
+        NAME
+            _refresh_scope_notice_panel - Render one runnable-state panel using the shared host status rules.
+        """
+        panel = self.__dict__.get(panel_attr)
+        headline_var = self.__dict__.get(headline_var_attr)
+        detail_var = self.__dict__.get(detail_var_attr)
+        if panel is None or headline_var is None or detail_var is None:
             return
         runtime_state_seen = bool(self.__dict__.get("_runtime_state_seen", False))
-        if not self._tcp_connected or not self._handshake_done or not runtime_state_seen:
+        if not self._tcp_connected:
+            headline = TEST_SCOPE_PANEL_INACTIVE_HEADLINE
+            bg = TEST_SCOPE_PANEL_ERROR_BG
+            fg = TEST_SCOPE_PANEL_ERROR_FG
+            detail = RUNNABLE_SCOPE_PANEL_DISCONNECTED_DETAIL
+        elif not self._handshake_done or not runtime_state_seen:
             headline = TEST_SCOPE_PANEL_WAITING_HEADLINE
             bg = TEST_SCOPE_PANEL_NEUTRAL_BG
             fg = TEST_SCOPE_PANEL_NEUTRAL_FG
             detail = RUNNABLE_SCOPE_PANEL_WAITING_DETAIL
         elif self._runtime_state_notice_text:
             headline = TEST_SCOPE_PANEL_INACTIVE_HEADLINE
-            bg = TEST_SCOPE_PANEL_INACTIVE_BG
-            fg = TEST_SCOPE_PANEL_INACTIVE_FG
+            if self._runtime_state_notice_level == "error":
+                bg = TEST_SCOPE_PANEL_ERROR_BG
+                fg = TEST_SCOPE_PANEL_ERROR_FG
+            else:
+                bg = TEST_SCOPE_PANEL_INACTIVE_BG
+                fg = TEST_SCOPE_PANEL_INACTIVE_FG
             detail = self._runtime_state_notice_text
         elif self._runtime_event_notice_text:
             headline = TEST_SCOPE_PANEL_INACTIVE_HEADLINE
-            bg = TEST_SCOPE_PANEL_INACTIVE_BG
-            fg = TEST_SCOPE_PANEL_INACTIVE_FG
+            if self._runtime_event_notice_level == "error":
+                bg = TEST_SCOPE_PANEL_ERROR_BG
+                fg = TEST_SCOPE_PANEL_ERROR_FG
+            else:
+                bg = TEST_SCOPE_PANEL_INACTIVE_BG
+                fg = TEST_SCOPE_PANEL_INACTIVE_FG
             detail = self._runtime_event_notice_text
         else:
             headline = TEST_SCOPE_PANEL_READY_HEADLINE
             bg = TEST_SCOPE_PANEL_READY_BG
             fg = TEST_SCOPE_PANEL_READY_FG
             detail = RUNNABLE_SCOPE_PANEL_READY_DETAIL
-        self._output_scope_headline_var.set(headline)
-        self._output_scope_detail_var.set(detail)
+        headline_var.set(headline)
+        detail_var.set(detail)
         panel.configure(bg=bg, highlightbackground=TEST_SCOPE_PANEL_BORDER)
-        for attr_name in (
-            "_output_scope_title_label",
-            "_output_scope_headline_label",
-            "_output_scope_detail_label",
-        ):
+        for attr_name in (title_attr, headline_attr, detail_attr):
             label = self.__dict__.get(attr_name)
             if label is not None:
                 label.configure(bg=bg, fg=fg)
@@ -10017,9 +10346,14 @@ class BringupControlUI(tk.Tk):
         NAME
             _apply_live_runtime_notice_from_nt_state - Surface DS/NT state directly in Live Topology.
         """
+        tcp_connected = bool(self.__dict__.get("_tcp_connected", True))
         activation_notice = self._scope_activation_notice_text()
         scope_active = self._scope_is_currently_active()
-        if stale_state:
+        if not tcp_connected:
+            self._set_runtime_state_notice(
+                RUNNABLE_SCOPE_PANEL_DISCONNECTED_DETAIL, "error"
+            )
+        elif stale_state:
             self._set_runtime_state_notice(
                 "Robot state stale (code not running?)", "warn"
             )
@@ -10038,7 +10372,11 @@ class BringupControlUI(tk.Tk):
         else:
             self._clear_runtime_state_notice()
         for live_view in self._iter_live_views():
-            if stale_state:
+            if not tcp_connected:
+                live_view.set_runtime_state_notice(
+                    RUNNABLE_SCOPE_PANEL_DISCONNECTED_DETAIL, "error"
+                )
+            elif stale_state:
                 live_view.set_runtime_state_notice("Robot state stale (code not running?)", "warn")
             elif estopped:
                 live_view.set_runtime_state_notice("Robot E-Stop. Manual run blocked.", "error")
