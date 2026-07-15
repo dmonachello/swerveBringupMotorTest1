@@ -122,12 +122,108 @@ CONSOLE_KEY_HAS_WARN = "hasWarn"
 CONSOLE_KEY_WARN_COUNT = "warnCount"
 CONSOLE_KEY_ERROR_COUNT = "errorCount"
 CONSOLE_KEY_FATAL_COUNT = "fatalCount"
+CONSOLE_KEY_TOTAL_COUNT = "totalCount"
+CONSOLE_KEY_STATS = "stats"
+CONSOLE_KEY_STATS_TEXT = "statsText"
+CONSOLE_KEY_EXAMPLES = "examples"
+CONSOLE_KEY_RECORDS = "records"
+CONSOLE_KEY_DEVICE_EVENT_COUNT = "deviceEventCount"
+CONSOLE_KEY_SYSTEM_EVENT_COUNT = "systemEventCount"
+CONSOLE_KEY_UNCLASSIFIED_EVENT_COUNT = "unclassifiedEventCount"
+CONSOLE_KEY_TOP_FAULT_FAMILIES = "topFaultFamilies"
+CONSOLE_KEY_TOP_VENDORS = "topVendors"
+CONSOLE_KEY_FRESH_COUNT = "freshCount"
+CONSOLE_KEY_AGING_COUNT = "agingCount"
+CONSOLE_KEY_STALE_COUNT = "staleCount"
+CONSOLE_KEY_FIRST_SEEN_SEC = "firstSeenSec"
+CONSOLE_KEY_LAST_SEEN_SEC = "lastSeenSec"
+CONSOLE_KEY_FIRST_SEEN_AGE_TEXT = "firstSeenAgeText"
+CONSOLE_KEY_LAST_SEEN_AGE_TEXT = "lastSeenAgeText"
+CONSOLE_KEY_SCOPE = "scope"
+CONSOLE_KEY_VENDOR = "vendor"
+CONSOLE_KEY_CAN_ID = "canId"
+CONSOLE_KEY_FAULT_FAMILY = "faultFamily"
+CONSOLE_KEY_MATCHED_LABEL = "matchedLabel"
+CONSOLE_KEY_RAW_TEXT = "rawText"
+CONSOLE_KEY_ORIGIN = "origin"
+CONSOLE_KEY_SOURCE_LENS = "sourceLens"
+CONSOLE_KEY_TIMESTAMP = "timestamp"
+CONSOLE_KEY_AGE_SEC = "ageSec"
+CONSOLE_KEY_FRESHNESS = "freshness"
+CONSOLE_KEY_PARSER_CONFIDENCE = "parserConfidence"
+CONSOLE_KEY_NORMALIZATION_STATUS = "normalizationStatus"
+CONSOLE_KEY_REPEAT_RATE_HZ = "repeatRateHz"
+CONSOLE_KEY_TOP_FAULT_FAMILY = "topFaultFamily"
 CONSOLE_SEVERITY_WARN = "WARN"
 CONSOLE_SEVERITY_ERROR = "ERROR"
 CONSOLE_SEVERITY_FATAL = "FATAL"
 CONSOLE_SEVERITY_INFO = "INFO"
 CONSOLE_EVENT_BUS_FAULT = "BUS_FAULT_SUSPECTED"
+CONSOLE_EVENT_CAN_TIMEOUT = "CAN_TIMEOUT"
+CONSOLE_EVENT_TALON_STALE = "TALON_STATUS_SIGNAL_STALE"
+CONSOLE_EVENT_SPARK_TIMEOUT = "SPARK_STATUS_TIMEOUT"
+CONSOLE_EVENT_SPARK_FW_QUERY_FAIL = "SPARK_FW_QUERY_FAIL"
+CONSOLE_EVENT_SPARK_WRONG_DEVICE = "SPARK_WRONG_DEVICE"
+CONSOLE_EVENT_PDP_TIMEOUT = "PDP_STATUS_READER_TIMEOUT"
+CONSOLE_EVENT_PDH_TIMEOUT = "PDH_STATUS_READER_TIMEOUT"
+CONSOLE_EVENT_HIGH_UTIL = "CAN_BUS_UTIL_HIGH"
+CONSOLE_EVENT_RECOVERED = "CAN_BUS_UTIL_RECOVER"
+CONSOLE_EVENT_LOOP_OVERRUN = "LOOP_OVERRUN"
+CONSOLE_EVENT_ERROR_SPIKE = "CAN_ERROR_SPIKE"
+CONSOLE_EVENT_HAL_TIMEOUT = "HAL_CAN_RECEIVE_TIMEOUT"
 CONSOLE_TEXT_STALE = "stale"
+CONSOLE_EXAMPLE_LIMIT = 3
+CONSOLE_TOP_COUNT_LIMIT = 3
+CONSOLE_FRESH_SEC = 5.0
+CONSOLE_AGING_SEC = 15.0
+CONSOLE_FRESHNESS_FRESH = "fresh"
+CONSOLE_FRESHNESS_AGING = "aging"
+CONSOLE_FRESHNESS_STALE = "stale"
+CONSOLE_ORIGIN_ROBOT = "robot"
+CONSOLE_SOURCE_LENS = "console"
+CONSOLE_NORMALIZATION_STRUCTURED = "structured"
+CONSOLE_NORMALIZATION_PARTIAL = "partial_match"
+CONSOLE_NORMALIZATION_UNCLASSIFIED = "unclassified"
+CONSOLE_PARSER_CONFIDENCE_HIGH = "high"
+CONSOLE_PARSER_CONFIDENCE_MEDIUM = "medium"
+CONSOLE_PARSER_CONFIDENCE_LOW = "low"
+CONSOLE_VENDOR_CTRE = "ctre"
+CONSOLE_VENDOR_REV = "rev"
+CONSOLE_VENDOR_WPILIB = "wpilib"
+CONSOLE_VENDOR_UNKNOWN = "unknown"
+CONSOLE_FAULT_FAMILY_CTRE_STALE = "ctre_stale_status_signal"
+CONSOLE_FAULT_FAMILY_CTRE_TIMEOUT = "ctre_timeout"
+CONSOLE_FAULT_FAMILY_CTRE_UNREACHABLE = "ctre_device_unreachable"
+CONSOLE_FAULT_FAMILY_REV_TIMEOUT = "rev_timeout"
+CONSOLE_FAULT_FAMILY_DEVICE_STALE = "device_signal_stale"
+CONSOLE_FAULT_FAMILY_BUS_OFF = "bus_off"
+CONSOLE_FAULT_FAMILY_TX_FULL = "tx_full"
+CONSOLE_FAULT_FAMILY_ERROR_SPIKE = "error_spike"
+CONSOLE_FAULT_FAMILY_HIGH_UTIL = "high_util"
+CONSOLE_FAULT_FAMILY_LOOP_OVERRUN = "loop_overrun"
+CONSOLE_FAULT_FAMILY_CONTROLLER_SIDE = "controller_side_comm_loss"
+CONSOLE_FAULT_FAMILY_UNKNOWN_DEVICE = "unknown_device_fault"
+CONSOLE_FAULT_FAMILY_UNKNOWN_SYSTEM = "unknown_system_fault"
+CONSOLE_DEVICE_TYPE_TALON_FX = "talon fx"
+CONSOLE_DEVICE_TYPE_SPARK_MAX = "spark max"
+CONSOLE_DEVICE_TYPE_PDP = "pdp"
+CONSOLE_DEVICE_TYPE_PDH = "pdh"
+CONSOLE_DEVICE_TYPE_UNKNOWN = "unknown"
+CONSOLE_DEVICE_FAILURE_FAMILIES = {
+    CONSOLE_FAULT_FAMILY_CTRE_STALE,
+    CONSOLE_FAULT_FAMILY_CTRE_TIMEOUT,
+    CONSOLE_FAULT_FAMILY_CTRE_UNREACHABLE,
+    CONSOLE_FAULT_FAMILY_REV_TIMEOUT,
+    CONSOLE_FAULT_FAMILY_DEVICE_STALE,
+}
+CONSOLE_STATS_HEADER_GENERAL = "General Console Stats:"
+CONSOLE_STATS_HEADER_DEVICE = "Selected Device Console Stats:"
+CONSOLE_STATS_VERDICT_STRONG = "Console Verdict=Strong targeted negative evidence"
+CONSOLE_STATS_VERDICT_WEAK = "Console Verdict=Weak targeted evidence"
+CONSOLE_STATS_VERDICT_NONE = "Console Verdict=No device-targeted console evidence"
+CONSOLE_STATS_SCOPE_DEVICE = "device"
+CONSOLE_STATS_SCOPE_SYSTEM = "system"
+CONSOLE_STATS_SCOPE_UNKNOWN = "unknown"
 ATTACHMENT_TYPE_ACTIVE_PRESENCE_PROBE = "activePresenceProbe"
 PROBE_KEY_BUCKET = "bucket"
 PROBE_KEY_SCORE = "score"
@@ -143,6 +239,8 @@ PROBE_AGE_AGING = "aging"
 PROBE_AGE_STALE = "stale"
 PROBE_FRESH_SEC = 15.0
 PROBE_AGING_SEC = 60.0
+INFRA_RUNTIME_FRESH_SEC = 3.0
+VISIBILITY_FRESH_SEC = 3.0
 PROBE_STATS_WAITING = "Updates only when Full Probe is run."
 PROBE_STATS_RUNNING = "Full Probe is running now."
 PROBE_STATS_LAST_COMPLETE_FMT = "Last Full Probe completed {age} ago."
@@ -210,6 +308,7 @@ MOTION_MIN_POSITION_DELTA_ROT = 0.05
 VALUE_NOT_APPLICABLE = "n/a"
 MANUAL_SUMMARY_FIELD = "summary"
 INTERPRET_KEY_LABEL = "label"
+INTERPRET_KEY_DEVICE_TYPE = "deviceType"
 INTERPRET_KEY_PASSIVE = "passive"
 INTERPRET_KEY_CONSOLE = "console"
 INTERPRET_KEY_PROBE = "probe"
@@ -228,8 +327,24 @@ INTERPRET_KEY_ENRICHMENT_TEXT = "enrichmentText"
 INTERPRET_KEY_NOTES_TEXT = "notesText"
 INTERPRET_KEY_STATE = "state"
 INTERPRET_KEY_CONFLICTED = "conflicted"
+INTERPRET_KEY_PRESENCE_SCORE = "presenceScore"
+INTERPRET_KEY_PRESENCE_STATE = "presenceState"
+INTERPRET_KEY_PRESENCE_REASONS = "presenceReasons"
+INTERPRET_KEY_FRESHNESS = "freshness"
+INTERPRET_KEY_SOURCE_SCORES = "sourceScores"
+INTERPRET_KEY_DIRTY = "dirty"
+INTERPRET_KEY_DIRTY_REASONS = "dirtyReasons"
+INTERPRET_KEY_LAST_KNOWN_GOOD_AT = "lastKnownGoodAt"
+INTERPRET_KEY_LAST_SEEN_PRESENT_AT = "lastSeenPresentAt"
+INTERPRET_KEY_LAST_SEEN_MISSING_AT = "lastSeenMissingAt"
+INTERPRET_KEY_LAST_STATE_CHANGE_AT = "lastStateChangeAt"
+INTERPRET_KEY_LAST_EVALUATION_AT = "lastEvaluationAt"
+INTERPRET_KEY_CHANGE_REASON = "changeReason"
+INTERPRET_KEY_EVENT_LOG = "eventLog"
 EVIDENCE_NOTE_SEPARATOR = " | "
 EVIDENCE_TEXT_DEVICE_TIMEOUT = "timeout"
+EVIDENCE_TEXT_CAN_MESSAGE_STALE = "can message is stale"
+EVIDENCE_TEXT_STATUS_SIGNAL_STALE = "status signal stale"
 EVIDENCE_STATE_OK = "ok"
 EVIDENCE_STATE_DEGRADED = "degraded"
 EVIDENCE_STATE_FAILED = "failed"
@@ -246,6 +361,12 @@ EVIDENCE_MOTION_NOTE_NO_ROTATION = "Motor commanded but no rotation detected."
 EVIDENCE_MOTION_NOTE_ROTATING = "Motor rotation detected."
 EVIDENCE_PROBE_NOTE_AGING = "Full-probe result is aging; lowering its weight."
 EVIDENCE_PROBE_NOTE_STALE = "Full-probe result is stale; using it only as historical evidence."
+EVIDENCE_PROBE_NOTE_INVALIDATED_CONSOLE = "Full-probe result was invalidated by fresh device-targeted console fault evidence."
+EVIDENCE_MANUAL_NOTE_INVALIDATED_CONSOLE = "Manual result is being treated as historical only because fresh device-targeted console fault evidence conflicts with it."
+EVIDENCE_PROBE_SUMMARY_INVALIDATED = "Invalidated by console fault"
+EVIDENCE_MANUAL_SUMMARY_HISTORICAL_ONLY = "Historical only"
+SOURCE_SCORE_PROBE_INVALIDATED = "Stale Full Probe invalidated by fresh console fault."
+SOURCE_SCORE_MANUAL_INVALIDATED = "Manual evidence invalidated by fresh console fault."
 EVIDENCE_PROBE_NOTE_ONE_SHOT = "Full Probe is a cached manual one-shot diagnostic result."
 EVIDENCE_NOTE_PASSIVE_WITHOUT_PROBE_RESULT = "Passive CAN traffic is present, but Full Probe did not produce a device-specific result here."
 EVIDENCE_NOTE_PASSIVE_OVERRIDES_RUNTIME_ABSENCE = "Passive CAN shows recurring device-emitted traffic even though the robot-local presence snapshot did not observe this device."
@@ -322,6 +443,16 @@ DETAIL_SNAPSHOT_APPLIED_DUTY = "appliedDuty"
 DETAIL_SNAPSHOT_VEL_RPM = "velRpm"
 DETAIL_SNAPSHOT_POSITION_ROT = "positionRot"
 INFRASTRUCTURE_DEVICE_LABELS = {"roborio", "pdp", "pdh"}
+DEVICE_CLASS_MOTION = "motion_device"
+DEVICE_CLASS_INFRASTRUCTURE = "infrastructure_device"
+DEVICE_CLASS_UNPROFILED = "unprofiled_device"
+PRESENCE_STATE_PRESENT = "present"
+PRESENCE_STATE_MISSING = "missing"
+PRESENCE_STATE_UNKNOWN = "unknown"
+PRESENCE_STATE_CONFLICT = "conflict"
+SOURCE_SCORE_KEY_SCORE = "score"
+SOURCE_SCORE_KEY_STATE = "state"
+SOURCE_SCORE_KEY_REASON = "reason"
 DETAIL_SNAPSHOT_POSITION_DELTA_ROT = "positionDeltaRot"
 DETAIL_SNAPSHOT_TEMP_C = "tempC"
 DETAIL_SNAPSHOT_SELECTED = "selected"
@@ -803,18 +934,41 @@ def build_runtime_presence_catalog(
     return catalog
 
 
-def build_console_snapshot_from_entries(entries: Any) -> Dict[str, Any]:
+def build_console_snapshot_from_entries(entries: Any, now_s: Optional[float] = None) -> Dict[str, Any]:
     """
     NAME
         build_console_snapshot_from_entries - Normalize host console monitor entries into the shared Evidence snapshot shape.
     """
+    if now_s is None:
+        import time
+
+        now_s = time.time()
     result: Dict[str, Any] = {
         CONSOLE_SCOPE_DEVICES: {},
         CONSOLE_SCOPE_SYSTEM: [],
         CONSOLE_KEY_SYSTEM_TEXT: EVIDENCE_SOURCE_NONE,
         CONSOLE_KEY_SYSTEM_CONFLICT: False,
+        CONSOLE_KEY_RECORDS: [],
+        CONSOLE_KEY_STATS: {
+            CONSOLE_KEY_TOTAL_COUNT: 0,
+            CONSOLE_KEY_WARN_COUNT: 0,
+            CONSOLE_KEY_ERROR_COUNT: 0,
+            CONSOLE_KEY_FATAL_COUNT: 0,
+            CONSOLE_KEY_DEVICE_EVENT_COUNT: 0,
+            CONSOLE_KEY_SYSTEM_EVENT_COUNT: 0,
+            CONSOLE_KEY_UNCLASSIFIED_EVENT_COUNT: 0,
+            CONSOLE_KEY_EXAMPLES: [],
+            CONSOLE_KEY_TOP_FAULT_FAMILIES: {},
+            CONSOLE_KEY_TOP_VENDORS: {},
+            CONSOLE_KEY_FRESH_COUNT: 0,
+            CONSOLE_KEY_AGING_COUNT: 0,
+            CONSOLE_KEY_STALE_COUNT: 0,
+            CONSOLE_KEY_FIRST_SEEN_SEC: None,
+            CONSOLE_KEY_LAST_SEEN_SEC: None,
+        },
     }
     system_events = []
+    stats = result[CONSOLE_KEY_STATS]
     for entry in list(entries or ()):
         if not bool(getattr(entry, "active", False)):
             continue
@@ -825,8 +979,38 @@ def build_console_snapshot_from_entries(entries: Any) -> Dict[str, Any]:
         if message:
             event_summary = f"{event_summary}: {message}"
         device_label = str(getattr(entry, "device_label", TEXT_EMPTY) or TEXT_EMPTY).strip()
+        device_id = getattr(entry, "device_id", None)
         event_count = int(getattr(entry, "count", 0) or 0)
+        first_seen_sec = getattr(entry, "first_seen", None)
+        last_seen_sec = getattr(entry, "last_seen", None)
+        scoped_count = max(1, event_count)
+        record = _console_normalized_record(
+            event_type=event_type,
+            severity=severity,
+            message=message,
+            device_label=device_label,
+            device_id=device_id,
+            first_seen_sec=first_seen_sec,
+            last_seen_sec=last_seen_sec,
+            event_count=event_count,
+            now_s=now_s,
+        )
+        result[CONSOLE_KEY_RECORDS].append(record)
+        stats[CONSOLE_KEY_TOTAL_COUNT] += scoped_count
+        if severity == CONSOLE_SEVERITY_WARN:
+            stats[CONSOLE_KEY_WARN_COUNT] += scoped_count
+        elif severity == CONSOLE_SEVERITY_ERROR:
+            stats[CONSOLE_KEY_ERROR_COUNT] += scoped_count
+        elif severity == CONSOLE_SEVERITY_FATAL:
+            stats[CONSOLE_KEY_FATAL_COUNT] += scoped_count
+        _console_stats_increment_freshness(stats, str(record.get(CONSOLE_KEY_FRESHNESS, TEXT_EMPTY)).strip())
+        _console_stats_increment_counter(stats[CONSOLE_KEY_TOP_FAULT_FAMILIES], str(record.get(CONSOLE_KEY_FAULT_FAMILY, TEXT_EMPTY)).strip(), scoped_count)
+        _console_stats_increment_counter(stats[CONSOLE_KEY_TOP_VENDORS], str(record.get(CONSOLE_KEY_VENDOR, TEXT_EMPTY)).strip(), scoped_count)
+        _console_stats_update_first_last(stats, first_seen_sec, last_seen_sec)
+        if len(stats[CONSOLE_KEY_EXAMPLES]) < CONSOLE_EXAMPLE_LIMIT:
+            stats[CONSOLE_KEY_EXAMPLES].append(event_summary)
         if device_label:
+            stats[CONSOLE_KEY_DEVICE_EVENT_COUNT] += scoped_count
             row = result[CONSOLE_SCOPE_DEVICES].setdefault(
                 device_label.lower(),
                 {
@@ -837,27 +1021,72 @@ def build_console_snapshot_from_entries(entries: Any) -> Dict[str, Any]:
                     CONSOLE_KEY_WARN_COUNT: 0,
                     CONSOLE_KEY_ERROR_COUNT: 0,
                     CONSOLE_KEY_FATAL_COUNT: 0,
+                    CONSOLE_KEY_TOTAL_COUNT: 0,
+                    CONSOLE_KEY_EXAMPLES: [],
+                    CONSOLE_KEY_RECORDS: [],
+                    CONSOLE_KEY_SCOPE: CONSOLE_STATS_SCOPE_DEVICE,
+                    CONSOLE_KEY_VENDOR: CONSOLE_VENDOR_UNKNOWN,
+                    KEY_DEVICE_TYPE: CONSOLE_DEVICE_TYPE_UNKNOWN,
+                    CONSOLE_KEY_CAN_ID: None,
+                    CONSOLE_KEY_TOP_FAULT_FAMILY: EVIDENCE_SOURCE_NONE,
+                    CONSOLE_KEY_FIRST_SEEN_SEC: None,
+                    CONSOLE_KEY_LAST_SEEN_SEC: None,
+                    CONSOLE_KEY_REPEAT_RATE_HZ: 0.0,
+                    CONSOLE_KEY_PARSER_CONFIDENCE: CONSOLE_PARSER_CONFIDENCE_LOW,
+                    CONSOLE_KEY_NORMALIZATION_STATUS: CONSOLE_NORMALIZATION_UNCLASSIFIED,
+                    CONSOLE_KEY_FRESHNESS: CONSOLE_FRESHNESS_STALE,
                     KEY_LABEL: device_label,
                     KEY_EVIDENCE_ENGINE_ID: ENGINE_ID_PASSIVE_DISCOVERY_POC,
                     KEY_EVIDENCE_ENGINE_LABEL: ENGINE_LABEL_NEW,
                 },
             )
             row[CONSOLE_KEY_EVENTS].append(event_summary)
+            row[CONSOLE_KEY_TOTAL_COUNT] += scoped_count
+            row[CONSOLE_KEY_RECORDS].append(record)
+            row[CONSOLE_KEY_VENDOR] = str(record.get(CONSOLE_KEY_VENDOR, CONSOLE_VENDOR_UNKNOWN)).strip() or CONSOLE_VENDOR_UNKNOWN
+            row[KEY_DEVICE_TYPE] = str(record.get(KEY_DEVICE_TYPE, CONSOLE_DEVICE_TYPE_UNKNOWN)).strip() or CONSOLE_DEVICE_TYPE_UNKNOWN
+            row[CONSOLE_KEY_CAN_ID] = record.get(CONSOLE_KEY_CAN_ID)
+            row[CONSOLE_KEY_TOP_FAULT_FAMILY] = str(record.get(CONSOLE_KEY_FAULT_FAMILY, EVIDENCE_SOURCE_NONE)).strip() or EVIDENCE_SOURCE_NONE
+            row[CONSOLE_KEY_FIRST_SEEN_SEC] = _console_min_time_value(row.get(CONSOLE_KEY_FIRST_SEEN_SEC), first_seen_sec)
+            row[CONSOLE_KEY_LAST_SEEN_SEC] = _console_max_time_value(row.get(CONSOLE_KEY_LAST_SEEN_SEC), last_seen_sec)
+            row[CONSOLE_KEY_REPEAT_RATE_HZ] = _console_repeat_rate_hz(
+                row[CONSOLE_KEY_TOTAL_COUNT],
+                row[CONSOLE_KEY_FIRST_SEEN_SEC],
+                row[CONSOLE_KEY_LAST_SEEN_SEC],
+            )
+            row[CONSOLE_KEY_PARSER_CONFIDENCE] = str(
+                record.get(CONSOLE_KEY_PARSER_CONFIDENCE, CONSOLE_PARSER_CONFIDENCE_LOW)
+            ).strip() or CONSOLE_PARSER_CONFIDENCE_LOW
+            row[CONSOLE_KEY_NORMALIZATION_STATUS] = str(
+                record.get(CONSOLE_KEY_NORMALIZATION_STATUS, CONSOLE_NORMALIZATION_UNCLASSIFIED)
+            ).strip() or CONSOLE_NORMALIZATION_UNCLASSIFIED
+            row[CONSOLE_KEY_FRESHNESS] = str(record.get(CONSOLE_KEY_FRESHNESS, CONSOLE_FRESHNESS_STALE)).strip() or CONSOLE_FRESHNESS_STALE
+            if len(row[CONSOLE_KEY_EXAMPLES]) < CONSOLE_EXAMPLE_LIMIT:
+                row[CONSOLE_KEY_EXAMPLES].append(event_summary)
             if severity == CONSOLE_SEVERITY_WARN:
                 row[CONSOLE_KEY_HAS_WARN] = True
-                row[CONSOLE_KEY_WARN_COUNT] += max(1, event_count)
+                row[CONSOLE_KEY_WARN_COUNT] += scoped_count
             elif severity == CONSOLE_SEVERITY_ERROR:
                 row[CONSOLE_KEY_HAS_ERROR] = True
-                row[CONSOLE_KEY_ERROR_COUNT] += max(1, event_count)
+                row[CONSOLE_KEY_ERROR_COUNT] += scoped_count
             elif severity == CONSOLE_SEVERITY_FATAL:
                 row[CONSOLE_KEY_HAS_ERROR] = True
-                row[CONSOLE_KEY_FATAL_COUNT] += max(1, event_count)
+                row[CONSOLE_KEY_FATAL_COUNT] += scoped_count
             if row[CONSOLE_KEY_SUMMARY] == EVIDENCE_SOURCE_NONE:
                 row[CONSOLE_KEY_SUMMARY] = event_summary
         else:
+            if str(record.get(CONSOLE_KEY_SCOPE, TEXT_EMPTY)).strip() == CONSOLE_STATS_SCOPE_SYSTEM:
+                stats[CONSOLE_KEY_SYSTEM_EVENT_COUNT] += scoped_count
+            else:
+                stats[CONSOLE_KEY_UNCLASSIFIED_EVENT_COUNT] += scoped_count
             system_events.append(event_summary)
+    stats[CONSOLE_KEY_TOP_FAULT_FAMILIES] = _console_top_counts(stats.get(CONSOLE_KEY_TOP_FAULT_FAMILIES))
+    stats[CONSOLE_KEY_TOP_VENDORS] = _console_top_counts(stats.get(CONSOLE_KEY_TOP_VENDORS))
+    stats[CONSOLE_KEY_FIRST_SEEN_AGE_TEXT] = _console_first_last_age_text(stats.get(CONSOLE_KEY_FIRST_SEEN_SEC), now_s)
+    stats[CONSOLE_KEY_LAST_SEEN_AGE_TEXT] = _console_first_last_age_text(stats.get(CONSOLE_KEY_LAST_SEEN_SEC), now_s)
     for row in result[CONSOLE_SCOPE_DEVICES].values():
         if row[CONSOLE_KEY_SUMMARY] != EVIDENCE_SOURCE_NONE:
+            row[CONSOLE_KEY_STATS_TEXT] = _console_device_stats_text(row)
             continue
         if row[CONSOLE_KEY_FATAL_COUNT] > 0 or row[CONSOLE_KEY_ERROR_COUNT] > 0:
             row[CONSOLE_KEY_SUMMARY] = (
@@ -865,13 +1094,385 @@ def build_console_snapshot_from_entries(entries: Any) -> Dict[str, Any]:
             )
         elif row[CONSOLE_KEY_WARN_COUNT] > 0:
             row[CONSOLE_KEY_SUMMARY] = f"warn={row[CONSOLE_KEY_WARN_COUNT]}"
+        row[CONSOLE_KEY_FIRST_SEEN_AGE_TEXT] = _console_first_last_age_text(row.get(CONSOLE_KEY_FIRST_SEEN_SEC), now_s)
+        row[CONSOLE_KEY_LAST_SEEN_AGE_TEXT] = _console_first_last_age_text(row.get(CONSOLE_KEY_LAST_SEEN_SEC), now_s)
+        row[CONSOLE_KEY_STATS_TEXT] = _console_device_stats_text(row)
     result[CONSOLE_SCOPE_SYSTEM] = system_events
     result[CONSOLE_KEY_SYSTEM_TEXT] = system_events[0] if system_events else EVIDENCE_SOURCE_NONE
     result[CONSOLE_KEY_SYSTEM_CONFLICT] = any(
         CONSOLE_EVENT_BUS_FAULT in event or CONSOLE_TEXT_STALE in event.lower()
         for event in system_events
     )
+    result[CONSOLE_KEY_STATS_TEXT] = _console_general_stats_text(result)
     return result
+
+
+def _console_general_stats_text(snapshot: Mapping[str, Any]) -> str:
+    """
+    NAME
+        _console_general_stats_text - Render generalized console statistics for Evidence UI display.
+    """
+    stats = snapshot.get(CONSOLE_KEY_STATS, {}) if isinstance(snapshot, Mapping) else {}
+    if not isinstance(stats, Mapping):
+        return CONSOLE_STATS_HEADER_GENERAL + "\n" + EVIDENCE_SOURCE_NONE
+    lines = [
+        CONSOLE_STATS_HEADER_GENERAL,
+        TEXT_UPDATE_DELIM.join(
+            (
+                f"total={int(stats.get(CONSOLE_KEY_TOTAL_COUNT, 0) or 0)}",
+                f"device={int(stats.get(CONSOLE_KEY_DEVICE_EVENT_COUNT, 0) or 0)}",
+                f"system={int(stats.get(CONSOLE_KEY_SYSTEM_EVENT_COUNT, 0) or 0)}",
+                f"unclassified={int(stats.get(CONSOLE_KEY_UNCLASSIFIED_EVENT_COUNT, 0) or 0)}",
+                f"warn={int(stats.get(CONSOLE_KEY_WARN_COUNT, 0) or 0)}",
+                f"error={int(stats.get(CONSOLE_KEY_ERROR_COUNT, 0) or 0)}",
+                f"fatal={int(stats.get(CONSOLE_KEY_FATAL_COUNT, 0) or 0)}",
+            )
+        ),
+        TEXT_UPDATE_DELIM.join(
+            (
+                f"fresh={int(stats.get(CONSOLE_KEY_FRESH_COUNT, 0) or 0)}",
+                f"aging={int(stats.get(CONSOLE_KEY_AGING_COUNT, 0) or 0)}",
+                f"stale={int(stats.get(CONSOLE_KEY_STALE_COUNT, 0) or 0)}",
+                f"firstSeen={str(stats.get(CONSOLE_KEY_FIRST_SEEN_AGE_TEXT, EVIDENCE_SOURCE_NONE)).strip() or EVIDENCE_SOURCE_NONE}",
+                f"lastSeen={str(stats.get(CONSOLE_KEY_LAST_SEEN_AGE_TEXT, EVIDENCE_SOURCE_NONE)).strip() or EVIDENCE_SOURCE_NONE}",
+            )
+        ),
+    ]
+    top_fault_families = stats.get(CONSOLE_KEY_TOP_FAULT_FAMILIES, [])
+    if isinstance(top_fault_families, list) and top_fault_families:
+        lines.append(
+            "topFaultFamilies=" + TEXT_COMMA_DELIM.join(
+                f"{str(name).strip()}({int(count)})"
+                for name, count in top_fault_families[:CONSOLE_TOP_COUNT_LIMIT]
+                if str(name).strip()
+            )
+        )
+    top_vendors = stats.get(CONSOLE_KEY_TOP_VENDORS, [])
+    if isinstance(top_vendors, list) and top_vendors:
+        lines.append(
+            "topVendors=" + TEXT_COMMA_DELIM.join(
+                f"{str(name).strip()}({int(count)})"
+                for name, count in top_vendors[:CONSOLE_TOP_COUNT_LIMIT]
+                if str(name).strip()
+            )
+        )
+    examples = stats.get(CONSOLE_KEY_EXAMPLES, [])
+    if isinstance(examples, list) and examples:
+        lines.append("examples=" + TEXT_COMMA_DELIM.join(str(item).strip() for item in examples[:CONSOLE_EXAMPLE_LIMIT] if str(item).strip()))
+    return "\n".join(lines)
+
+
+def _console_device_stats_text(console_entry: Mapping[str, Any]) -> str:
+    """
+    NAME
+        _console_device_stats_text - Render selected-device console statistics for Evidence UI display.
+    """
+    if not isinstance(console_entry, Mapping):
+        return CONSOLE_STATS_HEADER_DEVICE + "\n" + CONSOLE_STATS_VERDICT_NONE
+    has_error = bool(console_entry.get(CONSOLE_KEY_HAS_ERROR))
+    has_warn = bool(console_entry.get(CONSOLE_KEY_HAS_WARN))
+    verdict = CONSOLE_STATS_VERDICT_NONE
+    if has_error:
+        verdict = CONSOLE_STATS_VERDICT_STRONG
+    elif has_warn:
+        verdict = CONSOLE_STATS_VERDICT_WEAK
+    lines = [
+        CONSOLE_STATS_HEADER_DEVICE,
+        verdict,
+        TEXT_UPDATE_DELIM.join(
+            (
+                f"label={str(console_entry.get(KEY_LABEL, EVIDENCE_SOURCE_NONE)).strip() or EVIDENCE_SOURCE_NONE}",
+                f"vendor={str(console_entry.get(CONSOLE_KEY_VENDOR, CONSOLE_VENDOR_UNKNOWN)).strip() or CONSOLE_VENDOR_UNKNOWN}",
+                f"deviceType={str(console_entry.get(KEY_DEVICE_TYPE, CONSOLE_DEVICE_TYPE_UNKNOWN)).strip() or CONSOLE_DEVICE_TYPE_UNKNOWN}",
+                f"canId={str(console_entry.get(CONSOLE_KEY_CAN_ID, EVIDENCE_SOURCE_NONE)).strip() or EVIDENCE_SOURCE_NONE}",
+                f"total={int(console_entry.get(CONSOLE_KEY_TOTAL_COUNT, 0) or 0)}",
+                f"warn={int(console_entry.get(CONSOLE_KEY_WARN_COUNT, 0) or 0)}",
+                f"error={int(console_entry.get(CONSOLE_KEY_ERROR_COUNT, 0) or 0)}",
+                f"fatal={int(console_entry.get(CONSOLE_KEY_FATAL_COUNT, 0) or 0)}",
+            )
+        ),
+        TEXT_UPDATE_DELIM.join(
+            (
+                f"freshness={str(console_entry.get(CONSOLE_KEY_FRESHNESS, CONSOLE_FRESHNESS_STALE)).strip() or CONSOLE_FRESHNESS_STALE}",
+                f"repeatRateHz={float(console_entry.get(CONSOLE_KEY_REPEAT_RATE_HZ, 0.0) or 0.0):.2f}",
+                f"firstSeen={str(console_entry.get(CONSOLE_KEY_FIRST_SEEN_AGE_TEXT, EVIDENCE_SOURCE_NONE)).strip() or EVIDENCE_SOURCE_NONE}",
+                f"lastSeen={str(console_entry.get(CONSOLE_KEY_LAST_SEEN_AGE_TEXT, EVIDENCE_SOURCE_NONE)).strip() or EVIDENCE_SOURCE_NONE}",
+            )
+        ),
+    ]
+    summary = str(console_entry.get(CONSOLE_KEY_SUMMARY, EVIDENCE_SOURCE_NONE)).strip() or EVIDENCE_SOURCE_NONE
+    lines.append(f"summary={summary}")
+    lines.append(
+        TEXT_UPDATE_DELIM.join(
+            (
+                f"topFaultFamily={str(console_entry.get(CONSOLE_KEY_TOP_FAULT_FAMILY, EVIDENCE_SOURCE_NONE)).strip() or EVIDENCE_SOURCE_NONE}",
+                f"parserConfidence={str(console_entry.get(CONSOLE_KEY_PARSER_CONFIDENCE, CONSOLE_PARSER_CONFIDENCE_LOW)).strip() or CONSOLE_PARSER_CONFIDENCE_LOW}",
+                f"normalizationStatus={str(console_entry.get(CONSOLE_KEY_NORMALIZATION_STATUS, CONSOLE_NORMALIZATION_UNCLASSIFIED)).strip() or CONSOLE_NORMALIZATION_UNCLASSIFIED}",
+            )
+        )
+    )
+    examples = console_entry.get(CONSOLE_KEY_EXAMPLES, [])
+    if isinstance(examples, list) and examples:
+        lines.append("examples=" + TEXT_COMMA_DELIM.join(str(item).strip() for item in examples[:CONSOLE_EXAMPLE_LIMIT] if str(item).strip()))
+    return "\n".join(lines)
+
+
+def _console_normalized_record(
+    *,
+    event_type: str,
+    severity: str,
+    message: str,
+    device_label: str,
+    device_id: Any,
+    first_seen_sec: Any,
+    last_seen_sec: Any,
+    event_count: int,
+    now_s: float,
+) -> Dict[str, Any]:
+    """
+    NAME
+        _console_normalized_record - Convert one monitor entry into a structured console fault record.
+    """
+    scope = CONSOLE_STATS_SCOPE_DEVICE if device_label or isinstance(device_id, int) else CONSOLE_STATS_SCOPE_SYSTEM
+    if not event_type:
+        scope = CONSOLE_STATS_SCOPE_UNKNOWN
+    vendor = _console_vendor_from_event_type(event_type)
+    device_type = _console_device_type_from_event_type(event_type, message, device_label)
+    fault_family = _console_fault_family_from_event_type(event_type, scope)
+    can_id = _console_can_id_from_entry(device_id, message, device_label)
+    age_sec = _console_age_seconds(last_seen_sec, now_s)
+    freshness = _console_freshness_bucket(age_sec)
+    parser_confidence = _console_parser_confidence(
+        scope=scope,
+        vendor=vendor,
+        device_type=device_type,
+        can_id=can_id,
+        matched_label=device_label,
+        fault_family=fault_family,
+    )
+    normalization_status = _console_normalization_status(
+        scope=scope,
+        fault_family=fault_family,
+        parser_confidence=parser_confidence,
+    )
+    return {
+        CONSOLE_KEY_SOURCE_LENS: CONSOLE_SOURCE_LENS,
+        CONSOLE_KEY_ORIGIN: CONSOLE_ORIGIN_ROBOT,
+        CONSOLE_KEY_SCOPE: scope,
+        CONSOLE_KEY_VENDOR: vendor,
+        KEY_DEVICE_TYPE: device_type,
+        CONSOLE_KEY_CAN_ID: can_id,
+        CONSOLE_KEY_MATCHED_LABEL: device_label or EVIDENCE_SOURCE_NONE,
+        CONSOLE_KEY_FAULT_FAMILY: fault_family,
+        CONSOLE_KEY_TIMESTAMP: float(last_seen_sec) if isinstance(last_seen_sec, (int, float)) else None,
+        CONSOLE_KEY_AGE_SEC: age_sec,
+        CONSOLE_KEY_FRESHNESS: freshness,
+        CONSOLE_KEY_PARSER_CONFIDENCE: parser_confidence,
+        CONSOLE_KEY_NORMALIZATION_STATUS: normalization_status,
+        CONSOLE_KEY_RAW_TEXT: message,
+        CONSOLE_KEY_SUMMARY: event_type,
+        CONSOLE_KEY_TOTAL_COUNT: max(1, int(event_count or 0)),
+        CONSOLE_KEY_FIRST_SEEN_SEC: float(first_seen_sec) if isinstance(first_seen_sec, (int, float)) else None,
+        CONSOLE_KEY_LAST_SEEN_SEC: float(last_seen_sec) if isinstance(last_seen_sec, (int, float)) else None,
+        "severity": severity or CONSOLE_SEVERITY_INFO,
+    }
+
+
+def _console_vendor_from_event_type(event_type: str) -> str:
+    event_name = str(event_type or TEXT_EMPTY).strip().upper()
+    if event_name in {CONSOLE_EVENT_TALON_STALE, CONSOLE_EVENT_PDP_TIMEOUT}:
+        return CONSOLE_VENDOR_CTRE
+    if event_name in {
+        CONSOLE_EVENT_SPARK_TIMEOUT,
+        CONSOLE_EVENT_SPARK_FW_QUERY_FAIL,
+        CONSOLE_EVENT_SPARK_WRONG_DEVICE,
+        CONSOLE_EVENT_PDH_TIMEOUT,
+    }:
+        return CONSOLE_VENDOR_REV
+    if event_name in {CONSOLE_EVENT_LOOP_OVERRUN, CONSOLE_EVENT_HAL_TIMEOUT}:
+        return CONSOLE_VENDOR_WPILIB
+    if event_name in {
+        CONSOLE_EVENT_HIGH_UTIL,
+        CONSOLE_EVENT_RECOVERED,
+        CONSOLE_EVENT_ERROR_SPIKE,
+        CONSOLE_EVENT_CAN_TIMEOUT,
+        CONSOLE_EVENT_BUS_FAULT,
+    }:
+        return CONSOLE_VENDOR_UNKNOWN
+    return CONSOLE_VENDOR_UNKNOWN
+
+
+def _console_device_type_from_event_type(event_type: str, message: str, device_label: str) -> str:
+    event_name = str(event_type or TEXT_EMPTY).strip().upper()
+    if event_name == CONSOLE_EVENT_TALON_STALE:
+        return CONSOLE_DEVICE_TYPE_TALON_FX
+    if event_name in {CONSOLE_EVENT_SPARK_TIMEOUT, CONSOLE_EVENT_SPARK_FW_QUERY_FAIL, CONSOLE_EVENT_SPARK_WRONG_DEVICE}:
+        return CONSOLE_DEVICE_TYPE_SPARK_MAX
+    if event_name == CONSOLE_EVENT_PDP_TIMEOUT or device_label.lower() == CONSOLE_DEVICE_TYPE_PDP:
+        return CONSOLE_DEVICE_TYPE_PDP
+    if event_name == CONSOLE_EVENT_PDH_TIMEOUT or device_label.lower() == CONSOLE_DEVICE_TYPE_PDH:
+        return CONSOLE_DEVICE_TYPE_PDH
+    lower_message = str(message or TEXT_EMPTY).strip().lower()
+    if "talon fx" in lower_message:
+        return CONSOLE_DEVICE_TYPE_TALON_FX
+    if "spark max" in lower_message:
+        return CONSOLE_DEVICE_TYPE_SPARK_MAX
+    return CONSOLE_DEVICE_TYPE_UNKNOWN
+
+
+def _console_can_id_from_entry(device_id: Any, message: str, device_label: str) -> Optional[int]:
+    if isinstance(device_id, int):
+        return int(device_id)
+    import re
+
+    label_match = re.search(r"(\d+)\s*$", str(device_label or TEXT_EMPTY).strip())
+    if label_match is not None:
+        try:
+            return int(label_match.group(1))
+        except ValueError:
+            return None
+    message_match = re.search(r"\b(?:talon fx|device|id(?:s)?)\s+(\d+)\b", str(message or TEXT_EMPTY).strip().lower())
+    if message_match is not None:
+        try:
+            return int(message_match.group(1))
+        except ValueError:
+            return None
+    return None
+
+
+def _console_fault_family_from_event_type(event_type: str, scope: str) -> str:
+    event_name = str(event_type or TEXT_EMPTY).strip().upper()
+    if event_name == CONSOLE_EVENT_TALON_STALE:
+        return CONSOLE_FAULT_FAMILY_CTRE_STALE
+    if event_name in {CONSOLE_EVENT_PDP_TIMEOUT}:
+        return CONSOLE_FAULT_FAMILY_CTRE_TIMEOUT
+    if event_name in {CONSOLE_EVENT_SPARK_TIMEOUT, CONSOLE_EVENT_SPARK_FW_QUERY_FAIL, CONSOLE_EVENT_PDH_TIMEOUT}:
+        return CONSOLE_FAULT_FAMILY_REV_TIMEOUT
+    if event_name in {CONSOLE_EVENT_CAN_TIMEOUT, CONSOLE_EVENT_SPARK_WRONG_DEVICE}:
+        return CONSOLE_FAULT_FAMILY_DEVICE_STALE
+    if event_name == CONSOLE_EVENT_HIGH_UTIL:
+        return CONSOLE_FAULT_FAMILY_HIGH_UTIL
+    if event_name == CONSOLE_EVENT_ERROR_SPIKE:
+        return CONSOLE_FAULT_FAMILY_ERROR_SPIKE
+    if event_name == CONSOLE_EVENT_LOOP_OVERRUN:
+        return CONSOLE_FAULT_FAMILY_LOOP_OVERRUN
+    if event_name in {CONSOLE_EVENT_HAL_TIMEOUT, CONSOLE_EVENT_BUS_FAULT}:
+        return CONSOLE_FAULT_FAMILY_CONTROLLER_SIDE
+    if scope == CONSOLE_STATS_SCOPE_DEVICE:
+        return CONSOLE_FAULT_FAMILY_UNKNOWN_DEVICE
+    if scope == CONSOLE_STATS_SCOPE_SYSTEM:
+        return CONSOLE_FAULT_FAMILY_UNKNOWN_SYSTEM
+    return CONSOLE_FAULT_FAMILY_UNKNOWN_SYSTEM
+
+
+def _console_age_seconds(last_seen_sec: Any, now_s: float) -> Optional[float]:
+    if not isinstance(last_seen_sec, (int, float)):
+        return None
+    return max(0.0, float(now_s) - float(last_seen_sec))
+
+
+def _console_freshness_bucket(age_sec: Optional[float]) -> str:
+    if not isinstance(age_sec, (int, float)):
+        return CONSOLE_FRESHNESS_STALE
+    if float(age_sec) <= CONSOLE_FRESH_SEC:
+        return CONSOLE_FRESHNESS_FRESH
+    if float(age_sec) <= CONSOLE_AGING_SEC:
+        return CONSOLE_FRESHNESS_AGING
+    return CONSOLE_FRESHNESS_STALE
+
+
+def _console_parser_confidence(
+    *,
+    scope: str,
+    vendor: str,
+    device_type: str,
+    can_id: Optional[int],
+    matched_label: str,
+    fault_family: str,
+) -> str:
+    if scope == CONSOLE_STATS_SCOPE_DEVICE and vendor != CONSOLE_VENDOR_UNKNOWN and device_type != CONSOLE_DEVICE_TYPE_UNKNOWN and (can_id is not None or matched_label):
+        return CONSOLE_PARSER_CONFIDENCE_HIGH
+    if fault_family not in {CONSOLE_FAULT_FAMILY_UNKNOWN_DEVICE, CONSOLE_FAULT_FAMILY_UNKNOWN_SYSTEM}:
+        return CONSOLE_PARSER_CONFIDENCE_MEDIUM
+    return CONSOLE_PARSER_CONFIDENCE_LOW
+
+
+def _console_normalization_status(*, scope: str, fault_family: str, parser_confidence: str) -> str:
+    if parser_confidence == CONSOLE_PARSER_CONFIDENCE_HIGH and scope in {CONSOLE_STATS_SCOPE_DEVICE, CONSOLE_STATS_SCOPE_SYSTEM}:
+        return CONSOLE_NORMALIZATION_STRUCTURED
+    if fault_family not in {CONSOLE_FAULT_FAMILY_UNKNOWN_DEVICE, CONSOLE_FAULT_FAMILY_UNKNOWN_SYSTEM}:
+        return CONSOLE_NORMALIZATION_PARTIAL
+    return CONSOLE_NORMALIZATION_UNCLASSIFIED
+
+
+def _console_stats_increment_counter(counter_map: Any, key: str, amount: int) -> None:
+    if not isinstance(counter_map, dict):
+        return
+    normalized_key = str(key or TEXT_EMPTY).strip()
+    if not normalized_key:
+        return
+    counter_map[normalized_key] = int(counter_map.get(normalized_key, 0) or 0) + int(amount or 0)
+
+
+def _console_top_counts(counter_map: Any) -> List[Tuple[str, int]]:
+    if not isinstance(counter_map, dict):
+        return []
+    items: list[Tuple[str, int]] = []
+    for key, value in counter_map.items():
+        normalized_key = str(key or TEXT_EMPTY).strip()
+        if not normalized_key:
+            continue
+        items.append((normalized_key, int(value or 0)))
+    items.sort(key=lambda item: (-item[1], item[0]))
+    return items[:CONSOLE_TOP_COUNT_LIMIT]
+
+
+def _console_stats_increment_freshness(stats: Any, freshness: str) -> None:
+    if not isinstance(stats, dict):
+        return
+    if freshness == CONSOLE_FRESHNESS_FRESH:
+        stats[CONSOLE_KEY_FRESH_COUNT] = int(stats.get(CONSOLE_KEY_FRESH_COUNT, 0) or 0) + 1
+    elif freshness == CONSOLE_FRESHNESS_AGING:
+        stats[CONSOLE_KEY_AGING_COUNT] = int(stats.get(CONSOLE_KEY_AGING_COUNT, 0) or 0) + 1
+    else:
+        stats[CONSOLE_KEY_STALE_COUNT] = int(stats.get(CONSOLE_KEY_STALE_COUNT, 0) or 0) + 1
+
+
+def _console_stats_update_first_last(stats: Any, first_seen_sec: Any, last_seen_sec: Any) -> None:
+    if not isinstance(stats, dict):
+        return
+    stats[CONSOLE_KEY_FIRST_SEEN_SEC] = _console_min_time_value(stats.get(CONSOLE_KEY_FIRST_SEEN_SEC), first_seen_sec)
+    stats[CONSOLE_KEY_LAST_SEEN_SEC] = _console_max_time_value(stats.get(CONSOLE_KEY_LAST_SEEN_SEC), last_seen_sec)
+
+
+def _console_min_time_value(current_value: Any, candidate_value: Any) -> Optional[float]:
+    if not isinstance(candidate_value, (int, float)):
+        return float(current_value) if isinstance(current_value, (int, float)) else None
+    if not isinstance(current_value, (int, float)):
+        return float(candidate_value)
+    return min(float(current_value), float(candidate_value))
+
+
+def _console_max_time_value(current_value: Any, candidate_value: Any) -> Optional[float]:
+    if not isinstance(candidate_value, (int, float)):
+        return float(current_value) if isinstance(current_value, (int, float)) else None
+    if not isinstance(current_value, (int, float)):
+        return float(candidate_value)
+    return max(float(current_value), float(candidate_value))
+
+
+def _console_first_last_age_text(timestamp_value: Any, now_s: float) -> str:
+    age_sec = _console_age_seconds(timestamp_value, now_s)
+    if not isinstance(age_sec, (int, float)):
+        return EVIDENCE_SOURCE_NONE
+    return _format_age_text(age_sec)
+
+
+def _console_repeat_rate_hz(total_count: int, first_seen_sec: Any, last_seen_sec: Any) -> float:
+    if not isinstance(first_seen_sec, (int, float)) or not isinstance(last_seen_sec, (int, float)):
+        return 0.0
+    duration_sec = max(1.0, float(last_seen_sec) - float(first_seen_sec))
+    return float(total_count) / duration_sec
 
 
 def build_runtime_probe_snapshot(
@@ -905,11 +1506,17 @@ def build_runtime_probe_snapshot(
         probe_run_count=probe_run_count,
         now_s=now_s,
     )
-    is_infrastructure_device = _is_infrastructure_device(label)
+    device_type = classify_device_type(
+        label,
+        profile_device=None,
+        runtime_device=runtime_device,
+    )
+    is_infrastructure_device = device_type == DEVICE_CLASS_INFRASTRUCTURE
     missing_text = _probe_missing_text(
         runtime_device=runtime_device,
         last_probe_completed_at=last_probe_completed_at,
         is_infrastructure_device=is_infrastructure_device,
+        now_s=now_s,
     )
     failed_checks = _string_list_value(attachment, PROBE_KEY_FAILED_CHECKS)
     warnings = _string_list_value(attachment, PROBE_KEY_WARNINGS)
@@ -1114,19 +1721,12 @@ def build_interpreted_evidence_row(
         passive_family_summaries = tuple(getattr(passive_device, "evidence_family_summaries", ()) or ())
     elif isinstance(visibility_device, Mapping):
         visibility = visibility_device.get("visibility") if isinstance(visibility_device.get("visibility"), Mapping) else {}
-        metric_packet_count = 0
-        metric_last_seen_present = False
+        metric_last_seen_present = _visibility_metrics_fresh(visibility_metrics, now_s)
         for metric_entry in visibility_metrics.values():
             if not isinstance(metric_entry, Mapping):
                 continue
-            packet_count = metric_entry.get("msgCount")
-            if isinstance(packet_count, (int, float)):
-                metric_packet_count += int(packet_count)
-            if isinstance(metric_entry.get("lastSeenMs"), (int, float)):
-                metric_last_seen_present = True
         passive_visible = (
             any(value is True for value in visibility.values())
-            or metric_packet_count > 0
             or metric_last_seen_present
         )
         passive_summary = EVIDENCE_NOTE_SEPARATOR.join(
@@ -1144,6 +1744,7 @@ def build_interpreted_evidence_row(
     console_events = console_entry.get(CONSOLE_KEY_EVENTS, []) if isinstance(console_entry, Mapping) else []
     console_has_error = bool(console_entry.get(CONSOLE_KEY_HAS_ERROR)) if isinstance(console_entry, Mapping) else False
     console_has_warn = bool(console_entry.get(CONSOLE_KEY_HAS_WARN)) if isinstance(console_entry, Mapping) else False
+    console_targets_failure = _console_entry_targets_device_failure(console_entry)
     enrichment_entry = _enrichment_device_entry(enrichment_snapshot, label)
     manual_auto_result = (
         str(manual_observation.get("autoResult", TEXT_EMPTY)).strip()
@@ -1153,6 +1754,11 @@ def build_interpreted_evidence_row(
     manual_age_sec = _manual_age_seconds(manual_entry, now_s)
     manual_recent_operability = isinstance(manual_age_sec, (int, float)) and manual_age_sec <= EVIDENCE_MANUAL_OPERABILITY_WINDOW_SEC
     manual_recent_identity = isinstance(manual_age_sec, (int, float)) and manual_age_sec <= EVIDENCE_MANUAL_IDENTITY_WINDOW_SEC
+    manual_observation_age_sec = _manual_age_seconds(manual_observation, now_s)
+    manual_recent_observation = (
+        isinstance(manual_observation_age_sec, (int, float))
+        and manual_observation_age_sec <= EVIDENCE_MANUAL_OPERABILITY_WINDOW_SEC
+    )
     manual_summary = MANUAL_PLACEHOLDER
     existence = EVIDENCE_STATUS_UNKNOWN
     operability = EVIDENCE_STATUS_UNKNOWN
@@ -1207,15 +1813,27 @@ def build_interpreted_evidence_row(
                     motion_detected = abs(float(position_delta_rot)) >= MOTION_MIN_POSITION_DELTA_ROT
                 if age_sec >= MANUAL_MOTION_SETTLE_SEC and not motion_detected:
                     manual_motion_failed = True
-    if manual_auto_result == MANUAL_AUTO_RESULT_ROTATION:
+    if manual_recent_observation and manual_auto_result == MANUAL_AUTO_RESULT_ROTATION:
         motion_detected = True
         manual_motion_failed = False
-    is_infrastructure_device = _is_infrastructure_device(label)
+    device_type = classify_device_type(
+        label,
+        profile_device=None,
+        runtime_device=runtime_device,
+        passive_device=passive_device,
+    )
+    is_infrastructure_device = device_type == DEVICE_CLASS_INFRASTRUCTURE
     runtime_infrastructure_present = (
-        is_infrastructure_device and _runtime_infrastructure_signal_present(runtime_device)
+        is_infrastructure_device and _runtime_infrastructure_signal_present(runtime_device, now_s=now_s)
+    )
+    passive_live_support = (
+        _visibility_metrics_support_live_presence(visibility_metrics, now_s)
+        if visibility_metrics
+        else passive_visible
     )
     passive_supports_presence_override = (
         passive_visible
+        and passive_live_support
         and passive_confidence in (EVIDENCE_CONFIDENCE_HIGH, EVIDENCE_CONFIDENCE_MEDIUM)
         and passive_expected_status != "missing"
         and bool(passive_family_summaries)
@@ -1330,7 +1948,7 @@ def build_interpreted_evidence_row(
         confidence = EVIDENCE_CONFIDENCE_MEDIUM
         evidence_state = EVIDENCE_STATE_DEGRADED
         notes.append(EVIDENCE_NOTE_INFRA_RUNTIME_PRESENT)
-    if existence == EVIDENCE_STATUS_UNKNOWN and passive_visible:
+    if existence == EVIDENCE_STATUS_UNKNOWN and passive_visible and passive_live_support:
         existence = EVIDENCE_STATUS_PRESENT
         confidence = passive_confidence if passive_device is not None else EVIDENCE_CONFIDENCE_MEDIUM
         if is_infrastructure_device and passive_device is None:
@@ -1362,6 +1980,44 @@ def build_interpreted_evidence_row(
         operability = EVIDENCE_STATUS_DEGRADED
         confidence = EVIDENCE_CONFIDENCE_LOW
         evidence_state = EVIDENCE_STATE_DEGRADED
+    if console_targets_failure:
+        operability = EVIDENCE_STATUS_FAILED
+        confidence = EVIDENCE_CONFIDENCE_LOW if confidence == EVIDENCE_CONFIDENCE_HIGH else EVIDENCE_CONFIDENCE_MEDIUM
+        evidence_state = EVIDENCE_STATE_FAILED
+        notes.append("Device-targeted stale/timeout console evidence present.")
+    probe_invalidated_by_console = bool(
+        console_targets_failure and probe_bucket != PROBE_BUCKET_NOT_RUN and probe_age_bucket in {PROBE_AGE_AGING, PROBE_AGE_STALE}
+    )
+    manual_invalidated_by_console = bool(
+        console_targets_failure
+        and not manual_recent_operability
+        and (
+            isinstance(manual_entry, Mapping)
+            or isinstance(manual_observation, Mapping)
+        )
+    )
+    if probe_invalidated_by_console:
+        notes.append(EVIDENCE_PROBE_NOTE_INVALIDATED_CONSOLE)
+    if manual_invalidated_by_console:
+        notes.append(EVIDENCE_MANUAL_NOTE_INVALIDATED_CONSOLE)
+    stronger_positive_contradiction = _console_has_stronger_positive_contradiction(
+        probe_bucket=probe_bucket,
+        probe_age_bucket=probe_age_bucket,
+        passive_live_support=passive_live_support,
+        manual_recent_observation=manual_recent_observation,
+        manual_auto_result=manual_auto_result,
+    )
+    if _console_should_demote_existence(
+        console_entry=console_entry,
+        console_targets_failure=console_targets_failure,
+        stronger_positive_contradiction=stronger_positive_contradiction,
+    ):
+        if existence == EVIDENCE_STATUS_PRESENT:
+            existence = EVIDENCE_STATUS_CONFLICT
+            evidence_conflicted = True
+            notes.append("Fresh targeted console fault evidence conflicts with weak/stale positive presence evidence.")
+        elif existence == EVIDENCE_STATUS_UNKNOWN:
+            confidence = EVIDENCE_CONFIDENCE_LOW
     if bool(system_console.get(CONSOLE_KEY_SYSTEM_CONFLICT)):
         notes.append("System-level console fault may reflect broader CAN isolation.")
         evidence_conflicted = True
@@ -1444,9 +2100,9 @@ def build_interpreted_evidence_row(
         low_bus_v_threshold=7.0,
         applied_v_active_threshold=1.0,
     )
-    if manual_auto_result == MANUAL_AUTO_RESULT_ROTATION:
+    if manual_recent_observation and manual_auto_result == MANUAL_AUTO_RESULT_ROTATION:
         motion_detected = True
-    elif manual_auto_result == MANUAL_AUTO_RESULT_NO_ROTATION and motion_commanded:
+    elif manual_recent_observation and manual_auto_result == MANUAL_AUTO_RESULT_NO_ROTATION and motion_commanded:
         motion_detected = False
     if motion_commanded:
         if motion_detected or str(motion_verdict.get("result", TEXT_EMPTY)).strip() == RESULT_ROTATING:
@@ -1485,8 +2141,38 @@ def build_interpreted_evidence_row(
         notes.append(EVIDENCE_NOTE_PASSIVE_WITHOUT_PROBE_RESULT)
     if passive_device is not None:
         notes.extend(note for note in passive_gaps if note and note not in notes)
+        if passive_visible and not passive_live_support:
+            notes.append("Passive CAN observation is stale or no longer emitting traffic at a non-zero rate.")
     if not notes:
         notes.append(EVIDENCE_NOTE_NONE)
+    source_scores = _collect_device_source_scores(
+        device_type=device_type,
+        passive_visible=passive_visible and passive_live_support,
+        passive_confidence=passive_confidence,
+        runtime_presence_entry=presence_entry if isinstance(presence_entry, Mapping) else None,
+        runtime_infrastructure_present=runtime_infrastructure_present,
+        probe_bucket=probe_bucket,
+        probe_age_bucket=probe_age_bucket,
+        console_has_error=console_has_error,
+        console_has_warn=console_has_warn,
+        console_targets_failure=console_targets_failure,
+        manual_entry=manual_entry if isinstance(manual_entry, Mapping) else None,
+        manual_observation=manual_observation if isinstance(manual_observation, Mapping) else None,
+        manual_age_sec=manual_age_sec if isinstance(manual_age_sec, (int, float)) else manual_observation_age_sec,
+        probe_invalidated_by_console=probe_invalidated_by_console,
+        manual_invalidated_by_console=manual_invalidated_by_console,
+        enrichment_entry=enrichment_entry if isinstance(enrichment_entry, Mapping) else None,
+    )
+    presence_state = _state_from_final_row(existence, evidence_state, evidence_conflicted)
+    presence_score = _presence_score_from_final_row(existence, confidence, evidence_conflicted)
+    freshness = _presence_freshness(
+        presence_age_text,
+        probe_age_bucket,
+        isinstance(presence_entry, Mapping)
+        and str(presence_entry.get(PRESENCE_KEY_EXISTENCE, EVIDENCE_STATUS_UNKNOWN)).strip().upper()
+        == EVIDENCE_STATUS_PRESENT,
+        (passive_visible and passive_live_support) or runtime_infrastructure_present,
+    )
     presence_text = _build_presence_text(presence_entry, presence_bucket, presence_value, presence_age_text)
     passive_text = _build_passive_text(
         passive_device=passive_device,
@@ -1497,13 +2183,38 @@ def build_interpreted_evidence_row(
         visibility_packet_count_text=visibility_packet_count_text,
         visibility_packet_rate_text=visibility_packet_rate_text,
     )
-    console_text = (
-        EVIDENCE_NOTE_SEPARATOR.join(str(entry) for entry in console_events)
-        if console_events
-        else str(system_console.get(CONSOLE_KEY_SYSTEM_TEXT, EVIDENCE_SOURCE_NONE))
-    )
+    console_general_text = (
+        str(system_console.get(CONSOLE_KEY_STATS_TEXT, EVIDENCE_SOURCE_NONE)).strip()
+        if isinstance(system_console, Mapping)
+        else EVIDENCE_SOURCE_NONE
+    ) or EVIDENCE_SOURCE_NONE
+    console_device_text = (
+        str(console_entry.get(CONSOLE_KEY_STATS_TEXT, EVIDENCE_SOURCE_NONE)).strip()
+        if isinstance(console_entry, Mapping)
+        else EVIDENCE_SOURCE_NONE
+    ) or EVIDENCE_SOURCE_NONE
+    console_text_parts = [console_general_text]
+    if console_device_text != EVIDENCE_SOURCE_NONE:
+        console_text_parts.append(console_device_text)
+    elif console_events:
+        console_text_parts.append(EVIDENCE_NOTE_SEPARATOR.join(str(entry) for entry in console_events))
+    else:
+        console_text_parts.append(str(system_console.get(CONSOLE_KEY_SYSTEM_TEXT, EVIDENCE_SOURCE_NONE)))
+    console_text = "\n".join(
+        str(part).strip() for part in console_text_parts if str(part).strip()
+    ) or EVIDENCE_SOURCE_NONE
     probe_text = str(probe_snapshot.get(PROBE_TEXT_FIELD, EVIDENCE_SOURCE_NONE))
     manual_text = str(manual_snapshot.get(PROBE_TEXT_FIELD, MANUAL_PLACEHOLDER))
+    probe_summary_value = str(probe_snapshot.get(PROBE_SUMMARY_FIELD, TEXT_WAITING))
+    probe_score_value = str(probe_snapshot.get(PROBE_SCORE_TEXT_FIELD, EVIDENCE_SOURCE_NONE))
+    manual_summary_value = str(manual_snapshot.get(MANUAL_SUMMARY_FIELD, manual_summary))
+    if probe_invalidated_by_console:
+        probe_summary_value = EVIDENCE_PROBE_SUMMARY_INVALIDATED
+        probe_score_value = EVIDENCE_SOURCE_NONE
+        probe_text = EVIDENCE_PROBE_NOTE_INVALIDATED_CONSOLE
+    if manual_invalidated_by_console:
+        manual_summary_value = EVIDENCE_MANUAL_SUMMARY_HISTORICAL_ONLY
+        manual_text = EVIDENCE_MANUAL_NOTE_INVALIDATED_CONSOLE
     enrichment_text = _build_enrichment_text(
         enrichment_snapshot=enrichment_snapshot,
         enrichment_entry=enrichment_entry,
@@ -1511,11 +2222,12 @@ def build_interpreted_evidence_row(
     )
     return {
         INTERPRET_KEY_LABEL: label,
+        INTERPRET_KEY_DEVICE_TYPE: device_type,
         INTERPRET_KEY_PASSIVE: passive_summary,
         INTERPRET_KEY_CONSOLE: console_summary or EVIDENCE_SOURCE_NONE,
-        INTERPRET_KEY_PROBE: str(probe_snapshot.get(PROBE_SUMMARY_FIELD, TEXT_WAITING)),
-        INTERPRET_KEY_PROBE_SCORE: str(probe_snapshot.get(PROBE_SCORE_TEXT_FIELD, EVIDENCE_SOURCE_NONE)),
-        INTERPRET_KEY_MANUAL: str(manual_snapshot.get(MANUAL_SUMMARY_FIELD, manual_summary)),
+        INTERPRET_KEY_PROBE: probe_summary_value,
+        INTERPRET_KEY_PROBE_SCORE: probe_score_value,
+        INTERPRET_KEY_MANUAL: manual_summary_value,
         INTERPRET_KEY_EXISTENCE: existence,
         INTERPRET_KEY_OPERABILITY: operability,
         INTERPRET_KEY_IDENTITY: identity,
@@ -1529,6 +2241,20 @@ def build_interpreted_evidence_row(
         INTERPRET_KEY_NOTES_TEXT: EVIDENCE_NOTE_SEPARATOR.join(notes),
         INTERPRET_KEY_STATE: evidence_state,
         INTERPRET_KEY_CONFLICTED: evidence_conflicted,
+        INTERPRET_KEY_PRESENCE_SCORE: presence_score,
+        INTERPRET_KEY_PRESENCE_STATE: presence_state,
+        INTERPRET_KEY_PRESENCE_REASONS: list(notes),
+        INTERPRET_KEY_FRESHNESS: freshness,
+        INTERPRET_KEY_SOURCE_SCORES: source_scores,
+        INTERPRET_KEY_DIRTY: False,
+        INTERPRET_KEY_DIRTY_REASONS: [],
+        INTERPRET_KEY_LAST_KNOWN_GOOD_AT: None,
+        INTERPRET_KEY_LAST_SEEN_PRESENT_AT: None,
+        INTERPRET_KEY_LAST_SEEN_MISSING_AT: None,
+        INTERPRET_KEY_LAST_STATE_CHANGE_AT: None,
+        INTERPRET_KEY_LAST_EVALUATION_AT: None,
+        INTERPRET_KEY_CHANGE_REASON: EVIDENCE_SOURCE_NONE,
+        INTERPRET_KEY_EVENT_LOG: [],
     }
 
 
@@ -1694,6 +2420,316 @@ def _runtime_display_current_a(runtime_device: Optional[Mapping[str, Any]]) -> A
         return current_a
     instant_current_a = _runtime_device_field_from_mapping(runtime_device, "currentInstantA")
     return instant_current_a
+
+
+def classify_device_type(
+    label: object,
+    profile_device: Optional[Mapping[str, Any]] = None,
+    runtime_device: Optional[Mapping[str, Any]] = None,
+    passive_device: Optional[Any] = None,
+) -> str:
+    """
+    NAME
+        classify_device_type - Classify one device into the first-pass scoring classes.
+    """
+    del runtime_device
+    if _is_infrastructure_device(label):
+        return DEVICE_CLASS_INFRASTRUCTURE
+    if profile_device is None and passive_device is not None:
+        return DEVICE_CLASS_UNPROFILED
+    return DEVICE_CLASS_MOTION
+
+
+def _source_score(score: int, state: str, reason: str) -> Dict[str, Any]:
+    """
+    NAME
+        _source_score - Normalize one per-source score row.
+    """
+    bounded_score = max(0, min(100, int(score)))
+    return {
+        SOURCE_SCORE_KEY_SCORE: bounded_score,
+        SOURCE_SCORE_KEY_STATE: state,
+        SOURCE_SCORE_KEY_REASON: str(reason or EVIDENCE_SOURCE_NONE).strip() or EVIDENCE_SOURCE_NONE,
+    }
+
+
+def _state_from_final_row(existence: str, evidence_state: str, conflicted: bool) -> str:
+    """
+    NAME
+        _state_from_final_row - Collapse the final row into one stable presence-state label.
+    """
+    if conflicted:
+        return PRESENCE_STATE_CONFLICT
+    if str(existence or EVIDENCE_STATUS_UNKNOWN).strip().upper() == EVIDENCE_STATUS_ABSENT:
+        return PRESENCE_STATE_MISSING
+    if str(evidence_state or EVIDENCE_STATE_UNKNOWN).strip().lower() == EVIDENCE_STATE_MISSING:
+        return PRESENCE_STATE_MISSING
+    if str(existence or EVIDENCE_STATUS_UNKNOWN).strip().upper() == EVIDENCE_STATUS_PRESENT:
+        return PRESENCE_STATE_PRESENT
+    return PRESENCE_STATE_UNKNOWN
+
+
+def _presence_score_from_final_row(existence: str, confidence: str, conflicted: bool) -> int:
+    """
+    NAME
+        _presence_score_from_final_row - Map final row interpretation into one numeric presence score.
+    """
+    if conflicted:
+        return 40
+    confidence_value = str(confidence or EVIDENCE_CONFIDENCE_LOW).strip().upper()
+    if str(existence or EVIDENCE_STATUS_UNKNOWN).strip().upper() == EVIDENCE_STATUS_PRESENT:
+        if confidence_value == EVIDENCE_CONFIDENCE_HIGH:
+            return 100
+        if confidence_value == EVIDENCE_CONFIDENCE_MEDIUM:
+            return 75
+        return 55
+    if str(existence or EVIDENCE_STATUS_UNKNOWN).strip().upper() == EVIDENCE_STATUS_ABSENT:
+        return 0
+    return 25
+
+
+def _presence_freshness(
+    presence_age_text: str,
+    probe_age_bucket: str,
+    runtime_present: bool,
+    passive_present: bool,
+) -> str:
+    """
+    NAME
+        _presence_freshness - Return one compact freshness label for the shared interpreted-device result.
+    """
+    if probe_age_bucket == PROBE_AGE_STALE:
+        return CONSOLE_TEXT_STALE
+    if runtime_present or passive_present:
+        return "fresh"
+    if presence_age_text and presence_age_text != VIS_IDENTITY_UNKNOWN:
+        return "aging"
+    return CONSOLE_TEXT_STALE
+
+
+def _visibility_metrics_fresh(
+    visibility_metrics: Mapping[str, Any],
+    now_s: float,
+) -> bool:
+    """
+    NAME
+        _visibility_metrics_fresh - Return whether visibility metrics include a recent passive observation.
+    """
+    latest_seen_ms: Optional[float] = None
+    for metric_entry in visibility_metrics.values():
+        if not isinstance(metric_entry, Mapping):
+            continue
+        last_seen_ms = metric_entry.get("lastSeenMs")
+        if not isinstance(last_seen_ms, (int, float)):
+            continue
+        latest_seen_ms = float(last_seen_ms) if latest_seen_ms is None else max(latest_seen_ms, float(last_seen_ms))
+    if latest_seen_ms is None or latest_seen_ms <= 0.0:
+        return False
+    age_sec = max(0.0, now_s - (latest_seen_ms / 1000.0))
+    return age_sec <= VISIBILITY_FRESH_SEC
+
+
+def _visibility_metrics_support_live_presence(
+    visibility_metrics: Mapping[str, Any],
+    now_s: float,
+) -> bool:
+    """
+    NAME
+        _visibility_metrics_support_live_presence - Return whether visibility metrics still support active passive presence.
+    """
+    if not _visibility_metrics_fresh(visibility_metrics, now_s):
+        return False
+    max_rate_hz = 0.0
+    for metric_entry in visibility_metrics.values():
+        if not isinstance(metric_entry, Mapping):
+            continue
+        frames_per_sec = metric_entry.get("framesPerSec")
+        if not isinstance(frames_per_sec, (int, float)):
+            continue
+        max_rate_hz = max(max_rate_hz, float(frames_per_sec))
+    return max_rate_hz > 0.0
+
+
+def _console_targets_device_failure(console_events: Sequence[object]) -> bool:
+    """
+    NAME
+        _console_targets_device_failure - Return whether device-targeted console events imply a strong device failure signal.
+    """
+    for entry in list(console_events or ()):
+        text = str(entry or TEXT_EMPTY).strip().lower()
+        if not text:
+            continue
+        if EVIDENCE_TEXT_CAN_MESSAGE_STALE in text:
+            return True
+        if EVIDENCE_TEXT_STATUS_SIGNAL_STALE in text:
+            return True
+        if EVIDENCE_TEXT_DEVICE_TIMEOUT in text:
+            return True
+    return False
+
+
+def _console_entry_targets_device_failure(console_entry: Optional[Mapping[str, Any]]) -> bool:
+    """
+    NAME
+        _console_entry_targets_device_failure - Return whether structured console evidence implies a strong fresh targeted device fault.
+    """
+    if not isinstance(console_entry, Mapping):
+        return False
+    records = console_entry.get(CONSOLE_KEY_RECORDS, [])
+    if isinstance(records, list):
+        for record in records:
+            if not isinstance(record, Mapping):
+                continue
+            fault_family = str(record.get(CONSOLE_KEY_FAULT_FAMILY, TEXT_EMPTY)).strip()
+            freshness = str(record.get(CONSOLE_KEY_FRESHNESS, TEXT_EMPTY)).strip()
+            scope = str(record.get(CONSOLE_KEY_SCOPE, TEXT_EMPTY)).strip()
+            if scope != CONSOLE_STATS_SCOPE_DEVICE:
+                continue
+            if fault_family in CONSOLE_DEVICE_FAILURE_FAMILIES and freshness in {
+                CONSOLE_FRESHNESS_FRESH,
+                CONSOLE_FRESHNESS_AGING,
+            }:
+                return True
+    return _console_targets_device_failure(console_entry.get(CONSOLE_KEY_EVENTS, []))
+
+
+def _console_has_stronger_positive_contradiction(
+    *,
+    probe_bucket: str,
+    probe_age_bucket: str,
+    passive_live_support: bool,
+    manual_recent_observation: bool,
+    manual_auto_result: str,
+) -> bool:
+    """
+    NAME
+        _console_has_stronger_positive_contradiction - Return whether fresh direct evidence still strongly supports continued device presence.
+    """
+    if probe_bucket == PRESENCE_VALUE_PRESENT and probe_age_bucket == PROBE_AGE_FRESH:
+        return True
+    if passive_live_support:
+        return True
+    if manual_recent_observation and manual_auto_result == MANUAL_AUTO_RESULT_ROTATION:
+        return True
+    return False
+
+
+def _console_should_demote_existence(
+    *,
+    console_entry: Optional[Mapping[str, Any]],
+    console_targets_failure: bool,
+    stronger_positive_contradiction: bool,
+) -> bool:
+    """
+    NAME
+        _console_should_demote_existence - Return whether targeted console faults should demote existence out of a plain PRESENT classification.
+    """
+    if stronger_positive_contradiction or not console_targets_failure:
+        return False
+    if not isinstance(console_entry, Mapping):
+        return True
+    total_count = int(console_entry.get(CONSOLE_KEY_TOTAL_COUNT, 0) or 0)
+    freshness = str(console_entry.get(CONSOLE_KEY_FRESHNESS, TEXT_EMPTY)).strip()
+    if total_count >= 2 and freshness in {CONSOLE_FRESHNESS_FRESH, CONSOLE_FRESHNESS_AGING}:
+        return True
+    records = console_entry.get(CONSOLE_KEY_RECORDS, [])
+    if isinstance(records, list):
+        matching_records = 0
+        for record in records:
+            if not isinstance(record, Mapping):
+                continue
+            if str(record.get(CONSOLE_KEY_SCOPE, TEXT_EMPTY)).strip() != CONSOLE_STATS_SCOPE_DEVICE:
+                continue
+            if str(record.get(CONSOLE_KEY_FRESHNESS, TEXT_EMPTY)).strip() not in {
+                CONSOLE_FRESHNESS_FRESH,
+                CONSOLE_FRESHNESS_AGING,
+            }:
+                continue
+            matching_records += int(record.get(CONSOLE_KEY_TOTAL_COUNT, 1) or 1)
+        if matching_records >= 2:
+            return True
+    return bool(console_entry.get(CONSOLE_KEY_HAS_ERROR) or console_entry.get(CONSOLE_KEY_HAS_WARN))
+
+
+def _collect_device_source_scores(
+    *,
+    device_type: str,
+    passive_visible: bool,
+    passive_confidence: str,
+    runtime_presence_entry: Optional[Mapping[str, Any]],
+    runtime_infrastructure_present: bool,
+    probe_bucket: str,
+    probe_age_bucket: str,
+    console_has_error: bool,
+    console_has_warn: bool,
+    console_targets_failure: bool,
+    manual_entry: Optional[Mapping[str, Any]],
+    manual_observation: Optional[Mapping[str, Any]],
+    manual_age_sec: Optional[float],
+    probe_invalidated_by_console: bool,
+    manual_invalidated_by_console: bool,
+    enrichment_entry: Optional[Mapping[str, Any]],
+) -> Dict[str, Dict[str, Any]]:
+    """
+    NAME
+        _collect_device_source_scores - Build the shared per-source score map for one device.
+    """
+    source_scores: Dict[str, Dict[str, Any]] = {}
+    passive_score_value = 0
+    if passive_visible:
+        passive_score_value = 85 if passive_confidence == EVIDENCE_CONFIDENCE_HIGH else 70
+    source_scores["passive"] = _source_score(
+        passive_score_value,
+        PRESENCE_STATE_PRESENT if passive_visible else PRESENCE_STATE_UNKNOWN,
+        "Passive CAN visibility.",
+    )
+    runtime_present = False
+    runtime_absent = False
+    if isinstance(runtime_presence_entry, Mapping):
+        runtime_existence = str(
+            runtime_presence_entry.get(PRESENCE_KEY_EXISTENCE, EVIDENCE_STATUS_UNKNOWN)
+        ).strip().upper()
+        runtime_present = runtime_existence == EVIDENCE_STATUS_PRESENT
+        runtime_absent = runtime_existence == EVIDENCE_STATUS_ABSENT
+    if device_type == DEVICE_CLASS_INFRASTRUCTURE and runtime_infrastructure_present:
+        source_scores["runtime"] = _source_score(70, PRESENCE_STATE_PRESENT, "Singleton runtime telemetry.")
+    elif runtime_present:
+        source_scores["runtime"] = _source_score(90, PRESENCE_STATE_PRESENT, "Runtime presence snapshot.")
+    elif runtime_absent:
+        source_scores["runtime"] = _source_score(0, PRESENCE_STATE_MISSING, "Runtime presence snapshot absent.")
+    else:
+        source_scores["runtime"] = _source_score(25, PRESENCE_STATE_UNKNOWN, "No runtime presence claim.")
+    if probe_invalidated_by_console:
+        source_scores["probe"] = _source_score(0, PRESENCE_STATE_CONFLICT, SOURCE_SCORE_PROBE_INVALIDATED)
+    elif probe_bucket == PRESENCE_VALUE_PRESENT and probe_age_bucket != PROBE_AGE_STALE:
+        source_scores["probe"] = _source_score(95, PRESENCE_STATE_PRESENT, "Fresh Full Probe present.")
+    elif probe_bucket == PRESENCE_VALUE_ABSENT and probe_age_bucket != PROBE_AGE_STALE:
+        source_scores["probe"] = _source_score(0, PRESENCE_STATE_MISSING, "Fresh Full Probe absent.")
+    elif probe_age_bucket == PROBE_AGE_STALE:
+        source_scores["probe"] = _source_score(20, PRESENCE_STATE_UNKNOWN, "Stale Full Probe.")
+    else:
+        source_scores["probe"] = _source_score(25, PRESENCE_STATE_UNKNOWN, "No device-specific Full Probe result.")
+    if console_has_error or console_targets_failure:
+        source_scores["console"] = _source_score(20, PRESENCE_STATE_CONFLICT, "Console error evidence.")
+    elif console_has_warn:
+        source_scores["console"] = _source_score(45, PRESENCE_STATE_UNKNOWN, "Console warning evidence.")
+    else:
+        source_scores["console"] = _source_score(50, PRESENCE_STATE_UNKNOWN, "No console warning/error evidence.")
+    manual_recent = (
+        isinstance(manual_age_sec, (int, float))
+        and float(manual_age_sec) <= EVIDENCE_MANUAL_OPERABILITY_WINDOW_SEC
+    )
+    if manual_invalidated_by_console:
+        source_scores["manual"] = _source_score(0, PRESENCE_STATE_CONFLICT, SOURCE_SCORE_MANUAL_INVALIDATED)
+    elif manual_recent and (isinstance(manual_entry, Mapping) or isinstance(manual_observation, Mapping)):
+        source_scores["manual"] = _source_score(60, PRESENCE_STATE_PRESENT, "Manual evidence recorded.")
+    else:
+        source_scores["manual"] = _source_score(25, PRESENCE_STATE_UNKNOWN, "No manual evidence.")
+    if isinstance(enrichment_entry, Mapping) and enrichment_entry:
+        source_scores["enrichment"] = _source_score(65, PRESENCE_STATE_PRESENT, "Host-side enrichment evidence.")
+    else:
+        source_scores["enrichment"] = _source_score(25, PRESENCE_STATE_UNKNOWN, "No enrichment evidence.")
+    return source_scores
 
 
 def _string_list_values(value: Any) -> list[str]:
@@ -2314,13 +3350,14 @@ def _probe_missing_text(
     runtime_device: Optional[Mapping[str, Any]],
     last_probe_completed_at: float,
     is_infrastructure_device: bool = False,
+    now_s: Optional[float] = None,
 ) -> str:
     """
     NAME
         _probe_missing_text - Explain why no device-specific probe result exists.
     """
     if is_infrastructure_device:
-        if _runtime_infrastructure_signal_present(runtime_device):
+        if _runtime_infrastructure_signal_present(runtime_device, now_s=now_s):
             return TEXT_UPDATE_DELIM.join((PROBE_INFRA_SCOPE_NOTE, PROBE_INFRA_RUNTIME_DETAIL))
         return TEXT_UPDATE_DELIM.join((PROBE_INFRA_SCOPE_NOTE, PROBE_INFRA_SCOPE_DETAIL))
     if float(last_probe_completed_at or 0.0) <= 0.0:
@@ -2334,6 +3371,8 @@ def _probe_missing_text(
 
 def _runtime_infrastructure_signal_present(
     runtime_device: Optional[Mapping[str, Any]],
+    *,
+    now_s: Optional[float] = None,
 ) -> bool:
     """
     NAME
@@ -2341,13 +3380,22 @@ def _runtime_infrastructure_signal_present(
     """
     if not isinstance(runtime_device, Mapping):
         return False
-    if bool(runtime_device.get(RUNTIME_DEVICE_KEY_INSTANTIATED, False)):
-        return True
-    lifecycle_state = str(runtime_device.get(RUNTIME_DEVICE_KEY_LIFECYCLE_STATE, TEXT_EMPTY)).strip().lower()
-    if lifecycle_state.startswith("instantiated") or lifecycle_state.startswith("controlled"):
-        return True
+    if now_s is None:
+        import time
+
+        now_s = time.time()
     last_seen_ms = runtime_device.get(RUNTIME_DEVICE_KEY_LAST_SEEN_MS)
+    has_fresh_last_seen = False
     if isinstance(last_seen_ms, (int, float)) and float(last_seen_ms) > 0.0:
+        age_sec = max(0.0, float(now_s) - (float(last_seen_ms) / 1000.0))
+        has_fresh_last_seen = age_sec <= INFRA_RUNTIME_FRESH_SEC
+        if not has_fresh_last_seen:
+            return False
+    if bool(runtime_device.get(RUNTIME_DEVICE_KEY_INSTANTIATED, False)):
+        if has_fresh_last_seen:
+            return True
+    lifecycle_state = str(runtime_device.get(RUNTIME_DEVICE_KEY_LIFECYCLE_STATE, TEXT_EMPTY)).strip().lower()
+    if has_fresh_last_seen and (lifecycle_state.startswith("instantiated") or lifecycle_state.startswith("controlled")):
         return True
     bus_v = runtime_device.get(RUNTIME_DEVICE_KEY_BUS_V)
     if isinstance(bus_v, (int, float)) and float(bus_v) > 1.0:
@@ -2359,7 +3407,9 @@ def _runtime_infrastructure_signal_present(
     if isinstance(temp_c, (int, float)) and float(temp_c) > 1.0:
         return True
     attachments = runtime_device.get(RUNTIME_DEVICE_KEY_ATTACHMENTS)
-    return isinstance(attachments, list) and len(attachments) > 0
+    if isinstance(attachments, list) and len(attachments) > 0:
+        return True
+    return has_fresh_last_seen and (lifecycle_state.startswith("instantiated") or lifecycle_state.startswith("controlled"))
 
 
 def _is_infrastructure_device(label: object) -> bool:

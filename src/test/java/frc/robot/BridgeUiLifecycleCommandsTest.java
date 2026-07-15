@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.google.gson.JsonObject;
 import frc.robot.diag.lifecycle.activation.ActivationMode;
+import frc.robot.diag.lifecycle.activation.ActivationMembershipMode;
 import frc.robot.diag.lifecycle.activation.ActivationResult;
 import frc.robot.diag.lifecycle.activation.DeactivateResult;
 import frc.robot.diag.lifecycle.activation.LifecycleState;
@@ -64,8 +65,10 @@ class BridgeUiLifecycleCommandsTest {
             LABEL_DRIVE,
             "session-1",
             ActivationMode.PROBE_ONLY,
+            ActivationMembershipMode.STRICT,
             List.of(LABEL_DRIVE),
             List.of(LABEL_DRIVE),
+            List.of(),
             List.of(),
             LifecycleState.ACTIVE,
             null,
@@ -81,9 +84,11 @@ class BridgeUiLifecycleCommandsTest {
     assertTrue(result.ok);
     assertEquals(LABEL_DRIVE, deps.activatedLabel);
     assertEquals(ActivationMode.PROBE_ONLY, deps.activatedMode);
+    assertEquals(ActivationMembershipMode.STRICT, deps.activatedMembershipMode);
     assertEquals("Lifecycle activated: front_left_drive", result.message);
     assertTrue(result.outJson.contains("\"operation\":\"activate\""));
     assertTrue(result.outJson.contains("\"lifecycle\""));
+    assertTrue(result.outJson.contains("\"membershipMode\":\"STRICT\""));
   }
 
   @Test
@@ -159,8 +164,10 @@ class BridgeUiLifecycleCommandsTest {
             "active-group",
             "session-1",
             ActivationMode.READ_ONLY,
+            ActivationMembershipMode.STRICT,
             List.of("FALCON 9"),
             List.of("FALCON 9"),
+            List.of(),
             List.of(),
             LifecycleState.ACTIVE,
             null,
@@ -186,8 +193,10 @@ class BridgeUiLifecycleCommandsTest {
             "selected-test:testA",
             "session-1",
             ActivationMode.READ_ONLY,
+            ActivationMembershipMode.STRICT,
             List.of("SPARKMAX/NEO 25"),
             List.of("SPARKMAX/NEO 25"),
+            List.of(),
             List.of(),
             LifecycleState.ACTIVE,
             null,
@@ -201,6 +210,55 @@ class BridgeUiLifecycleCommandsTest {
     assertTrue(result.ok);
     assertTrue(deps.activateSelectedTestDevicesCalled);
     assertEquals("active-group active - ready to run", result.message);
+  }
+
+  @Test
+  void lifecycleActivateRejectsInvalidMembershipMode() {
+    LifecycleDeps deps = new LifecycleDeps();
+    deps.runtimeActivationAllowed = true;
+    JsonObject args = new JsonObject();
+    args.addProperty("label", LABEL_DRIVE);
+    args.addProperty("membershipMode", "bogus");
+    BridgeUiLifecycleCommands commands = new BridgeUiLifecycleCommands(deps);
+
+    BridgeUiCommandResult result =
+        commands.execute(ingress(CMD_LIFECYCLE_ACTIVATE, args), 0.0, false);
+
+    assertFalse(result.ok);
+    assertEquals("Invalid lifecycle membership mode: bogus", result.message);
+  }
+
+  @Test
+  void lifecycleActivatePartialSuccessReportsExcludedMembers() {
+    LifecycleDeps deps = new LifecycleDeps();
+    deps.runtimeActivationAllowed = true;
+    deps.activationResult =
+        new ActivationResult(
+            true,
+            "active-group",
+            "session-1",
+            ActivationMode.READ_ONLY,
+            ActivationMembershipMode.PARTIAL,
+            List.of("FALCON 9", "SPARKMAX/NEO 25"),
+            List.of("FALCON 9"),
+            List.of(),
+            List.of("SPARKMAX/NEO 25"),
+            LifecycleState.ACTIVE,
+            null,
+            null);
+    BridgeUiLifecycleCommands commands = new BridgeUiLifecycleCommands(deps);
+    JsonObject args = new JsonObject();
+    args.addProperty("label", "active-group");
+    args.addProperty("membershipMode", "partial");
+
+    BridgeUiCommandResult result =
+        commands.execute(ingress(CMD_LIFECYCLE_ACTIVATE, args), 0.0, false);
+
+    assertTrue(result.ok);
+    assertEquals(ActivationMembershipMode.PARTIAL, deps.activatedMembershipMode);
+    assertEquals(
+        "active-group active - ready to run excluded: SPARKMAX/NEO 25",
+        result.message);
   }
 
   @Test
@@ -280,6 +338,7 @@ class BridgeUiLifecycleCommandsTest {
   private static final class LifecycleDeps implements BridgeUiLifecycleCommands.Dependencies {
     private String activatedLabel;
     private ActivationMode activatedMode;
+    private ActivationMembershipMode activatedMembershipMode;
     private String deactivatedLabel;
     private boolean deactivateActiveCalled;
     private boolean activateSelectedTestDevicesCalled;
@@ -291,6 +350,8 @@ class BridgeUiLifecycleCommandsTest {
             "",
             null,
             ActivationMode.READ_ONLY,
+            ActivationMembershipMode.STRICT,
+            List.of(),
             List.of(),
             List.of(),
             List.of(),
@@ -344,16 +405,20 @@ class BridgeUiLifecycleCommandsTest {
     }
 
     @Override
-    public ActivationResult activateLifecycle(String label, ActivationMode mode) {
+    public ActivationResult activateLifecycle(
+        String label, ActivationMode mode, ActivationMembershipMode membershipMode) {
       activatedLabel = label;
       activatedMode = mode;
+      activatedMembershipMode = membershipMode;
       return activationResult;
     }
 
     @Override
-    public ActivationResult activateSelectedTestDevices(ActivationMode mode) {
+    public ActivationResult activateSelectedTestDevices(
+        ActivationMode mode, ActivationMembershipMode membershipMode) {
       activateSelectedTestDevicesCalled = true;
       activatedMode = mode;
+      activatedMembershipMode = membershipMode;
       return activationResult;
     }
 

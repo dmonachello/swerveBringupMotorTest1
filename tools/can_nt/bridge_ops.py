@@ -374,12 +374,20 @@ def runtime_deactivate(session: BridgeSession) -> Optional[int]:
     return _send(session, "runtimeDeactivate", {})
 
 
-def lifecycle_activate(session: BridgeSession, label: str, mode: str = "READ_ONLY") -> Optional[int]:
+def lifecycle_activate(
+    session: BridgeSession,
+    label: str,
+    mode: str = "READ_ONLY",
+    membership_mode: str = "",
+) -> Optional[int]:
     """
     NAME
         lifecycle_activate - Activate the controlled lifecycle session for a label.
     """
     args = {KEY_LABEL: str(label).strip(), "mode": str(mode).strip() or "READ_ONLY"}
+    membership_mode_text = str(membership_mode).strip()
+    if membership_mode_text:
+        args["membershipMode"] = membership_mode_text
     return _send(session, "lifecycleActivate", args)
 
 
@@ -400,13 +408,18 @@ def lifecycle_deactivate_active(session: BridgeSession) -> Optional[int]:
 
 
 def activate_selected_test_devices(
-    session: BridgeSession, mode: str = "READ_ONLY"
+    session: BridgeSession,
+    mode: str = "READ_ONLY",
+    membership_mode: str = "",
 ) -> Optional[int]:
     """
     NAME
         activate_selected_test_devices - Activate the selected test's required lifecycle scope.
     """
     args = {"mode": str(mode).strip() or "READ_ONLY"}
+    membership_mode_text = str(membership_mode).strip()
+    if membership_mode_text:
+        args["membershipMode"] = membership_mode_text
     return _send(session, "activateSelectedTestDevices", args)
 
 

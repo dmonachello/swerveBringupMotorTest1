@@ -9,6 +9,7 @@ import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
+import frc.robot.BringupPrinter;
 import frc.robot.commands.local.RobotLocalCommandRegistry;
 import java.io.IOException;
 import java.io.InputStream;
@@ -132,6 +133,15 @@ public final class BringupRestServer {
   private static final String MESSAGE_RESET_STOP = "sessionReset";
   private static final String MESSAGE_MANUAL_RESET = "sessionReset";
   private static final String MESSAGE_RUNTIME_UNSUPPORTED = "Command not yet supported by REST.";
+  private static final String TEXT_REST_CONNECT_AUDIT_PREFIX = "[REST] session/connect ";
+  private static final String TEXT_AUDIT_ACCEPTED = "ACCEPTED";
+  private static final String TEXT_AUDIT_REJECTED = "REJECTED";
+  private static final String TEXT_AUDIT_CLIENT_PREFIX = " clientId=";
+  private static final String TEXT_AUDIT_REMOTE_PREFIX = " remote=";
+  private static final String TEXT_AUDIT_OWNER_PREFIX = " owner=";
+  private static final String TEXT_AUDIT_REASON_PREFIX = " reason=";
+  private static final String TEXT_AUDIT_NONE = "(none)";
+  private static final String TEXT_AUDIT_UNKNOWN = "(unknown)";
   private static final String COMMAND_SHOW_DEVICES = RobotLocalCommandRegistry.COMMAND_SHOW_DEVICES;
   private static final String COMMAND_SHOW_RUNTIME_STATE = RobotLocalCommandRegistry.COMMAND_SHOW_RUNTIME_STATE;
   private static final long SESSION_TIMEOUT_MS = 60000L;
@@ -271,11 +281,7 @@ public final class BringupRestServer {
     if (text == null || text.isBlank()) {
       return;
     }
-    synchronized (stateLock) {
-      long nextSequence = logSequenceAllocator.incrementAndGet();
-      logEntries.add(new LogEntry(nextSequence, nowMs(), text));
-      trimLogsIfNeeded();
-    }
+    appendLogEntry(text);
   }
 
   private final class RootHandler implements HttpHandler {
@@ -400,21 +406,42 @@ public final class BringupRestServer {
     }
     JsonObject request = parseJsonBody(exchange);
     if (request == null) {
+      auditSessionConnect(exchange, TEXT_AUDIT_REJECTED, null, MESSAGE_MALFORMED_JSON, null);
       sendJson(exchange, HTTP_BAD_REQUEST, baseEnvelope(false, MESSAGE_MALFORMED_JSON));
       return;
     }
     String clientId = stringArg(request, JSON_KEY_CLIENT_ID);
     if (clientId == null) {
+      auditSessionConnect(exchange, TEXT_AUDIT_REJECTED, null, MESSAGE_CLIENT_REQUIRED, null);
       sendJson(exchange, HTTP_BAD_REQUEST, baseEnvelope(false, MESSAGE_CLIENT_REQUIRED));
       return;
     }
+    boolean accepted = false;
+    boolean conflict = false;
+    String ownerClientId = null;
     synchronized (stateLock) {
       if (sessionOwnerClientId != null && !sessionOwnerClientId.equals(clientId)) {
-        sendJson(exchange, HTTP_CONFLICT, baseEnvelope(false, MESSAGE_SESSION_CONFLICT));
-        return;
+        ownerClientId = sessionOwnerClientId;
+        conflict = true;
+      } else {
+        sessionOwnerClientId = clientId;
+        sessionLastActivityMs = nowMs();
+        ownerClientId = sessionOwnerClientId;
+        accepted = true;
       }
-      sessionOwnerClientId = clientId;
-      sessionLastActivityMs = nowMs();
+    }
+    if (conflict) {
+      auditSessionConnect(
+          exchange,
+          TEXT_AUDIT_REJECTED,
+          clientId,
+          MESSAGE_SESSION_CONFLICT,
+          ownerClientId);
+      sendJson(exchange, HTTP_CONFLICT, baseEnvelope(false, MESSAGE_SESSION_CONFLICT));
+      return;
+    }
+    if (accepted) {
+      auditSessionConnect(exchange, TEXT_AUDIT_ACCEPTED, clientId, MESSAGE_CONNECTED, ownerClientId);
     }
     sendJson(exchange, HTTP_OK, sessionSnapshot(MESSAGE_CONNECTED));
   }
@@ -901,6 +928,44 @@ public final class BringupRestServer {
     activeCommand = null;
   }
 
+  private void auditSessionConnect(
+      HttpExchange exchange,
+      String outcome,
+      String clientId,
+      String reason,
+      String ownerClientId) {
+    StringBuilder text = new StringBuilder(192);
+    text.append(TEXT_REST_CONNECT_AUDIT_PREFIX)
+        .append(outcome != null && !outcome.isBlank() ? outcome : TEXT_AUDIT_UNKNOWN)
+        .append(TEXT_AUDIT_CLIENT_PREFIX)
+        .append(clientId != null && !clientId.isBlank() ? clientId : TEXT_AUDIT_NONE)
+        .append(TEXT_AUDIT_REMOTE_PREFIX)
+        .append(remoteAddressText(exchange))
+        .append(TEXT_AUDIT_OWNER_PREFIX)
+        .append(ownerClientId != null && !ownerClientId.isBlank() ? ownerClientId : TEXT_AUDIT_NONE);
+    if (reason != null && !reason.isBlank()) {
+      text.append(TEXT_AUDIT_REASON_PREFIX).append(reason);
+    }
+    String line = text.toString();
+    appendLogEntry(line);
+    BringupPrinter.enqueue(line);
+  }
+
+  private String remoteAddressText(HttpExchange exchange) {
+    if (exchange == null) {
+      return TEXT_AUDIT_UNKNOWN;
+    }
+    InetSocketAddress remote = exchange.getRemoteAddress();
+    if (remote == null) {
+      return TEXT_AUDIT_UNKNOWN;
+    }
+    String host = remote.getHostString();
+    if (host == null || host.isBlank()) {
+      host = TEXT_AUDIT_UNKNOWN;
+    }
+    return host + ":" + remote.getPort();
+  }
+
   private void clearSessionOwnerLocked() {
     sessionOwnerClientId = null;
     sessionLastActivityMs = 0L;
@@ -922,6 +987,17 @@ public final class BringupRestServer {
 
   private boolean isOwnerClient(String clientId) {
     return clientId != null && sessionOwnerClientId != null && sessionOwnerClientId.equals(clientId);
+  }
+
+  private void appendLogEntry(String text) {
+    if (text == null || text.isBlank()) {
+      return;
+    }
+    synchronized (stateLock) {
+      long nextSequence = logSequenceAllocator.incrementAndGet();
+      logEntries.add(new LogEntry(nextSequence, nowMs(), text));
+      trimLogsIfNeeded();
+    }
   }
 
   private void trimLogsIfNeeded() {

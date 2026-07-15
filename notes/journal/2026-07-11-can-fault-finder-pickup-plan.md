@@ -6,6 +6,59 @@
 - Tomorrow's goal:
   - Make the evidence model smaller, more explicit, and easier to trust.
 
+- Proposed device classes:
+  - motion devices
+    - examples: `talonfx`, `sparkmax`, encoders, other active-group motion hardware
+    - sources allowed:
+      - passive CAN
+      - runtime presence snapshot
+      - Full Probe
+      - manual motion result
+      - console
+      - enrichment
+  - infrastructure devices
+    - examples: `roborio`, `pdp`, `pdh`
+    - sources allowed:
+      - passive CAN
+      - singleton runtime telemetry
+      - console
+      - enrichment
+      - Full Probe only as additive evidence, not as the main gate
+    - important rule:
+      - active motion-scope absence is not missing evidence by itself
+  - unprofiled devices
+    - examples: passive-only devices not in the selected profile
+    - sources allowed:
+      - passive CAN
+      - enrichment if available
+    - important rule:
+      - classify as observed/unobserved, not healthy/unhealthy
+
+- Proposed simplified loop:
+  - for each device class
+    - load the allowed evidence sources for that class
+    - for each device in that class
+      - gather one score per allowed source
+      - combine those scores into one presence score
+      - map the score to `present`, `missing`, `unknown`, or `conflict`
+      - store the result back on the device object
+
+- Proposed score sources:
+  - passive CAN score
+    - based on packets, last-seen age, and passive presence bucket
+  - runtime score
+    - based on local presence snapshot for motion devices
+    - based on singleton runtime telemetry for infrastructure devices
+  - Full Probe score
+    - strong when fresh
+    - weak or ignored when stale
+  - manual score
+    - only for motion devices
+  - console score
+    - additive downgrade, not the main presence source
+  - enrichment score
+    - additive corroboration, not the first gate
+
 - Tomorrow's plan:
   - Write one short source-priority table for each device class:
     - motion devices
@@ -30,3 +83,73 @@
   - Fewer special cases.
   - Fewer conflicts that are really just scope mismatches.
   - A result matrix that can be explained in a few sentences without caveats.
+
+- Concrete code refactor plan:
+  - `tools/can_nt/passive_discovery_integration_service.py`
+    - Keep as the owner of source normalization text/snapshots.
+    - Stop letting `build_interpreted_evidence_row(...)` act as the full policy engine.
+    - Extract:
+      - `classify_device_type(label, profile_device, runtime_device, passive_device)`
+      - `collect_device_source_scores(device_type, ...)`
+      - `combine_device_presence_scores(device_type, source_scores)`
+      - `build_device_interpretation_from_score(...)`
+    - `build_interpreted_evidence_row(...)` should become a thin composer:
+      - build source snapshots/text
+      - call the shared scoring/classification helpers
+      - render the returned shared interpreted-device result into row fields
+  - `tools/can_nt/can_fault_inference.py`
+    - Keep as the owner of fault-candidate ranking only.
+    - Do not let it re-interpret raw passive text as much as it does now.
+    - Change it to consume a stronger shared interpreted-device object:
+      - `deviceType`
+      - `presenceScore`
+      - `presenceState`
+      - `presenceReasons`
+      - `freshness`
+      - `conflictFlags`
+    - Keep topology grouping and candidate ranking here.
+  - `tools/can_nt/bringup_ui.py`
+    - Keep as the owner of the incremental evaluator cursor and tick budget.
+    - Add persistent evaluator state:
+      - current class index
+      - current device index
+      - last interpreted-device cache
+      - last evaluation timestamps
+    - On each poll/update slice:
+      - evaluate only one or two devices
+      - update shared cache
+      - let `Evidence`, `Live Topology`, and `CAN Fault Finder` read that cache
+
+- Concrete extraction order:
+  - Step A:
+    - introduce `deviceType` classification and add tests without changing behavior
+  - Step B:
+    - introduce per-source score objects:
+      - passive
+      - runtime
+      - probe
+      - manual
+      - console
+      - enrichment
+  - Step C:
+    - introduce one class-based combiner for `motion_device`
+  - Step D:
+    - introduce one separate combiner for `infrastructure_device`
+  - Step E:
+    - switch `build_interpreted_evidence_row(...)` to use the combiners
+  - Step F:
+    - add incremental cursor state in `bringup_ui.py`
+  - Step G:
+    - make `can_fault_inference.py` consume the shared interpreted-device structure instead of re-deriving presence from passive text
+
+- Concrete test plan:
+  - `passive_discovery_integration_service` tests:
+    - one test per device class and source combination
+    - one test for each score combiner
+  - `bringup_ui` tests:
+    - cursor advances one device at a time
+    - configured budget of two processes only two devices
+    - cursor wraps correctly
+  - `can_fault_inference` tests:
+    - consume interpreted-device rows with less source re-parsing
+    - branch/trunk logic still works with the new shared state

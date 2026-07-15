@@ -135,6 +135,7 @@ class LiveTopologyViewTests(unittest.TestCase):
         view._bridge_groups = []
         view._runtime_state = {}
         view._presence_overrides = {}
+        view._overlay_lens = live_view_module.TOPOLOGY_LENS_RUNTIME
         view._evidence_state = {}
         view._visibility_enabled = False
         view._visibility_state = {}
@@ -375,6 +376,59 @@ class LiveTopologyViewTests(unittest.TestCase):
 
         self.assertEqual(
             live_view_module.PRESENCE_COLOR_ERROR,
+            view._live_fill(node, 0),
+        )
+
+    def test_evidence_lens_uses_interpreted_state_and_ignores_runtime_fill(self) -> None:
+        view = self._make_view()
+        node = type("NodeStub", (), {"label": "falcon 9", "interface": "CAN"})()
+        view._runtime_state = {
+            "falcon 9": {
+                "presenceConfidence": 0.0,
+                "attachments": [
+                    {"type": "presenceCheck", "status": "error"},
+                ],
+            }
+        }
+        view._evidence_state = {"falcon 9": "ok"}
+        view.set_overlay_lens(live_view_module.TOPOLOGY_LENS_EVIDENCE)
+
+        self.assertEqual(
+            live_view_module.EVIDENCE_COLOR_OK,
+            view._live_fill(node, 0),
+        )
+
+    def test_evidence_lens_does_not_fallback_to_runtime_when_interpreted_state_missing(self) -> None:
+        view = self._make_view()
+        node = type("NodeStub", (), {"label": "falcon 9", "interface": "CAN"})()
+        view._runtime_state = {
+            "falcon 9": {
+                "presenceConfidence": 0.0,
+                "attachments": [
+                    {"type": "presenceCheck", "status": "error"},
+                ],
+            }
+        }
+        view.set_overlay_lens(live_view_module.TOPOLOGY_LENS_EVIDENCE)
+
+        self.assertIsNone(view._live_fill(node, 0))
+
+    def test_visibility_lens_uses_visibility_state_and_not_runtime_fill(self) -> None:
+        view = self._make_view()
+        node = type("NodeStub", (), {"label": "falcon 9", "interface": "CAN", "category": "krakens"})()
+        view._runtime_state = {
+            "falcon 9": {
+                "presenceConfidence": 0.0,
+                "attachments": [
+                    {"type": "presenceCheck", "status": "error"},
+                ],
+            }
+        }
+        view._visibility_state = {"falcon 9": live_view_module.VIS_STATE_ALL}
+        view.set_overlay_lens(live_view_module.TOPOLOGY_LENS_VISIBILITY)
+
+        self.assertEqual(
+            live_view_module.VIS_COLOR_ALL,
             view._live_fill(node, 0),
         )
 
@@ -857,6 +911,53 @@ class LiveTopologyViewTests(unittest.TestCase):
             live_view_module._load_device_registry = original_load_registry
             live_view_module.parse_bridge_groups = original_parse_bridge_groups
             view._redraw = original_redraw
+
+    def test_reload_profile_none_clears_nodes_instead_of_falling_back_to_default_profile(self) -> None:
+        view = self._make_view()
+        view._nodes = [
+            live_view_module.LiveNode(
+                key=1,
+                category="roborio",
+                label="roborio",
+                can_id=0,
+                bus_index=0,
+                row=0,
+                x=0.0,
+            )
+        ]
+        view._diagram_meta = {"stale": True}
+        view._bridge_groups = [{"name": "active-group"}]
+        view._update_details_calls = 0
+        view._update_details = lambda: setattr(
+            view, "_update_details_calls", view._update_details_calls + 1
+        )
+
+        original_load_payload = live_view_module._load_profiles_payload
+
+        try:
+            live_view_module._load_profiles_payload = lambda: (
+                {
+                    "defaultProfile": "demo",
+                    "profiles": {
+                        "demo": {
+                            "devices": [
+                                {"label": "FALCON 9", "type": "motor", "deviceType": 2, "id": 9},
+                            ]
+                        }
+                    },
+                },
+                "",
+            )
+
+            view.reload_profile(live_view_module.PROFILE_NONE)
+
+            self.assertEqual([], view._nodes)
+            self.assertEqual({}, view._diagram_meta)
+            self.assertEqual([], view._bridge_groups)
+            self.assertEqual("Profile: (none)", view._status_label.text)
+            self.assertEqual(1, view._update_details_calls)
+        finally:
+            live_view_module._load_profiles_payload = original_load_payload
 
     def test_reload_profile_error_clears_active_group_details_immediately(self) -> None:
         view = self._make_view()

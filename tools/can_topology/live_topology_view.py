@@ -196,6 +196,14 @@ RECENT_SEEN_MS_SWITCH = 1000
 RECENT_SEEN_SEC_SWITCH = 10000
 PRESENCE_MIN_CONF = 0.05
 PRESENCE_HIGH_CONF = 0.5
+TOPOLOGY_LENS_RUNTIME = "runtime"
+TOPOLOGY_LENS_EVIDENCE = "evidence"
+TOPOLOGY_LENS_VISIBILITY = "visibility"
+TOPOLOGY_LENS_VALUES = {
+    TOPOLOGY_LENS_RUNTIME,
+    TOPOLOGY_LENS_EVIDENCE,
+    TOPOLOGY_LENS_VISIBILITY,
+}
 EMPTY_STRING = ""
 LEGACY_NODE_TYPE_DIAGRAM = "diagram"
 LEGACY_NODE_TYPE_CALLOUT = "callout"
@@ -335,6 +343,7 @@ RUNTIME_PROBE_AGE_STALE = "stale"
 RUNTIME_PROBE_AGE_AGING = "aging"
 RUNTIME_PROBE_AGE_FRESH = "fresh"
 TITLE_TEXT_DEFAULT = "Live Topology"
+PROFILE_NONE = "(none)"
 FIT_RETRY_DELAY_MS = 25
 SELECTION_FRAME_TEXT = "Selection"
 ACTIVE_GROUP_NAME = "active-group"
@@ -988,6 +997,7 @@ class LiveTopologyView(ttk.Frame):
         self._diagram_meta: Dict[str, object] = {}
         self._runtime_state: Dict[str, Dict[str, object]] = {}
         self._presence_overrides: Dict[str, str] = {}
+        self._overlay_lens = TOPOLOGY_LENS_RUNTIME
         self._visibility_enabled = False
         self._visibility_state: Dict[str, str] = {}
         self._visibility_sources: Dict[str, bool] = {}
@@ -1359,6 +1369,15 @@ class LiveTopologyView(ttk.Frame):
         """
         if profile_name:
             self._profile_name = profile_name
+        if str(self._profile_name or "").strip() == PROFILE_NONE:
+            self._status_label.configure(text=f"Profile: {PROFILE_NONE}")
+            self._nodes = []
+            self._diagram_meta = {}
+            self._bridge_groups = []
+            self._use_diagram_layout = False
+            self._update_details()
+            self._redraw()
+            return
         payload, err = _load_profiles_payload()
         if payload is None:
             self._status_label.configure(text=f"Profile: {self._profile_name} (error)")
@@ -1512,13 +1531,41 @@ class LiveTopologyView(ttk.Frame):
     def set_visibility_enabled(self, enabled: bool) -> None:
         """
         NAME
-            set_visibility_enabled - Toggle visibility overlay mode.
+            set_visibility_enabled - Compatibility wrapper for visibility-lens selection.
         """
         enabled = bool(enabled)
-        if enabled == self._visibility_enabled:
+        if enabled:
+            self.set_overlay_lens(TOPOLOGY_LENS_VISIBILITY)
             return
-        self._visibility_enabled = enabled
+        if self._overlay_lens == TOPOLOGY_LENS_VISIBILITY:
+            self.set_overlay_lens(TOPOLOGY_LENS_RUNTIME)
+
+    def set_overlay_lens(self, lens: str) -> None:
+        """
+        NAME
+            set_overlay_lens - Select the explicit overlay lens for shared node coloring.
+
+        DESCRIPTION
+            The shared topology scene/renderer is common across tabs. Individual
+            surfaces may supply different interpreted inputs, but they must do
+            so through an explicit lens selection rather than through divergent
+            rendering code paths.
+        """
+        normalized = str(lens or EMPTY_STRING).strip().lower()
+        if normalized not in TOPOLOGY_LENS_VALUES:
+            normalized = TOPOLOGY_LENS_RUNTIME
+        if normalized == self._overlay_lens:
+            return
+        self._overlay_lens = normalized
+        self._visibility_enabled = normalized == TOPOLOGY_LENS_VISIBILITY
         self._redraw()
+
+    def get_overlay_lens(self) -> str:
+        """
+        NAME
+            get_overlay_lens - Return the currently active overlay lens key.
+        """
+        return self._overlay_lens
 
     def set_evidence_snapshot(self, evidence_state: Optional[Dict[str, str]]) -> None:
         """
@@ -2947,13 +2994,10 @@ class LiveTopologyView(ttk.Frame):
         callback(str(label).strip(), bool(variable.get()))
 
     def _live_fill(self, node: LiveNode, now_ms: int) -> Optional[str]:
-        evidence_fill = self._evidence_fill(node)
-        if evidence_fill:
-            return evidence_fill
-        if self._visibility_enabled:
-            vis_fill = self._visibility_fill(node)
-            if vis_fill:
-                return vis_fill
+        if self._overlay_lens == TOPOLOGY_LENS_EVIDENCE:
+            return self._evidence_fill(node)
+        if self._overlay_lens == TOPOLOGY_LENS_VISIBILITY:
+            return self._visibility_fill(node)
         if getattr(node, "interface", INTERFACE_CAN) != INTERFACE_CAN:
             return None
         override = self._presence_overrides.get(node.label.lower())

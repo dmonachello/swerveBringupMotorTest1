@@ -59,13 +59,18 @@ KEY_INFRA_CONFLICT = "conflict"
 ROW_KEY_CONFIDENCE = "confidence"
 ROW_KEY_CONFLICTED = "conflicted"
 ROW_KEY_CONSOLE = "console"
+ROW_KEY_DEVICE_TYPE = "deviceType"
 ROW_KEY_EXISTENCE = "existence"
 ROW_KEY_MANUAL = "manual"
 ROW_KEY_NOTES_TEXT = "notesText"
 ROW_KEY_OPERABILITY = "operability"
 ROW_KEY_PASSIVE = "passive"
+ROW_KEY_PRESENCE_SCORE = "presenceScore"
+ROW_KEY_PRESENCE_STATE = "presenceState"
+ROW_KEY_PRESENCE_REASONS = "presenceReasons"
 ROW_KEY_PROBE = "probe"
 ROW_KEY_STATE = "state"
+ROW_KEY_SOURCE_SCORES = "sourceScores"
 PASSIVE_TOKEN_PRESENCE_PREFIX = "presence="
 PASSIVE_TOKEN_SCORE_PREFIX = "score="
 PASSIVE_TOKEN_PACKET_PREFIX = "packets="
@@ -104,6 +109,10 @@ STATE_FAILED = "failed"
 STATE_MISSING = "missing"
 STATE_DEGRADED = "degraded"
 STATE_UNKNOWN = "unknown"
+PRESENCE_STATE_PRESENT = "present"
+PRESENCE_STATE_MISSING = "missing"
+PRESENCE_STATE_UNKNOWN = "unknown"
+PRESENCE_STATE_CONFLICT = "conflict"
 
 TEXT_NO_ACTIVE_FAULT = "No active CAN fault candidate from current evidence."
 TEXT_INSUFFICIENT = "Not enough evidence to rank a CAN fault candidate."
@@ -123,6 +132,7 @@ CHECK_BUS_WIDE = "Check roboRIO CAN status, termination, power, and broad wiring
 CHECK_TOPOLOGY = "Verify the selected profile and topology match the robot wiring."
 CHECK_STALE = "Refresh robot connection, clear stale probe data, then rerun the observation."
 CHECK_CONTROLLER = "Verify roboRIO power/code connection and compare robot-local versus passive CAN evidence."
+CHECK_INFRA = "Inspect infrastructure power/CAN connections at the affected singleton device first."
 
 CAN_EDGE_TYPES = {EDGE_TYPE_CAN_TRUNK, EDGE_TYPE_CAN_DROP, EDGE_TYPE_CAN_TAP}
 
@@ -167,6 +177,24 @@ def _token_float(token: str, prefix: str) -> Optional[float]:
 
 
 def _observer_indicates_presence(row: Mapping[str, Any]) -> bool:
+    presence_state = _clean_text(row.get(ROW_KEY_PRESENCE_STATE)).lower()
+    presence_score = row.get(ROW_KEY_PRESENCE_SCORE)
+    if presence_state == PRESENCE_STATE_PRESENT:
+        return True
+    if isinstance(presence_score, (int, float)) and float(presence_score) >= 50.0:
+        return True
+    source_scores = row.get(ROW_KEY_SOURCE_SCORES)
+    if isinstance(source_scores, Mapping):
+        for source_name in ("passive", "runtime", "probe", "enrichment"):
+            source_entry = source_scores.get(source_name)
+            if not isinstance(source_entry, Mapping):
+                continue
+            source_state = _clean_text(source_entry.get("state")).lower()
+            source_score = source_entry.get("score")
+            if source_state == PRESENCE_STATE_PRESENT:
+                return True
+            if isinstance(source_score, (int, float)) and float(source_score) >= 70.0:
+                return True
     for token in _passive_token_values(row):
         if token.startswith(PASSIVE_TOKEN_PRESENCE_PREFIX):
             value = token[len(PASSIVE_TOKEN_PRESENCE_PREFIX) :].strip()
@@ -186,17 +214,20 @@ def _observer_indicates_presence(row: Mapping[str, Any]) -> bool:
 def _infrastructure_bucket(row: Mapping[str, Any]) -> str:
     existence = _clean_text(row.get(ROW_KEY_EXISTENCE)).upper()
     state = _clean_text(row.get(ROW_KEY_STATE)).lower()
+    presence_state = _clean_text(row.get(ROW_KEY_PRESENCE_STATE)).lower()
     conflicted = bool(row.get(ROW_KEY_CONFLICTED))
     observer_present = _observer_indicates_presence(row)
     if conflicted:
         return KEY_INFRA_CONFLICT
+    if presence_state == PRESENCE_STATE_CONFLICT:
+        return KEY_INFRA_CONFLICT
     if observer_present:
-        if existence == VALUE_UNKNOWN or state == STATE_UNKNOWN:
+        if presence_state == PRESENCE_STATE_UNKNOWN or existence == VALUE_UNKNOWN or state == STATE_UNKNOWN:
             return KEY_INFRA_STALE
         return KEY_INFRA_VISIBLE
-    if existence == VALUE_ABSENT or state == STATE_MISSING:
+    if presence_state == PRESENCE_STATE_MISSING or existence == VALUE_ABSENT or state == STATE_MISSING:
         return KEY_INFRA_MISSING
-    if existence == VALUE_UNKNOWN or state == STATE_UNKNOWN:
+    if presence_state == PRESENCE_STATE_UNKNOWN or existence == VALUE_UNKNOWN or state == STATE_UNKNOWN:
         return KEY_INFRA_STALE
     return KEY_INFRA_VISIBLE
 
@@ -205,12 +236,17 @@ def _is_affected_row(row: Mapping[str, Any]) -> bool:
     state = _clean_text(row.get(ROW_KEY_STATE)).lower()
     existence = _clean_text(row.get(ROW_KEY_EXISTENCE)).upper()
     operability = _clean_text(row.get(ROW_KEY_OPERABILITY)).upper()
+    presence_state = _clean_text(row.get(ROW_KEY_PRESENCE_STATE)).lower()
     if operability in {VALUE_FAILED, VALUE_CONFLICT}:
         return True
     if state == STATE_FAILED:
         return True
+    if presence_state == PRESENCE_STATE_CONFLICT:
+        return True
     if _observer_indicates_presence(row) and (state == STATE_MISSING or existence == VALUE_ABSENT):
         return False
+    if presence_state == PRESENCE_STATE_MISSING:
+        return True
     if state == STATE_MISSING:
         return True
     return existence in {VALUE_ABSENT, VALUE_CONFLICT}
@@ -452,6 +488,36 @@ def build_fault_diagnosis(
                     supporting=stale_or_conflicted,
                     conflicting=[],
                     checks=[CHECK_STALE, RECHECK_OBSERVATION],
+                )
+            )
+
+        infrastructure_missing = list(infrastructure.get(KEY_INFRA_MISSING, []))
+        infrastructure_conflict = list(infrastructure.get(KEY_INFRA_CONFLICT, []))
+        infrastructure_affected = infrastructure_missing + infrastructure_conflict
+        if infrastructure_affected and not affected_labels:
+            fault_class = (
+                FAULT_CLASS_CONTROLLER_SIDE
+                if any(label.lower() == "roborio" for label in infrastructure_affected) or len(infrastructure_affected) > 1
+                else FAULT_CLASS_SINGLE_DEVICE
+            )
+            summary = (
+                "Infrastructure device evidence is missing or conflicted."
+                if fault_class == FAULT_CLASS_SINGLE_DEVICE
+                else TEXT_CONTROLLER
+            )
+            checks = [CHECK_INFRA, RECHECK_OBSERVATION]
+            if fault_class == FAULT_CLASS_CONTROLLER_SIDE:
+                checks = [CHECK_CONTROLLER, RECHECK_OBSERVATION]
+            candidates.append(
+                _candidate(
+                    fault_class=fault_class,
+                    confidence=CONFIDENCE_MEDIUM,
+                    summary=summary,
+                    affected=infrastructure_affected,
+                    region="infrastructure CAN/power entry path",
+                    supporting=infrastructure_affected,
+                    conflicting=[],
+                    checks=checks,
                 )
             )
 

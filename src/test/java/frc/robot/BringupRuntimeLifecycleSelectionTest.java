@@ -5,8 +5,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.util.List;
+import frc.robot.diag.lifecycle.activation.ActivationMembershipMode;
 import frc.robot.diag.lifecycle.runtime.DeviceRuntimeState;
+import java.lang.reflect.Constructor;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -209,5 +211,105 @@ class BringupRuntimeLifecycleSelectionTest {
     assertTrue(BringupRuntime.isLifecycleSingletonEntry(controller));
     assertTrue(BringupRuntime.isLifecycleSingletonEntry(pdp));
     assertFalse(BringupRuntime.isLifecycleSingletonEntry(limitSwitch));
+  }
+
+  @Test
+  void selectActivationMembersStrictRejectsUnavailableMembers() {
+    BringupRuntime.ActivationMemberSelection selection =
+        BringupRuntime.selectActivationMembers(
+            ActivationMembershipMode.STRICT,
+            List.of("FALCON 9", "SPARKMAX/NEO 25"),
+            label -> "FALCON 9".equals(label));
+
+    assertFalse(selection.allowActivation());
+    assertEquals(List.of(), selection.attemptedDeviceLabels());
+    assertEquals(List.of("SPARKMAX/NEO 25"), selection.skippedDeviceLabels());
+    assertEquals("REQUESTED_DEVICES_NOT_RUNNABLE", selection.errorCode());
+  }
+
+  @Test
+  void selectActivationMembersPartialSkipsUnavailableMembers() {
+    BringupRuntime.ActivationMemberSelection selection =
+        BringupRuntime.selectActivationMembers(
+            ActivationMembershipMode.PARTIAL,
+            List.of("FALCON 9", "SPARKMAX/NEO 25"),
+            label -> "FALCON 9".equals(label));
+
+    assertTrue(selection.allowActivation());
+    assertEquals(List.of("FALCON 9"), selection.attemptedDeviceLabels());
+    assertEquals(List.of("SPARKMAX/NEO 25"), selection.skippedDeviceLabels());
+  }
+
+  @Test
+  void selectActivationMembersForceAttemptsEverything() {
+    BringupRuntime.ActivationMemberSelection selection =
+        BringupRuntime.selectActivationMembers(
+            ActivationMembershipMode.FORCE,
+            List.of("FALCON 9", "SPARKMAX/NEO 25"),
+            label -> false);
+
+    assertTrue(selection.allowActivation());
+    assertEquals(
+        List.of("FALCON 9", "SPARKMAX/NEO 25"),
+        selection.attemptedDeviceLabels());
+    assertEquals(List.of(), selection.skippedDeviceLabels());
+  }
+
+  @Test
+  void lifecycleViewEligibleForActivationTreatsDefinedOutOfScopeDeviceAsEligible() throws Exception {
+    DeviceLifecycleRegistry.DeviceLifecycleView lifecycle =
+        deviceLifecycleView(
+            "FALCON 9",
+            "defined",
+            0.0,
+            false,
+            "Device is not in scope.");
+
+    assertTrue(BringupRuntime.isLifecycleViewEligibleForActivation(lifecycle));
+  }
+
+  @Test
+  void lifecycleViewEligibleForActivationRejectsExplicitNoPresenceDevice() throws Exception {
+    DeviceLifecycleRegistry.DeviceLifecycleView lifecycle =
+        deviceLifecycleView(
+            "SPARKMAX/NEO 25",
+            "in-scope-stale",
+            0.0,
+            false,
+            "Presence score below threshold; device is not present.");
+
+    assertFalse(BringupRuntime.isLifecycleViewEligibleForActivation(lifecycle));
+  }
+
+  private static DeviceLifecycleRegistry.DeviceLifecycleView deviceLifecycleView(
+      String label,
+      String lifecycleState,
+      double presenceScore,
+      boolean testable,
+      String notTestableReason) throws Exception {
+    Constructor<DeviceLifecycleRegistry.DeviceLifecycleView> constructor =
+        DeviceLifecycleRegistry.DeviceLifecycleView.class.getDeclaredConstructor(
+            String.class,
+            String.class,
+            double.class,
+            boolean.class,
+            boolean.class,
+            boolean.class,
+            boolean.class,
+            String.class,
+            long.class,
+            String.class);
+    constructor.setAccessible(true);
+    return constructor.newInstance(
+        label,
+        lifecycleState,
+        presenceScore,
+        testable,
+        false,
+        false,
+        false,
+        "refresh",
+        0L,
+        notTestableReason);
   }
 }

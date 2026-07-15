@@ -68,29 +68,58 @@ public final class ActivationManager {
      *     ActivationResult describing success or rollback failure details.
      */
     public ActivationResult activate(String label, ActivationMode mode) {
-        if (lifecycleState != LifecycleState.INACTIVE) {
-            return failedActivation(
-                    label,
-                    null,
-                    mode,
-                    List.of(),
-                    List.of(),
-                    ERROR_SESSION_NOT_INACTIVE,
-                    MESSAGE_ACTIVATE_ONLY_IN_INACTIVE);
-        }
-
         List<String> requestedDeviceLabels;
         try {
-            requestedDeviceLabels = labelResolver.resolveToDeviceLabels(label);
+            requestedDeviceLabels = resolveRequestedDeviceLabels(label);
         } catch (RuntimeException exception) {
             return failedActivation(
                     label,
                     null,
                     mode,
+                    ActivationMembershipMode.STRICT,
+                    List.of(),
                     List.of(),
                     List.of(),
                     ERROR_LABEL_RESOLUTION_FAILED,
                     exception.getMessage());
+        }
+        return activateResolved(
+                label,
+                requestedDeviceLabels,
+                mode,
+                ActivationMembershipMode.STRICT,
+                List.of());
+    }
+
+    /**
+     * NAME
+     *     resolveRequestedDeviceLabels - resolve one requested label into concrete device labels.
+     */
+    public List<String> resolveRequestedDeviceLabels(String label) {
+        return labelResolver.resolveToDeviceLabels(label);
+    }
+
+    /**
+     * NAME
+     *     activateResolved - activate an explicit device label set under one requested label.
+     */
+    public ActivationResult activateResolved(
+            String label,
+            List<String> requestedDeviceLabels,
+            ActivationMode mode,
+            ActivationMembershipMode membershipMode,
+            List<String> skippedDeviceLabels) {
+        if (lifecycleState != LifecycleState.INACTIVE) {
+            return failedActivation(
+                    label,
+                    null,
+                    mode,
+                    membershipMode,
+                    requestedDeviceLabels,
+                    List.of(),
+                    skippedDeviceLabels,
+                    ERROR_SESSION_NOT_INACTIVE,
+                    MESSAGE_ACTIVATE_ONLY_IN_INACTIVE);
         }
 
         if (requestedDeviceLabels.isEmpty()) {
@@ -98,8 +127,10 @@ public final class ActivationManager {
                     label,
                     null,
                     mode,
+                    membershipMode,
                     requestedDeviceLabels,
                     requestedDeviceLabels,
+                    skippedDeviceLabels,
                     ERROR_EMPTY_GROUP,
                     MESSAGE_EMPTY_GROUP);
         }
@@ -128,9 +159,11 @@ public final class ActivationManager {
                             label,
                             null,
                             mode,
+                            membershipMode,
                             requestedDeviceLabels,
                             List.of(),
                             failedLabels,
+                            skippedDeviceLabels,
                             LifecycleState.FAILED,
                             ERROR_ACTIVATION_FAILED,
                             exception.getMessage());
@@ -149,9 +182,11 @@ public final class ActivationManager {
                 label,
                 sessionId,
                 mode,
+                membershipMode,
                 requestedDeviceLabels,
                 requestedDeviceLabels,
                 List.of(),
+                skippedDeviceLabels,
                 lifecycleState,
                 null,
                 null);
@@ -261,8 +296,10 @@ public final class ActivationManager {
             String requestedLabel,
             String sessionId,
             ActivationMode mode,
+            ActivationMembershipMode membershipMode,
             List<String> requestedDeviceLabels,
             List<String> failedDeviceLabels,
+            List<String> skippedDeviceLabels,
             String errorCode,
             String errorMessage) {
         return new ActivationResult(
@@ -270,9 +307,11 @@ public final class ActivationManager {
                 requestedLabel,
                 sessionId,
                 mode,
+                membershipMode,
                 requestedDeviceLabels,
                 List.of(),
                 failedDeviceLabels,
+                skippedDeviceLabels,
                 lifecycleState,
                 errorCode,
                 errorMessage);

@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import edu.wpi.first.wpilibj.DriverStation;
 import frc.robot.diag.lifecycle.activation.ActivationMode;
+import frc.robot.diag.lifecycle.activation.ActivationMembershipMode;
 import frc.robot.diag.lifecycle.activation.ActivationResult;
 import frc.robot.diag.lifecycle.activation.ActivationSession;
 import frc.robot.diag.lifecycle.activation.DeactivateResult;
@@ -15,6 +16,7 @@ import frc.robot.diag.lifecycle.integration.LifecycleProfileTopologyAdapter;
 import frc.robot.diag.probe.ActiveDevicePresenceProbe;
 import frc.robot.diag.lifecycle.runtime.DeviceRuntimeState;
 import frc.robot.telemetry.SampledTelemetrySampler;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import frc.robot.devices.DeviceUnit;
@@ -77,9 +79,27 @@ public final class BringupRuntime {
   private static final String ERROR_CONTROLLED_LIFECYCLE_UNAVAILABLE =
       "Controlled lifecycle runtime unavailable.";
   private static final String ERROR_NO_SELECTED_TEST = "no selected test";
+  private static final String ERROR_NO_RUNNABLE_REQUESTED_DEVICES =
+      "NO_RUNNABLE_REQUESTED_DEVICES";
+  private static final String ERROR_REQUESTED_DEVICES_NOT_RUNNABLE =
+      "REQUESTED_DEVICES_NOT_RUNNABLE";
   private static final String ERROR_WRONG_SCOPE_OWNER_PREFIX = "wrong scope owner - ";
   private static final String ERROR_WRONG_SCOPE_OWNER_ACTIVE_GROUP = "active-group is active";
   private static final String ERROR_WRONG_SCOPE_OWNER_NO_ACTIVE_SCOPE = "no active scope";
+  private static final String TEXT_UNAVAILABLE_MEMBERS_PREFIX = "Unavailable members: ";
+  private static final String TEXT_EXCLUDED_MEMBERS_PREFIX = "Excluded members: ";
+  private static final String TEXT_LIFECYCLE_REASON_NOT_IN_SCOPE =
+      "Device is not in scope.";
+  private static final String TEXT_LIFECYCLE_REASON_NO_PRESENCE =
+      "Presence score below threshold; device is not present.";
+  private static final String TEXT_LIFECYCLE_REASON_NOT_INSTANTIATED =
+      "Runtime object is not instantiated.";
+  private static final String TEXT_LIFECYCLE_STATE_DEFINED = "defined";
+  private static final String TEXT_LIFECYCLE_STATE_DEFINED_PRESENT = "defined-present";
+  private static final String TEXT_LIFECYCLE_STATE_DEFINED_STALE = "defined-stale";
+  private static final String TEXT_LIFECYCLE_STATE_IN_SCOPE = "in-scope";
+  private static final String TEXT_LIFECYCLE_STATE_IN_SCOPE_PRESENT = "in-scope-present";
+  private static final int ACTIVATION_MEMBER_MESSAGE_LIMIT = 3;
   private static final long PERIODIC_LIFECYCLE_REFRESH_ENABLED_MS = 250L;
   private static final long PERIODIC_LIFECYCLE_REFRESH_DISABLED_MS = 1000L;
 
@@ -181,7 +201,8 @@ public final class BringupRuntime {
    * RETURNS
    *   Activation result from the controlled lifecycle runtime.
    */
-  public ActivationResult activateControlledBringupLifecycle(String label, ActivationMode mode) {
+  public ActivationResult activateControlledBringupLifecycle(
+      String label, ActivationMode mode, ActivationMembershipMode membershipMode) {
     synchronizeControlledBringupLifecycleGroups();
     ControlledBringupLifecycleRuntime lifecycleRuntime = controlledBringupLifecycleRuntime;
     if (lifecycleRuntime == null) {
@@ -190,6 +211,8 @@ public final class BringupRuntime {
           label,
           null,
           mode,
+          membershipMode,
+          List.of(),
           List.of(),
           List.of(),
           List.of(),
@@ -197,7 +220,54 @@ public final class BringupRuntime {
           ERROR_CONTROLLED_LIFECYCLE_UNAVAILABLE,
           ERROR_CONTROLLED_LIFECYCLE_UNAVAILABLE);
     }
-    ActivationResult result = lifecycleRuntime.activationManager().activate(label, mode);
+    refreshDeviceLifecycle(System.currentTimeMillis());
+    List<String> requestedDeviceLabels;
+    try {
+      requestedDeviceLabels = lifecycleRuntime.activationManager().resolveRequestedDeviceLabels(label);
+    } catch (RuntimeException exception) {
+      return new ActivationResult(
+          false,
+          label,
+          null,
+          mode,
+          membershipMode,
+          List.of(),
+          List.of(),
+          List.of(),
+          List.of(),
+          currentLifecycleState(),
+          ERROR_REQUESTED_DEVICES_NOT_RUNNABLE,
+          exception.getMessage());
+    }
+    ActivationMemberSelection selection =
+        selectActivationMembers(
+            membershipMode,
+            requestedDeviceLabels,
+            this::isLifecycleDeviceEligibleForActivation);
+    if (!selection.allowActivation()) {
+      return new ActivationResult(
+          false,
+          label,
+          null,
+          mode,
+          membershipMode,
+          requestedDeviceLabels,
+          List.of(),
+          List.of(),
+          selection.skippedDeviceLabels(),
+          currentLifecycleState(),
+          selection.errorCode(),
+          selection.errorMessage());
+    }
+    ActivationResult result =
+        lifecycleRuntime
+            .activationManager()
+            .activateResolved(
+                label,
+                selection.attemptedDeviceLabels(),
+                mode,
+                membershipMode,
+                selection.skippedDeviceLabels());
     refreshDeviceLifecycle(System.currentTimeMillis());
     return result;
   }
@@ -212,7 +282,8 @@ public final class BringupRuntime {
    * RETURNS
    *   Activation result for the transient selected-test lifecycle scope.
    */
-  public ActivationResult activateSelectedTestDevices(ActivationMode mode) {
+  public ActivationResult activateSelectedTestDevices(
+      ActivationMode mode, ActivationMembershipMode membershipMode) {
     synchronizeControlledBringupLifecycleGroups();
     ControlledBringupLifecycleRuntime lifecycleRuntime = controlledBringupLifecycleRuntime;
     String selectedTestName = selectedBringupTestName();
@@ -222,6 +293,8 @@ public final class BringupRuntime {
           buildSelectedTestScopeLabel(TEXT_EMPTY),
           null,
           mode,
+          membershipMode,
+          List.of(),
           List.of(),
           List.of(),
           List.of(),
@@ -235,6 +308,8 @@ public final class BringupRuntime {
           buildSelectedTestScopeLabel(selectedTestName),
           null,
           mode,
+          membershipMode,
+          List.of(),
           List.of(),
           List.of(),
           List.of(),
@@ -251,6 +326,8 @@ public final class BringupRuntime {
             buildSelectedTestScopeLabel(selectedTestName),
             deactivateResult.sessionId(),
             mode,
+            membershipMode,
+            List.of(),
             List.of(),
             List.of(),
             List.of(),
@@ -261,8 +338,37 @@ public final class BringupRuntime {
     }
     String scopeLabel = buildSelectedTestScopeLabel(selectedTestName);
     List<String> requiredDevices = selectedBringupTestRequiredDevices();
-    ensureDynamicLifecycleGroup(scopeLabel, requiredDevices);
-    ActivationResult result = lifecycleRuntime.activationManager().activate(scopeLabel, mode);
+    refreshDeviceLifecycle(System.currentTimeMillis());
+    ActivationMemberSelection selection =
+        selectActivationMembers(
+            membershipMode,
+            requiredDevices,
+            this::isLifecycleDeviceEligibleForActivation);
+    if (!selection.allowActivation()) {
+      return new ActivationResult(
+          false,
+          scopeLabel,
+          null,
+          mode,
+          membershipMode,
+          requiredDevices,
+          List.of(),
+          List.of(),
+          selection.skippedDeviceLabels(),
+          currentLifecycleState(),
+          selection.errorCode(),
+          selection.errorMessage());
+    }
+    ensureDynamicLifecycleGroup(scopeLabel, selection.attemptedDeviceLabels());
+    ActivationResult result =
+        lifecycleRuntime
+            .activationManager()
+            .activateResolved(
+                scopeLabel,
+                selection.attemptedDeviceLabels(),
+                mode,
+                membershipMode,
+                selection.skippedDeviceLabels());
     refreshDeviceLifecycle(System.currentTimeMillis());
     return result;
   }
@@ -1350,6 +1456,130 @@ public final class BringupRuntime {
       return controlledState != null && controlledState.isActive();
     }
     return runtimeActive;
+  }
+
+  static ActivationMemberSelection selectActivationMembers(
+      ActivationMembershipMode membershipMode,
+      List<String> requestedDeviceLabels,
+      java.util.function.Predicate<String> runnableNow) {
+    List<String> requested =
+        requestedDeviceLabels == null ? List.of() : List.copyOf(requestedDeviceLabels);
+    if (membershipMode == ActivationMembershipMode.FORCE) {
+      return new ActivationMemberSelection(
+          requested,
+          requested,
+          List.of(),
+          true,
+          TEXT_EMPTY,
+          TEXT_EMPTY);
+    }
+    List<String> attempted = new ArrayList<>();
+    List<String> skipped = new ArrayList<>();
+    for (String label : requested) {
+      if (runnableNow.test(label)) {
+        attempted.add(label);
+      } else {
+        skipped.add(label);
+      }
+    }
+    if (membershipMode == ActivationMembershipMode.STRICT && !skipped.isEmpty()) {
+      return new ActivationMemberSelection(
+          requested,
+          List.of(),
+          skipped,
+          false,
+          ERROR_REQUESTED_DEVICES_NOT_RUNNABLE,
+          TEXT_UNAVAILABLE_MEMBERS_PREFIX + formatActivationMemberList(skipped));
+    }
+    if (membershipMode == ActivationMembershipMode.PARTIAL && attempted.isEmpty()) {
+      return new ActivationMemberSelection(
+          requested,
+          List.of(),
+          skipped,
+          false,
+          ERROR_NO_RUNNABLE_REQUESTED_DEVICES,
+          TEXT_EXCLUDED_MEMBERS_PREFIX + formatActivationMemberList(skipped));
+    }
+    return new ActivationMemberSelection(
+        requested,
+        attempted,
+        skipped,
+        true,
+        TEXT_EMPTY,
+        TEXT_EMPTY);
+  }
+
+  private boolean isLifecycleDeviceEligibleForActivation(String label) {
+    if (label == null || label.isBlank()) {
+      return false;
+    }
+    DeviceLifecycleRegistry.DeviceLifecycleView lifecycle = deviceLifecycle.viewForLabel(label);
+    return isLifecycleViewEligibleForActivation(lifecycle);
+  }
+
+  static boolean isLifecycleViewEligibleForActivation(
+      DeviceLifecycleRegistry.DeviceLifecycleView lifecycle) {
+    if (lifecycle == null) {
+      return false;
+    }
+    if (lifecycle.testable) {
+      return true;
+    }
+    String lifecycleState = lifecycle.lifecycleState != null ? lifecycle.lifecycleState : TEXT_EMPTY;
+    String notTestableReason =
+        lifecycle.notTestableReason != null ? lifecycle.notTestableReason : TEXT_EMPTY;
+    if (TEXT_LIFECYCLE_REASON_NOT_IN_SCOPE.equals(notTestableReason)) {
+      return TEXT_LIFECYCLE_STATE_DEFINED.equals(lifecycleState)
+          || TEXT_LIFECYCLE_STATE_DEFINED_PRESENT.equals(lifecycleState)
+          || TEXT_LIFECYCLE_STATE_DEFINED_STALE.equals(lifecycleState)
+          || TEXT_LIFECYCLE_STATE_IN_SCOPE.equals(lifecycleState)
+          || TEXT_LIFECYCLE_STATE_IN_SCOPE_PRESENT.equals(lifecycleState);
+    }
+    if (TEXT_LIFECYCLE_REASON_NO_PRESENCE.equals(notTestableReason)) {
+      return false;
+    }
+    if (TEXT_LIFECYCLE_REASON_NOT_INSTANTIATED.equals(notTestableReason)) {
+      return lifecycle.presenceScore > 0.0;
+    }
+    return lifecycle.presenceScore > 0.0;
+  }
+
+  private static String formatActivationMemberList(List<String> labels) {
+    if (labels == null || labels.isEmpty()) {
+      return TEXT_NONE;
+    }
+    List<String> parts = new ArrayList<>();
+    int total = labels.size();
+    int limit = Math.min(total, ACTIVATION_MEMBER_MESSAGE_LIMIT);
+    for (int i = 0; i < limit; i++) {
+      String label = labels.get(i);
+      if (label != null && !label.isBlank()) {
+        parts.add(label);
+      }
+    }
+    if (total > limit) {
+      parts.add("+" + (total - limit) + " more");
+    }
+    return String.join(", ", parts);
+  }
+
+  record ActivationMemberSelection(
+      List<String> requestedDeviceLabels,
+      List<String> attemptedDeviceLabels,
+      List<String> skippedDeviceLabels,
+      boolean allowActivation,
+      String errorCode,
+      String errorMessage) {
+    ActivationMemberSelection {
+      requestedDeviceLabels =
+          requestedDeviceLabels == null ? List.of() : List.copyOf(requestedDeviceLabels);
+      attemptedDeviceLabels =
+          attemptedDeviceLabels == null ? List.of() : List.copyOf(attemptedDeviceLabels);
+      skippedDeviceLabels =
+          skippedDeviceLabels == null ? List.of() : List.copyOf(skippedDeviceLabels);
+      errorCode = errorCode == null ? TEXT_EMPTY : errorCode;
+      errorMessage = errorMessage == null ? TEXT_EMPTY : errorMessage;
+    }
   }
 
   private frc.robot.diag.lifecycle.runtime.DeviceRuntimeState controlledLifecycleRuntimeStateForLabel(

@@ -40,6 +40,8 @@ public final class BringupRestServerTest {
   private static final String TEXT_NEXT_SEQUENCE = "nextSequence";
   private static final String TEXT_CONFIG = "config";
   private static final String TEXT_JSON = "json";
+  private static final String TEXT_LOGS = "logs";
+  private static final String TEXT_TEXT = "text";
   private static final String STATUS_FINISHED = "FINISHED";
   private static final String STATUS_FAILED = "FAILED";
   private static final int HTTP_OK = 200;
@@ -185,6 +187,38 @@ public final class BringupRestServerTest {
     assertEquals(
         "Runtime inactive. Click Runtime Activate.",
         chunks.get(0).getAsJsonObject().get(TEXT_OUTPUT).getAsString());
+  }
+
+  @Test
+  public void restServerLogsSessionConnectAcceptedAndRejectedAuditLines() throws Exception {
+    server = new BringupRestServer(0, new TestCallbacks());
+    server.start();
+    HttpClient client = HttpClient.newHttpClient();
+
+    JsonObject connect = new JsonObject();
+    connect.addProperty(TEXT_CLIENT_ID, CLIENT_A);
+    HttpResponse<String> connectResponse =
+        client.send(post("/session/connect", connect), HttpResponse.BodyHandlers.ofString());
+    assertEquals(HTTP_OK, connectResponse.statusCode());
+
+    JsonObject secondConnect = new JsonObject();
+    secondConnect.addProperty(TEXT_CLIENT_ID, CLIENT_B);
+    HttpResponse<String> secondConnectResponse =
+        client.send(post("/session/connect", secondConnect), HttpResponse.BodyHandlers.ofString());
+    assertEquals(HTTP_CONFLICT, secondConnectResponse.statusCode());
+
+    HttpResponse<String> logsResponse =
+        client.send(get("/logs?after=0"), HttpResponse.BodyHandlers.ofString());
+    assertEquals(HTTP_OK, logsResponse.statusCode());
+    JsonObject logsJson = GSON.fromJson(logsResponse.body(), JsonObject.class);
+    JsonArray logs = logsJson.getAsJsonArray(TEXT_LOGS);
+    assertTrue(logs.size() >= 2);
+    String first = logs.get(0).getAsJsonObject().get(TEXT_TEXT).getAsString();
+    String second = logs.get(1).getAsJsonObject().get(TEXT_TEXT).getAsString();
+    assertTrue(first.contains("[REST] session/connect ACCEPTED"));
+    assertTrue(first.contains("clientId=" + CLIENT_A));
+    assertTrue(second.contains("[REST] session/connect REJECTED"));
+    assertTrue(second.contains("clientId=" + CLIENT_B));
   }
 
   private HttpRequest post(String path, JsonObject body) {

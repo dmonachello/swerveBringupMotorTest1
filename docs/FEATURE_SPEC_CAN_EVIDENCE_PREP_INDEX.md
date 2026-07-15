@@ -1,4 +1,4 @@
-SPEC_STATUS: WORKING
+SPEC_STATUS: IMPLEMENTATION_READY
 
 # CAN Evidence Prep Index
 
@@ -9,6 +9,10 @@ Purpose: provide one reference entry point for the preparation artifacts that de
 Use this document as the master index for the pre-implementation work.
 
 ## Core Spec Documents
+
+- `docs/FEATURE_SPEC_CAN_BUS_DEBUG_FINAL_PUSH.md`
+  - Implementation-ready final-push spec
+  - Defines the observation window, device-class scoring model, explicit device status object, source semantics contract, source freshness policy, dirty-device reevaluation model, transition/event model, known-good baseline comparison model, incremental cursor-based evaluator, topology-aware break inference, UI surface, enrichment contribution, and acceptance criteria
 
 - `docs/FEATURE_SPEC_CAN_DEVICE_EVIDENCE_SOURCE_CONTRACTS.md`
   - Main pre-fusion source-contract spec
@@ -95,12 +99,13 @@ Primary raw source currently referenced by those notes:
 
 When starting the detailed feature spec and implementation spec, use this order:
 
-1. Read `FEATURE_SPEC_CAN_DEVICE_EVIDENCE_SOURCE_CONTRACTS.md`.
-2. Check `TASK_LIST_CAN_EVIDENCE_SOURCE_PREP.md` for unresolved prep items.
-3. Read `FEATURE_SPEC_CAN_EVIDENCE_UI.md` for the intended user-facing surface.
-4. Review the Task 1 run notes and `allDevicesTests.txt` for real observed behavior.
-5. Review the Task 2 console inventory for trusted console evidence semantics.
-6. Review the Task 3 manual outcome vocabulary for the manual-test source contract.
+1. Read `FEATURE_SPEC_CAN_BUS_DEBUG_FINAL_PUSH.md`.
+2. Read `FEATURE_SPEC_CAN_DEVICE_EVIDENCE_SOURCE_CONTRACTS.md`.
+3. Check `TASK_LIST_CAN_EVIDENCE_SOURCE_PREP.md` for unresolved prep items.
+4. Read `FEATURE_SPEC_CAN_EVIDENCE_UI.md` for the intended user-facing surface.
+5. Review the Task 1 run notes and `allDevicesTests.txt` for real observed behavior.
+6. Review the Task 2 console inventory for trusted console evidence semantics.
+7. Review the Task 3 manual outcome vocabulary for the manual-test source contract.
 
 ## Intended Future Documents
 
@@ -152,6 +157,7 @@ Preparation artifacts now exist for:
 - manual test result storage decision
 - representative test observations
 - source-gap inventory
+- implementation-ready device status / freshness / transition contract in the final-push spec
 
 Preparation artifacts still needed or still evolving:
 

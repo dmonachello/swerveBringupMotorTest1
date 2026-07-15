@@ -19,7 +19,7 @@
 
 local ENABLE_VENDOR_DECODE = true
 
-local frccan = Proto("frccan", "FRC CAN (Ext ID)")
+local frccan = Proto("frccan", "FRC CAN V1 (Ext ID)")
 
 -- Core header fields (FRC extended ID).
 -- These are derived from the 29-bit arbitration ID.
@@ -366,16 +366,16 @@ function frccan.dissector(tvb, pinfo, tree)
     end
 
     -- Build the main tree for this frame.
-    local subtree = tree:add(frccan, "FRC CAN (Ext ID)")
-    subtree:add(f_ext, true)
-    subtree:add(f_arb, arb)
-    subtree:add(f_mfg, manufacturer)
+    local subtree = tree:add(frccan, tvb(), "FRC CAN (Ext ID)")
+    subtree:add(f_ext, tvb(0, math.min(4, tvb:len())), true)
+    subtree:add(f_arb, tvb(0, math.min(4, tvb:len())), arb)
+    subtree:add(f_mfg, tvb(0, math.min(4, tvb:len())), manufacturer)
     subtree:add(f_mfg_name, MFG_NAMES[manufacturer] or "Unknown")
-    subtree:add(f_dtype, device_type)
+    subtree:add(f_dtype, tvb(0, math.min(4, tvb:len())), device_type)
     subtree:add(f_dtype_name, DEVICE_TYPE_NAMES[device_type] or "Unknown")
-    subtree:add(f_apic, api_class)
+    subtree:add(f_apic, tvb(0, math.min(4, tvb:len())), api_class)
     subtree:add(f_apic_name, API_CLASS_NAMES[api_class] or "Unknown")
-    subtree:add(f_apix, api_index)
+    subtree:add(f_apix, tvb(0, math.min(4, tvb:len())), api_index)
 
     -- Add API index names only when we recognize the class/context.
     if device_type == DEVTYPE_MOTOR_CONTROLLER and api_class == API_CLASS_SPEED then
@@ -388,14 +388,14 @@ function frccan.dissector(tvb, pinfo, tree)
         subtree:add(f_apix_name, BROADCAST_API_INDEX[api_index] or "Unknown")
     end
 
-    subtree:add(f_did, device_id)
-    subtree:add(f_broadcast, is_broadcast)
-    subtree:add(f_heartbeat, is_heartbeat)
+    subtree:add(f_did, tvb(0, math.min(4, tvb:len())), device_id)
+    subtree:add(f_broadcast, tvb(0, math.min(4, tvb:len())), is_broadcast)
+    subtree:add(f_heartbeat, tvb(0, math.min(4, tvb:len())), is_heartbeat)
 
     -- J1939 PF/PS are useful for CTRE frames.
     if pf ~= 0x00 or ps ~= 0x00 then
-        subtree:add(f_pf, pf)
-        subtree:add(f_ps, ps)
+        subtree:add(f_pf, tvb(0, math.min(4, tvb:len())), pf)
+        subtree:add(f_ps, tvb(0, math.min(4, tvb:len())), ps)
     end
     if vendor_role then
         subtree:add(f_vendor_role, vendor_role)

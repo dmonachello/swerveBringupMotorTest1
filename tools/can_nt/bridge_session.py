@@ -327,6 +327,9 @@ class BridgeSession:
         self._last_handshake_error = EMPTY_STRING
         self._session_id = EMPTY_STRING
         self._pending_by_seq.clear()
+        self._last_state = {}
+        self._last_runtime_state = {}
+        self._last_tests_state = {}
 
     def mark_handshake_done(
         self,
@@ -439,7 +442,8 @@ class BridgeSession:
         )
         if response.get("_http_status") == 200 and bool(response.get("ok")):
             self._last_protocol_monitor = dict(response)
-        return dict(self._last_protocol_monitor)
+            return dict(self._last_protocol_monitor)
+        return {}
 
     def fetch_runtime_state(self) -> Dict[str, Any]:
         response = self._http.request(
@@ -451,7 +455,8 @@ class BridgeSession:
         if response.get("_http_status") == 200 and isinstance(payload, dict):
             self._last_runtime_state = dict(payload)
             self._last_state.update(self._flatten_runtime_state(self._last_runtime_state))
-        return dict(self._last_runtime_state)
+            return dict(self._last_runtime_state)
+        return {}
 
     def fetch_tests_state(self) -> Dict[str, Any]:
         response = self._http.request(
@@ -462,7 +467,8 @@ class BridgeSession:
         payload = response.get("tests")
         if response.get("_http_status") == 200 and isinstance(payload, dict):
             self._last_tests_state = dict(payload)
-        return dict(self._last_tests_state)
+            return dict(self._last_tests_state)
+        return {}
 
     def fetch_session_snapshot(self) -> Dict[str, Any]:
         response = self._http.request(
@@ -478,7 +484,8 @@ class BridgeSession:
                 "monitorEnabled": bool(response.get("monitorEnabled", False)),
                 "lastActivityMs": response.get("lastActivityMs", VALUE_ZERO),
             }
-        return dict(self._last_state)
+            return dict(self._last_state)
+        return {}
 
     def _next_seq(self) -> int:
         self._seq += VALUE_ONE

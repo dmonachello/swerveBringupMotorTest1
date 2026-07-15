@@ -3,8 +3,10 @@ package frc.robot;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import frc.robot.diag.lifecycle.activation.ActivationMode;
+import frc.robot.diag.lifecycle.activation.ActivationMembershipMode;
 import frc.robot.diag.lifecycle.activation.ActivationResult;
 import frc.robot.diag.lifecycle.activation.DeactivateResult;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
@@ -27,6 +29,7 @@ final class BridgeUiLifecycleCommands implements BridgeUiCommandDispatcher.Comma
 
   private static final String ARG_LABEL = "label";
   private static final String ARG_MODE = "mode";
+  private static final String ARG_MEMBERSHIP_MODE = "membershipMode";
   private static final String ARG_JSON = "json";
 
   private static final String TEXT_UNKNOWN_COMMAND_PREFIX = "Unknown command: ";
@@ -47,8 +50,11 @@ final class BridgeUiLifecycleCommands implements BridgeUiCommandDispatcher.Comma
   private static final String TEXT_REQUIRED_DEACTIVATE_LABEL =
       "lifecycleDeactivate requires args.label.";
   private static final String TEXT_INVALID_MODE_PREFIX = "Invalid lifecycle mode: ";
+  private static final String TEXT_INVALID_MEMBERSHIP_MODE_PREFIX =
+      "Invalid lifecycle membership mode: ";
   private static final String TEXT_ACTIVATE_BLOCKED_DISABLED =
       "Lifecycle activate blocked: robot not in enabled teleop. Enable teleop, then activate lifecycle.";
+  private static final String TEXT_PARTIAL_EXCLUDED_PREFIX = " excluded: ";
 
   private static final String JSON_KEY_OPERATION = "operation";
   private static final String JSON_KEY_SUCCESS = "success";
@@ -58,11 +64,14 @@ final class BridgeUiLifecycleCommands implements BridgeUiCommandDispatcher.Comma
   private static final String JSON_KEY_REQUESTED_DEVICE_LABELS = "requestedDeviceLabels";
   private static final String JSON_KEY_INSTANTIATED_DEVICE_LABELS = "instantiatedDeviceLabels";
   private static final String JSON_KEY_FAILED_DEVICE_LABELS = "failedDeviceLabels";
+  private static final String JSON_KEY_SKIPPED_DEVICE_LABELS = "skippedDeviceLabels";
   private static final String JSON_KEY_DEACTIVATED_DEVICE_LABELS = "deactivatedDeviceLabels";
   private static final String JSON_KEY_STATE = "state";
   private static final String JSON_KEY_ERROR_CODE = "errorCode";
   private static final String JSON_KEY_ERROR_MESSAGE = "errorMessage";
   private static final String JSON_KEY_LIFECYCLE = "lifecycle";
+  private static final String JSON_KEY_MEMBERSHIP_MODE = "membershipMode";
+  private static final int TEXT_MEMBER_SUMMARY_LIMIT = 3;
 
   private static final String OPERATION_ACTIVATE = "activate";
   private static final String OPERATION_DEACTIVATE = "deactivate";
@@ -89,9 +98,11 @@ final class BridgeUiLifecycleCommands implements BridgeUiCommandDispatcher.Comma
 
     boolean isRuntimeActivationAllowed();
 
-    ActivationResult activateLifecycle(String label, ActivationMode mode);
+    ActivationResult activateLifecycle(
+        String label, ActivationMode mode, ActivationMembershipMode membershipMode);
 
-    ActivationResult activateSelectedTestDevices(ActivationMode mode);
+    ActivationResult activateSelectedTestDevices(
+        ActivationMode mode, ActivationMembershipMode membershipMode);
 
     DeactivateResult deactivateLifecycle(String label);
 
@@ -169,10 +180,14 @@ final class BridgeUiLifecycleCommands implements BridgeUiCommandDispatcher.Comma
     if (mode == null) {
       return;
     }
-    ActivationResult activation = dependencies.activateLifecycle(label, mode);
+    ActivationMembershipMode membershipMode = parseMembershipMode(args, result);
+    if (membershipMode == null) {
+      return;
+    }
+    ActivationResult activation = dependencies.activateLifecycle(label, mode, membershipMode);
     result.ok = activation.success();
     result.message = activation.success()
-        ? successActivateMessage(activation.requestedLabel())
+        ? successActivateMessage(activation)
         : selectLifecycleErrorMessage(activation.errorCode(), activation.errorMessage());
     result.outText = result.message;
     result.outJson = buildActivationPayload(activation).toString();
@@ -189,10 +204,14 @@ final class BridgeUiLifecycleCommands implements BridgeUiCommandDispatcher.Comma
     if (mode == null) {
       return;
     }
-    ActivationResult activation = dependencies.activateSelectedTestDevices(mode);
+    ActivationMembershipMode membershipMode = parseMembershipMode(args, result);
+    if (membershipMode == null) {
+      return;
+    }
+    ActivationResult activation = dependencies.activateSelectedTestDevices(mode, membershipMode);
     result.ok = activation.success();
     result.message = activation.success()
-        ? TEXT_SELECTED_TEST_SCOPE_ACTIVE
+        ? successActivateMessage(activation)
         : selectLifecycleErrorMessage(activation.errorCode(), activation.errorMessage());
     result.outText = result.message;
     result.outJson = buildActivationPayload(activation).toString();
@@ -260,6 +279,22 @@ final class BridgeUiLifecycleCommands implements BridgeUiCommandDispatcher.Comma
     }
   }
 
+  private ActivationMembershipMode parseMembershipMode(
+      JsonObject args, BridgeUiCommandResult result) {
+    String rawMode = dependencies.parseUiArgString(args, ARG_MEMBERSHIP_MODE);
+    if (rawMode == null || rawMode.isBlank()) {
+      return ActivationMembershipMode.STRICT;
+    }
+    try {
+      return ActivationMembershipMode.valueOf(rawMode.trim().toUpperCase(Locale.ROOT));
+    } catch (IllegalArgumentException ex) {
+      result.ok = false;
+      result.message = TEXT_INVALID_MEMBERSHIP_MODE_PREFIX + rawMode;
+      result.outText = result.message;
+      return null;
+    }
+  }
+
   private JsonObject buildActivationPayload(ActivationResult activation) {
     JsonObject payload = new JsonObject();
     payload.addProperty(JSON_KEY_OPERATION, OPERATION_ACTIVATE);
@@ -267,9 +302,13 @@ final class BridgeUiLifecycleCommands implements BridgeUiCommandDispatcher.Comma
     payload.addProperty(JSON_KEY_REQUESTED_LABEL, safeText(activation.requestedLabel()));
     payload.addProperty(JSON_KEY_SESSION_ID, safeText(activation.sessionId()));
     payload.addProperty(JSON_KEY_MODE, activation.mode() != null ? activation.mode().name() : "");
+    payload.addProperty(
+        JSON_KEY_MEMBERSHIP_MODE,
+        activation.membershipMode() != null ? activation.membershipMode().name() : "");
     payload.add(JSON_KEY_REQUESTED_DEVICE_LABELS, toJsonArray(activation.requestedDeviceLabels()));
     payload.add(JSON_KEY_INSTANTIATED_DEVICE_LABELS, toJsonArray(activation.instantiatedDeviceLabels()));
     payload.add(JSON_KEY_FAILED_DEVICE_LABELS, toJsonArray(activation.failedDeviceLabels()));
+    payload.add(JSON_KEY_SKIPPED_DEVICE_LABELS, toJsonArray(activation.skippedDeviceLabels()));
     payload.addProperty(JSON_KEY_STATE, activation.state() != null ? activation.state().name() : "");
     payload.addProperty(JSON_KEY_ERROR_CODE, safeText(activation.errorCode()));
     payload.addProperty(JSON_KEY_ERROR_MESSAGE, safeText(activation.errorMessage()));
@@ -314,14 +353,44 @@ final class BridgeUiLifecycleCommands implements BridgeUiCommandDispatcher.Comma
     return "";
   }
 
-  private String successActivateMessage(String requestedLabel) {
+  private String successActivateMessage(ActivationResult activation) {
+    String requestedLabel = activation != null ? activation.requestedLabel() : "";
     if (TEXT_ACTIVE_GROUP_LABEL.equals(requestedLabel)) {
-      return TEXT_SELECTED_ACTIVE_GROUP_SCOPE_ACTIVE;
+      return appendSkippedSummary(TEXT_SELECTED_ACTIVE_GROUP_SCOPE_ACTIVE, activation);
     }
     if (requestedLabel != null && requestedLabel.startsWith(TEXT_SELECTED_TEST_SCOPE_LABEL_PREFIX)) {
-      return TEXT_SELECTED_TEST_SCOPE_ACTIVE;
+      return appendSkippedSummary(TEXT_SELECTED_TEST_SCOPE_ACTIVE, activation);
     }
-    return String.format(TEXT_ACTIVATED_FMT, requestedLabel);
+    return appendSkippedSummary(String.format(TEXT_ACTIVATED_FMT, requestedLabel), activation);
+  }
+
+  private String appendSkippedSummary(String base, ActivationResult activation) {
+    if (activation == null || activation.membershipMode() != ActivationMembershipMode.PARTIAL) {
+      return base;
+    }
+    List<String> skipped = activation.skippedDeviceLabels();
+    if (skipped == null || skipped.isEmpty()) {
+      return base;
+    }
+    return base + TEXT_PARTIAL_EXCLUDED_PREFIX + summarizeLabels(skipped);
+  }
+
+  private String summarizeLabels(List<String> labels) {
+    if (labels == null || labels.isEmpty()) {
+      return "";
+    }
+    int limit = Math.min(labels.size(), TEXT_MEMBER_SUMMARY_LIMIT);
+    java.util.List<String> parts = new java.util.ArrayList<>();
+    for (int i = 0; i < limit; i++) {
+      String label = labels.get(i);
+      if (label != null && !label.isBlank()) {
+        parts.add(label);
+      }
+    }
+    if (labels.size() > limit) {
+      parts.add("+" + (labels.size() - limit) + " more");
+    }
+    return String.join(", ", parts);
   }
 
   private String successDeactivateActiveMessage(DeactivateResult deactivation) {

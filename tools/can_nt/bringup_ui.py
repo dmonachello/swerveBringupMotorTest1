@@ -48,6 +48,7 @@ from .passive_discovery_integration_service import (
     SECTION_PROFILE_INVENTORY,
     SECTION_TOPOLOGY_VIEW,
     build_interpreted_evidence_row,
+    classify_device_type,
     build_console_snapshot_from_entries as build_console_snapshot_from_entries_shared,
     build_enrichment_run_snapshot,
     build_live_passive_result,
@@ -68,21 +69,38 @@ from .passive_discovery_integration_service import (
     INTERPRET_KEY_CONSOLE,
     INTERPRET_KEY_CONSOLE_TEXT,
     INTERPRET_KEY_CONFIDENCE,
+    INTERPRET_KEY_DEVICE_TYPE,
     INTERPRET_KEY_ENRICHMENT_TEXT,
     INTERPRET_KEY_EXISTENCE,
     INTERPRET_KEY_IDENTITY,
+    INTERPRET_KEY_EVENT_LOG,
     INTERPRET_KEY_LABEL,
+    INTERPRET_KEY_LAST_EVALUATION_AT,
+    INTERPRET_KEY_LAST_KNOWN_GOOD_AT,
+    INTERPRET_KEY_LAST_SEEN_MISSING_AT,
+    INTERPRET_KEY_LAST_SEEN_PRESENT_AT,
+    INTERPRET_KEY_LAST_STATE_CHANGE_AT,
     INTERPRET_KEY_MANUAL,
     INTERPRET_KEY_MANUAL_TEXT,
+    INTERPRET_KEY_CHANGE_REASON,
+    INTERPRET_KEY_DIRTY,
+    INTERPRET_KEY_DIRTY_REASONS,
     INTERPRET_KEY_NOTES_TEXT,
     INTERPRET_KEY_OPERABILITY,
     INTERPRET_KEY_PASSIVE,
     INTERPRET_KEY_PASSIVE_TEXT,
+    INTERPRET_KEY_PRESENCE_REASONS,
+    INTERPRET_KEY_PRESENCE_SCORE,
+    INTERPRET_KEY_PRESENCE_STATE,
     INTERPRET_KEY_PRESENCE_TEXT,
     INTERPRET_KEY_PROBE,
     INTERPRET_KEY_PROBE_SCORE,
     INTERPRET_KEY_PROBE_TEXT,
+    INTERPRET_KEY_SOURCE_SCORES,
     INTERPRET_KEY_STATE,
+    DEVICE_CLASS_INFRASTRUCTURE,
+    DEVICE_CLASS_MOTION,
+    DEVICE_CLASS_UNPROFILED,
     PRESENCE_KEY_AGE_TEXT,
     PRESENCE_KEY_BUCKET,
     PRESENCE_KEY_CONFIDENCE,
@@ -211,7 +229,12 @@ from tools.common.profile_session import (
 from .can_profiles import get_profile, get_profiles_load_error, list_profiles, reload_profiles
 from .can_profiles import get_default_profile
 from tools.config.schema_store import ConfigSchemaStore
-from tools.can_topology.live_topology_view import LiveTopologyView
+from tools.can_topology.live_topology_view import (
+    LiveTopologyView,
+    TOPOLOGY_LENS_EVIDENCE,
+    TOPOLOGY_LENS_RUNTIME,
+    TOPOLOGY_LENS_VISIBILITY,
+)
 from tools.can_nt.visibility_constants import (
     VIS_KEY_DEVICES,
     VIS_KEY_DEVICES_SHOWN,
@@ -314,8 +337,7 @@ class _RestTableAdapter:
         runtime_state: Dict[str, Any],
         fetched_at_ms: float = 0.0,
     ) -> "_RestTableAdapter":
-        generated_at_ms = _RestValueAdapter(runtime_state.get("generatedAtMs")).getDouble(0.0)
-        last_ack_ms = generated_at_ms if generated_at_ms > 0.0 else float(fetched_at_ms or 0.0)
+        last_ack_ms = float(fetched_at_ms or 0.0)
         state = {
             "sessionId": str(session_state.get("sessionId", "") or ""),
             "enabled": bool(runtime_state.get("enabled", False)),
@@ -447,7 +469,9 @@ OUTPUT_PUSH_FAILURE = "Push Config: FAILED"
 OUTPUT_DOWNLOAD_START_FMT = "DOWNLOAD {path}"
 OUTPUT_RUNTIME_ACTIVATE_FMT = "CMD runtimeActivate \"{profile}\""
 OUTPUT_RUNTIME_DEACTIVATE = "CMD runtimeDeactivate"
-OUTPUT_LIFECYCLE_ACTIVATE_FMT = "CMD lifecycleActivate \"{label}\" mode={mode}"
+OUTPUT_LIFECYCLE_ACTIVATE_FMT = (
+    "CMD lifecycleActivate \"{label}\" mode={mode} membershipMode={membership_mode}"
+)
 OUTPUT_LIFECYCLE_DEACTIVATE_FMT = "CMD lifecycleDeactivate \"{label}\""
 OUTPUT_LIFECYCLE_DEACTIVATE_ACTIVE = "CMD lifecycleDeactivateActive"
 OUTPUT_NO_ACTIVE_CONTROLLED_SESSION = "No active controlled session to deactivate."
@@ -570,6 +594,21 @@ VIS_RATE_FMT = "{value:.1f}/s"
 VIS_TABLE_SPLIT_ORIENT = "vertical"
 VIS_RAW_EMPTY_MESSAGE = "Select a CTRE row to inspect contributing raw IDs."
 LIVE_TOPOLOGY_TAB_LABEL = "Live Topology"
+LIVE_LENS_LABEL = "Lens:"
+LIVE_LENS_OPTION_EVIDENCE = "Evidence"
+LIVE_LENS_OPTION_RUNTIME = "Runtime"
+LIVE_LENS_OPTION_VISIBILITY = "Visibility"
+LIVE_LENS_OPTION_LABELS = (
+    LIVE_LENS_OPTION_EVIDENCE,
+    LIVE_LENS_OPTION_RUNTIME,
+    LIVE_LENS_OPTION_VISIBILITY,
+)
+LIVE_LENS_TOPOLOGY_KEYS = {
+    LIVE_LENS_OPTION_EVIDENCE: TOPOLOGY_LENS_EVIDENCE,
+    LIVE_LENS_OPTION_RUNTIME: TOPOLOGY_LENS_RUNTIME,
+    LIVE_LENS_OPTION_VISIBILITY: TOPOLOGY_LENS_VISIBILITY,
+}
+LIVE_LENS_DEFAULT = LIVE_LENS_OPTION_EVIDENCE
 CAN_FAULT_FINDER_TAB_LABEL = "CAN Fault Finder"
 CAN_FAULT_FINDER_TITLE = "CAN Fault Finder"
 CAN_FAULT_FINDER_RUN_BUTTON = "Run CAN Break Check"
@@ -579,6 +618,32 @@ CAN_FAULT_FINDER_TEXT_NOT_RUN = (
     "Run CAN Break Check to freeze the current evidence window and rank CAN fault candidates."
 )
 CAN_FAULT_FINDER_TEXT_ERROR_FMT = "CAN Fault Finder failed: {error}"
+EVIDENCE_DIRTY_PRIORITY_CONSOLE = 10
+EVIDENCE_DIRTY_PRIORITY_PRESENCE = 20
+EVIDENCE_DIRTY_PRIORITY_SCOPE = 30
+EVIDENCE_DIRTY_PRIORITY_BASELINE = 40
+EVIDENCE_DIRTY_REASON_CONSOLE = "console_changed"
+EVIDENCE_DIRTY_REASON_PASSIVE = "passive_changed"
+EVIDENCE_DIRTY_REASON_RUNTIME = "runtime_changed"
+EVIDENCE_DIRTY_REASON_SCOPE = "scope_changed"
+EVIDENCE_DIRTY_REASON_PROFILE = "profile_changed"
+EVIDENCE_DIRTY_REASON_MANUAL = "manual_changed"
+EVIDENCE_EVENT_TYPE_PRESENCE_GAINED = "presence_gained"
+EVIDENCE_EVENT_TYPE_PRESENCE_LOST = "presence_lost"
+EVIDENCE_EVENT_TYPE_OPERABILITY_DEGRADED = "operability_degraded"
+EVIDENCE_EVENT_TYPE_OPERABILITY_RECOVERED = "operability_recovered"
+EVIDENCE_EVENT_TYPE_FRESHNESS_STALE = "freshness_became_stale"
+EVIDENCE_EVENT_TYPE_SCOPE_CHANGED = "scope_changed"
+EVIDENCE_EVENT_SOURCE_EVALUATOR = "evaluator"
+EVIDENCE_EVENT_LOG_LIMIT = 8
+EVIDENCE_DIRTY_EMPTY_REASONS: List[str] = []
+EVIDENCE_PRESENCE_STATE_PRESENT = "present"
+EVIDENCE_PRESENCE_STATE_MISSING = "missing"
+EVIDENCE_PRESENCE_STATE_UNKNOWN = "unknown"
+EVIDENCE_PRESENCE_STATE_CONFLICT = "conflict"
+EVIDENCE_FRESHNESS_FRESH = "fresh"
+EVIDENCE_FRESHNESS_AGING = "aging"
+EVIDENCE_FRESHNESS_STALE = "stale"
 VIS_RAW_COL_ARB = "Arb ID"
 VIS_RAW_COL_PACKETS = "Packets"
 VIS_RAW_COL_RATE = "Rate"
@@ -660,6 +725,13 @@ EVIDENCE_SUMMARY_DEFAULT = "Select a device to inspect interpreted evidence."
 EVIDENCE_TITLE_TEXT = "Device Evidence"
 EVIDENCE_ENGINE_BANNER_DEFAULT = "Evidence Engine: LEGACY"
 EVIDENCE_BUS_HEALTH_TEXT = "CAN Bus Health (System Console)"
+EVIDENCE_BUS_HEALTH_EMPTY_TEXT = (
+    "Overall Health=OK | Active Events=0\n"
+    "No active system-level CAN-bus warning events are currently surfaced."
+)
+EVIDENCE_BUS_HEALTH_OK_IMPACT = (
+    "No active system-level CAN-bus warning conditions are currently surfaced."
+)
 EVIDENCE_FILTER_ALL = "all"
 EVIDENCE_FILTER_CONFLICTED = "conflicted"
 EVIDENCE_FILTER_MISSING = "missing"
@@ -875,6 +947,16 @@ KEY_NAME = "name"
 CMD_SHOW_RUNTIME_STATE = "showRuntimeState"
 CMD_SHOW_LIFECYCLE_STATE = "showLifecycleState"
 LIFECYCLE_DEFAULT_MODE = "READ_ONLY"
+ACTIVATION_MEMBERSHIP_MODE_STRICT = "STRICT"
+ACTIVATION_MEMBERSHIP_MODE_PARTIAL = "PARTIAL"
+ACTIVATION_MEMBERSHIP_MODE_FORCE = "FORCE"
+ACTIVATION_MEMBERSHIP_MODE_VALUES = (
+    ACTIVATION_MEMBERSHIP_MODE_PARTIAL,
+    ACTIVATION_MEMBERSHIP_MODE_STRICT,
+    ACTIVATION_MEMBERSHIP_MODE_FORCE,
+)
+ACTIVATION_MEMBERSHIP_MODE_DEFAULT = ACTIVATION_MEMBERSHIP_MODE_PARTIAL
+ACTIVATION_MEMBERSHIP_LABEL = "Activation Mode"
 ACTION_KIND_REMOTE_COMMAND = "remoteCommand"
 ACTION_SOURCE_ROBOT = "robot"
 DSL_FILE_TYPES = (("DSL files", "*.dsl"), ("Text files", "*.txt"), ("All files", "*.*"))
@@ -997,6 +1079,9 @@ RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_TELEOP = (
 )
 RUNNABLE_SCOPE_DETAIL_MANUAL_EMPTY = (
     "Active group is empty. Add devices before Activate Group."
+)
+RUNNABLE_SCOPE_DETAIL_SELECT_PROFILE = (
+    "Select a profile before using manual/group controls."
 )
 TEST_SCOPE_DETAIL_MISSING_DEVICE_PREFIX = (
     "This test cannot run because a required profile device is missing: "
@@ -1740,12 +1825,12 @@ def _presence_override_from_runtime_device(runtime_device: Dict[str, Any]) -> st
     return "LOW"
 
 
-def _build_console_snapshot_from_entries(entries: List[object]) -> Dict[str, Any]:
+def _build_console_snapshot_from_entries(entries: List[object], now_s: Optional[float] = None) -> Dict[str, Any]:
     """
     NAME
         _build_console_snapshot_from_entries - Build the Evidence console snapshot from host-side console entries.
     """
-    return build_console_snapshot_from_entries_shared(entries)
+    return build_console_snapshot_from_entries_shared(entries, now_s)
 
 
 class BringupControlUI(tk.Tk):
@@ -1799,7 +1884,6 @@ class BringupControlUI(tk.Tk):
         self._visibility_selected_label = NT_VALUE_EMPTY
         self._visibility_selected_unexpected = False
         self._visibility_summary_var = tk.StringVar(value=VIS_SOURCE_COUNT_UNKNOWN)
-        self._visibility_enabled_var = tk.BooleanVar(value=False)
         self._latest_visibility_snapshot: Dict[str, Any] = {}
         self._latest_visibility_summary: Dict[str, Any] = {}
         self._fault_finder_status_var = tk.StringVar(value=CAN_FAULT_FINDER_STATUS_NOT_RUN)
@@ -1828,6 +1912,18 @@ class BringupControlUI(tk.Tk):
         self._evidence_pending_row_label = NT_VALUE_EMPTY
         self._evidence_pending_node_label = NT_VALUE_EMPTY
         self._evidence_manual_results: Dict[str, Dict[str, Any]] = {}
+        self._evidence_eval_budget = 2
+        self._evidence_eval_class_order = [
+            DEVICE_CLASS_MOTION,
+            DEVICE_CLASS_INFRASTRUCTURE,
+            DEVICE_CLASS_UNPROFILED,
+        ]
+        self._evidence_eval_cursor_class_index = 0
+        self._evidence_eval_cursor_device_index = 0
+        self._evidence_eval_generation = NT_VALUE_EMPTY
+        self._evidence_eval_cache: Dict[str, Dict[str, Any]] = {}
+        self._evidence_eval_dirty_labels: Dict[str, Dict[str, Any]] = {}
+        self._evidence_eval_source_fingerprints: Dict[str, Tuple[Any, ...]] = {}
         self._evidence_last_probe_at = 0.0
         self._evidence_probe_pending = False
         self._evidence_probe_run_count = 0
@@ -1867,6 +1963,7 @@ class BringupControlUI(tk.Tk):
         self._auto_connect_enabled = True
         self._tracker = CommandTracker(timeout_sec=self._timeout_sec, max_retries=self._max_retries)
         self._live_enabled_var = tk.BooleanVar(value=False)
+        self._live_topology_lens_var = tk.StringVar(value=LIVE_LENS_DEFAULT)
         self._live_source_var = tk.StringVar(value=LIVE_SOURCE_REST)
         self._live_rate_var = tk.StringVar(value=DEFAULT_RUNTIME_STATE_RATE_TEXT)
         self._live_groups_var = tk.BooleanVar(value=True)
@@ -2056,6 +2153,21 @@ class BringupControlUI(tk.Tk):
         )
         deactivate_scope_button.pack(side="left", padx=(6, 0))
         self._deactivate_scope_button = deactivate_scope_button
+        self._activation_membership_mode_var = tk.StringVar(
+            value=ACTIVATION_MEMBERSHIP_MODE_DEFAULT
+        )
+        ttk.Label(header, text=ACTIVATION_MEMBERSHIP_LABEL).pack(
+            side="left", padx=(10, 4)
+        )
+        activation_membership_box = ttk.Combobox(
+            header,
+            values=ACTIVATION_MEMBERSHIP_MODE_VALUES,
+            state="readonly",
+            width=8,
+            textvariable=self._activation_membership_mode_var,
+        )
+        activation_membership_box.pack(side="left")
+        self._activation_membership_mode_box = activation_membership_box
         ttk.Button(
             header, text=BUTTON_SHOW_LIFECYCLE_STATE, command=self._show_lifecycle_state_from_ui
         ).pack(side="left", padx=(6, 0))
@@ -2226,12 +2338,15 @@ class BringupControlUI(tk.Tk):
             variable=self._live_groups_var,
             command=self._apply_live_group_toggle,
         ).pack(side="left", padx=(8, 0))
-        ttk.Checkbutton(
+        ttk.Label(controls, text=LIVE_LENS_LABEL).pack(side="left", padx=(12, 4))
+        lens_menu = ttk.OptionMenu(
             controls,
-            text=VIS_MODE_LABEL,
-            variable=self._visibility_enabled_var,
-            command=self._apply_visibility_mode_toggle,
-        ).pack(side=VIS_PACK_SIDE_LEFT, padx=VIS_PAD_LEFT)
+            self._live_topology_lens_var,
+            LIVE_LENS_DEFAULT,
+            *LIVE_LENS_OPTION_LABELS,
+            command=lambda _value: self._apply_live_topology_lens(),
+        )
+        lens_menu.pack(side="left")
         ttk.Label(controls, text="Source:").pack(side="left", padx=(12, 4))
         source_menu = ttk.OptionMenu(
             controls,
@@ -2280,7 +2395,7 @@ class BringupControlUI(tk.Tk):
             manage_runtime_notice_internally=False,
         )
         self._live_view.set_show_groups(self._live_groups_var.get())
-        self._live_view.set_visibility_enabled(self._visibility_enabled_var.get())
+        self._apply_live_topology_lens()
         self._live_view.pack(fill="both", expand=True, padx=8, pady=(0, 8))
 
     def _build_can_fault_finder_panel(self, parent: tk.Widget) -> None:
@@ -2708,7 +2823,7 @@ class BringupControlUI(tk.Tk):
             manage_runtime_notice_internally=False,
         )
         self._visibility_live_view.set_show_groups(self._live_groups_var.get())
-        self._visibility_live_view.set_visibility_enabled(True)
+        self._visibility_live_view.set_overlay_lens(TOPOLOGY_LENS_VISIBILITY)
         self._visibility_live_view.pack(fill="both", expand=True)
 
         table_panel = ttk.Panedwindow(body, orient=VIS_TABLE_SPLIT_ORIENT)
@@ -2836,7 +2951,7 @@ class BringupControlUI(tk.Tk):
             fit_on_load=True,
         )
         self._evidence_live_view.set_show_groups(self._live_groups_var.get())
-        self._evidence_live_view.set_visibility_enabled(False)
+        self._evidence_live_view.set_overlay_lens(TOPOLOGY_LENS_EVIDENCE)
         self._evidence_live_view.pack(fill=VIS_FILL_BOTH, expand=True)
 
         left_sections = ttk.Panedwindow(left_column, orient="vertical")
@@ -3357,6 +3472,8 @@ class BringupControlUI(tk.Tk):
         """
         if self.__dict__.get("_group_owner_mode", GROUP_SOURCE_MANUAL) != GROUP_SOURCE_MANUAL:
             return False
+        if self.__dict__.get("_profile_box") is not None and self._selected_profile_name() == PROFILE_NONE:
+            return False
         if self.__dict__.get("_controlled_lifecycle_active_known") is True:
             return False
         return not bool(self._runtime_active_group_members())
@@ -3599,6 +3716,12 @@ class BringupControlUI(tk.Tk):
             teleop again.
         """
         owner_mode = self.__dict__.get("_group_owner_mode", GROUP_SOURCE_MANUAL)
+        if (
+            owner_mode == GROUP_SOURCE_MANUAL
+            and self.__dict__.get("_profile_box") is not None
+            and self._selected_profile_name() == PROFILE_NONE
+        ):
+            return RUNNABLE_SCOPE_DETAIL_SELECT_PROFILE
         mode = str(self.__dict__.get("_robot_mode_known", "") or "").strip().lower()
         if mode and mode != "teleop":
             if owner_mode == GROUP_SOURCE_SELECTED_TEST:
@@ -3710,9 +3833,10 @@ class BringupControlUI(tk.Tk):
         NAME
             _selected_profile_name - Return the current UI-selected profile or PROFILE_NONE.
         """
-        if not hasattr(self, "_profile_box"):
+        profile_box = self.__dict__.get("_profile_box")
+        if profile_box is None:
             return PROFILE_NONE
-        return _normalize_profile_name(self._profile_box.get())
+        return _normalize_profile_name(profile_box.get())
 
     def _diagnostic_profile_context_name(self) -> str:
         """
@@ -3720,16 +3844,21 @@ class BringupControlUI(tk.Tk):
             _diagnostic_profile_context_name - Return the profile context used by diagnostics views.
 
         DESCRIPTION
-            Prefers the robot's active runtime profile, then the robot's selected
-            profile, then the local UI selection.
+            Diagnostics remain blank until the operator selects a local profile.
+            After that, prefer the robot's active runtime profile, then the
+            robot's selected profile, then the local UI selection.
         """
+        profile_box = self.__dict__.get("_profile_box")
+        local_selected = self._selected_profile_name()
+        if profile_box is not None and local_selected == PROFILE_NONE:
+            return PROFILE_NONE
         active_name = _normalize_profile_name(self._robot_active_runtime_profile)
         if active_name != PROFILE_NONE:
             return active_name
         robot_selected = _normalize_profile_name(self._robot_selected_profile)
         if robot_selected != PROFILE_NONE:
             return robot_selected
-        return self._selected_profile_name()
+        return local_selected
 
     def _sync_diagnostic_profile_context(self, reload_views: bool) -> None:
         """
@@ -4040,6 +4169,12 @@ class BringupControlUI(tk.Tk):
         self._latest_runtime_state_payload = {}
         self._latest_runtime_devices = {}
         self._evidence_probe_results_by_label = {}
+        self._evidence_eval_cursor_class_index = 0
+        self._evidence_eval_cursor_device_index = 0
+        self._evidence_eval_generation = NT_VALUE_EMPTY
+        self._evidence_eval_cache = {}
+        self._evidence_eval_dirty_labels = {}
+        self._evidence_eval_source_fingerprints = {}
         self._manual_motion_checks = {}
         self._manual_test_observations = {}
         self._remembered_manual_active_group_members = []
@@ -5045,13 +5180,14 @@ class BringupControlUI(tk.Tk):
             _collect_console_snapshot - Read the current host-side console-diagnostics summary.
         """
         console_monitor = self.__dict__.get("_console_monitor")
+        snapshot_now = time.time()
         if console_monitor is None:
-            return _build_console_snapshot_from_entries([])
+            return _build_console_snapshot_from_entries([], snapshot_now)
         try:
-            entries = console_monitor.snapshot_entries(time.time())
+            entries = console_monitor.snapshot_entries(snapshot_now)
         except Exception:
             entries = []
-        return _build_console_snapshot_from_entries(entries)
+        return _build_console_snapshot_from_entries(entries, snapshot_now)
 
     def _build_evidence_can_bus_health_text(self, system_console: Dict[str, Any]) -> str:
         """
@@ -5064,7 +5200,7 @@ class BringupControlUI(tk.Tk):
             else []
         )
         if not isinstance(system_events, list) or not system_events:
-            return "Overall Health=OK | Active Events=0\nNo active CAN-bus warning events in system console."
+            return EVIDENCE_BUS_HEALTH_EMPTY_TEXT
         normalized = [str(entry or "").strip() for entry in system_events if str(entry or "").strip()]
         lower_events = [entry.lower() for entry in normalized]
         high_util_count = sum(EVIDENCE_CAN_TEXT_HIGH_UTIL in entry for entry in lower_events)
@@ -5083,7 +5219,7 @@ class BringupControlUI(tk.Tk):
             impact = "High bus load may reduce freshness and increase latency, but not all devices are necessarily unhealthy."
         else:
             overall = EVIDENCE_BUS_HEALTH_OK
-            impact = "No active CAN-bus warning conditions are currently surfaced."
+            impact = EVIDENCE_BUS_HEALTH_OK_IMPACT
         summary = (
             f"Overall Health={overall}"
             f"{EVIDENCE_NOTE_SEPARATOR}Active Events={len(normalized)}"
@@ -5105,7 +5241,8 @@ class BringupControlUI(tk.Tk):
         clean_label = str(label or NT_VALUE_EMPTY).strip().lower()
         if not clean_label:
             return None
-        entry = self._evidence_manual_results.get(clean_label)
+        manual_results = self.__dict__.get("_evidence_manual_results", {})
+        entry = manual_results.get(clean_label) if isinstance(manual_results, dict) else None
         return entry if isinstance(entry, dict) else None
 
     def _choose_manual_observed_label(self, selected_label: str) -> str:
@@ -5310,8 +5447,11 @@ class BringupControlUI(tk.Tk):
             _infer_device_evidence - Build one first-pass interpreted evidence row.
         """
         manual_entry = self._manual_evidence_for_label(label)
-        manual_observation = self._manual_test_observations.get(str(label or NT_VALUE_EMPTY).strip().lower())
-        manual_motion = self._manual_motion_checks.get(str(label or NT_VALUE_EMPTY).strip().lower())
+        manual_test_observations = self.__dict__.get("_manual_test_observations", {})
+        manual_motion_checks = self.__dict__.get("_manual_motion_checks", {})
+        clean_label = str(label or NT_VALUE_EMPTY).strip().lower()
+        manual_observation = manual_test_observations.get(clean_label) if isinstance(manual_test_observations, dict) else None
+        manual_motion = manual_motion_checks.get(clean_label) if isinstance(manual_motion_checks, dict) else None
         metrics = visibility_device.get(VIS_KEY_METRICS) if isinstance(visibility_device, dict) and isinstance(visibility_device.get(VIS_KEY_METRICS), dict) else {}
         return build_interpreted_evidence_row(
             label=label,
@@ -5417,10 +5557,13 @@ class BringupControlUI(tk.Tk):
         widget = self.__dict__.get("_fault_finder_text")
         if widget is None:
             return
-        widget.configure(state="normal")
+        configure = getattr(widget, "configure", None)
+        if callable(configure):
+            configure(state="normal")
         widget.delete("1.0", "end")
         widget.insert("1.0", text_value or CAN_FAULT_FINDER_TEXT_NOT_RUN)
-        widget.configure(state="disabled")
+        if callable(configure):
+            configure(state="disabled")
 
     def _current_topology_profile(self) -> Dict[str, object]:
         """
@@ -5444,6 +5587,13 @@ class BringupControlUI(tk.Tk):
         """
         now_s = time.time()
         try:
+            profile_devices = self.__dict__.get("_profile_devices", {})
+            if (
+                isinstance(profile_devices, dict)
+                and profile_devices
+                and isinstance(self.__dict__.get("_evidence_eval_cache"), dict)
+            ):
+                self._update_evidence_cache_incremental(max_devices=len(profile_devices))
             rows = self._build_evidence_rows()
             console_snapshot = self._collect_console_snapshot()
             result = build_fault_diagnosis(
@@ -5470,11 +5620,462 @@ class BringupControlUI(tk.Tk):
         )
         self._set_fault_finder_text(render_fault_diagnosis(result))
 
-    def _build_evidence_rows(self) -> List[Dict[str, Any]]:
+    def _evidence_profile_generation(self) -> str:
         """
         NAME
-            _build_evidence_rows - Build interpreted evidence rows for the current profile.
+            _evidence_profile_generation - Return one stable generation key for the current evidence profile set.
         """
+        labels = sorted(str(label).strip().lower() for label in self._profile_devices.keys())
+        return "|".join(labels)
+
+    def _mark_evidence_dirty(self, label_key: str, priority: int, reason: str) -> None:
+        """
+        NAME
+            _mark_evidence_dirty - Mark one device for prioritized reevaluation.
+        """
+        clean_label = str(label_key or NT_VALUE_EMPTY).strip().lower()
+        clean_reason = str(reason or NT_VALUE_EMPTY).strip() or EVIDENCE_DIRTY_REASON_SCOPE
+        if not clean_label:
+            return
+        dirty_labels = self.__dict__.setdefault("_evidence_eval_dirty_labels", {})
+        current_entry = dirty_labels.get(clean_label)
+        reasons = [] if not isinstance(current_entry, dict) else list(current_entry.get("reasons", EVIDENCE_DIRTY_EMPTY_REASONS))
+        if clean_reason not in reasons:
+            reasons.append(clean_reason)
+        dirty_labels[clean_label] = {
+            "priority": min(int(priority), int(current_entry.get("priority", priority))) if isinstance(current_entry, dict) else int(priority),
+            "reasons": reasons,
+            "at": time.time(),
+        }
+
+    def _clear_evidence_dirty(self, label_key: str) -> List[str]:
+        """
+        NAME
+            _clear_evidence_dirty - Remove one device from the prioritized dirty queue and return its reasons.
+        """
+        clean_label = str(label_key or NT_VALUE_EMPTY).strip().lower()
+        dirty_labels = self.__dict__.get("_evidence_eval_dirty_labels", {})
+        if not isinstance(dirty_labels, dict):
+            return []
+        entry = dirty_labels.pop(clean_label, None)
+        if isinstance(entry, dict):
+            return list(entry.get("reasons", EVIDENCE_DIRTY_EMPTY_REASONS))
+        return []
+
+    def _latest_visibility_seen_ms(self, visibility_device: Optional[Dict[str, Any]]) -> float:
+        """
+        NAME
+            _latest_visibility_seen_ms - Return the freshest passive observer timestamp for one visibility device row.
+        """
+        if not isinstance(visibility_device, dict):
+            return 0.0
+        metrics = visibility_device.get(VIS_KEY_METRICS)
+        if not isinstance(metrics, dict):
+            return 0.0
+        latest_seen_ms = 0.0
+        for metric_entry in metrics.values():
+            if not isinstance(metric_entry, dict):
+                continue
+            last_seen_ms = metric_entry.get(VIS_KEY_LAST_SEEN_MS)
+            if isinstance(last_seen_ms, (int, float)):
+                latest_seen_ms = max(latest_seen_ms, float(last_seen_ms))
+        return latest_seen_ms
+
+    def _evidence_source_fingerprint(
+        self,
+        *,
+        label_key: str,
+        presence_entry: Optional[Dict[str, Any]],
+        passive_device: Optional[Any],
+        visibility_device: Optional[Dict[str, Any]],
+        runtime_device: Optional[Dict[str, Any]],
+        console_entry: Optional[Dict[str, Any]],
+        manual_entry: Optional[Dict[str, Any]],
+    ) -> Tuple[Any, ...]:
+        """
+        NAME
+            _evidence_source_fingerprint - Build one compact per-device raw-source fingerprint for dirty detection.
+        """
+        del label_key
+        passive_score = int(getattr(passive_device, "presence_score", 0) or 0) if passive_device is not None else 0
+        passive_expected = str(getattr(passive_device, "expected_status", NT_VALUE_EMPTY)).strip().lower() if passive_device is not None else NT_VALUE_EMPTY
+        presence_bucket = NT_VALUE_EMPTY
+        presence_existence = NT_VALUE_EMPTY
+        presence_updated_at = 0.0
+        if isinstance(presence_entry, dict):
+            presence_bucket = str(presence_entry.get(PRESENCE_KEY_BUCKET, NT_VALUE_EMPTY)).strip().lower()
+            presence_existence = str(presence_entry.get(PRESENCE_KEY_EXISTENCE, NT_VALUE_EMPTY)).strip().upper()
+            raw_updated_at = presence_entry.get("updatedAtMs")
+            if isinstance(raw_updated_at, (int, float)):
+                presence_updated_at = float(raw_updated_at)
+        runtime_last_seen_ms = 0.0
+        runtime_presence_conf = 0.0
+        runtime_lifecycle = NT_VALUE_EMPTY
+        if isinstance(runtime_device, dict):
+            raw_last_seen_ms = runtime_device.get(VIS_KEY_LAST_SEEN_MS)
+            if isinstance(raw_last_seen_ms, (int, float)):
+                runtime_last_seen_ms = float(raw_last_seen_ms)
+            raw_presence_conf = runtime_device.get("presenceConfidence")
+            if isinstance(raw_presence_conf, (int, float)):
+                runtime_presence_conf = float(raw_presence_conf)
+            runtime_lifecycle = str(runtime_device.get("lifecycleState", NT_VALUE_EMPTY)).strip().lower()
+        console_summary = NT_VALUE_EMPTY
+        console_has_error = False
+        console_has_warn = False
+        console_event_count = 0
+        if isinstance(console_entry, dict):
+            console_summary = str(console_entry.get(CONSOLE_KEY_SUMMARY, NT_VALUE_EMPTY)).strip().lower()
+            console_has_error = bool(console_entry.get(CONSOLE_KEY_HAS_ERROR))
+            console_has_warn = bool(console_entry.get(CONSOLE_KEY_HAS_WARN))
+            events = console_entry.get("events")
+            if isinstance(events, list):
+                console_event_count = len(events)
+        manual_outcome = NT_VALUE_EMPTY
+        if isinstance(manual_entry, dict):
+            manual_outcome = str(manual_entry.get("outcome", NT_VALUE_EMPTY)).strip().lower()
+        return (
+            passive_score,
+            passive_expected,
+            presence_bucket,
+            presence_existence,
+            presence_updated_at,
+            self._latest_visibility_seen_ms(visibility_device),
+            runtime_last_seen_ms,
+            runtime_presence_conf,
+            runtime_lifecycle,
+            console_summary,
+            console_has_error,
+            console_has_warn,
+            console_event_count,
+            manual_outcome,
+        )
+
+    def _dirty_priority_for_fingerprint_change(
+        self,
+        previous_fingerprint: Optional[Tuple[Any, ...]],
+        current_fingerprint: Tuple[Any, ...],
+    ) -> Tuple[Optional[int], str]:
+        """
+        NAME
+            _dirty_priority_for_fingerprint_change - Classify one raw-source fingerprint change for reevaluation priority.
+        """
+        if previous_fingerprint is None:
+            return EVIDENCE_DIRTY_PRIORITY_SCOPE, EVIDENCE_DIRTY_REASON_PROFILE
+        if previous_fingerprint == current_fingerprint:
+            return None, NT_VALUE_EMPTY
+        if previous_fingerprint[9:13] != current_fingerprint[9:13]:
+            return EVIDENCE_DIRTY_PRIORITY_CONSOLE, EVIDENCE_DIRTY_REASON_CONSOLE
+        if previous_fingerprint[0:6] != current_fingerprint[0:6]:
+            return EVIDENCE_DIRTY_PRIORITY_PRESENCE, EVIDENCE_DIRTY_REASON_PASSIVE
+        if previous_fingerprint[6:9] != current_fingerprint[6:9]:
+            return EVIDENCE_DIRTY_PRIORITY_PRESENCE, EVIDENCE_DIRTY_REASON_RUNTIME
+        if previous_fingerprint[13] != current_fingerprint[13]:
+            return EVIDENCE_DIRTY_PRIORITY_SCOPE, EVIDENCE_DIRTY_REASON_MANUAL
+        return EVIDENCE_DIRTY_PRIORITY_SCOPE, EVIDENCE_DIRTY_REASON_SCOPE
+
+    def _update_evidence_dirty_from_sources(
+        self,
+        *,
+        grouped_labels: Dict[str, List[str]],
+        presence_entries_by_label: Dict[str, Dict[str, Any]],
+        passive_devices_by_identity: Dict[Tuple[int, int, int], Any],
+        visibility_devices: Dict[str, Dict[str, Any]],
+        console_devices: Dict[str, Dict[str, Any]],
+    ) -> None:
+        """
+        NAME
+            _update_evidence_dirty_from_sources - Compare raw-source fingerprints and mark changed devices dirty.
+        """
+        fingerprints = self.__dict__.setdefault("_evidence_eval_source_fingerprints", {})
+        for labels in grouped_labels.values():
+            for label_key in labels:
+                profile_device = self._profile_devices.get(label_key, {})
+                passive_device = passive_devices_by_identity.get(
+                    (
+                        int(profile_device.get(DEVICE_KEY_MFG, 0)),
+                        int(profile_device.get(DEVICE_KEY_TYPE, 0)),
+                        int(profile_device.get(DEVICE_KEY_ID, 0)),
+                    )
+                )
+                current_fingerprint = self._evidence_source_fingerprint(
+                    label_key=label_key,
+                    presence_entry=presence_entries_by_label.get(label_key),
+                    passive_device=passive_device,
+                    visibility_device=visibility_devices.get(label_key),
+                    runtime_device=self._latest_runtime_devices.get(label_key),
+                    console_entry=console_devices.get(label_key),
+                    manual_entry=self._manual_evidence_for_label(str(profile_device.get(DEVICE_KEY_LABEL, label_key)).strip() or label_key),
+                )
+                previous_fingerprint = fingerprints.get(label_key)
+                priority, reason = self._dirty_priority_for_fingerprint_change(previous_fingerprint, current_fingerprint)
+                if priority is not None:
+                    self._mark_evidence_dirty(label_key, priority, reason)
+                fingerprints[label_key] = current_fingerprint
+
+    def _build_evidence_event(
+        self,
+        *,
+        event_type: str,
+        old_value: str,
+        new_value: str,
+        reason: str,
+        at: float,
+    ) -> Dict[str, Any]:
+        """
+        NAME
+            _build_evidence_event - Build one normalized interpreted-device event entry.
+        """
+        return {
+            "at": float(at),
+            "source": EVIDENCE_EVENT_SOURCE_EVALUATOR,
+            "eventType": event_type,
+            "oldValue": old_value,
+            "newValue": new_value,
+            "reason": reason,
+        }
+
+    def _finalize_evidence_row_state(
+        self,
+        *,
+        previous_row: Optional[Dict[str, Any]],
+        row: Dict[str, Any],
+        dirty_reasons: List[str],
+        now_s: float,
+    ) -> Dict[str, Any]:
+        """
+        NAME
+            _finalize_evidence_row_state - Merge transition metadata and event history into one evaluated row.
+        """
+        result = dict(row)
+        previous = previous_row if isinstance(previous_row, dict) else {}
+        previous_presence = str(previous.get(INTERPRET_KEY_PRESENCE_STATE, EVIDENCE_PRESENCE_STATE_UNKNOWN)).strip().lower()
+        current_presence = str(result.get(INTERPRET_KEY_PRESENCE_STATE, EVIDENCE_PRESENCE_STATE_UNKNOWN)).strip().lower()
+        previous_operability = str(previous.get(INTERPRET_KEY_OPERABILITY, EVIDENCE_STATUS_UNKNOWN)).strip().upper()
+        current_operability = str(result.get(INTERPRET_KEY_OPERABILITY, EVIDENCE_STATUS_UNKNOWN)).strip().upper()
+        previous_freshness = str(previous.get("freshness", EVIDENCE_FRESHNESS_STALE)).strip().lower()
+        current_freshness = str(result.get("freshness", EVIDENCE_FRESHNESS_STALE)).strip().lower()
+        reason_parts = list(dirty_reasons)
+        presence_reasons = result.get(INTERPRET_KEY_PRESENCE_REASONS)
+        if isinstance(presence_reasons, list):
+            for reason in presence_reasons:
+                clean_reason = str(reason or NT_VALUE_EMPTY).strip()
+                if clean_reason and clean_reason not in reason_parts:
+                    reason_parts.append(clean_reason)
+                    if len(reason_parts) >= 3:
+                        break
+        change_reason = reason_parts[0] if reason_parts else str(result.get(INTERPRET_KEY_NOTES_TEXT, EVIDENCE_SOURCE_NONE)).strip() or EVIDENCE_SOURCE_NONE
+        events = list(previous.get(INTERPRET_KEY_EVENT_LOG, [])) if isinstance(previous.get(INTERPRET_KEY_EVENT_LOG), list) else []
+        if previous_presence != current_presence:
+            event_type = EVIDENCE_EVENT_TYPE_PRESENCE_GAINED
+            if current_presence in (EVIDENCE_PRESENCE_STATE_MISSING, EVIDENCE_PRESENCE_STATE_CONFLICT):
+                event_type = EVIDENCE_EVENT_TYPE_PRESENCE_LOST
+            events.append(
+                self._build_evidence_event(
+                    event_type=event_type,
+                    old_value=previous_presence,
+                    new_value=current_presence,
+                    reason=change_reason,
+                    at=now_s,
+                )
+            )
+            result[INTERPRET_KEY_LAST_STATE_CHANGE_AT] = float(now_s)
+        else:
+            result[INTERPRET_KEY_LAST_STATE_CHANGE_AT] = previous.get(INTERPRET_KEY_LAST_STATE_CHANGE_AT)
+        if previous_operability != current_operability:
+            event_type = EVIDENCE_EVENT_TYPE_OPERABILITY_DEGRADED
+            if current_operability == EVIDENCE_STATUS_OK:
+                event_type = EVIDENCE_EVENT_TYPE_OPERABILITY_RECOVERED
+            events.append(
+                self._build_evidence_event(
+                    event_type=event_type,
+                    old_value=previous_operability,
+                    new_value=current_operability,
+                    reason=change_reason,
+                    at=now_s,
+                )
+            )
+            if result.get(INTERPRET_KEY_LAST_STATE_CHANGE_AT) is None:
+                result[INTERPRET_KEY_LAST_STATE_CHANGE_AT] = float(now_s)
+        if previous_freshness != current_freshness and current_freshness == EVIDENCE_FRESHNESS_STALE:
+            events.append(
+                self._build_evidence_event(
+                    event_type=EVIDENCE_EVENT_TYPE_FRESHNESS_STALE,
+                    old_value=previous_freshness,
+                    new_value=current_freshness,
+                    reason=change_reason,
+                    at=now_s,
+                )
+            )
+        current_present = current_presence == EVIDENCE_PRESENCE_STATE_PRESENT
+        current_missing = current_presence in (EVIDENCE_PRESENCE_STATE_MISSING, EVIDENCE_PRESENCE_STATE_CONFLICT)
+        result[INTERPRET_KEY_LAST_EVALUATION_AT] = float(now_s)
+        result[INTERPRET_KEY_LAST_KNOWN_GOOD_AT] = (
+            float(now_s) if (current_present and current_operability == EVIDENCE_STATUS_OK) else previous.get(INTERPRET_KEY_LAST_KNOWN_GOOD_AT)
+        )
+        result[INTERPRET_KEY_LAST_SEEN_PRESENT_AT] = (
+            float(now_s) if current_present else previous.get(INTERPRET_KEY_LAST_SEEN_PRESENT_AT)
+        )
+        result[INTERPRET_KEY_LAST_SEEN_MISSING_AT] = (
+            float(now_s) if current_missing else previous.get(INTERPRET_KEY_LAST_SEEN_MISSING_AT)
+        )
+        if result.get(INTERPRET_KEY_LAST_STATE_CHANGE_AT) is None and not previous:
+            result[INTERPRET_KEY_LAST_STATE_CHANGE_AT] = float(now_s)
+        result[INTERPRET_KEY_CHANGE_REASON] = change_reason
+        result[INTERPRET_KEY_DIRTY] = False
+        result[INTERPRET_KEY_DIRTY_REASONS] = []
+        result[INTERPRET_KEY_EVENT_LOG] = events[-EVIDENCE_EVENT_LOG_LIMIT:]
+        return result
+
+    def _empty_evidence_row(self, label: str, device_type: str) -> Dict[str, Any]:
+        """
+        NAME
+            _empty_evidence_row - Build one placeholder interpreted row before the incremental evaluator reaches a device.
+        """
+        return {
+            INTERPRET_KEY_LABEL: label,
+            INTERPRET_KEY_DEVICE_TYPE: device_type,
+            INTERPRET_KEY_PASSIVE: EVIDENCE_SOURCE_NONE,
+            INTERPRET_KEY_CONSOLE: EVIDENCE_SOURCE_NONE,
+            INTERPRET_KEY_PROBE: EVIDENCE_SOURCE_NONE,
+            INTERPRET_KEY_PROBE_SCORE: EVIDENCE_SOURCE_NONE,
+            INTERPRET_KEY_MANUAL: EVIDENCE_MANUAL_PLACEHOLDER,
+            INTERPRET_KEY_EXISTENCE: EVIDENCE_STATUS_UNKNOWN,
+            INTERPRET_KEY_OPERABILITY: EVIDENCE_STATUS_UNKNOWN,
+            INTERPRET_KEY_IDENTITY: EVIDENCE_STATUS_UNKNOWN,
+            INTERPRET_KEY_CONFIDENCE: EVIDENCE_CONFIDENCE_LOW,
+            INTERPRET_KEY_PRESENCE_TEXT: EVIDENCE_SOURCE_NONE,
+            INTERPRET_KEY_PASSIVE_TEXT: EVIDENCE_SOURCE_NONE,
+            INTERPRET_KEY_CONSOLE_TEXT: EVIDENCE_SOURCE_NONE,
+            INTERPRET_KEY_PROBE_TEXT: EVIDENCE_SOURCE_NONE,
+            INTERPRET_KEY_MANUAL_TEXT: EVIDENCE_MANUAL_PLACEHOLDER,
+            INTERPRET_KEY_ENRICHMENT_TEXT: EVIDENCE_SOURCE_NONE,
+            INTERPRET_KEY_NOTES_TEXT: "Evaluator has not reached this device in the current incremental pass yet.",
+            INTERPRET_KEY_STATE: EVIDENCE_STATE_UNKNOWN,
+            INTERPRET_KEY_CONFLICTED: False,
+            INTERPRET_KEY_PRESENCE_SCORE: 25,
+            INTERPRET_KEY_PRESENCE_STATE: "unknown",
+            INTERPRET_KEY_PRESENCE_REASONS: ["Evaluator has not reached this device in the current incremental pass yet."],
+            "freshness": "stale",
+            INTERPRET_KEY_SOURCE_SCORES: {},
+            INTERPRET_KEY_DIRTY: True,
+            INTERPRET_KEY_DIRTY_REASONS: [EVIDENCE_DIRTY_REASON_PROFILE],
+            INTERPRET_KEY_LAST_KNOWN_GOOD_AT: None,
+            INTERPRET_KEY_LAST_SEEN_PRESENT_AT: None,
+            INTERPRET_KEY_LAST_SEEN_MISSING_AT: None,
+            INTERPRET_KEY_LAST_STATE_CHANGE_AT: None,
+            INTERPRET_KEY_LAST_EVALUATION_AT: None,
+            INTERPRET_KEY_CHANGE_REASON: EVIDENCE_SOURCE_NONE,
+            INTERPRET_KEY_EVENT_LOG: [],
+        }
+
+    def _evidence_labels_by_device_type(self) -> Dict[str, List[str]]:
+        """
+        NAME
+            _evidence_labels_by_device_type - Group current profile labels by device class for incremental evaluation.
+        """
+        grouped: Dict[str, List[str]] = {
+            DEVICE_CLASS_MOTION: [],
+            DEVICE_CLASS_INFRASTRUCTURE: [],
+            DEVICE_CLASS_UNPROFILED: [],
+        }
+        for label_key, profile_device in self._profile_devices.items():
+            device_type = classify_device_type(
+                label_key,
+                profile_device if isinstance(profile_device, dict) else None,
+                self._latest_runtime_devices.get(label_key),
+                None,
+            )
+            grouped.setdefault(device_type, []).append(label_key)
+        for labels in grouped.values():
+            labels.sort()
+        return grouped
+
+    def _reset_evidence_evaluator_if_needed(self, grouped_labels: Dict[str, List[str]]) -> None:
+        """
+        NAME
+            _reset_evidence_evaluator_if_needed - Reset cache/cursor when the current evidence profile set changes.
+        """
+        generation = self._evidence_profile_generation()
+        if generation == str(self.__dict__.get("_evidence_eval_generation", NT_VALUE_EMPTY)):
+            return
+        self._evidence_eval_generation = generation
+        self._evidence_eval_cursor_class_index = 0
+        self._evidence_eval_cursor_device_index = 0
+        class_order = list(
+            self.__dict__.get(
+                "_evidence_eval_class_order",
+                [DEVICE_CLASS_MOTION, DEVICE_CLASS_INFRASTRUCTURE, DEVICE_CLASS_UNPROFILED],
+            )
+        )
+        cache: Dict[str, Dict[str, Any]] = {}
+        for device_type in class_order:
+            for label_key in grouped_labels.get(device_type, []):
+                profile_device = self._profile_devices.get(label_key, {})
+                display_label = str(profile_device.get(DEVICE_KEY_LABEL, label_key)).strip() or label_key
+                cache[label_key] = self._empty_evidence_row(display_label, device_type)
+        self._evidence_eval_cache = cache
+        self._evidence_eval_dirty_labels = {}
+        self._evidence_eval_source_fingerprints = {}
+        for labels in grouped_labels.values():
+            for label_key in labels:
+                self._mark_evidence_dirty(label_key, EVIDENCE_DIRTY_PRIORITY_SCOPE, EVIDENCE_DIRTY_REASON_PROFILE)
+
+    def _next_evidence_eval_target(
+        self,
+        grouped_labels: Dict[str, List[str]],
+    ) -> Optional[Tuple[str, str]]:
+        """
+        NAME
+            _next_evidence_eval_target - Return the next device-class/label pair for the incremental evaluator.
+        """
+        dirty_labels = self.__dict__.get("_evidence_eval_dirty_labels", {})
+        if isinstance(dirty_labels, dict) and dirty_labels:
+            best_label = NT_VALUE_EMPTY
+            best_priority = None
+            for labels in grouped_labels.values():
+                for label_key in labels:
+                    dirty_entry = dirty_labels.get(label_key)
+                    if not isinstance(dirty_entry, dict):
+                        continue
+                    priority = int(dirty_entry.get("priority", EVIDENCE_DIRTY_PRIORITY_SCOPE))
+                    if best_priority is None or priority < best_priority:
+                        best_label = label_key
+                        best_priority = priority
+            if best_label:
+                for device_type, labels in grouped_labels.items():
+                    if best_label in labels:
+                        return device_type, best_label
+        class_order = list(self.__dict__.get("_evidence_eval_class_order", []))
+        if not class_order:
+            return None
+        class_index = int(self.__dict__.get("_evidence_eval_cursor_class_index", 0) or 0)
+        device_index = int(self.__dict__.get("_evidence_eval_cursor_device_index", 0) or 0)
+        while class_index < len(class_order):
+            device_type = class_order[class_index]
+            labels = grouped_labels.get(device_type, [])
+            if device_index < len(labels):
+                label_key = labels[device_index]
+                self._evidence_eval_cursor_class_index = class_index
+                self._evidence_eval_cursor_device_index = device_index + 1
+                return device_type, label_key
+            class_index += 1
+            device_index = 0
+            self._evidence_eval_cursor_class_index = class_index
+            self._evidence_eval_cursor_device_index = 0
+        self._evidence_eval_cursor_class_index = 0
+        self._evidence_eval_cursor_device_index = 0
+        return None
+
+    def _update_evidence_cache_incremental(self, max_devices: Optional[int] = None) -> None:
+        """
+        NAME
+            _update_evidence_cache_incremental - Recompute only a small fixed number of interpreted device rows.
+        """
+        budget = int(max_devices if isinstance(max_devices, int) else self.__dict__.get("_evidence_eval_budget", 2) or 2)
+        if budget <= 0:
+            return
+        grouped_labels = self._evidence_labels_by_device_type()
+        self._reset_evidence_evaluator_if_needed(grouped_labels)
         passive_result = build_live_passive_result(
             self._visibility_provider,
             self._profile_devices,
@@ -5486,7 +6087,7 @@ class BringupControlUI(tk.Tk):
             self._latest_runtime_devices,
             self._profile_devices,
         )
-        visibility_devices = {}
+        visibility_devices: Dict[str, Dict[str, Any]] = {}
         devices = self._latest_visibility_snapshot.get(VIS_KEY_DEVICES)
         if isinstance(devices, list):
             for device in devices:
@@ -5496,9 +6097,27 @@ class BringupControlUI(tk.Tk):
                 if label:
                     visibility_devices[label.lower()] = device
         console_snapshot = self._collect_console_snapshot()
-        rows: List[Dict[str, Any]] = []
-        for label, profile_device in self._profile_devices.items():
-            display_label = str(profile_device.get(DEVICE_KEY_LABEL, label)).strip() or label
+        console_devices = {}
+        if isinstance(console_snapshot, dict):
+            raw_console_devices = console_snapshot.get(EVIDENCE_CONSOLE_SCOPE_DEVICES)
+            if isinstance(raw_console_devices, dict):
+                console_devices = raw_console_devices
+        self._update_evidence_dirty_from_sources(
+            grouped_labels=grouped_labels,
+            presence_entries_by_label=presence_entries_by_label,
+            passive_devices_by_identity=passive_devices_by_identity,
+            visibility_devices=visibility_devices,
+            console_devices=console_devices,
+        )
+        processed = 0
+        while processed < budget:
+            target = self._next_evidence_eval_target(grouped_labels)
+            if target is None:
+                break
+            _device_type, label_key = target
+            profile_device = self._profile_devices.get(label_key, {})
+            display_label = str(profile_device.get(DEVICE_KEY_LABEL, label_key)).strip() or label_key
+            previous_row = self._evidence_eval_cache.get(label_key)
             passive_device = passive_devices_by_identity.get(
                 (
                     int(profile_device.get(DEVICE_KEY_MFG, 0)),
@@ -5506,17 +6125,39 @@ class BringupControlUI(tk.Tk):
                     int(profile_device.get(DEVICE_KEY_ID, 0)),
                 )
             )
-            rows.append(
-                self._infer_device_evidence(
-                    display_label,
-                    presence_entries_by_label.get(label),
-                    passive_device,
-                    visibility_devices.get(label),
-                    self._latest_runtime_devices.get(label),
-                    console_snapshot[EVIDENCE_CONSOLE_SCOPE_DEVICES].get(label),
-                    console_snapshot,
-                )
+            new_row = self._infer_device_evidence(
+                display_label,
+                presence_entries_by_label.get(label_key),
+                passive_device,
+                visibility_devices.get(label_key),
+                self._latest_runtime_devices.get(label_key),
+                console_devices.get(label_key),
+                console_snapshot,
             )
+            dirty_reasons = self._clear_evidence_dirty(label_key)
+            self._evidence_eval_cache[label_key] = self._finalize_evidence_row_state(
+                previous_row=previous_row,
+                row=new_row,
+                dirty_reasons=dirty_reasons,
+                now_s=time.time(),
+            )
+            processed += 1
+
+    def _build_evidence_rows(self) -> List[Dict[str, Any]]:
+        """
+        NAME
+            _build_evidence_rows - Build interpreted evidence rows for the current profile.
+        """
+        self._update_evidence_cache_incremental()
+        dirty_labels = self.__dict__.get("_evidence_eval_dirty_labels", {})
+        rows: List[Dict[str, Any]] = []
+        for label_key, row in self.__dict__.get("_evidence_eval_cache", {}).items():
+            row_copy = dict(row)
+            dirty_entry = dirty_labels.get(label_key) if isinstance(dirty_labels, dict) else None
+            if isinstance(dirty_entry, dict):
+                row_copy[INTERPRET_KEY_DIRTY] = True
+                row_copy[INTERPRET_KEY_DIRTY_REASONS] = list(dirty_entry.get("reasons", EVIDENCE_DIRTY_EMPTY_REASONS))
+            rows.append(row_copy)
         rows.sort(key=lambda row: str(row.get("label", NT_VALUE_EMPTY)).lower())
         return rows
 
@@ -5620,7 +6261,9 @@ class BringupControlUI(tk.Tk):
             str(row.get("label", NT_VALUE_EMPTY)).strip().lower(): str(row.get("state", EVIDENCE_STATE_UNKNOWN)).strip().lower()
             for row in rows
         }
-        live_view.set_evidence_snapshot(evidence_snapshot)
+        for topology_view in self._iter_live_views():
+            if hasattr(topology_view, "set_evidence_snapshot"):
+                topology_view.set_evidence_snapshot(evidence_snapshot)
         for row in shown_rows:
             table.insert(
                 VIS_TREE_ROOT,
@@ -6069,15 +6712,26 @@ class BringupControlUI(tk.Tk):
         for live_view in self._iter_live_views():
             live_view.set_show_groups(self._live_groups_var.get())
 
+    def _apply_live_topology_lens(self) -> None:
+        """
+        NAME
+            _apply_live_topology_lens - Apply the explicit shared-lens selection to the main live-topology view.
+        """
+        if self._live_view is None:
+            return
+        selected = str(self._live_topology_lens_var.get() or LIVE_LENS_DEFAULT).strip()
+        lens_key = LIVE_LENS_TOPOLOGY_KEYS.get(selected, TOPOLOGY_LENS_EVIDENCE)
+        self._live_view.set_overlay_lens(lens_key)
+
     def _apply_visibility_mode_toggle(self) -> None:
         """
         NAME
-            _apply_visibility_mode_toggle - Toggle visibility mode in the live view.
+            _apply_visibility_mode_toggle - Compatibility wrapper for older visibility-toggle callers.
         """
-        if self._live_view is not None:
-            self._live_view.set_visibility_enabled(self._visibility_enabled_var.get())
+        self._live_topology_lens_var.set(LIVE_LENS_OPTION_VISIBILITY)
+        self._apply_live_topology_lens()
         if self._visibility_live_view is not None:
-            self._visibility_live_view.set_visibility_enabled(True)
+            self._visibility_live_view.set_overlay_lens(TOPOLOGY_LENS_VISIBILITY)
 
     def _zoom_in(self) -> None:
         """
@@ -7780,18 +8434,23 @@ class BringupControlUI(tk.Tk):
         """
         lines = [
             "Purpose:",
-            "  Show live device presence and telemetry on the topology diagram.",
+            "  Show the shared topology diagram with an explicit live lens.",
             "",
             "Enable Live Overlay:",
             "  Starts polling runtime state from the roboRIO REST command server.",
             "  Live overlay is read-only and does not send commands.",
+            "",
+            "Lens:",
+            "  - Evidence: interpreted device-state lens shared with the Evidence tab.",
+            "  - Runtime: direct runtime/presence lens from robot-local state.",
+            "  - Visibility: passive observer visibility lens.",
             "",
             "Show Groups:",
             "  Toggles group boxes/labels from bridgeConfig by-profile groups.",
             "  Useful for visualizing CLI groups in the live view.",
             "",
             "Source:",
-            "  - tcp: Fetch runtime state from the roboRIO REST server (default).",
+            "  - rest: Fetch runtime state from the roboRIO REST server (default).",
             "  - file: Replay a saved JSON snapshot for offline testing.",
             "",
             "Rate:",
@@ -8220,6 +8879,7 @@ class BringupControlUI(tk.Tk):
         self._handshake_inflight = False
         self._last_handshake_attempt = 0.0
         self._session.reset_handshake()
+        self._reset_ui_session_runtime_context()
         self._send_handshake(reset=True, force=True, log=True)
 
     def _dispatch_host_local_action(self, command: str) -> bool:
@@ -8356,6 +9016,9 @@ class BringupControlUI(tk.Tk):
         )
         if seq is not None:
             self._last_sent_seq = seq
+            if str(command or "").strip().lower() == CMD_SHOW_RUNTIME_STATE.lower():
+                self._runtime_state_pending_seq = int(seq)
+                self._runtime_state_pending_at = time.time()
 
     def _on_test_selected(self, _event=None) -> None:
         """
@@ -9589,6 +10252,17 @@ class BringupControlUI(tk.Tk):
         """
         self._on_action(CMD_SHOW_RUNTIME_STATE)
 
+    def _selected_activation_membership_mode(self) -> str:
+        """
+        NAME
+            _selected_activation_membership_mode - Return the current top-bar activation membership mode.
+        """
+        mode_var = self.__dict__.get("_activation_membership_mode_var")
+        raw_mode = str(mode_var.get() if mode_var is not None else "" or "").strip().upper()
+        if raw_mode in ACTIVATION_MEMBERSHIP_MODE_VALUES:
+            return raw_mode
+        return ACTIVATION_MEMBERSHIP_MODE_DEFAULT
+
     def _activate_scope_from_ui(self) -> None:
         """
         NAME
@@ -9600,10 +10274,17 @@ class BringupControlUI(tk.Tk):
         if self._tracker.is_pending():
             self._append_output(OUTPUT_BUSY)
             return
+        membership_mode = self._selected_activation_membership_mode()
         if self._scope_context_kind() == GROUP_SOURCE_SELECTED_TEST:
-            args = {"mode": LIFECYCLE_DEFAULT_MODE}
+            args = {
+                "mode": LIFECYCLE_DEFAULT_MODE,
+                "membershipMode": membership_mode,
+            }
             self._append_output(
-                f"{timestamp_hms()} CMD activateSelectedTestDevices mode={LIFECYCLE_DEFAULT_MODE}"
+                (
+                    f"{timestamp_hms()} CMD activateSelectedTestDevices "
+                    f"mode={LIFECYCLE_DEFAULT_MODE} membershipMode={membership_mode}"
+                )
             )
             self._last_cmd = ("activateSelectedTestDevices", args)
             seq = send_tracked_command(
@@ -9614,6 +10295,7 @@ class BringupControlUI(tk.Tk):
                 sender=lambda session, _command_name, _command_args: activate_selected_test_devices(
                     session,
                     LIFECYCLE_DEFAULT_MODE,
+                    membership_mode,
                 ),
                 now=time.time(),
             )
@@ -9622,9 +10304,13 @@ class BringupControlUI(tk.Tk):
             return
         mode = LIFECYCLE_DEFAULT_MODE
         label = GROUP_ACTIVE_NAME
-        args = {PROFILE_KEY_LABEL: label, "mode": mode}
+        args = {
+            PROFILE_KEY_LABEL: label,
+            "mode": mode,
+            "membershipMode": membership_mode,
+        }
         self._append_output(
-            f"{timestamp_hms()} {OUTPUT_LIFECYCLE_ACTIVATE_FMT.format(label=label, mode=mode)}"
+            f"{timestamp_hms()} {OUTPUT_LIFECYCLE_ACTIVATE_FMT.format(label=label, mode=mode, membership_mode=membership_mode)}"
         )
         self._last_cmd = ("lifecycleActivate", args)
         seq = send_tracked_command(
@@ -9632,7 +10318,9 @@ class BringupControlUI(tk.Tk):
             self._tracker,
             "lifecycleActivate",
             args,
-            sender=lambda session, _command_name, _command_args: lifecycle_activate(session, label, mode),
+            sender=lambda session, _command_name, _command_args: lifecycle_activate(
+                session, label, mode, membership_mode
+            ),
             now=time.time(),
         )
         if seq is not None:
@@ -9855,6 +10543,8 @@ class BringupControlUI(tk.Tk):
                     "REST session reconnected.",
                 )
             else:
+                self._reset_ui_session_runtime_context()
+                self._robot_ui_session_id = None
                 self._notify_ui_failure(
                     "tcp",
                     True,
@@ -9876,6 +10566,7 @@ class BringupControlUI(tk.Tk):
         session_snapshot: Dict[str, Any] = {}
         runtime_snapshot: Dict[str, Any] = {}
         tests_snapshot: Dict[str, Any] = {}
+        runtime_state_available = False
         if self._tcp_connected:
             session_snapshot = self._session.fetch_session_snapshot()
             runtime_snapshot = self._session.fetch_runtime_state()
@@ -9888,6 +10579,9 @@ class BringupControlUI(tk.Tk):
                 fetched_at_ms=fetched_at_ms,
             )
             self._tests_table = _RestTableAdapter.from_tests_state(tests_snapshot)
+            if isinstance(runtime_snapshot, dict) and runtime_snapshot:
+                runtime_state_available = True
+                self._apply_runtime_state_payload(runtime_snapshot)
         if self._ui_table is not None:
             session_id = self._ui_table.getEntry("state/sessionId").getString("")
             if session_id:
@@ -9950,7 +10644,7 @@ class BringupControlUI(tk.Tk):
                     running += " [run all]"
             self._running_text_var.set(f"Running: {running}")
             self._refresh_test_result_status()
-        if self._is_connected is not None:
+        if not runtime_state_available and self._is_connected is not None:
             try:
                 nt_connected = bool(self._is_connected())
             except Exception:
@@ -10709,6 +11403,13 @@ class BringupControlUI(tk.Tk):
         if activate_scope_button is not None:
             activate_allowed = allow
             if activate_allowed and self._test_runtime_block_reason():
+                activate_allowed = False
+            if (
+                activate_allowed
+                and self._scope_context_kind() != GROUP_SOURCE_SELECTED_TEST
+                and self.__dict__.get("_profile_box") is not None
+                and self._selected_profile_name() == PROFILE_NONE
+            ):
                 activate_allowed = False
             if activate_allowed and self._scope_context_kind() != GROUP_SOURCE_SELECTED_TEST:
                 activate_allowed = not self._manual_active_group_is_empty()

@@ -11,9 +11,11 @@ public record ActivationResult(
         String requestedLabel,
         String sessionId,
         ActivationMode mode,
+        ActivationMembershipMode membershipMode,
         List<String> requestedDeviceLabels,
         List<String> instantiatedDeviceLabels,
         List<String> failedDeviceLabels,
+        List<String> skippedDeviceLabels,
         LifecycleState state,
         String errorCode,
         String errorMessage) {
@@ -22,5 +24,6 @@ public record ActivationResult(
         instantiatedDeviceLabels =
                 instantiatedDeviceLabels == null ? List.of() : List.copyOf(instantiatedDeviceLabels);
         failedDeviceLabels = failedDeviceLabels == null ? List.of() : List.copyOf(failedDeviceLabels);
+        skippedDeviceLabels = skippedDeviceLabels == null ? List.of() : List.copyOf(skippedDeviceLabels);
     }
 }

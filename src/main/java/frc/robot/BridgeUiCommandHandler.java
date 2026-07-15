@@ -998,14 +998,16 @@ public class BridgeUiCommandHandler {
           @Override
           public frc.robot.diag.lifecycle.activation.ActivationResult activateLifecycle(
               String label,
-              frc.robot.diag.lifecycle.activation.ActivationMode mode) {
-            return runtime.activateControlledBringupLifecycle(label, mode);
+              frc.robot.diag.lifecycle.activation.ActivationMode mode,
+              frc.robot.diag.lifecycle.activation.ActivationMembershipMode membershipMode) {
+            return runtime.activateControlledBringupLifecycle(label, mode, membershipMode);
           }
 
           @Override
           public frc.robot.diag.lifecycle.activation.ActivationResult activateSelectedTestDevices(
-              frc.robot.diag.lifecycle.activation.ActivationMode mode) {
-            return runtime.activateSelectedTestDevices(mode);
+              frc.robot.diag.lifecycle.activation.ActivationMode mode,
+              frc.robot.diag.lifecycle.activation.ActivationMembershipMode membershipMode) {
+            return runtime.activateSelectedTestDevices(mode, membershipMode);
           }
 
           @Override

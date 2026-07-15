@@ -142,6 +142,27 @@ class CanFaultInferenceTests(unittest.TestCase):
         self.assertEqual(FAULT_CLASS_SINGLE_DEVICE, result["candidates"][0]["faultClass"])
         self.assertEqual(["FALCON 9"], result["candidates"][0]["affectedDevices"])
 
+    def test_console_driven_conflicted_presence_still_becomes_fault_candidate(self) -> None:
+        result = build_fault_diagnosis(
+            evidence_rows=[
+                {
+                    "label": "FALCON 9",
+                    "existence": "CONFLICT",
+                    "operability": "FAILED",
+                    "confidence": "MEDIUM",
+                    "state": "failed",
+                    "conflicted": True,
+                    "presenceState": "conflict",
+                    "console": "[WARN] TALON_STATUS_SIGNAL_STALE",
+                    "notesText": "Device-targeted stale/timeout console evidence present.",
+                }
+            ],
+            now_s=10.0,
+        )
+
+        self.assertEqual(FAULT_CLASS_SINGLE_DEVICE, result["candidates"][0]["faultClass"])
+        self.assertEqual(["FALCON 9"], result["candidates"][0]["affectedDevices"])
+
     def test_empty_evidence_returns_insufficient_candidate(self) -> None:
         result = build_fault_diagnosis(evidence_rows=[], now_s=10.0)
 
@@ -160,6 +181,30 @@ class CanFaultInferenceTests(unittest.TestCase):
         self.assertIn("infrastructure:", text)
         self.assertIn("single_device_unreachable", text)
         self.assertIn("Inspect power and CAN connectors at FALCON 9 first.", text)
+
+    def test_missing_infrastructure_device_becomes_candidate(self) -> None:
+        result = build_fault_diagnosis(
+            evidence_rows=[
+                {
+                    "label": "pdp",
+                    "deviceType": "infrastructure_device",
+                    "existence": "ABSENT",
+                    "operability": "UNKNOWN",
+                    "confidence": "MEDIUM",
+                    "state": "missing",
+                    "presenceState": "missing",
+                    "presenceScore": 0,
+                    "sourceScores": {
+                        "runtime": {"score": 0, "state": "missing", "reason": "Runtime presence snapshot absent."}
+                    },
+                }
+            ],
+            now_s=10.0,
+        )
+
+        self.assertEqual("ok", result["status"])
+        self.assertEqual("single_device_unreachable", result["candidates"][0]["faultClass"])
+        self.assertEqual(["pdp"], result["candidates"][0]["affectedDevices"])
 
 
 if __name__ == "__main__":

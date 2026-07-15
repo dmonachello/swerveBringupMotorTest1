@@ -80,6 +80,7 @@ Expected:
   - `console=NEW`
   - `probe=NEW`
   - `manual=NEW`
+  - `enrichment=NEW`
   - `topologyView=NEW`
   - `interpretation=NEW`
 
@@ -89,7 +90,7 @@ Expected:
 
 - topology pane is smaller than before
 - inspector text panes are large enough to show multiple lines without immediate truncation
-- `CAN Bus Health`, `Presence Check`, and `Passive CAN Evidence` appear under the diagram
+- `CAN Bus Health`, `Robot Runtime Scope Check`, and `Passive CAN Evidence` appear under the diagram
 - selected-device interpretation sections remain readable on the right
 
 ## Passive Device Check
@@ -104,6 +105,28 @@ Expected:
 - `Passive CAN Evidence` shows `source=passive_discovery_poc`
 - known recurring families appear in the passive text
 - expected CTRE/REV devices can reach `PRESENT` from passive evidence
+
+## Enrichment Run Check
+
+Click `Run Enrichment`.
+
+Expected:
+
+- `Enrichment Evidence` panel updates from `Not run yet`
+- the panel shows the host-side corroboration lens line
+- topology source reports `ok`
+- CTRE HTTP either:
+  - reports a base URL and device count, or
+  - clearly reports unavailable
+- console-log enrichment either:
+  - reports parsed record count, or
+  - clearly reports no log text / empty
+
+Expected for CTRE devices when CTRE HTTP is reachable:
+
+- `Enrichment Evidence` shows `ctreHttp=present`
+- `Conflicts / Notes` no longer needs `no CTRE HTTP corroboration available`
+- confidence may rise relative to passive-only evidence
 
 ## Infrastructure Device Check
 
@@ -137,6 +160,7 @@ Expected:
 - notes are relevant to the current evidence mix
 - infrastructure devices can show scope notes without looking like probe failures
 - passive-only CTRE gaps such as `no CTRE HTTP corroboration available` may still appear when CTRE HTTP enrichment is absent
+- after `Run Enrichment`, CTRE corroboration notes should reflect the fresh enrichment result rather than a stale pre-run state
 
 ## Quick Regression Scenarios
 
