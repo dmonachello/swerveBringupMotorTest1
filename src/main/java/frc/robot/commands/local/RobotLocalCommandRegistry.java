@@ -328,21 +328,21 @@ public final class RobotLocalCommandRegistry {
     register(rows, lifecycleDefinition(
         COMMAND_LIFECYCLE_DEACTIVATE,
         "Lifecycle Deactivate",
-        "Deactivate the lifecycle session matching one requested label.",
+        "Deactivate the scope session matching one requested label.",
         UI_ARG_LIFECYCLE_DEACTIVATE,
         false,
         legacyUiGroup));
     register(rows, lifecycleDefinition(
         COMMAND_LIFECYCLE_DEACTIVATE_ACTIVE,
-        "Lifecycle Deactivate Active",
-        "Deactivate the current lifecycle session.",
+        "Scope Deactivate Active",
+        "Deactivate the current scope session.",
         "",
         false,
         legacyUiGroup));
     register(rows, lifecycleDefinition(
         COMMAND_SHOW_LIFECYCLE_STATE,
-        "Show Lifecycle State",
-        "Show controlled lifecycle state payload.",
+        "Show Scope State",
+        "Show controlled scope state payload.",
         UI_ARG_LIFECYCLE_SHOW_JSON,
         false,
         legacyUiGroup));

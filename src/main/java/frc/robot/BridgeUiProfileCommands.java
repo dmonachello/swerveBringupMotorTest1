@@ -53,7 +53,7 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
   private static final String TEXT_PROFILES_RELOAD_FAILED = "Profiles reload failed: %s";
   private static final String MESSAGE_PROFILE_NOT_FOUND = "Profile not found.";
   private static final String MESSAGE_PROFILE_CHANGE_BLOCKED_LIFECYCLE_ACTIVE =
-      "Profile change blocked: controlled lifecycle session is ACTIVE. Deactivate lifecycle first.";
+      "Profile change blocked: an active scope session is running. Deactivate scope first.";
 
   private static final String MESSAGE_SELECT_PROFILE_REQUIRED = "selectProfile requires args.name.";
   private static final String MESSAGE_SHOW_PROFILE_REQUIRED = "showProfile requires args.name.";

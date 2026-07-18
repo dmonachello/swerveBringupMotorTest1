@@ -45,11 +45,11 @@ class BridgeUiGroupCommandsTest {
   private static final String MSG_SHOW_DEVICE_REQUIRES = "showDevice requires args.name.";
   private static final String MSG_DEVICE_NOT_FOUND_PREFIX = "Device not found: ";
   private static final String MSG_MANUAL_DUTY_SCOPE_BLOCKED =
-      "Manual duty blocked: device is outside the active controlled lifecycle scope.";
+      "Manual duty blocked: device is outside the active scope membership.";
   private static final String MSG_MANUAL_GROUP_DUTY_SCOPE_BLOCKED =
-      "Manual duty blocked: group contains device(s) outside the active controlled lifecycle scope.";
+      "Manual duty blocked: group contains device(s) outside the active scope membership.";
   private static final String MSG_ACTIVE_GROUP_LOCKED =
-      "Active group membership is locked while controlled lifecycle session is ACTIVE. Deactivate lifecycle first.";
+      "Active group membership is locked while an active scope session is running. Deactivate scope first.";
 
   private static final String GROUP_ALPHA = "alpha";
   private static final String GROUP_ACTIVE = "active-group";

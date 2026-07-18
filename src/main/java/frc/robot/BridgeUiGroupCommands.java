@@ -50,11 +50,11 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
   private static final String MESSAGE_MANUAL_DUTY_DISABLED_ESTOP =
       "Manual duty blocked: robot disabled (E-Stop).";
   private static final String MESSAGE_MANUAL_DUTY_CONTROLLED_SCOPE =
-      "Manual duty blocked: device is outside the active controlled lifecycle scope.";
+      "Manual duty blocked: device is outside the active scope membership.";
   private static final String MESSAGE_MANUAL_GROUP_DUTY_CONTROLLED_SCOPE =
-      "Manual duty blocked: group contains device(s) outside the active controlled lifecycle scope.";
+      "Manual duty blocked: group contains device(s) outside the active scope membership.";
   private static final String MESSAGE_ACTIVE_GROUP_LIFECYCLE_LOCKED =
-      "Active group membership is locked while controlled lifecycle session is ACTIVE. Deactivate lifecycle first.";
+      "Active group membership is locked while an active scope session is running. Deactivate scope first.";
   private static final String JSON_KEY_DEVICE = "device";
   private static final String JSON_KEY_GROUP = "group";
   private static final String JSON_KEY_MOVED = "moved";

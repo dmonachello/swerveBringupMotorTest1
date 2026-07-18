@@ -181,11 +181,11 @@ public class BridgeUiCommandHandler {
   private static final String TEXT_CONTROLLED_LIFECYCLE_FAILED_EVENT =
       "controlled-lifecycle-failed";
   private static final String TEXT_CONTROLLED_LIFECYCLE_TESTABLE_REASON =
-      "Testable via controlled lifecycle session.";
+      "Testable via active scope session.";
   private static final String TEXT_CONTROLLED_LIFECYCLE_INSTANTIATED_REASON =
-      "Instantiated by controlled lifecycle but not active.";
+      "Instantiated by scope activation but not currently active.";
   private static final String TEXT_CONTROLLED_LIFECYCLE_SCOPE_REQUIRED_REASON =
-      "Testable only when included in the active controlled lifecycle session.";
+      "Testable only when included in the active scope membership.";
   private static final String JSON_KEY_CURRENT_INSTANT_A = "currentInstantA";
   private static final String JSON_KEY_CURRENT_AVG_A = "currentAvgA";
   private static final String JSON_KEY_CURRENT_PEAK_A = "currentPeakA";
@@ -1920,7 +1920,7 @@ public class BridgeUiCommandHandler {
     if (isControlledLifecycleActive()) {
       result.ok = false;
       result.message =
-          "Active group membership is locked while controlled lifecycle session is ACTIVE. Deactivate lifecycle first.";
+          "Active group membership is locked while an active scope session is running. Deactivate scope first.";
       result.outText = result.message;
       setActiveResultJson(result, ensureActiveGroupDefined(), List.of(result.message));
       return;
@@ -1996,7 +1996,7 @@ public class BridgeUiCommandHandler {
     if (isControlledLifecycleActive()) {
       result.ok = false;
       result.message =
-          "Active group membership is locked while controlled lifecycle session is ACTIVE. Deactivate lifecycle first.";
+          "Active group membership is locked while an active scope session is running. Deactivate scope first.";
       result.outText = result.message;
       setActiveResultJson(result, ensureActiveGroupDefined(), List.of(result.message));
       return;
