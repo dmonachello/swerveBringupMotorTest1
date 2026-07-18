@@ -11,14 +11,14 @@ from hashlib import sha256
 from pathlib import Path
 from time import time
 
-BUILD_GIT_DESCRIBE = "can-fault-finder-checkpoint-2026-07-11-5-gde8db26-dirty"
-BUILD_REVISION = "252"
+BUILD_GIT_DESCRIBE = "can-fault-finder-checkpoint-2026-07-11-7-g5e531ad-dirty"
+BUILD_REVISION = "254"
 BUILD_WORKSPACE_REVISION = "244"
 BUILD_CODE_REVISION = "36193782cfac"
-BUILD_GIT_SHA = "de8db26"
+BUILD_GIT_SHA = "5e531ad"
 BUILD_GIT_BRANCH = "recovery/2026-07-18-dirty-tree"
 BUILD_GIT_DIRTY = "dirty"
-BUILD_TIMESTAMP = "2026-07-18T16:33:01-04:00"
+BUILD_TIMESTAMP = "2026-07-18T16:33:22-04:00"
 
 BUILD_LABEL_REVISION = "build-revision"
 BUILD_LABEL_WORKSPACE_REVISION = "workspace-revision"
