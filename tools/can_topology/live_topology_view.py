@@ -220,6 +220,8 @@ RECENT_SEEN_NOW_MS = 100
 RECENT_SEEN_MS_SWITCH = 1000
 RECENT_SEEN_SEC_SWITCH = 10000
 PRESENCE_MIN_CONF = 0.05
+PROFILE_STATUS_ERROR_SUFFIX = " (error)"
+PROFILE_STATUS_MISSING_SUFFIX = " (missing)"
 PRESENCE_HIGH_CONF = 0.5
 TOPOLOGY_LENS_RUNTIME = "runtime"
 TOPOLOGY_LENS_EVIDENCE = "evidence"
@@ -1395,22 +1397,13 @@ class LiveTopologyView(ttk.Frame):
         if profile_name:
             self._profile_name = profile_name
         if str(self._profile_name or "").strip() == PROFILE_NONE:
-            self._status_label.configure(text=f"Profile: {PROFILE_NONE}")
-            self._nodes = []
-            self._diagram_meta = {}
-            self._bridge_groups = []
-            self._use_diagram_layout = False
-            self._update_details()
-            self._redraw()
+            self._clear_profile_scene(f"Profile: {PROFILE_NONE}")
             return
         payload, err = _load_profiles_payload()
         if payload is None:
-            self._status_label.configure(text=f"Profile: {self._profile_name} (error)")
-            self._nodes = []
-            self._diagram_meta = {}
-            self._bridge_groups = []
-            self._update_details()
-            self._redraw()
+            self._clear_profile_scene(
+                f"Profile: {self._profile_name}{PROFILE_STATUS_ERROR_SUFFIX}"
+            )
             return
         registry = _load_device_registry(payload)
         profiles = payload.get(KEY_PROFILES) if isinstance(payload.get(KEY_PROFILES), dict) else {}
@@ -1418,8 +1411,11 @@ class LiveTopologyView(ttk.Frame):
         profile_name = self._profile_name or default_profile
         raw_profile = profiles.get(profile_name)
         if not isinstance(raw_profile, dict):
-            profile_name = default_profile
-            raw_profile = profiles.get(profile_name, {})
+            self._profile_name = profile_name
+            self._clear_profile_scene(
+                f"Profile: {self._profile_name}{PROFILE_STATUS_MISSING_SUFFIX}"
+            )
+            return
         self._profile_name = profile_name
         self._status_label.configure(text=f"Profile: {self._profile_name}")
 
@@ -1483,6 +1479,19 @@ class LiveTopologyView(ttk.Frame):
         self._redraw()
         if self._fit_on_load:
             self.schedule_fit_to_window()
+
+    def _clear_profile_scene(self, status_text: str) -> None:
+        """
+        NAME
+            _clear_profile_scene - Clear the current topology scene and update status text.
+        """
+        self._status_label.configure(text=status_text)
+        self._nodes = []
+        self._diagram_meta = {}
+        self._bridge_groups = []
+        self._use_diagram_layout = False
+        self._update_details()
+        self._redraw()
 
     def apply_topology_scene_state(self, scene_state: object) -> None:
         """

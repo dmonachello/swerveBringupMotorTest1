@@ -1046,6 +1046,53 @@ class LiveTopologyViewTests(unittest.TestCase):
             live_view_module._load_profiles_payload = original_load_payload
             view._redraw = original_redraw
 
+    def test_reload_profile_missing_requested_profile_clears_instead_of_falling_back(self) -> None:
+        view = self._make_view()
+        view._nodes = [
+            live_view_module.LiveNode(
+                key=1,
+                category="roborio",
+                label="roborio",
+                can_id=0,
+                bus_index=0,
+                row=0,
+                x=0.0,
+            )
+        ]
+        view._diagram_meta = {"stale": True}
+        view._bridge_groups = [{"name": "active-group"}]
+        view._update_details_calls = 0
+        view._update_details = lambda: setattr(
+            view, "_update_details_calls", view._update_details_calls + 1
+        )
+
+        original_load_payload = live_view_module._load_profiles_payload
+
+        try:
+            live_view_module._load_profiles_payload = lambda: (
+                {
+                    "defaultProfile": "demo",
+                    "profiles": {
+                        "demo": {
+                            "devices": [
+                                {"label": "FALCON 9", "type": "motor", "deviceType": 2, "id": 9},
+                            ]
+                        }
+                    },
+                },
+                "",
+            )
+
+            view.reload_profile("missing_profile")
+
+            self.assertEqual([], view._nodes)
+            self.assertEqual({}, view._diagram_meta)
+            self.assertEqual([], view._bridge_groups)
+            self.assertEqual("Profile: missing_profile (missing)", view._status_label.text)
+            self.assertEqual(1, view._update_details_calls)
+        finally:
+            live_view_module._load_profiles_payload = original_load_payload
+
     def test_effective_groups_preserve_static_members_when_runtime_group_only_has_counts(self) -> None:
         view = self._make_view()
         view._bridge_groups = [
