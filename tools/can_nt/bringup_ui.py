@@ -34,7 +34,6 @@ from .command_catalog_service import (
 )
 from .command_workflow_service import send_tracked_command
 from .can_bus_report_service import build_host_can_bus_report
-from .can_fault_inference import build_fault_diagnosis, render_fault_diagnosis
 from .passive_discovery_integration_service import (
     ENGINE_LABEL_LEGACY,
     ENGINE_LABEL_NEW,
@@ -47,6 +46,12 @@ from .passive_discovery_integration_service import (
     SECTION_PROBE,
     SECTION_PROFILE_INVENTORY,
     SECTION_TOPOLOGY_VIEW,
+    FAULT_SNAPSHOT_KEY_CANDIDATE_COUNT,
+    FAULT_SNAPSHOT_KEY_RAN_AT,
+    FAULT_SNAPSHOT_KEY_RENDERED_TEXT,
+    FAULT_SNAPSHOT_KEY_RESULT,
+    TEXT_EMPTY,
+    build_evidence_fault_snapshot,
     build_interpreted_evidence_row,
     classify_device_type,
     build_console_snapshot_from_entries as build_console_snapshot_from_entries_shared,
@@ -133,7 +138,6 @@ from .bridge_ops import (
     push_config,
     send_command,
     show_lifecycle_state,
-    show_runtime_state,
     select_test_by_name,
     ui_disconnect,
     ui_handshake,
@@ -158,6 +162,61 @@ from .host_ui_actions import (
     HOST_ACTION_DSL_TEST_VALIDATE,
     HOST_ACTION_RECONNECT_UI_SESSION,
     HOST_UI_ACTIONS,
+)
+from .host_ui_state_service import (
+    MANUAL_DUTY_BLOCKED_CONTROLLED_SCOPE_TEXT as SHARED_MANUAL_DUTY_BLOCKED_CONTROLLED_SCOPE_TEXT,
+    OUTPUT_NO_SELECTED_TEST as SHARED_OUTPUT_NO_SELECTED_TEST,
+    PROFILE_NONE as SHARED_PROFILE_NONE,
+    SELECTED_TEST_STATUS_BLOCKED_DISABLED as SHARED_SELECTED_TEST_STATUS_BLOCKED_DISABLED,
+    SELECTED_TEST_STATUS_BLOCKED_ESTOP as SHARED_SELECTED_TEST_STATUS_BLOCKED_ESTOP,
+    SELECTED_TEST_STATUS_BLOCKED_NOT_TELEOP as SHARED_SELECTED_TEST_STATUS_BLOCKED_NOT_TELEOP,
+    SELECTED_TEST_STATUS_LOADED_NOT_ACTIVATED as SHARED_SELECTED_TEST_STATUS_LOADED_NOT_ACTIVATED,
+    SELECTED_TEST_STATUS_MANUAL_RESTORED as SHARED_SELECTED_TEST_STATUS_MANUAL_RESTORED,
+    RUNNABLE_SCOPE_DETAIL_MANUAL_EMPTY as SHARED_RUNNABLE_SCOPE_DETAIL_MANUAL_EMPTY,
+    RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_ACTIVATED as SHARED_RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_ACTIVATED,
+    RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_TELEOP as SHARED_RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_TELEOP,
+    RUNNABLE_SCOPE_DETAIL_SELECT_PROFILE as SHARED_RUNNABLE_SCOPE_DETAIL_SELECT_PROFILE,
+    RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_ACTIVATED as SHARED_RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_ACTIVATED,
+    RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_TELEOP as SHARED_RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_TELEOP,
+    RUNNABLE_SCOPE_KIND_MANUAL,
+    RUNNABLE_SCOPE_KIND_SELECTED_TEST,
+    RUNNABLE_STATE_LEVEL_READY,
+    RUNNABLE_STATE_LEVEL_WARN,
+    RUNNABLE_SCOPE_PANEL_DISCONNECTED_DETAIL as SHARED_RUNNABLE_SCOPE_PANEL_DISCONNECTED_DETAIL,
+    RUNNABLE_SCOPE_PANEL_READY_DETAIL as SHARED_RUNNABLE_SCOPE_PANEL_READY_DETAIL,
+    RUNNABLE_SCOPE_PANEL_WAITING_DETAIL as SHARED_RUNNABLE_SCOPE_PANEL_WAITING_DETAIL,
+    TEST_ACTIVE_GROUP_STATUS_ENABLED as SHARED_TEST_ACTIVE_GROUP_STATUS_ENABLED,
+    TEST_ACTIVE_GROUP_STATUS_INVALID as SHARED_TEST_ACTIVE_GROUP_STATUS_INVALID,
+    TEST_ACTIVE_GROUP_STATUS_LOCKED as SHARED_TEST_ACTIVE_GROUP_STATUS_LOCKED,
+    TEST_ACTIVE_GROUP_STATUS_NOT_ACTIVATED as SHARED_TEST_ACTIVE_GROUP_STATUS_NOT_ACTIVATED,
+    TEST_ACTIVE_GROUP_SINGLETON_LABELS as SHARED_TEST_ACTIVE_GROUP_SINGLETON_LABELS,
+    TEST_SCOPE_PANEL_NEUTRAL_LEVEL,
+    TEST_SCOPE_STATUS_BLOCKED_DISABLED_DETAIL as SHARED_TEST_SCOPE_STATUS_BLOCKED_DISABLED_DETAIL,
+    TEST_SCOPE_STATUS_BLOCKED_ESTOP_DETAIL as SHARED_TEST_SCOPE_STATUS_BLOCKED_ESTOP_DETAIL,
+    TEST_SCOPE_STATUS_BLOCKED_NOT_TELEOP_DETAIL as SHARED_TEST_SCOPE_STATUS_BLOCKED_NOT_TELEOP_DETAIL,
+    TEST_SCOPE_STATUS_LOADED_NOT_ACTIVATED_DETAIL as SHARED_TEST_SCOPE_STATUS_LOADED_NOT_ACTIVATED_DETAIL,
+    TEST_SCOPE_STATUS_MANUAL_RESTORED_DETAIL as SHARED_TEST_SCOPE_STATUS_MANUAL_RESTORED_DETAIL,
+    TEST_SCOPE_STATUS_MISSING_DEVICE_PREFIX as SHARED_TEST_SCOPE_STATUS_MISSING_DEVICE_PREFIX,
+    TEST_SCOPE_STATUS_NO_SELECTION_DETAIL as SHARED_TEST_SCOPE_STATUS_NO_SELECTION_DETAIL,
+    TEST_SCOPE_STATUS_REQUIRED_UNAVAILABLE_DETAIL as SHARED_TEST_SCOPE_STATUS_REQUIRED_UNAVAILABLE_DETAIL,
+    TEST_SCOPE_STATUS_READY_DETAIL as SHARED_TEST_SCOPE_STATUS_READY_DETAIL,
+    ActiveGroupMemberRowState,
+    SelectedTestScopeState,
+    SelectedTestPanelState,
+    DiagnosticProfileState,
+    RunnableScopeState,
+    RuntimeStateFetchState,
+    resolve_manual_duty_scope_state,
+    resolve_active_group_summary_state,
+    resolve_diagnostic_profile_state,
+    resolve_runtime_state_fetch_state,
+    resolve_scope_activation_notice,
+    resolve_selected_test_runtime_block_reason,
+    resolve_selected_test_panel_state,
+    resolve_selected_test_scope_state,
+    resolve_tests_active_group_member_rows,
+    resolve_runnable_scope_state,
+    should_clear_runtime_event_notice,
 )
 from .status import SS__NORMAL
 from tools.common.json_io import read_json, write_json
@@ -436,7 +495,7 @@ LIVE_SOURCE_REST = "rest"
 LIVE_SOURCE_FILE = "file"
 LIVE_CLOCK_FORMAT = "%H:%M:%S"
 LIVE_CLOCK_LABEL = "Clock:"
-PROFILE_NONE = "(none)"
+PROFILE_NONE = SHARED_PROFILE_NONE
 NT_UI_STATE_SELECTED_PROFILE = "state/selectedProfile"
 NT_UI_STATE_ACTIVE_RUNTIME_PROFILE = "state/activeRuntimeProfile"
 DEFAULT_RUNTIME_STATE_RATE_HZ = 2.0
@@ -449,7 +508,7 @@ BUTTON_DEACTIVATE_GROUP = "Deactivate Group"
 BUTTON_PUSH_CONFIG = "Push Config"
 BUTTON_DOWNLOAD_CONFIG = "Download Current Config"
 BUTTON_SHOW_RUNTIME_STATE = "Show Runtime State"
-BUTTON_SHOW_LIFECYCLE_STATE = "Show Lifecycle State"
+BUTTON_SHOW_LIFECYCLE_STATE = "Show Scope State"
 CMD_PRINT_CAN_DIAG = "printCANdiag"
 GROUP_SOURCE_MANUAL = "manual"
 GROUP_SOURCE_SELECTED_TEST = "selected test"
@@ -459,7 +518,7 @@ GROUP_SOURCE_LABEL_SELECTED_TEST = GROUP_SOURCE_LABEL_PREFIX + GROUP_SOURCE_SELE
 OUTPUT_NOT_CONNECTED = "Not connected: command blocked."
 OUTPUT_BUSY = "Busy: wait for current command to finish."
 OUTPUT_NO_PROFILE = "No profile selected."
-OUTPUT_NO_SELECTED_TEST = "no selected test"
+OUTPUT_NO_SELECTED_TEST = SHARED_OUTPUT_NO_SELECTED_TEST
 OUTPUT_PUSH_CANCELLED = "Config push cancelled."
 OUTPUT_DOWNLOAD_CANCELLED = "Config download cancelled."
 OUTPUT_PUSH_START_FMT = "PUSH {path} profile={profile}"
@@ -469,6 +528,9 @@ OUTPUT_PUSH_FAILURE = "Push Config: FAILED"
 OUTPUT_DOWNLOAD_START_FMT = "DOWNLOAD {path}"
 OUTPUT_RUNTIME_ACTIVATE_FMT = "CMD runtimeActivate \"{profile}\""
 OUTPUT_RUNTIME_DEACTIVATE = "CMD runtimeDeactivate"
+OUTPUT_RUNTIME_STATE_FETCH = "CMD showRuntimeState"
+OUTPUT_RUNTIME_STATE_FETCH_OUT = "OUT showRuntimeState"
+OUTPUT_RUNTIME_STATE_FETCH_EMPTY = "Runtime state fetch returned no data."
 OUTPUT_LIFECYCLE_ACTIVATE_FMT = (
     "CMD lifecycleActivate \"{label}\" mode={mode} membershipMode={membership_mode}"
 )
@@ -525,11 +587,9 @@ MANUAL_DUTY_BLOCKED_STALE_TEXT = "Manual motor control blocked: robot state stal
 MANUAL_DUTY_BLOCKED_ESTOP_TEXT = "Manual motor control blocked: robot estopped."
 MANUAL_DUTY_BLOCKED_DISABLED_TEXT = "Manual motor control blocked: robot disabled."
 MANUAL_DUTY_BLOCKED_RUNTIME_TEXT = "Manual motor control blocked: runtime inactive."
-MANUAL_DUTY_BLOCKED_CONTROLLED_SCOPE_TEXT = (
-    "Manual motor control blocked: device is outside the active controlled lifecycle scope."
-)
+MANUAL_DUTY_BLOCKED_CONTROLLED_SCOPE_TEXT = SHARED_MANUAL_DUTY_BLOCKED_CONTROLLED_SCOPE_TEXT
 ACTIVE_GROUP_LOCKED_TEXT = (
-    "Active group membership is locked while controlled lifecycle session is ACTIVE. Deactivate lifecycle first."
+    "Active group membership is locked while an active scope session is running. Deactivate scope first."
 )
 MANUAL_DUTY_BUSY_TEXT = "Manual motor control blocked: command in flight."
 MANUAL_DUTY_SCALE_ELEMENT_SLIDER = "slider"
@@ -1047,60 +1107,30 @@ TEST_FAILURE_SIGNAL_SET_PREFIX = "signal fallback active:"
 TEST_FAILURE_LAST_SAMPLES_PREFIX = "last samples:"
 TEST_FAILURE_SAMPLE_LIMIT = 3
 TEST_LIBRARY_STATUS_INACTIVE_PREFIX = "selected test inactive - "
-TEST_LIBRARY_STATUS_READY = "selected test devices active - ready to run"
+TEST_LIBRARY_STATUS_READY = SHARED_TEST_SCOPE_STATUS_READY_DETAIL
 TEST_LIBRARY_STATUS_NO_SELECTED_TEST = TEST_LIBRARY_STATUS_INACTIVE_PREFIX + OUTPUT_NO_SELECTED_TEST
-TEST_LIBRARY_STATUS_LOADED_NOT_ACTIVATED = "selected test scope ready - not activated"
-TEST_LIBRARY_STATUS_MANUAL_RESTORED = "manual active-group restored - not activated"
-TEST_LIBRARY_STATUS_BLOCKED_ESTOP = "robot disabled (E-Stop)"
-TEST_LIBRARY_STATUS_BLOCKED_DISABLED = "robot disabled"
-TEST_LIBRARY_STATUS_BLOCKED_NOT_TELEOP = "robot not in teleop"
-TEST_SCOPE_DETAIL_NO_SELECTION = (
-    "Select a test from one of the library lists to show the devices that test uses."
-)
-TEST_SCOPE_DETAIL_LOADED_NOT_ACTIVATED = (
-    "This test requires the devices shown in Selected Test Devices. "
-    "Press Activate Group, then run the test."
-)
-TEST_SCOPE_DETAIL_MANUAL_RESTORED = (
-    "The remembered manual active-group was restored after leaving Tests. "
-    "Press Activate Group before running manual actions."
-)
-RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_ACTIVATED = (
-    "Activate Group first."
-)
-RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_ACTIVATED = (
-    "Activate lifecycle first."
-)
-RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_TELEOP = (
-    "Switch to teleop, then Activate Group."
-)
-RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_TELEOP = (
-    "Switch to teleop, then Activate lifecycle."
-)
-RUNNABLE_SCOPE_DETAIL_MANUAL_EMPTY = (
-    "Active group is empty. Add devices before Activate Group."
-)
-RUNNABLE_SCOPE_DETAIL_SELECT_PROFILE = (
-    "Select a profile before using manual/group controls."
-)
-TEST_SCOPE_DETAIL_MISSING_DEVICE_PREFIX = (
-    "This test cannot run because a required profile device is missing: "
-)
-TEST_SCOPE_DETAIL_REQUIRED_UNAVAILABLE = (
-    "This test cannot run because one or more required devices are not available."
-)
+TEST_LIBRARY_STATUS_LOADED_NOT_ACTIVATED = SHARED_SELECTED_TEST_STATUS_LOADED_NOT_ACTIVATED
+TEST_LIBRARY_STATUS_MANUAL_RESTORED = SHARED_SELECTED_TEST_STATUS_MANUAL_RESTORED
+TEST_LIBRARY_STATUS_BLOCKED_ESTOP = SHARED_SELECTED_TEST_STATUS_BLOCKED_ESTOP
+TEST_LIBRARY_STATUS_BLOCKED_DISABLED = SHARED_SELECTED_TEST_STATUS_BLOCKED_DISABLED
+TEST_LIBRARY_STATUS_BLOCKED_NOT_TELEOP = SHARED_SELECTED_TEST_STATUS_BLOCKED_NOT_TELEOP
+TEST_SCOPE_DETAIL_NO_SELECTION = SHARED_TEST_SCOPE_STATUS_NO_SELECTION_DETAIL
+TEST_SCOPE_DETAIL_LOADED_NOT_ACTIVATED = SHARED_TEST_SCOPE_STATUS_LOADED_NOT_ACTIVATED_DETAIL
+TEST_SCOPE_DETAIL_MANUAL_RESTORED = SHARED_TEST_SCOPE_STATUS_MANUAL_RESTORED_DETAIL
+RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_ACTIVATED = SHARED_RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_ACTIVATED
+RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_ACTIVATED = SHARED_RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_ACTIVATED
+RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_TELEOP = SHARED_RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_TELEOP
+RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_TELEOP = SHARED_RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_TELEOP
+RUNNABLE_SCOPE_DETAIL_MANUAL_EMPTY = SHARED_RUNNABLE_SCOPE_DETAIL_MANUAL_EMPTY
+RUNNABLE_SCOPE_DETAIL_SELECT_PROFILE = SHARED_RUNNABLE_SCOPE_DETAIL_SELECT_PROFILE
+TEST_SCOPE_DETAIL_MISSING_DEVICE_PREFIX = SHARED_TEST_SCOPE_STATUS_MISSING_DEVICE_PREFIX
+TEST_SCOPE_DETAIL_REQUIRED_UNAVAILABLE = SHARED_TEST_SCOPE_STATUS_REQUIRED_UNAVAILABLE_DETAIL
 TEST_SCOPE_DETAIL_NOT_LOADED_ON_ROBOT = (
     "This test exists locally, but the robot has not loaded it into the current runnable test set."
 )
-TEST_SCOPE_DETAIL_BLOCKED_ESTOP = (
-    "This test cannot run because the robot is E-stopped. Clear the E-stop before activating the group or running the test."
-)
-TEST_SCOPE_DETAIL_BLOCKED_DISABLED = (
-    "This test cannot run because the robot is disabled. Enable teleop before activating the group or running the test."
-)
-TEST_SCOPE_DETAIL_BLOCKED_NOT_TELEOP = (
-    "This test cannot run because the robot is not in teleop. Switch to teleop before activating the group or running the test."
-)
+TEST_SCOPE_DETAIL_BLOCKED_ESTOP = SHARED_TEST_SCOPE_STATUS_BLOCKED_ESTOP_DETAIL
+TEST_SCOPE_DETAIL_BLOCKED_DISABLED = SHARED_TEST_SCOPE_STATUS_BLOCKED_DISABLED_DETAIL
+TEST_SCOPE_DETAIL_BLOCKED_NOT_TELEOP = SHARED_TEST_SCOPE_STATUS_BLOCKED_NOT_TELEOP_DETAIL
 TEST_LIBRARY_LOCAL_SCOPE_PROFILE = "profile"
 TEST_LIBRARY_LOCAL_SCOPE_CONFIG = "config"
 TEST_LIBRARY_LOCAL_SCOPE_GLOBAL = "global"
@@ -1110,11 +1140,9 @@ TEST_SCOPE_PANEL_INACTIVE_HEADLINE = "NOT RUNNABLE"
 TEST_SCOPE_PANEL_NO_SELECTION_HEADLINE = "NO TEST SELECTED"
 TEST_SCOPE_PANEL_WAITING_HEADLINE = "WAITING FOR STATE"
 RUNNABLE_SCOPE_PANEL_TITLE = "Runnable State"
-RUNNABLE_SCOPE_PANEL_READY_DETAIL = "manual/group controls available - ready to run"
-RUNNABLE_SCOPE_PANEL_WAITING_DETAIL = "waiting for robot runtime state"
-RUNNABLE_SCOPE_PANEL_DISCONNECTED_DETAIL = (
-    "Robot connection unavailable. Power the robot and reconnect before running."
-)
+RUNNABLE_SCOPE_PANEL_READY_DETAIL = SHARED_RUNNABLE_SCOPE_PANEL_READY_DETAIL
+RUNNABLE_SCOPE_PANEL_WAITING_DETAIL = SHARED_RUNNABLE_SCOPE_PANEL_WAITING_DETAIL
+RUNNABLE_SCOPE_PANEL_DISCONNECTED_DETAIL = SHARED_RUNNABLE_SCOPE_PANEL_DISCONNECTED_DETAIL
 TEST_SCOPE_PANEL_READY_BG = "#dcfce7"
 TEST_SCOPE_PANEL_READY_FG = "#166534"
 TEST_SCOPE_PANEL_INACTIVE_BG = "#fef3c7"
@@ -1134,12 +1162,12 @@ TEST_RESULT_FAIL_FG = "#991b1b"
 TEST_RESULT_RUNNING_FG = "#1d4ed8"
 TEST_RESULT_NEUTRAL_FG = "#374151"
 TEST_ACTIVE_GROUP_TITLE = "Selected Test Devices"
-TEST_ACTIVE_GROUP_STATUS_LOCKED = "locked"
-TEST_ACTIVE_GROUP_STATUS_INVALID = "invalid"
-TEST_ACTIVE_GROUP_STATUS_NOT_ACTIVATED = "not instantiated"
-TEST_ACTIVE_GROUP_STATUS_ENABLED = "enabled"
+TEST_ACTIVE_GROUP_STATUS_LOCKED = SHARED_TEST_ACTIVE_GROUP_STATUS_LOCKED
+TEST_ACTIVE_GROUP_STATUS_INVALID = SHARED_TEST_ACTIVE_GROUP_STATUS_INVALID
+TEST_ACTIVE_GROUP_STATUS_NOT_ACTIVATED = SHARED_TEST_ACTIVE_GROUP_STATUS_NOT_ACTIVATED
+TEST_ACTIVE_GROUP_STATUS_ENABLED = SHARED_TEST_ACTIVE_GROUP_STATUS_ENABLED
 TEST_ACTIVE_GROUP_PANEL_EMPTY = "No selected-test devices."
-TEST_ACTIVE_GROUP_SINGLETON_LABELS = {"controller0", "roborio", "pdp"}
+TEST_ACTIVE_GROUP_SINGLETON_LABELS = SHARED_TEST_ACTIVE_GROUP_SINGLETON_LABELS
 TEST_LIBRARY_NOTE_TEXT = (
     "The Tests tab has three sources: external Global Library, config-shared Config Library, "
     "and selected-profile Profile Tests. Selecting a test shows the devices required by that DSL test. "
@@ -3715,21 +3743,12 @@ class BringupControlUI(tk.Tk):
             about the missing activation step instead of redundantly mentioning
             teleop again.
         """
-        owner_mode = self.__dict__.get("_group_owner_mode", GROUP_SOURCE_MANUAL)
-        if (
-            owner_mode == GROUP_SOURCE_MANUAL
-            and self.__dict__.get("_profile_box") is not None
-            and self._selected_profile_name() == PROFILE_NONE
-        ):
-            return RUNNABLE_SCOPE_DETAIL_SELECT_PROFILE
-        mode = str(self.__dict__.get("_robot_mode_known", "") or "").strip().lower()
-        if mode and mode != "teleop":
-            if owner_mode == GROUP_SOURCE_SELECTED_TEST:
-                return RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_TELEOP
-            return RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_TELEOP
-        if owner_mode == GROUP_SOURCE_SELECTED_TEST:
-            return RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_ACTIVATED
-        return RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_ACTIVATED
+        return resolve_scope_activation_notice(
+            scope_kind=self._runnable_scope_kind(),
+            local_selected_profile=self._selected_profile_name(),
+            local_profile_required=self.__dict__.get("_profile_box") is not None,
+            robot_mode=str(self.__dict__.get("_robot_mode_known", "") or "").strip().lower(),
+        )
 
     def _build_visibility_ctre_raw_table_widget(self, parent: tk.Widget) -> ttk.Treeview:
         """
@@ -3838,6 +3857,51 @@ class BringupControlUI(tk.Tk):
             return PROFILE_NONE
         return _normalize_profile_name(profile_box.get())
 
+    def _diagnostic_profile_state(self) -> DiagnosticProfileState:
+        """
+        NAME
+            _diagnostic_profile_state - Return the shared diagnostic profile context state.
+        """
+        return resolve_diagnostic_profile_state(
+            self._selected_profile_name(),
+            self._robot_selected_profile,
+            self._robot_active_runtime_profile,
+            local_profile_required=self.__dict__.get("_profile_box") is not None,
+        )
+
+    def _runnable_scope_kind(self) -> str:
+        """
+        NAME
+            _runnable_scope_kind - Return normalized shared runnable-scope kind text.
+        """
+        owner_mode = str(self.__dict__.get("_group_owner_mode", "") or "").strip().lower()
+        if owner_mode == GROUP_SOURCE_SELECTED_TEST:
+            return RUNNABLE_SCOPE_KIND_SELECTED_TEST
+        if owner_mode == GROUP_SOURCE_MANUAL:
+            return RUNNABLE_SCOPE_KIND_MANUAL
+        if self._scope_context_kind() == GROUP_SOURCE_SELECTED_TEST:
+            return RUNNABLE_SCOPE_KIND_SELECTED_TEST
+        return RUNNABLE_SCOPE_KIND_MANUAL
+
+    def _runnable_scope_state(self, stale_state: bool) -> RunnableScopeState:
+        """
+        NAME
+            _runnable_scope_state - Return the shared runnable-scope decision state.
+        """
+        return resolve_runnable_scope_state(
+            scope_kind=self._runnable_scope_kind(),
+            local_selected_profile=self._selected_profile_name(),
+            local_profile_required=self.__dict__.get("_profile_box") is not None,
+            tcp_connected=bool(self.__dict__.get("_tcp_connected", True)),
+            runtime_state_seen=bool(self.__dict__.get("_runtime_state_seen", False)),
+            stale_state=bool(stale_state),
+            robot_enabled=bool(self.__dict__.get("_robot_enabled_known", True)),
+            robot_estopped=bool(self.__dict__.get("_robot_estopped_known", False)),
+            robot_mode=str(self.__dict__.get("_robot_mode_known", "") or "").strip().lower(),
+            manual_group_empty=self._manual_active_group_is_empty(),
+            scope_active=self._scope_is_currently_active(),
+        )
+
     def _diagnostic_profile_context_name(self) -> str:
         """
         NAME
@@ -3848,28 +3912,22 @@ class BringupControlUI(tk.Tk):
             After that, prefer the robot's active runtime profile, then the
             robot's selected profile, then the local UI selection.
         """
-        profile_box = self.__dict__.get("_profile_box")
-        local_selected = self._selected_profile_name()
-        if profile_box is not None and local_selected == PROFILE_NONE:
-            return PROFILE_NONE
-        active_name = _normalize_profile_name(self._robot_active_runtime_profile)
-        if active_name != PROFILE_NONE:
-            return active_name
-        robot_selected = _normalize_profile_name(self._robot_selected_profile)
-        if robot_selected != PROFILE_NONE:
-            return robot_selected
-        return local_selected
+        return self._diagnostic_profile_state().effective_profile
 
     def _sync_diagnostic_profile_context(self, reload_views: bool) -> None:
         """
         NAME
             _sync_diagnostic_profile_context - Re-anchor diagnostics surfaces to one profile context.
         """
-        name = self._diagnostic_profile_context_name()
+        state = self._diagnostic_profile_state()
+        name = state.effective_profile
         self._refresh_profile_devices(name)
         if reload_views and name != self._last_profile_context:
             for live_view in self._iter_live_views():
-                live_view.reload_profile(name)
+                if hasattr(live_view, "apply_diagnostic_profile_state"):
+                    live_view.apply_diagnostic_profile_state(state)
+                else:
+                    live_view.reload_profile(name)
         self._last_profile_context = name
         self.after_idle(self._refresh_evidence_view)
 
@@ -4235,18 +4293,11 @@ class BringupControlUI(tk.Tk):
         NAME
             _is_manual_duty_target_allowed - Return whether one target label is eligible for manual duty.
         """
-        clean_label = str(label or NT_VALUE_EMPTY).strip().lower()
-        if not clean_label:
-            return False
-        runtime_device = self._latest_runtime_devices.get(clean_label, {})
-        if not isinstance(runtime_device, dict):
-            return False
-        if self._controlled_lifecycle_active_known is True:
-            lifecycle_state = str(
-                runtime_device.get("lifecycleState", NT_VALUE_EMPTY)
-            ).strip()
-            return lifecycle_state == "controlled-active"
-        return bool(runtime_device.get("testable", False))
+        return resolve_manual_duty_scope_state(
+            label=label,
+            runtime_state_by_label=dict(self.__dict__.get("_latest_runtime_devices", {})),
+            controlled_lifecycle_active=self._controlled_lifecycle_active_known is True,
+        ).allowed
 
     def _manual_duty_scope_block_message_for_targets(self, targets: List[str]) -> str:
         """
@@ -4256,8 +4307,13 @@ class BringupControlUI(tk.Tk):
         if self._controlled_lifecycle_active_known is not True:
             return NT_VALUE_EMPTY
         for label in targets:
-            if not self._is_manual_duty_target_allowed(label):
-                return MANUAL_DUTY_BLOCKED_CONTROLLED_SCOPE_TEXT
+            state = resolve_manual_duty_scope_state(
+                label=label,
+                runtime_state_by_label=dict(self.__dict__.get("_latest_runtime_devices", {})),
+                controlled_lifecycle_active=True,
+            )
+            if not state.allowed:
+                return state.blocked_reason
         return NT_VALUE_EMPTY
 
     def _is_manual_motor_node(self, node: object) -> bool:
@@ -5595,10 +5651,9 @@ class BringupControlUI(tk.Tk):
             ):
                 self._update_evidence_cache_incremental(max_devices=len(profile_devices))
             rows = self._build_evidence_rows()
-            console_snapshot = self._collect_console_snapshot()
-            result = build_fault_diagnosis(
+            snapshot = build_evidence_fault_snapshot(
                 evidence_rows=rows,
-                console_snapshot=console_snapshot,
+                console_snapshot=self._collect_console_snapshot(),
                 topology_profile=self._current_topology_profile(),
                 now_s=now_s,
             )
@@ -5608,17 +5663,16 @@ class BringupControlUI(tk.Tk):
             self._fault_finder_status_var.set(CAN_FAULT_FINDER_STATUS_NOT_RUN)
             self._set_fault_finder_text(CAN_FAULT_FINDER_TEXT_ERROR_FMT.format(error=exc))
             return
-        self._fault_finder_last_run_at = now_s
-        self._fault_finder_result = dict(result)
-        candidates = result.get("candidates")
-        candidate_count = len(candidates) if isinstance(candidates, list) else 0
+        self._fault_finder_last_run_at = float(snapshot.get(FAULT_SNAPSHOT_KEY_RAN_AT, now_s) or now_s)
+        self._fault_finder_result = dict(snapshot.get(FAULT_SNAPSHOT_KEY_RESULT, {}))
+        candidate_count = int(snapshot.get(FAULT_SNAPSHOT_KEY_CANDIDATE_COUNT, 0) or 0)
         self._fault_finder_status_var.set(
             CAN_FAULT_FINDER_STATUS_FMT.format(
                 age=_format_age_seconds(0.0),
                 count=candidate_count,
             )
         )
-        self._set_fault_finder_text(render_fault_diagnosis(result))
+        self._set_fault_finder_text(str(snapshot.get(FAULT_SNAPSHOT_KEY_RENDERED_TEXT, TEXT_EMPTY)))
 
     def _evidence_profile_generation(self) -> str:
         """
@@ -8382,7 +8436,7 @@ class BringupControlUI(tk.Tk):
             "",
             "Run All:",
             "  Run all enabled scripted tests in order.",
-            "  Use this after verifying the selected active group and lifecycle state.",
+            "  Use this after verifying the selected active group and scope state.",
             "  Output: streaming results per test; use Print Next to preview order.",
             "",
             "Print Next:",
@@ -8767,14 +8821,7 @@ class BringupControlUI(tk.Tk):
         self._runtime_state_pause_until = None
         self._runtime_state_last_poll = 0.0
         self._runtime_state_pending_seq = None
-        if not self._tcp_connected or not self._handshake_done:
-            return
-        if self._tracker.is_pending() or self._log_poll_inflight:
-            return
-        seq = show_runtime_state(self._session, json_output=True)
-        if seq is not None:
-            self._runtime_state_pending_seq = int(seq)
-            self._runtime_state_pending_at = time.time()
+        self._fetch_runtime_state_snapshot(show_output=False, log_blocked=False)
 
     def _send_handshake(self, reset: bool, force: bool = False, log: bool = True) -> None:
         """
@@ -8967,6 +9014,9 @@ class BringupControlUI(tk.Tk):
         """
         if not command:
             return
+        if str(command or "").strip().lower() == CMD_SHOW_RUNTIME_STATE.lower():
+            self._show_runtime_state_from_ui()
+            return
         metadata = ACTIONS_BY_NAME.get(command, {})
         action_kind = str(metadata.get(INVENTORY_KEY_ACTION_KIND, ACTION_KIND_REMOTE_COMMAND))
         if action_kind == ACTION_KIND_HOST_LOCAL:
@@ -9016,9 +9066,6 @@ class BringupControlUI(tk.Tk):
         )
         if seq is not None:
             self._last_sent_seq = seq
-            if str(command or "").strip().lower() == CMD_SHOW_RUNTIME_STATE.lower():
-                self._runtime_state_pending_seq = int(seq)
-                self._runtime_state_pending_at = time.time()
 
     def _on_test_selected(self, _event=None) -> None:
         """
@@ -9050,46 +9097,40 @@ class BringupControlUI(tk.Tk):
         NAME
             _selected_test_inactive_reason - Return the current selected-test readiness blocker.
         """
+        return self._selected_test_scope_state().inactive_reason
+
+    def _selected_test_scope_state(self) -> SelectedTestScopeState:
+        """
+        NAME
+            _selected_test_scope_state - Return the shared selected-test readiness state.
+        """
         selected_name = str(self._selected_test_var.get() or "").strip()
-        if not selected_name or selected_name == PROFILE_NONE:
-            return OUTPUT_NO_SELECTED_TEST
-        rows = list(self.__dict__.get("_tests_active_group_rows", []))
-        invalid_labels = [str(row.get("label", "")).strip() for row in rows if bool(row.get("invalid"))]
-        if invalid_labels:
-            return "missing resource/device - " + invalid_labels[0]
-        runtime_block_reason = self._test_runtime_block_reason()
-        if runtime_block_reason:
-            return runtime_block_reason
-        row = self._selected_test_row(selected_name)
-        if not self._scope_is_currently_active():
-            if not isinstance(row, dict):
-                return "required devices unavailable"
-            if self.__dict__.get("_tests_active_group_loaded_to_robot") is False:
-                return "required devices unavailable"
-            return TEST_LIBRARY_STATUS_LOADED_NOT_ACTIVATED
-        if not isinstance(row, dict):
-            return "required devices unavailable"
-        blocked_reason = str(row.get("blockedReason", "") or "").strip()
-        if blocked_reason:
-            return blocked_reason
-        runnable_now = row.get("runnableNow")
-        if isinstance(runnable_now, bool):
-            return "" if runnable_now else "required devices unavailable"
-        return ""
+        return resolve_selected_test_scope_state(
+            selected_name=selected_name,
+            active_group_rows=list(self.__dict__.get("_tests_active_group_rows", [])),
+            runtime_block_reason=self._test_runtime_block_reason(),
+            scope_active=self._scope_is_currently_active(),
+            loaded_to_robot=self.__dict__.get("_tests_active_group_loaded_to_robot"),
+            selected_row=self._selected_test_row(selected_name),
+        )
+
+    def _selected_test_panel_state(self) -> SelectedTestPanelState:
+        """
+        NAME
+            _selected_test_panel_state - Return shared Tests-tab presentation state for the selected test.
+        """
+        return resolve_selected_test_panel_state(self._selected_test_scope_state())
 
     def _test_runtime_block_reason(self) -> str:
         """
         NAME
             _test_runtime_block_reason - Return robot-state blocker text for activation/test execution.
         """
-        if bool(self.__dict__.get("_robot_estopped_known", False)):
-            return TEST_LIBRARY_STATUS_BLOCKED_ESTOP
-        if not bool(self.__dict__.get("_robot_enabled_known", True)):
-            return TEST_LIBRARY_STATUS_BLOCKED_DISABLED
-        mode = str(self.__dict__.get("_robot_mode_known", "") or "").strip().lower()
-        if mode and mode != "teleop":
-            return TEST_LIBRARY_STATUS_BLOCKED_NOT_TELEOP
-        return ""
+        return resolve_selected_test_runtime_block_reason(
+            robot_estopped=bool(self.__dict__.get("_robot_estopped_known", False)),
+            robot_enabled=bool(self.__dict__.get("_robot_enabled_known", True)),
+            robot_mode=str(self.__dict__.get("_robot_mode_known", "") or "").strip().lower(),
+        )
 
     def _selected_test_row(self, selected_name: str) -> Optional[Dict[str, Any]]:
         """
@@ -9124,7 +9165,7 @@ class BringupControlUI(tk.Tk):
         NAME
             _selected_test_ready - Return whether the current selected test is ready to run.
         """
-        return self._selected_test_inactive_reason() == ""
+        return self._selected_test_scope_state().ready
 
     def _latest_test_run_payload(self) -> Dict[str, Any]:
         """
@@ -9296,30 +9337,13 @@ class BringupControlUI(tk.Tk):
             listbox.insert(tk.END, TEST_ACTIVE_GROUP_PANEL_EMPTY)
             return
         scope_active = self._scope_is_currently_active() if self._scope_context_kind() == GROUP_SOURCE_SELECTED_TEST else self._active_group_is_currently_active()
-        for row in rows:
-            label = str(row.get("label", "")).strip()
-            if not label:
-                continue
-            statuses = [TEST_ACTIVE_GROUP_STATUS_ENABLED]
-            if bool(row.get("locked")) or scope_active:
-                statuses.append(TEST_ACTIVE_GROUP_STATUS_LOCKED)
-            if bool(row.get("invalid")):
-                statuses.append(TEST_ACTIVE_GROUP_STATUS_INVALID)
-            runtime_device = self._runtime_device_for_label(label)
-            instantiated = False
-            if runtime_device:
-                if bool(runtime_device.get("instantiated", False)):
-                    instantiated = True
-                elif str(label).strip().lower() in TEST_ACTIVE_GROUP_SINGLETON_LABELS:
-                    instantiated = bool(runtime_device.get("testable", False))
-            statuses.append(
-                "instantiated" if scope_active and instantiated else TEST_ACTIVE_GROUP_STATUS_NOT_ACTIVATED
-            )
-            reason = str(row.get("reason", "")).strip()
-            line = f"{label} | " + " | ".join(statuses)
-            if reason:
-                line += f" | {reason}"
-            listbox.insert(tk.END, line)
+        runtime_state_by_label = dict(self.__dict__.get("_latest_runtime_devices", {}))
+        for state in resolve_tests_active_group_member_rows(
+            rows=rows,
+            runtime_state_by_label=runtime_state_by_label,
+            scope_active=scope_active,
+        ):
+            listbox.insert(tk.END, state.line)
 
     def _refresh_selected_test_scope_status(self) -> None:
         """
@@ -9332,26 +9356,25 @@ class BringupControlUI(tk.Tk):
             return
         panel_bg = TEST_SCOPE_PANEL_NEUTRAL_BG
         panel_fg = TEST_SCOPE_PANEL_NEUTRAL_FG
-        inactive_reason = self._selected_test_inactive_reason()
-        if inactive_reason:
-            status_var.set(self._format_selected_test_scope_status_detail(inactive_reason))
+        state = self._selected_test_panel_state()
+        if state.level == TEST_SCOPE_PANEL_NEUTRAL_LEVEL:
+            status_var.set(state.detail)
             if headline_var is not None:
-                if inactive_reason == OUTPUT_NO_SELECTED_TEST:
-                    headline_var.set(TEST_SCOPE_PANEL_NO_SELECTION_HEADLINE)
-                else:
-                    headline_var.set(TEST_SCOPE_PANEL_INACTIVE_HEADLINE)
-            if inactive_reason == OUTPUT_NO_SELECTED_TEST:
-                panel_bg = TEST_SCOPE_PANEL_NEUTRAL_BG
-                panel_fg = TEST_SCOPE_PANEL_NEUTRAL_FG
-            else:
-                panel_bg = TEST_SCOPE_PANEL_INACTIVE_BG
-                panel_fg = TEST_SCOPE_PANEL_INACTIVE_FG
-        else:
-            status_var.set(TEST_LIBRARY_STATUS_READY)
+                headline_var.set(state.headline)
+            panel_bg = TEST_SCOPE_PANEL_NEUTRAL_BG
+            panel_fg = TEST_SCOPE_PANEL_NEUTRAL_FG
+        elif state.level == RUNNABLE_STATE_LEVEL_READY:
+            status_var.set(state.detail)
             if headline_var is not None:
-                headline_var.set(TEST_SCOPE_PANEL_READY_HEADLINE)
+                headline_var.set(state.headline)
             panel_bg = TEST_SCOPE_PANEL_READY_BG
             panel_fg = TEST_SCOPE_PANEL_READY_FG
+        else:
+            status_var.set(state.detail)
+            if headline_var is not None:
+                headline_var.set(state.headline)
+            panel_bg = TEST_SCOPE_PANEL_INACTIVE_BG
+            panel_fg = TEST_SCOPE_PANEL_INACTIVE_FG
         self._apply_selected_test_scope_panel_colors(panel_bg, panel_fg)
 
     def _format_selected_test_scope_status_detail(self, inactive_reason: str) -> str:
@@ -9359,27 +9382,15 @@ class BringupControlUI(tk.Tk):
         NAME
             _format_selected_test_scope_status_detail - Convert one internal blocked reason into clearer operator guidance.
         """
-        reason = str(inactive_reason or "").strip()
-        if not reason:
-            return TEST_LIBRARY_STATUS_READY
-        if reason == OUTPUT_NO_SELECTED_TEST:
-            return TEST_SCOPE_DETAIL_NO_SELECTION
-        if reason == TEST_LIBRARY_STATUS_LOADED_NOT_ACTIVATED:
-            return TEST_SCOPE_DETAIL_LOADED_NOT_ACTIVATED
-        if reason == TEST_LIBRARY_STATUS_MANUAL_RESTORED:
-            return TEST_SCOPE_DETAIL_MANUAL_RESTORED
-        if reason == TEST_LIBRARY_STATUS_BLOCKED_ESTOP:
-            return TEST_SCOPE_DETAIL_BLOCKED_ESTOP
-        if reason == TEST_LIBRARY_STATUS_BLOCKED_DISABLED:
-            return TEST_SCOPE_DETAIL_BLOCKED_DISABLED
-        if reason == TEST_LIBRARY_STATUS_BLOCKED_NOT_TELEOP:
-            return TEST_SCOPE_DETAIL_BLOCKED_NOT_TELEOP
-        if reason.startswith("missing resource/device - "):
-            missing = reason.split(" - ", 1)[1].strip()
-            return TEST_SCOPE_DETAIL_MISSING_DEVICE_PREFIX + missing
-        if reason == "required devices unavailable":
-            return TEST_SCOPE_DETAIL_REQUIRED_UNAVAILABLE
-        return TEST_LIBRARY_STATUS_INACTIVE_PREFIX + reason
+        state = SelectedTestScopeState(
+            selected_name=PROFILE_NONE,
+            inactive_reason=str(inactive_reason or "").strip(),
+            ready=not str(inactive_reason or "").strip(),
+            headline=TEST_SCOPE_PANEL_READY_HEADLINE if not str(inactive_reason or "").strip() else TEST_SCOPE_PANEL_INACTIVE_HEADLINE,
+            detail_reason=str(inactive_reason or "").strip(),
+            level=RUNNABLE_STATE_LEVEL_READY if not str(inactive_reason or "").strip() else RUNNABLE_STATE_LEVEL_WARN,
+        )
+        return resolve_selected_test_panel_state(state).detail
 
     def _apply_selected_test_scope_panel_colors(self, background: str, foreground: str) -> None:
         """
@@ -10250,7 +10261,51 @@ class BringupControlUI(tk.Tk):
         NAME
             _show_runtime_state_from_ui - Request the runtime-state payload through the top-bar control.
         """
-        self._on_action(CMD_SHOW_RUNTIME_STATE)
+        self._append_output(f"{timestamp_hms()} {OUTPUT_RUNTIME_STATE_FETCH}")
+        self._last_cmd = (CMD_SHOW_RUNTIME_STATE, {"source": "rest_runtime_state"})
+        self._fetch_runtime_state_snapshot(show_output=True, log_blocked=True)
+
+    def _runtime_state_fetch_state(self) -> RuntimeStateFetchState:
+        """
+        NAME
+            _runtime_state_fetch_state - Return the shared runtime-state fetch gate for the current UI session.
+        """
+        tracker = self.__dict__.get("_tracker")
+        tracker_pending = bool(tracker.is_pending()) if tracker is not None else False
+        return resolve_runtime_state_fetch_state(
+            tcp_connected=bool(self._tcp_connected),
+            handshake_done=bool(self._handshake_done),
+            tracker_pending=tracker_pending,
+            log_poll_inflight=bool(self._log_poll_inflight),
+        )
+
+    def _fetch_runtime_state_snapshot(
+        self,
+        *,
+        show_output: bool,
+        log_blocked: bool,
+    ) -> bool:
+        """
+        NAME
+            _fetch_runtime_state_snapshot - Fetch and apply runtime-state JSON through the shared REST runtime path.
+        """
+        fetch_state = self._runtime_state_fetch_state()
+        if not fetch_state.allowed:
+            if log_blocked and fetch_state.blocked_reason:
+                self._append_output(fetch_state.blocked_reason)
+            return False
+        runtime_snapshot = self._session.fetch_runtime_state()
+        if not isinstance(runtime_snapshot, dict) or not runtime_snapshot:
+            if log_blocked:
+                self._append_output(OUTPUT_RUNTIME_STATE_FETCH_EMPTY)
+            return False
+        self._runtime_state_pending_seq = None
+        self._runtime_state_pending_at = 0.0
+        self._apply_runtime_state_payload(runtime_snapshot)
+        if show_output:
+            self._append_output(f"{timestamp_hms()} {OUTPUT_RUNTIME_STATE_FETCH_OUT}")
+            self._append_output(f"  json: {json.dumps(runtime_snapshot)}")
+        return True
 
     def _selected_activation_membership_mode(self) -> str:
         """
@@ -10752,18 +10807,7 @@ class BringupControlUI(tk.Tk):
         source = self._live_source_var.get()
         if source == LIVE_SOURCE_FILE:
             return
-        if not self._tcp_connected or not self._handshake_done:
-            return
-        if self._tracker.is_pending() or self._log_poll_inflight:
-            return
-        if self._runtime_state_pending_seq is None:
-            seq = show_runtime_state(self._session, json_output=True)
-            if seq is not None:
-                self._runtime_state_pending_seq = int(seq)
-                self._runtime_state_pending_at = now
-        else:
-            if (now - self._runtime_state_pending_at) > self._runtime_state_timeout_sec:
-                self._runtime_state_pending_seq = None
+        self._fetch_runtime_state_snapshot(show_output=False, log_blocked=False)
 
     def _manual_runtime_refresh_active(self) -> bool:
         """
@@ -11040,48 +11084,39 @@ class BringupControlUI(tk.Tk):
         NAME
             _apply_live_runtime_notice_from_nt_state - Surface DS/NT state directly in Live Topology.
         """
-        tcp_connected = bool(self.__dict__.get("_tcp_connected", True))
-        activation_notice = self._scope_activation_notice_text()
-        scope_active = self._scope_is_currently_active()
-        if not tcp_connected:
-            self._set_runtime_state_notice(
-                RUNNABLE_SCOPE_PANEL_DISCONNECTED_DETAIL, "error"
-            )
-        elif stale_state:
-            self._set_runtime_state_notice(
-                "Robot state stale (code not running?)", "warn"
-            )
-        elif estopped:
-            self._set_runtime_state_notice("Robot E-Stop. Manual run blocked.", "error")
-        elif not enabled:
-            self._set_runtime_state_notice(
-                "Robot disabled. Enable teleop to run motors.", "info"
-            )
-        elif self._manual_active_group_is_empty():
-            self._set_runtime_state_notice(
-                RUNNABLE_SCOPE_DETAIL_MANUAL_EMPTY, "warn"
-            )
-        elif not scope_active:
-            self._set_runtime_state_notice(activation_notice, "warn")
-        else:
+        state = resolve_runnable_scope_state(
+            scope_kind=self._runnable_scope_kind(),
+            local_selected_profile=self._selected_profile_name(),
+            local_profile_required=self.__dict__.get("_profile_box") is not None,
+            tcp_connected=bool(self.__dict__.get("_tcp_connected", True)),
+            runtime_state_seen=True,
+            stale_state=bool(stale_state),
+            robot_enabled=bool(enabled),
+            robot_estopped=bool(estopped),
+            robot_mode=str(self.__dict__.get("_robot_mode_known", "") or "").strip().lower(),
+            manual_group_empty=self._manual_active_group_is_empty(),
+            scope_active=self._scope_is_currently_active(),
+        )
+        if should_clear_runtime_event_notice(
+            self.__dict__.get("_runtime_event_notice_text", NT_VALUE_EMPTY),
+            state,
+        ):
+            self._clear_runtime_event_notice()
+            for live_view in self._iter_live_views():
+                if hasattr(live_view, "clear_runtime_notice"):
+                    live_view.clear_runtime_notice()
+        if state.level == "ready":
             self._clear_runtime_state_notice()
+        else:
+            self._set_runtime_state_notice(state.detail, state.level)
         for live_view in self._iter_live_views():
-            if not tcp_connected:
-                live_view.set_runtime_state_notice(
-                    RUNNABLE_SCOPE_PANEL_DISCONNECTED_DETAIL, "error"
-                )
-            elif stale_state:
-                live_view.set_runtime_state_notice("Robot state stale (code not running?)", "warn")
-            elif estopped:
-                live_view.set_runtime_state_notice("Robot E-Stop. Manual run blocked.", "error")
-            elif not enabled:
-                live_view.set_runtime_state_notice("Robot disabled. Enable teleop to run motors.", "info")
-            elif self._manual_active_group_is_empty():
-                live_view.set_runtime_state_notice(RUNNABLE_SCOPE_DETAIL_MANUAL_EMPTY, "warn")
-            elif not scope_active:
-                live_view.set_runtime_state_notice(activation_notice, "warn")
-            else:
+            if hasattr(live_view, "apply_runnable_scope_state"):
+                live_view.apply_runnable_scope_state(state)
+                continue
+            if state.level == "ready":
                 live_view.clear_runtime_state_notice()
+            else:
+                live_view.set_runtime_state_notice(state.detail, state.level)
 
     def _selected_profile_from_command_event(
         self,
@@ -11377,6 +11412,7 @@ class BringupControlUI(tk.Tk):
         """
         self._refresh_scope_context_label()
         self._refresh_selected_test_scope_status()
+        runnable_state = self._runnable_scope_state(stale_state=self._state_stale)
         allow = (
             self._tcp_connected
             and self._handshake_done
@@ -11404,15 +11440,8 @@ class BringupControlUI(tk.Tk):
             activate_allowed = allow
             if activate_allowed and self._test_runtime_block_reason():
                 activate_allowed = False
-            if (
-                activate_allowed
-                and self._scope_context_kind() != GROUP_SOURCE_SELECTED_TEST
-                and self.__dict__.get("_profile_box") is not None
-                and self._selected_profile_name() == PROFILE_NONE
-            ):
-                activate_allowed = False
             if activate_allowed and self._scope_context_kind() != GROUP_SOURCE_SELECTED_TEST:
-                activate_allowed = not self._manual_active_group_is_empty()
+                activate_allowed = runnable_state.activation_allowed
             if (
                 activate_allowed
                 and self._scope_context_kind() == GROUP_SOURCE_SELECTED_TEST

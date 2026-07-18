@@ -143,6 +143,29 @@ from tools.can_nt.visibility_constants import (
     VIS_KEY_VISIBILITY,
     VIS_VISIBLE_TRUE,
 )
+from tools.can_nt.host_ui_state_service import (
+    ACTIVE_GROUP_STATUS_EDITABLE_TEXT as SHARED_ACTIVE_GROUP_STATUS_EDITABLE_TEXT,
+    ACTIVE_GROUP_STATUS_EMPTY_TEXT as SHARED_ACTIVE_GROUP_STATUS_EMPTY_TEXT,
+    ACTIVE_GROUP_STATUS_LOCKED_TEXT as SHARED_ACTIVE_GROUP_STATUS_LOCKED_TEXT,
+    ACTIVE_GROUP_STATUS_NONE_TEXT as SHARED_ACTIVE_GROUP_STATUS_NONE_TEXT,
+    ACTIVE_GROUP_STATUS_READY_TEXT as SHARED_ACTIVE_GROUP_STATUS_READY_TEXT,
+    ACTIVE_GROUP_STATUS_WAITING_TEXT as SHARED_ACTIVE_GROUP_STATUS_WAITING_TEXT,
+    ACTIVE_GROUP_SUMMARY_EMPTY_TEXT as SHARED_ACTIVE_GROUP_SUMMARY_EMPTY_TEXT,
+    ActiveScopeMembershipState,
+    ActiveGroupSummaryState,
+    PROFILE_NONE as SHARED_PROFILE_NONE,
+    RUNNABLE_PANEL_INACTIVE_HEADLINE as SHARED_RUNNABLE_PANEL_INACTIVE_HEADLINE,
+    RUNNABLE_PANEL_READY_HEADLINE as SHARED_RUNNABLE_PANEL_READY_HEADLINE,
+    RUNNABLE_PANEL_WAITING_HEADLINE as SHARED_RUNNABLE_PANEL_WAITING_HEADLINE,
+    RUNNABLE_SCOPE_KIND_MANUAL,
+    RUNNABLE_SCOPE_PANEL_READY_DETAIL as SHARED_RUNNABLE_SCOPE_PANEL_READY_DETAIL,
+    RUNNABLE_SCOPE_PANEL_WAITING_DETAIL as SHARED_RUNNABLE_SCOPE_PANEL_WAITING_DETAIL,
+    RunnableScopeState,
+    resolve_active_group_summary_state,
+    resolve_active_scope_membership_state,
+    resolve_runnable_scope_state,
+    should_clear_runtime_event_notice,
+)
 
 # Constants (presence confidence values and colors).
 PRESENCE_CONF_HIGH = "HIGH"
@@ -168,11 +191,11 @@ NOTICE_COLOR_WARN_FG = "#c2410c"
 NOTICE_COLOR_ERROR_BG = "#fef2f2"
 NOTICE_COLOR_ERROR_FG = "#b91c1c"
 RUNNABLE_PANEL_TITLE = "Runnable State"
-RUNNABLE_PANEL_READY_HEADLINE = "READY TO RUN"
-RUNNABLE_PANEL_INACTIVE_HEADLINE = "NOT RUNNABLE"
-RUNNABLE_PANEL_WAITING_HEADLINE = "WAITING FOR STATE"
-RUNNABLE_PANEL_READY_DETAIL = "manual/group controls available - ready to run"
-RUNNABLE_PANEL_WAITING_DETAIL = "waiting for robot runtime state"
+RUNNABLE_PANEL_READY_HEADLINE = SHARED_RUNNABLE_PANEL_READY_HEADLINE
+RUNNABLE_PANEL_INACTIVE_HEADLINE = SHARED_RUNNABLE_PANEL_INACTIVE_HEADLINE
+RUNNABLE_PANEL_WAITING_HEADLINE = SHARED_RUNNABLE_PANEL_WAITING_HEADLINE
+RUNNABLE_PANEL_READY_DETAIL = SHARED_RUNNABLE_SCOPE_PANEL_READY_DETAIL
+RUNNABLE_PANEL_WAITING_DETAIL = SHARED_RUNNABLE_SCOPE_PANEL_WAITING_DETAIL
 RUNNABLE_PANEL_MANUAL_NOT_ACTIVATED_DETAIL = (
     "Activate Group first."
 )
@@ -343,18 +366,18 @@ RUNTIME_PROBE_AGE_STALE = "stale"
 RUNTIME_PROBE_AGE_AGING = "aging"
 RUNTIME_PROBE_AGE_FRESH = "fresh"
 TITLE_TEXT_DEFAULT = "Live Topology"
-PROFILE_NONE = "(none)"
+PROFILE_NONE = SHARED_PROFILE_NONE
 FIT_RETRY_DELAY_MS = 25
 SELECTION_FRAME_TEXT = "Selection"
 ACTIVE_GROUP_NAME = "active-group"
 ACTIVE_GROUP_FRAME_TEXT = "Active Group"
-ACTIVE_GROUP_STATUS_NONE_TEXT = "Status: (not present)"
-ACTIVE_GROUP_STATUS_EMPTY_TEXT = "Status: empty - add devices to activate"
-ACTIVE_GROUP_STATUS_WAITING_TEXT = "Status: waiting for runtime state"
-ACTIVE_GROUP_STATUS_EDITABLE_TEXT = "Status: membership editor - add devices, then activate"
-ACTIVE_GROUP_STATUS_LOCKED_TEXT = "Status: locked by active controlled session"
-ACTIVE_GROUP_STATUS_READY_TEXT = "Status: active and ready to run"
-ACTIVE_GROUP_EMPTY_TEXT = "(empty)"
+ACTIVE_GROUP_STATUS_NONE_TEXT = SHARED_ACTIVE_GROUP_STATUS_NONE_TEXT
+ACTIVE_GROUP_STATUS_EMPTY_TEXT = SHARED_ACTIVE_GROUP_STATUS_EMPTY_TEXT
+ACTIVE_GROUP_STATUS_WAITING_TEXT = SHARED_ACTIVE_GROUP_STATUS_WAITING_TEXT
+ACTIVE_GROUP_STATUS_EDITABLE_TEXT = SHARED_ACTIVE_GROUP_STATUS_EDITABLE_TEXT
+ACTIVE_GROUP_STATUS_LOCKED_TEXT = SHARED_ACTIVE_GROUP_STATUS_LOCKED_TEXT
+ACTIVE_GROUP_STATUS_READY_TEXT = SHARED_ACTIVE_GROUP_STATUS_READY_TEXT
+ACTIVE_GROUP_EMPTY_TEXT = SHARED_ACTIVE_GROUP_SUMMARY_EMPTY_TEXT
 ACTIVE_GROUP_NONE_TEXT = "(not present)"
 ACTIVE_GROUP_ELIGIBLE_EMPTY_TEXT = "(no eligible motors)"
 ACTIVE_GROUP_RULES_TEXT = "Rules: Active Add appends next created motor in profile order. Active Next rotates the primary member."
@@ -462,7 +485,7 @@ DETAIL_TITLE_FULL_PROBE_AGE = "Full Probe Age"
 DETAIL_TITLE_FULL_PROBE_SCORE = "Full Probe Score"
 DETAIL_TITLE_FULL_PROBE_STATUS = "Full Probe Status"
 DETAIL_TITLE_FULL_PROBE_MESSAGE = "Full Probe Message"
-DETAIL_TITLE_LIFECYCLE_STATE = "Lifecycle State"
+DETAIL_TITLE_LIFECYCLE_STATE = "Scope State"
 DETAIL_TITLE_TESTABLE = "Testable"
 DETAIL_TITLE_OVERRIDE_ACTIVE = "Override Active"
 DETAIL_TITLE_OVERRIDE_ORIGINATED = "Override Originated"
@@ -1459,6 +1482,14 @@ class LiveTopologyView(ttk.Frame):
         if self._fit_on_load:
             self.schedule_fit_to_window()
 
+    def apply_diagnostic_profile_state(self, profile_state: object) -> None:
+        """
+        NAME
+            apply_diagnostic_profile_state - Reload the diagram from one shared diagnostic profile state.
+        """
+        effective_profile = getattr(profile_state, "effective_profile", PROFILE_NONE)
+        self.reload_profile(str(effective_profile or PROFILE_NONE).strip() or PROFILE_NONE)
+
     def _bind_vertical_mousewheel(self, widget: tk.Widget, canvas: tk.Canvas) -> None:
         """
         NAME
@@ -1775,6 +1806,7 @@ class LiveTopologyView(ttk.Frame):
         runtime_active: Optional[bool] = None
         robot_enabled: Optional[bool] = None
         robot_estopped: Optional[bool] = None
+        robot_mode: str = EMPTY_STRING
         controlled_lifecycle_active = False
         runtime_groups: List[Dict[str, object]] = []
         if isinstance(payload, dict):
@@ -1787,6 +1819,7 @@ class LiveTopologyView(ttk.Frame):
             estopped_raw = payload.get("estopped")
             if isinstance(estopped_raw, bool):
                 robot_estopped = estopped_raw
+            robot_mode = str(payload.get("mode", EMPTY_STRING) or EMPTY_STRING).strip().lower()
             controlled_raw = payload.get("controlledLifecycleActive")
             if isinstance(controlled_raw, bool):
                 controlled_lifecycle_active = controlled_raw
@@ -1905,6 +1938,7 @@ class LiveTopologyView(ttk.Frame):
                 controlled_lifecycle_active,
                 robot_enabled,
                 robot_estopped,
+                robot_mode,
             )
         self._update_details()
         if fingerprint == self._runtime_fingerprint:
@@ -2023,6 +2057,18 @@ class LiveTopologyView(ttk.Frame):
         self._runtime_event_notice_text = EMPTY_STRING
         self._refresh_runtime_notice()
 
+    def apply_runnable_scope_state(self, state: RunnableScopeState) -> None:
+        """
+        NAME
+            apply_runnable_scope_state - Apply one shared runnable-scope state to the live-topology notice.
+        """
+        if should_clear_runtime_event_notice(self._runtime_event_notice_text, state):
+            self.clear_runtime_notice()
+        if state.level == "ready":
+            self.clear_runtime_state_notice()
+            return
+        self.set_runtime_state_notice(state.detail, state.level)
+
     def _refresh_runtime_notice(self) -> None:
         """
         NAME
@@ -2075,21 +2121,32 @@ class LiveTopologyView(ttk.Frame):
         controlled_lifecycle_active: Optional[bool],
         robot_enabled: Optional[bool],
         robot_estopped: Optional[bool],
+        robot_mode: str,
     ) -> None:
         """
         NAME
             _apply_runtime_notice_from_state - Derive a live-topology notice from runtime state.
         """
-        if robot_estopped is True:
-            self.set_runtime_state_notice("Robot E-Stop. Manual run blocked.", "error")
-            return
-        if robot_enabled is False:
-            self.set_runtime_state_notice("Robot disabled. Enable teleop to run motors.", "info")
-            return
-        if controlled_lifecycle_active is not True and runtime_active is not True:
-            self.set_runtime_state_notice(RUNNABLE_PANEL_MANUAL_NOT_ACTIVATED_DETAIL, "warn")
-            return
-        self.clear_runtime_state_notice()
+        state = resolve_runnable_scope_state(
+            scope_kind=RUNNABLE_SCOPE_KIND_MANUAL,
+            local_selected_profile=self._profile_name,
+            local_profile_required=False,
+            tcp_connected=True,
+            runtime_state_seen=True,
+            stale_state=False,
+            robot_enabled=robot_enabled is not False,
+            robot_estopped=robot_estopped is True,
+            robot_mode=robot_mode,
+            manual_group_empty=False
+            if controlled_lifecycle_active is True or runtime_active is True
+            else (
+                not bool(group_member_map(self._effective_group_by_name(ACTIVE_GROUP_NAME), enabled_only=False))
+                if self._effective_group_by_name(ACTIVE_GROUP_NAME) is not None
+                else False
+            ),
+            scope_active=controlled_lifecycle_active is True or runtime_active is True,
+        )
+        self.apply_runnable_scope_state(state)
 
     def _on_canvas_click(self, event: tk.Event) -> None:
         """
@@ -2729,14 +2786,51 @@ class LiveTopologyView(ttk.Frame):
             return
         member_map = group_member_map(active_group, enabled_only=False)
         primary_label = group_primary_label(active_group, enabled_only=False)
-        self._set_active_group_status_text(
-            self._active_group_status_text(active_group, member_map)
-        )
-        if primary_label:
-            self._active_group_summary_var.set(f"Primary: {primary_label}")
-        else:
-            self._active_group_summary_var.set(ACTIVE_GROUP_EMPTY_TEXT)
+        state = self._active_scope_membership_state(member_map, primary_label)
+        self._set_active_group_status_text(state.status_text)
+        self._active_group_summary_var.set(state.summary_text)
         self._render_active_group_rows(member_map, primary_label)
+
+    def _active_group_summary_state(
+        self,
+        member_map: Dict[str, Dict[str, object]],
+        primary_label: object,
+    ) -> ActiveGroupSummaryState:
+        """
+        NAME
+            _active_group_summary_state - Return shared active-group summary state for the current runtime view.
+        """
+        runtime_state_by_label = (
+            self._runtime_state if isinstance(self._runtime_state, dict) else {}
+        )
+        return resolve_active_group_summary_state(
+            runtime_state_seen=bool(self.__dict__.get("_runtime_state_seen", False)),
+            controlled_lifecycle_active=bool(self.__dict__.get("_controlled_lifecycle_active", False)),
+            member_map=member_map,
+            runtime_state_by_label=runtime_state_by_label,
+            primary_label=primary_label,
+        )
+
+    def _active_scope_membership_state(
+        self,
+        member_map: Dict[str, Dict[str, object]],
+        primary_label: object,
+    ) -> ActiveScopeMembershipState:
+        """
+        NAME
+            _active_scope_membership_state - Return shared active-scope membership state for the topology side panel.
+        """
+        runtime_state_by_label = (
+            self._runtime_state if isinstance(self._runtime_state, dict) else {}
+        )
+        return resolve_active_scope_membership_state(
+            runtime_state_seen=bool(self.__dict__.get("_runtime_state_seen", False)),
+            controlled_lifecycle_active=bool(self.__dict__.get("_controlled_lifecycle_active", False)),
+            member_map=member_map,
+            runtime_state_by_label=runtime_state_by_label,
+            primary_label=primary_label,
+            eligible_labels=self._active_scope_eligible_labels(),
+        )
 
     def _set_active_group_status_text(self, text: str) -> None:
         """
@@ -2756,15 +2850,8 @@ class LiveTopologyView(ttk.Frame):
         NAME
             _active_group_status_text - Return plain-language status for the active-group panel.
         """
-        if not self.__dict__.get("_runtime_state_seen", False):
-            return ACTIVE_GROUP_STATUS_WAITING_TEXT
-        if not member_map:
-            return ACTIVE_GROUP_STATUS_EMPTY_TEXT
-        if self._controlled_lifecycle_active:
-            if self._all_active_group_members_present(member_map):
-                return ACTIVE_GROUP_STATUS_READY_TEXT
-            return ACTIVE_GROUP_STATUS_LOCKED_TEXT
-        return ACTIVE_GROUP_STATUS_EDITABLE_TEXT
+        del active_group
+        return self._active_scope_membership_state(member_map, EMPTY_STRING).status_text
 
     def _all_active_group_members_present(
         self,
@@ -2774,19 +2861,12 @@ class LiveTopologyView(ttk.Frame):
         NAME
             _all_active_group_members_present - Return whether all active-group members currently show presence.
         """
-        if not member_map:
-            return False
-        for label_key in member_map.keys():
-            live = self._runtime_state.get(label_key, {})
-            presence = live.get("presenceConfidence")
-            if not isinstance(presence, (int, float)) or float(presence) < 0.5:
-                return False
-        return True
+        return self._active_scope_membership_state(member_map, EMPTY_STRING).all_members_present
 
-    def _eligible_active_group_labels(self) -> List[str]:
+    def _active_scope_eligible_labels(self) -> List[str]:
         """
         NAME
-            _eligible_active_group_labels - Return eligible motor labels for the active-group management panel.
+            _active_scope_eligible_labels - Return sorted eligible labels for active-scope membership editing.
         """
         labels: List[str] = []
         seen = set()
@@ -2803,6 +2883,13 @@ class LiveTopologyView(ttk.Frame):
         labels.sort(key=lambda item: item.lower())
         return labels
 
+    def _eligible_active_group_labels(self) -> List[str]:
+        """
+        NAME
+            _eligible_active_group_labels - Return eligible motor labels for the active-group management panel.
+        """
+        return self._active_scope_membership_state({}, EMPTY_STRING).eligible_labels
+
     def _active_group_members_editable(self) -> bool:
         """
         NAME
@@ -2814,11 +2901,7 @@ class LiveTopologyView(ttk.Frame):
             read-only so the operator does not see checkboxes toggle and then snap
             back on the first runtime refresh.
         """
-        if not self.__dict__.get("_runtime_state_seen", False):
-            return False
-        if self._controlled_lifecycle_active:
-            return False
-        return True
+        return self._active_scope_membership_state({}, EMPTY_STRING).editable
 
     def _render_active_group_rows(
         self,
@@ -2832,7 +2915,8 @@ class LiveTopologyView(ttk.Frame):
         frame = self._active_group_rows_frame
         if frame is None:
             return
-        eligible_labels = self._eligible_active_group_labels()
+        membership_state = self._active_scope_membership_state(member_map, primary_label)
+        eligible_labels = membership_state.eligible_labels
         expected_keys = {label.lower() for label in eligible_labels}
         stale_keys = [
             key for key in self._active_group_row_widgets.keys() if key not in expected_keys
@@ -2909,7 +2993,7 @@ class LiveTopologyView(ttk.Frame):
                     if checked and label_key == primary_label.strip().lower()
                     else EMPTY_STRING
                 )
-                checkbox_state = "normal" if self._active_group_members_editable() else "disabled"
+                checkbox_state = "normal" if membership_state.editable else "disabled"
                 detail_parts = []
                 if primary_text:
                     detail_parts.append(primary_text)

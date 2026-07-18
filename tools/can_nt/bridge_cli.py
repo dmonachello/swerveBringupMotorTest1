@@ -1853,13 +1853,13 @@ HELP_RUNTIME_TEXT = (
 HELP_TOPIC_LIFECYCLE = "lifecycle"
 HELP_LIFECYCLE_TEXT = (
     "lifecycle activate <label> [mode <mode>]\n"
-    "  Activate the controlled bringup lifecycle for one device or group label.\n"
+    "  Activate the current scope membership for one device or group label.\n"
     "lifecycle deactivate <label>\n"
-    "  Deactivate the active controlled lifecycle session when it matches <label>.\n"
+    "  Deactivate the active scope session when it matches <label>.\n"
     "lifecycle deactivate-active\n"
-    "  Deactivate whichever controlled lifecycle session is active now.\n"
+    "  Deactivate whichever scope session is active now.\n"
     "show lifecycle-state [--json] [--pretty]\n"
-    "  Show the robot-controlled lifecycle state snapshot."
+    "  Show the robot scope-state snapshot."
 )
 HELP_TOPIC_PROFILES_INIT = "profiles init"
 HELP_PROFILES_INIT_TEXT = (

@@ -133,6 +133,7 @@ class LiveTopologyViewTests(unittest.TestCase):
         view._nodes = []
         view._diagram_meta = {}
         view._bridge_groups = []
+        view._runtime_groups = []
         view._runtime_state = {}
         view._presence_overrides = {}
         view._overlay_lens = live_view_module.TOPOLOGY_LENS_RUNTIME
@@ -272,7 +273,7 @@ class LiveTopologyViewTests(unittest.TestCase):
         view.set_runtime_state_notice = lambda text, level="warn": notices.append((text, level))
         view.clear_runtime_state_notice = lambda: notices.append(("__clear__", "clear"))
 
-        view._apply_runtime_notice_from_state(False, False, True, False)
+        view._apply_runtime_notice_from_state(False, False, True, False, "teleop")
 
         self.assertEqual(
             [("Activate Group first.", "warn")],
@@ -285,8 +286,35 @@ class LiveTopologyViewTests(unittest.TestCase):
         view.set_runtime_state_notice = lambda text, level="warn": notices.append((text, level))
         view.clear_runtime_state_notice = lambda: notices.append(("__clear__", "clear"))
 
-        view._apply_runtime_notice_from_state(False, True, True, False)
+        view._apply_runtime_notice_from_state(False, True, True, False, "teleop")
 
+        self.assertEqual([("__clear__", "clear")], notices)
+
+    def test_apply_runnable_scope_state_clears_stale_disabled_event_when_scope_is_ready(self) -> None:
+        view = self._make_view()
+        view._runtime_event_notice_text = "Robot disabled."
+        clears = []
+        view.clear_runtime_notice = lambda: clears.append("event")
+        notices = []
+        view.set_runtime_state_notice = lambda text, level="warn": notices.append((text, level))
+        view.clear_runtime_state_notice = lambda: notices.append(("__clear__", "clear"))
+        state = live_view_module.resolve_runnable_scope_state(
+            scope_kind=live_view_module.RUNNABLE_SCOPE_KIND_MANUAL,
+            local_selected_profile="test_minimal_25_9",
+            local_profile_required=False,
+            tcp_connected=True,
+            runtime_state_seen=True,
+            stale_state=False,
+            robot_enabled=True,
+            robot_estopped=False,
+            robot_mode="teleop",
+            manual_group_empty=False,
+            scope_active=True,
+        )
+
+        view.apply_runnable_scope_state(state)
+
+        self.assertEqual(["event"], clears)
         self.assertEqual([("__clear__", "clear")], notices)
 
     def test_runtime_notice_warning_uses_attention_palette(self) -> None:
@@ -438,7 +466,7 @@ class LiveTopologyViewTests(unittest.TestCase):
         view.set_runtime_state_notice = lambda text, level="warn": notices.append((text, level))
         view.clear_runtime_state_notice = lambda: notices.append(("__clear__", "clear"))
 
-        view._apply_runtime_notice_from_state(False, False, False, False)
+        view._apply_runtime_notice_from_state(False, False, False, False, "teleop")
 
         self.assertEqual(
             [("Robot disabled. Enable teleop to run motors.", "info")],

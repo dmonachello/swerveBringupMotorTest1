@@ -20,6 +20,7 @@ from tools.can_nt.bringup_ui import (
     CMD_PRINT_CAN_DIAG,
     CMD_SHOW_LIFECYCLE_STATE,
     GROUP_ACTIVE_NAME,
+    GROUP_SOURCE_SELECTED_TEST,
     GROUP_RUN_ARG_GROUP,
     HIDDEN_LEFT_RAIL_COMMANDS,
     INVENTORY_KEY_ACTION_KIND,
@@ -1887,11 +1888,11 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._apply_live_runtime_notice_from_nt_state(True, False, False)
 
         self.assertEqual(
-            [("Activate lifecycle first.", "warn")],
+            [("Activate scope first.", "warn")],
             recorded,
         )
         self.assertEqual(
-            ("Activate lifecycle first.", "warn"),
+            ("Activate scope first.", "warn"),
             live_view.notice,
         )
 
@@ -1911,6 +1912,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         class _LiveView:
             def __init__(self) -> None:
                 self.notice = None
+                self.event_cleared = False
 
             def set_runtime_state_notice(self, text, level) -> None:
                 self.notice = (text, level)
@@ -1918,16 +1920,22 @@ class BringupUiActionMetadataTests(unittest.TestCase):
             def clear_runtime_state_notice(self) -> None:
                 self.notice = None
 
+            def clear_runtime_notice(self) -> None:
+                self.event_cleared = True
+
         ui = BringupControlUI.__new__(BringupControlUI)
         ui._group_owner_mode = "manual"
         ui._runtime_active_known = False
         ui._controlled_lifecycle_active_known = True
         ui._scope_is_currently_active = lambda: True
         ui._manual_active_group_is_empty = lambda: False
+        ui._runtime_event_notice_text = "Robot disabled."
         recorded = []
+        event_clears = []
         live_view = _LiveView()
         ui._set_runtime_state_notice = lambda text, level="warn": recorded.append((text, level))
         ui._clear_runtime_state_notice = lambda: recorded.append(("__clear__", "clear"))
+        ui._clear_runtime_event_notice = lambda: event_clears.append("event")
         ui._iter_live_views = lambda: [live_view]
 
         ui._apply_live_runtime_notice_from_nt_state(True, False, False)
@@ -1936,6 +1944,8 @@ class BringupUiActionMetadataTests(unittest.TestCase):
             [("__clear__", "clear")],
             recorded,
         )
+        self.assertEqual(["event"], event_clears)
+        self.assertTrue(live_view.event_cleared)
         self.assertIsNone(live_view.notice)
 
     def test_live_runtime_notice_uses_runtime_active_group_payload_when_device_rows_lack_group_label(self) -> None:
@@ -3005,7 +3015,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         )
 
         self.assertEqual(
-            [("Activate lifecycle first.", "warn")],
+            [("Activate scope first.", "warn")],
             notices,
         )
 
@@ -3036,7 +3046,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         }
 
         self.assertIn(
-            "outside the active controlled lifecycle scope",
+            "outside the active scope membership",
             ui._manual_duty_scope_block_message_for_targets(["SPARKMAX/NEO 25"]),
         )
 
@@ -3822,25 +3832,43 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertFalse(ui._state_stale)
         self.assertEqual([(False, False, False)], runtime_notice_calls)
 
-    def test_show_runtime_state_action_marks_runtime_response_pending(self) -> None:
+    def test_show_runtime_state_action_fetches_and_applies_shared_rest_runtime_state(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
         ui._tcp_connected = True
-        ui._session = object()
+        ui._handshake_done = True
+        ui._log_poll_inflight = False
+        ui._session = type(
+            "SessionStub",
+            (),
+            {
+                "fetch_runtime_state": staticmethod(
+                    lambda: {
+                        "generatedAtMs": 123.0,
+                        "selectedProfile": "test_minimal_25_9",
+                        "devices": [],
+                    }
+                )
+            },
+        )()
         ui._tracker = type("TrackerStub", (), {"is_pending": lambda _self: False})()
-        ui._append_output = lambda _line: None
-        ui._append_test_output = lambda _line: None
-        ui._is_test_activity_command = lambda _name: False
-        ui._runtime_state_pending_seq = None
+        output_lines: list[str] = []
+        ui._append_output = output_lines.append
+        ui._runtime_state_pending_seq = 77
         ui._runtime_state_pending_at = 0.0
-        ui._last_sent_seq = None
+        applied_payloads: list[dict[str, object]] = []
+        ui._apply_runtime_state_payload = lambda payload: applied_payloads.append(dict(payload))
         ui._last_cmd = None
 
-        with patch("tools.can_nt.bringup_ui.send_tracked_command", return_value=77):
-            ui._on_action("showRuntimeState")
+        ui._on_action("showRuntimeState")
 
-        self.assertEqual(77, ui._last_sent_seq)
-        self.assertEqual(77, ui._runtime_state_pending_seq)
-        self.assertGreater(ui._runtime_state_pending_at, 0.0)
+        self.assertEqual(
+            {"generatedAtMs": 123.0, "selectedProfile": "test_minimal_25_9", "devices": []},
+            applied_payloads[0],
+        )
+        self.assertIsNone(ui._runtime_state_pending_seq)
+        self.assertEqual(("showRuntimeState", {"source": "rest_runtime_state"}), ui._last_cmd)
+        self.assertTrue(any("CMD showRuntimeState" in line for line in output_lines))
+        self.assertTrue(any("OUT showRuntimeState" in line for line in output_lines))
 
     def test_poll_nt_disconnect_transition_resets_runtime_context(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
@@ -4187,7 +4215,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._on_active_group_member_toggled("FALCON 9", True)
 
         self.assertTrue(
-            any("locked while controlled lifecycle session is ACTIVE" in line for line in ui._append_output_lines)
+            any("locked while an active scope session is running" in line for line in ui._append_output_lines)
         )
 
     def test_active_group_toggle_is_blocked_until_runtime_state_is_loaded(self) -> None:

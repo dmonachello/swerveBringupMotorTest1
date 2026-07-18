@@ -152,6 +152,9 @@ Purpose: Keep new work aligned with the current architecture docs without forcin
   - test/profile/group domain semantics
   - status and command handling
 - Prefer moving reusable host-side behavior into shared services instead of duplicating it inside CLI/UI surfaces.
+- One Shared-State Rule:
+  - if two surfaces show the same meaning, they must consume the same shared state/view-model
+  - no surface may independently recompute that meaning unless there is an explicit documented exception
 - Do not redo Java-side architecture just because a spec mentions a split; preserve existing working boundaries unless the task requires a change.
 - Preserve command semantics, status codes, batch behavior, and regression script compatibility during refactors.
 
