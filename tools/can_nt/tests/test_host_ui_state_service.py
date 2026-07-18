@@ -31,6 +31,7 @@ from tools.can_nt.host_ui_state_service import (
     resolve_manual_duty_scope_state,
     resolve_runtime_state_fetch_state,
     resolve_runnable_scope_state,
+    resolve_topology_scene_state,
     resolve_ui_context_state,
     should_clear_runtime_event_notice,
 )
@@ -88,6 +89,33 @@ class HostUiStateServiceTests(unittest.TestCase):
         self.assertFalse(state.show_blank_profile_state)
         self.assertEqual("robot_active", state.effective_profile)
         self.assertEqual(PROFILE_CONTEXT_SOURCE_ROBOT_ACTIVE_RUNTIME, state.profile_context_source)
+
+    def test_resolve_topology_scene_state_blanks_when_profile_context_is_blank(self) -> None:
+        state = resolve_topology_scene_state(
+            effective_profile=PROFILE_NONE,
+            show_blank_profile_state=True,
+            blank_reason=BLANK_REASON_LOCAL_PROFILE_REQUIRED,
+            current_profile_name="test_minimal_25_9",
+        )
+
+        self.assertEqual(PROFILE_NONE, state.profile_name)
+        self.assertTrue(state.is_blank)
+        self.assertEqual(BLANK_REASON_LOCAL_PROFILE_REQUIRED, state.blank_reason)
+        self.assertFalse(state.active_group_meaningful)
+        self.assertTrue(state.should_reload)
+
+    def test_resolve_topology_scene_state_skips_reload_when_profile_is_unchanged(self) -> None:
+        state = resolve_topology_scene_state(
+            effective_profile="test_minimal_25_9",
+            show_blank_profile_state=False,
+            blank_reason="",
+            current_profile_name="test_minimal_25_9",
+        )
+
+        self.assertEqual("test_minimal_25_9", state.profile_name)
+        self.assertFalse(state.is_blank)
+        self.assertTrue(state.active_group_meaningful)
+        self.assertFalse(state.should_reload)
 
     def test_resolve_runnable_scope_state_waits_before_runtime_arrives(self) -> None:
         state = resolve_runnable_scope_state(

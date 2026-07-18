@@ -987,6 +987,44 @@ class LiveTopologyViewTests(unittest.TestCase):
         finally:
             live_view_module._load_profiles_payload = original_load_payload
 
+    def test_apply_diagnostic_profile_state_uses_shared_blank_scene_decision(self) -> None:
+        view = self._make_view()
+        applied = []
+        view.reload_profile = lambda profile_name=None: applied.append(profile_name)
+        view._profile_name = "demo"
+
+        profile_state = type(
+            "ProfileStateStub",
+            (),
+            {
+                "effective_profile": live_view_module.PROFILE_NONE,
+                "show_blank_profile_state": True,
+                "blank_reason": "Local profile selection required.",
+            },
+        )()
+
+        view.apply_diagnostic_profile_state(profile_state)
+
+        self.assertEqual([live_view_module.PROFILE_NONE], applied)
+
+    def test_apply_topology_scene_state_skips_reload_when_scene_is_unchanged(self) -> None:
+        view = self._make_view()
+        reloads = []
+        view.reload_profile = lambda profile_name=None: reloads.append(profile_name)
+        view._profile_name = "demo"
+
+        scene_state = live_view_module.TopologySceneState(
+            profile_name="demo",
+            is_blank=False,
+            blank_reason="",
+            active_group_meaningful=True,
+            should_reload=False,
+        )
+
+        view.apply_topology_scene_state(scene_state)
+
+        self.assertEqual([], reloads)
+
     def test_reload_profile_error_clears_active_group_details_immediately(self) -> None:
         view = self._make_view()
         view._update_details_calls = 0

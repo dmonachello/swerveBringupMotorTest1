@@ -160,10 +160,12 @@ from tools.can_nt.host_ui_state_service import (
     RUNNABLE_SCOPE_KIND_MANUAL,
     RUNNABLE_SCOPE_PANEL_READY_DETAIL as SHARED_RUNNABLE_SCOPE_PANEL_READY_DETAIL,
     RUNNABLE_SCOPE_PANEL_WAITING_DETAIL as SHARED_RUNNABLE_SCOPE_PANEL_WAITING_DETAIL,
+    TopologySceneState,
     RunnableScopeState,
     resolve_active_group_summary_state,
     resolve_active_scope_membership_state,
     resolve_runnable_scope_state,
+    resolve_topology_scene_state,
     should_clear_runtime_event_notice,
 )
 
@@ -1482,13 +1484,35 @@ class LiveTopologyView(ttk.Frame):
         if self._fit_on_load:
             self.schedule_fit_to_window()
 
+    def apply_topology_scene_state(self, scene_state: object) -> None:
+        """
+        NAME
+            apply_topology_scene_state - Apply one shared topology scene decision.
+        """
+        profile_name = str(getattr(scene_state, "profile_name", PROFILE_NONE) or PROFILE_NONE).strip() or PROFILE_NONE
+        is_blank = bool(getattr(scene_state, "is_blank", profile_name == PROFILE_NONE))
+        should_reload = bool(getattr(scene_state, "should_reload", True))
+        if not should_reload and profile_name == str(self._profile_name or "").strip():
+            return
+        if is_blank:
+            self.reload_profile(PROFILE_NONE)
+            return
+        self.reload_profile(profile_name)
+
     def apply_diagnostic_profile_state(self, profile_state: object) -> None:
         """
         NAME
             apply_diagnostic_profile_state - Reload the diagram from one shared diagnostic profile state.
         """
-        effective_profile = getattr(profile_state, "effective_profile", PROFILE_NONE)
-        self.reload_profile(str(effective_profile or PROFILE_NONE).strip() or PROFILE_NONE)
+        scene_state = resolve_topology_scene_state(
+            effective_profile=getattr(profile_state, "effective_profile", PROFILE_NONE),
+            show_blank_profile_state=bool(
+                getattr(profile_state, "show_blank_profile_state", False)
+            ),
+            blank_reason=getattr(profile_state, "blank_reason", ""),
+            current_profile_name=str(self._profile_name or "").strip() or PROFILE_NONE,
+        )
+        self.apply_topology_scene_state(scene_state)
 
     def _bind_vertical_mousewheel(self, widget: tk.Widget, canvas: tk.Canvas) -> None:
         """

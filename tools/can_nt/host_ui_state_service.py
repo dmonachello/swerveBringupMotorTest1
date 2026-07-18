@@ -182,6 +182,20 @@ class RunnableScopeState:
 
 
 @dataclass(frozen=True)
+class TopologySceneState:
+    """
+    NAME
+        TopologySceneState - Shared host-side topology scene decision state.
+    """
+
+    profile_name: str
+    is_blank: bool
+    blank_reason: str
+    active_group_meaningful: bool
+    should_reload: bool
+
+
+@dataclass(frozen=True)
 class SelectedTestScopeState:
     """
     NAME
@@ -374,6 +388,32 @@ def resolve_diagnostic_profile_state(
         local_profile_required=local_profile_required,
         robot_profile_available=robot_selected != PROFILE_NONE or robot_active_runtime != PROFILE_NONE,
         profile_context_source=source if effective_profile != PROFILE_NONE else PROFILE_CONTEXT_SOURCE_BLANK,
+    )
+
+
+def resolve_topology_scene_state(
+    *,
+    effective_profile: object,
+    show_blank_profile_state: bool,
+    blank_reason: object,
+    current_profile_name: object,
+) -> TopologySceneState:
+    """
+    NAME
+        resolve_topology_scene_state - Resolve one shared topology scene decision.
+    """
+    profile_name = _normalize_profile_name(effective_profile)
+    current_profile = _normalize_profile_name(current_profile_name)
+    scene_blank = bool(show_blank_profile_state) or profile_name == PROFILE_NONE
+    if scene_blank:
+        profile_name = PROFILE_NONE
+    clean_blank_reason = str(blank_reason or "").strip()
+    return TopologySceneState(
+        profile_name=profile_name,
+        is_blank=scene_blank,
+        blank_reason=clean_blank_reason if scene_blank else "",
+        active_group_meaningful=not scene_blank,
+        should_reload=profile_name != current_profile,
     )
 
 

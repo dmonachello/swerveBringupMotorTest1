@@ -206,6 +206,7 @@ from .host_ui_state_service import (
     DiagnosticProfileState,
     RunnableScopeState,
     RuntimeStateFetchState,
+    TopologySceneState,
     UiContextState,
     resolve_manual_duty_scope_state,
     resolve_active_group_summary_state,
@@ -215,6 +216,7 @@ from .host_ui_state_service import (
     resolve_selected_test_runtime_block_reason,
     resolve_selected_test_panel_state,
     resolve_selected_test_scope_state,
+    resolve_topology_scene_state,
     resolve_tests_active_group_member_rows,
     resolve_runnable_scope_state,
     resolve_ui_context_state,
@@ -3941,17 +3943,33 @@ class BringupControlUI(tk.Tk):
         """
         return self._diagnostic_profile_state().effective_profile
 
+    def _topology_scene_state(self) -> TopologySceneState:
+        """
+        NAME
+            _topology_scene_state - Return the shared topology scene decision for live topology consumers.
+        """
+        profile_state = self._diagnostic_profile_state()
+        return resolve_topology_scene_state(
+            effective_profile=profile_state.effective_profile,
+            show_blank_profile_state=profile_state.show_blank_profile_state,
+            blank_reason=profile_state.blank_reason,
+            current_profile_name=self.__dict__.get("_last_profile_context", PROFILE_NONE),
+        )
+
     def _sync_diagnostic_profile_context(self, reload_views: bool) -> None:
         """
         NAME
             _sync_diagnostic_profile_context - Re-anchor diagnostics surfaces to one profile context.
         """
         state = self._diagnostic_profile_state()
+        topology_scene_state = self._topology_scene_state()
         name = state.effective_profile
         self._refresh_profile_devices(name)
         if reload_views and name != self._last_profile_context:
             for live_view in self._iter_live_views():
-                if hasattr(live_view, "apply_diagnostic_profile_state"):
+                if hasattr(live_view, "apply_topology_scene_state"):
+                    live_view.apply_topology_scene_state(topology_scene_state)
+                elif hasattr(live_view, "apply_diagnostic_profile_state"):
                     live_view.apply_diagnostic_profile_state(state)
                 else:
                     live_view.reload_profile(name)
