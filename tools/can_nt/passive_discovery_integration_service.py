@@ -17,6 +17,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
+from tools.can_nt.can_fault_inference import build_fault_diagnosis, render_fault_diagnosis
 from tools.common.config_api.repository import ConfigRepository
 from tools.common.motor_runtime_verdict import (
     RESULT_ELECTRICAL,
@@ -59,6 +60,11 @@ TEXT_SECTION_SEPARATOR = "; "
 TEXT_ENGINE_BANNER_PREFIX = "Evidence Engine: "
 TEXT_ROLLOUT_PREFIX = "rollout="
 TEXT_SECTION_PREFIX = "sections="
+FAULT_SNAPSHOT_KEY_ROWS = "rows"
+FAULT_SNAPSHOT_KEY_RESULT = "result"
+FAULT_SNAPSHOT_KEY_RENDERED_TEXT = "renderedText"
+FAULT_SNAPSHOT_KEY_CANDIDATE_COUNT = "candidateCount"
+FAULT_SNAPSHOT_KEY_RAN_AT = "ranAt"
 KEY_DEVICE_TYPE = "deviceType"
 KEY_PROFILE_NODE = "profileNode"
 KEY_BUS = "bus"
@@ -372,6 +378,11 @@ EVIDENCE_NOTE_PASSIVE_WITHOUT_PROBE_RESULT = "Passive CAN traffic is present, bu
 EVIDENCE_NOTE_PASSIVE_OVERRIDES_RUNTIME_ABSENCE = "Passive CAN shows recurring device-emitted traffic even though the robot-local presence snapshot did not observe this device."
 EVIDENCE_NOTE_INFRA_SCOPE_ABSENCE = "Infrastructure device is outside the current motion-test scope; local snapshot absence is not treated as definitive missing evidence."
 EVIDENCE_NOTE_INFRA_RUNTIME_PRESENT = "Infrastructure singleton runtime telemetry is present even though the current motion-test scope did not include this device."
+EVIDENCE_NOTE_INFRA_PASSIVE_PRESENT = "Infrastructure device observed by passive CAN even though the current motion-test scope did not include it."
+EVIDENCE_NOTE_INFRA_PASSIVE_LIMITED = "Infrastructure device observed by passive CAN, but active test-scope/runtime evidence is limited."
+EVIDENCE_NOTE_CONSOLE_DEVICE_TIMEOUT = "Device-targeted stale/timeout console evidence present."
+EVIDENCE_NOTE_CONSOLE_DEVICE_TIMEOUT_CONFLICT = "Fresh targeted console fault evidence conflicts with weak/stale positive presence evidence."
+EVIDENCE_NOTE_INFRA_CONSOLE_MISSING = "Fresh device-targeted console timeout evidence with no fresh positive corroboration is being treated as missing infrastructure presence."
 EVIDENCE_NOTE_NONE = "No major source conflict."
 ENRICHMENT_SOURCE_CTRE = "ctreHttp"
 ENRICHMENT_SOURCE_TOPOLOGY = "topology"
@@ -1851,9 +1862,7 @@ def build_interpreted_evidence_row(
                 confidence = EVIDENCE_CONFIDENCE_MEDIUM
                 evidence_state = EVIDENCE_STATE_DEGRADED
                 if is_infrastructure_device:
-                    notes.append(
-                        "Infrastructure device observed by passive CAN even though the current motion-test scope did not include it."
-                    )
+                    notes.append(EVIDENCE_NOTE_INFRA_PASSIVE_PRESENT)
                 else:
                     evidence_conflicted = True
                     notes.append(EVIDENCE_NOTE_PASSIVE_OVERRIDES_RUNTIME_ABSENCE)
@@ -1953,7 +1962,7 @@ def build_interpreted_evidence_row(
         confidence = passive_confidence if passive_device is not None else EVIDENCE_CONFIDENCE_MEDIUM
         if is_infrastructure_device and passive_device is None:
             evidence_state = EVIDENCE_STATE_DEGRADED
-            notes.append("Infrastructure device observed by passive CAN, but active test-scope/runtime evidence is limited.")
+            notes.append(EVIDENCE_NOTE_INFRA_PASSIVE_LIMITED)
         else:
             evidence_state = EVIDENCE_STATE_OK
     elif existence == EVIDENCE_STATUS_UNKNOWN and passive_device is not None and passive_expected_status == "missing":
@@ -1984,7 +1993,7 @@ def build_interpreted_evidence_row(
         operability = EVIDENCE_STATUS_FAILED
         confidence = EVIDENCE_CONFIDENCE_LOW if confidence == EVIDENCE_CONFIDENCE_HIGH else EVIDENCE_CONFIDENCE_MEDIUM
         evidence_state = EVIDENCE_STATE_FAILED
-        notes.append("Device-targeted stale/timeout console evidence present.")
+        notes.append(EVIDENCE_NOTE_CONSOLE_DEVICE_TIMEOUT)
     probe_invalidated_by_console = bool(
         console_targets_failure and probe_bucket != PROBE_BUCKET_NOT_RUN and probe_age_bucket in {PROBE_AGE_AGING, PROBE_AGE_STALE}
     )
@@ -2015,9 +2024,20 @@ def build_interpreted_evidence_row(
         if existence == EVIDENCE_STATUS_PRESENT:
             existence = EVIDENCE_STATUS_CONFLICT
             evidence_conflicted = True
-            notes.append("Fresh targeted console fault evidence conflicts with weak/stale positive presence evidence.")
+            notes.append(EVIDENCE_NOTE_CONSOLE_DEVICE_TIMEOUT_CONFLICT)
         elif existence == EVIDENCE_STATUS_UNKNOWN:
             confidence = EVIDENCE_CONFIDENCE_LOW
+    if (
+        is_infrastructure_device
+        and console_targets_failure
+        and not stronger_positive_contradiction
+        and not runtime_infrastructure_present
+    ):
+        existence = EVIDENCE_STATUS_ABSENT
+        operability = EVIDENCE_STATUS_FAILED
+        confidence = EVIDENCE_CONFIDENCE_MEDIUM
+        evidence_state = EVIDENCE_STATE_FAILED
+        notes.append(EVIDENCE_NOTE_INFRA_CONSOLE_MISSING)
     if bool(system_console.get(CONSOLE_KEY_SYSTEM_CONFLICT)):
         notes.append("System-level console fault may reflect broader CAN isolation.")
         evidence_conflicted = True
@@ -2255,6 +2275,35 @@ def build_interpreted_evidence_row(
         INTERPRET_KEY_LAST_EVALUATION_AT: None,
         INTERPRET_KEY_CHANGE_REASON: EVIDENCE_SOURCE_NONE,
         INTERPRET_KEY_EVENT_LOG: [],
+    }
+
+
+def build_evidence_fault_snapshot(
+    *,
+    evidence_rows: List[Mapping[str, Any]],
+    console_snapshot: Optional[Mapping[str, Any]],
+    topology_profile: Optional[Mapping[str, Any]],
+    now_s: float,
+) -> Dict[str, Any]:
+    """
+    NAME
+        build_evidence_fault_snapshot - Freeze evidence rows and their derived fault-finder diagnosis in one shared contract.
+    """
+    frozen_rows = [dict(row) for row in evidence_rows]
+    result = build_fault_diagnosis(
+        evidence_rows=frozen_rows,
+        console_snapshot=console_snapshot,
+        topology_profile=topology_profile,
+        now_s=now_s,
+    )
+    candidates = result.get("candidates")
+    candidate_count = len(candidates) if isinstance(candidates, list) else 0
+    return {
+        FAULT_SNAPSHOT_KEY_ROWS: frozen_rows,
+        FAULT_SNAPSHOT_KEY_RESULT: dict(result),
+        FAULT_SNAPSHOT_KEY_RENDERED_TEXT: render_fault_diagnosis(result),
+        FAULT_SNAPSHOT_KEY_CANDIDATE_COUNT: candidate_count,
+        FAULT_SNAPSHOT_KEY_RAN_AT: now_s,
     }
 
 

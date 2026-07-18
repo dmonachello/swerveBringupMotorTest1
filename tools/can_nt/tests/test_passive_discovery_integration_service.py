@@ -10,6 +10,11 @@ import unittest
 from tools.can_nt.passive_discovery_integration_service import (
     ATTACHMENT_TYPE_ACTIVE_PRESENCE_PROBE,
     ENGINE_LABEL_NEW,
+    FAULT_SNAPSHOT_KEY_CANDIDATE_COUNT,
+    FAULT_SNAPSHOT_KEY_RAN_AT,
+    FAULT_SNAPSHOT_KEY_RENDERED_TEXT,
+    FAULT_SNAPSHOT_KEY_RESULT,
+    FAULT_SNAPSHOT_KEY_ROWS,
     SECTION_CONSOLE,
     SECTION_ENRICHMENT,
     SECTION_INTERPRETATION,
@@ -21,6 +26,7 @@ from tools.can_nt.passive_discovery_integration_service import (
     SECTION_TOPOLOGY_VIEW,
     build_enrichment_run_snapshot,
     build_console_snapshot_from_entries,
+    build_evidence_fault_snapshot,
     build_interpreted_evidence_row,
     build_manual_snapshot,
     build_runtime_probe_snapshot,
@@ -842,6 +848,60 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
         self.assertEqual("unknown", row["state"])
         self.assertEqual("unknown", row["presenceState"])
 
+    def test_interpreted_row_marks_infrastructure_missing_from_fresh_targeted_console_timeout_without_positive_corroboration(self) -> None:
+        row = build_interpreted_evidence_row(
+            label="pdp",
+            presence_entry={
+                "bucket": "absent",
+                "score": 0.0,
+                "ageText": "1.0s ago",
+                "existence": "ABSENT",
+                "confidence": "MEDIUM",
+            },
+            passive_device=None,
+            visibility_device=None,
+            runtime_device={
+                "instantiated": True,
+                "lifecycleState": "instantiated-present",
+                "lastSeenMs": 1000,
+            },
+            console_entry={
+                "summary": "HAL: CAN Receive has Timed Out",
+                "hasError": True,
+                "hasWarn": False,
+                "totalCount": 3,
+                "freshness": "fresh",
+                "records": [
+                    {
+                        "scope": "device",
+                        "faultFamily": "ctre_timeout",
+                        "freshness": "fresh",
+                        "totalCount": 3,
+                    }
+                ],
+                "events": [
+                    "HAL: CAN Receive has Timed Out",
+                ],
+            },
+            system_console={},
+            manual_entry=None,
+            manual_observation=None,
+            manual_motion=None,
+            probe_pending=False,
+            last_probe_completed_at=20.0,
+            probe_run_count=1,
+            now_s=40.0,
+        )
+
+        self.assertEqual("ABSENT", row["existence"])
+        self.assertEqual("FAILED", row["operability"])
+        self.assertEqual("failed", row["state"])
+        self.assertEqual("missing", row["presenceState"])
+        self.assertIn(
+            "Fresh device-targeted console timeout evidence with no fresh positive corroboration is being treated as missing infrastructure presence.",
+            row["notesText"],
+        )
+
     def test_interpreted_row_keeps_infrastructure_unknown_when_passive_profile_row_is_missing_without_packets(self) -> None:
         passive_device = DeviceRecord(
             identity=DeviceIdentity(manufacturer=1, device_type=1, device_id=0),
@@ -890,6 +950,36 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
         self.assertEqual("UNKNOWN", row["existence"])
         self.assertEqual("unknown", row["state"])
         self.assertEqual("LOW", row["confidence"])
+
+    def test_build_evidence_fault_snapshot_freezes_rows_and_rendered_result(self) -> None:
+        snapshot = build_evidence_fault_snapshot(
+            evidence_rows=[
+                {
+                    "label": "FALCON 9",
+                    "existence": "ABSENT",
+                    "operability": "FAILED",
+                    "identity": "MATCHING",
+                    "confidence": "HIGH",
+                    "state": "missing",
+                    "notesText": "Runtime snapshot did not observe device.",
+                }
+            ],
+            console_snapshot={},
+            topology_profile={},
+            now_s=10.0,
+        )
+
+        self.assertEqual(10.0, snapshot[FAULT_SNAPSHOT_KEY_RAN_AT])
+        self.assertEqual(1, snapshot[FAULT_SNAPSHOT_KEY_CANDIDATE_COUNT])
+        self.assertEqual("FALCON 9", snapshot[FAULT_SNAPSHOT_KEY_ROWS][0]["label"])
+        self.assertEqual(
+            ["FALCON 9"],
+            snapshot[FAULT_SNAPSHOT_KEY_RESULT]["candidates"][0]["affectedDevices"],
+        )
+        self.assertIn(
+            "single_device_unreachable",
+            snapshot[FAULT_SNAPSHOT_KEY_RENDERED_TEXT],
+        )
 
     def test_interpreted_row_marks_no_rotation_motor_failure_as_failed_state(self) -> None:
         row = build_interpreted_evidence_row(

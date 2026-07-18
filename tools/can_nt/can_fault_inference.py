@@ -389,9 +389,8 @@ def build_fault_diagnosis(
     ran_at = time.time() if now_s is None else float(now_s)
     rows = [dict(row) for row in evidence_rows if isinstance(row, Mapping)]
     infrastructure_rows = [row for row in rows if _is_infrastructure_row(row)]
-    non_infrastructure_rows = [row for row in rows if not _is_infrastructure_row(row)]
-    affected_rows = [row for row in non_infrastructure_rows if _is_affected_row(row)]
-    degraded_rows = [row for row in non_infrastructure_rows if _is_degraded_row(row)]
+    affected_rows = [row for row in rows if _is_affected_row(row)]
+    degraded_rows = [row for row in rows if _is_degraded_row(row)]
     affected_labels = [_row_label(row) for row in affected_rows if _row_label(row)]
     degraded_labels = [_row_label(row) for row in degraded_rows if _row_label(row)]
     affected_set = set(affected_labels)
@@ -488,36 +487,6 @@ def build_fault_diagnosis(
                     supporting=stale_or_conflicted,
                     conflicting=[],
                     checks=[CHECK_STALE, RECHECK_OBSERVATION],
-                )
-            )
-
-        infrastructure_missing = list(infrastructure.get(KEY_INFRA_MISSING, []))
-        infrastructure_conflict = list(infrastructure.get(KEY_INFRA_CONFLICT, []))
-        infrastructure_affected = infrastructure_missing + infrastructure_conflict
-        if infrastructure_affected and not affected_labels:
-            fault_class = (
-                FAULT_CLASS_CONTROLLER_SIDE
-                if any(label.lower() == "roborio" for label in infrastructure_affected) or len(infrastructure_affected) > 1
-                else FAULT_CLASS_SINGLE_DEVICE
-            )
-            summary = (
-                "Infrastructure device evidence is missing or conflicted."
-                if fault_class == FAULT_CLASS_SINGLE_DEVICE
-                else TEXT_CONTROLLER
-            )
-            checks = [CHECK_INFRA, RECHECK_OBSERVATION]
-            if fault_class == FAULT_CLASS_CONTROLLER_SIDE:
-                checks = [CHECK_CONTROLLER, RECHECK_OBSERVATION]
-            candidates.append(
-                _candidate(
-                    fault_class=fault_class,
-                    confidence=CONFIDENCE_MEDIUM,
-                    summary=summary,
-                    affected=infrastructure_affected,
-                    region="infrastructure CAN/power entry path",
-                    supporting=infrastructure_affected,
-                    conflicting=[],
-                    checks=checks,
                 )
             )
 

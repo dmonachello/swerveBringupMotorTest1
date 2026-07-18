@@ -1,6 +1,6 @@
 """
 NAME
-    test_bridge_cli_visibility.py - Unit tests for CLI visibility and lifecycle state.
+    test_bridge_cli_visibility.py - Unit tests for CLI visibility and scope state.
 """
 
 from __future__ import annotations
@@ -1120,8 +1120,8 @@ class BridgeCliVisibilityTests(unittest.TestCase):
             seq=1,
             name="selectProfile",
             status="ok",
-            message="Profile change blocked: controlled lifecycle session is ACTIVE. Deactivate lifecycle first.",
-            text="Profile change blocked: controlled lifecycle session is ACTIVE. Deactivate lifecycle first.",
+            message="Profile change blocked: an active scope session is running. Deactivate scope first.",
+            text="Profile change blocked: an active scope session is running. Deactivate scope first.",
             json_text="",
             ts=0.0,
             session_id="",
