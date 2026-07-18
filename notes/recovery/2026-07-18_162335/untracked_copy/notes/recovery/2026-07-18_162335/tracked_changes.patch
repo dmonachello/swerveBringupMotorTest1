@@ -1,0 +1,2470 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index 9888de7..c40b465 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -152,6 +152,9 @@ Purpose: Keep new work aligned with the current architecture docs without forcin
+   - test/profile/group domain semantics
+   - status and command handling
+ - Prefer moving reusable host-side behavior into shared services instead of duplicating it inside CLI/UI surfaces.
++- One Shared-State Rule:
++  - if two surfaces show the same meaning, they must consume the same shared state/view-model
++  - no surface may independently recompute that meaning unless there is an explicit documented exception
+ - Do not redo Java-side architecture just because a spec mentions a split; preserve existing working boundaries unless the task requires a change.
+ - Preserve command semantics, status codes, batch behavior, and regression script compatibility during refactors.
+ 
+diff --git a/src/main/java/frc/robot/BridgeUiCommandHandler.java b/src/main/java/frc/robot/BridgeUiCommandHandler.java
+index a908afc..7bb31e0 100644
+--- a/src/main/java/frc/robot/BridgeUiCommandHandler.java
++++ b/src/main/java/frc/robot/BridgeUiCommandHandler.java
+@@ -181,11 +181,11 @@ public class BridgeUiCommandHandler {
+   private static final String TEXT_CONTROLLED_LIFECYCLE_FAILED_EVENT =
+       "controlled-lifecycle-failed";
+   private static final String TEXT_CONTROLLED_LIFECYCLE_TESTABLE_REASON =
+-      "Testable via controlled lifecycle session.";
++      "Testable via active scope session.";
+   private static final String TEXT_CONTROLLED_LIFECYCLE_INSTANTIATED_REASON =
+-      "Instantiated by controlled lifecycle but not active.";
++      "Instantiated by scope activation but not currently active.";
+   private static final String TEXT_CONTROLLED_LIFECYCLE_SCOPE_REQUIRED_REASON =
+-      "Testable only when included in the active controlled lifecycle session.";
++      "Testable only when included in the active scope membership.";
+   private static final String JSON_KEY_CURRENT_INSTANT_A = "currentInstantA";
+   private static final String JSON_KEY_CURRENT_AVG_A = "currentAvgA";
+   private static final String JSON_KEY_CURRENT_PEAK_A = "currentPeakA";
+@@ -1920,7 +1920,7 @@ public class BridgeUiCommandHandler {
+     if (isControlledLifecycleActive()) {
+       result.ok = false;
+       result.message =
+-          "Active group membership is locked while controlled lifecycle session is ACTIVE. Deactivate lifecycle first.";
++          "Active group membership is locked while an active scope session is running. Deactivate scope first.";
+       result.outText = result.message;
+       setActiveResultJson(result, ensureActiveGroupDefined(), List.of(result.message));
+       return;
+@@ -1996,7 +1996,7 @@ public class BridgeUiCommandHandler {
+     if (isControlledLifecycleActive()) {
+       result.ok = false;
+       result.message =
+-          "Active group membership is locked while controlled lifecycle session is ACTIVE. Deactivate lifecycle first.";
++          "Active group membership is locked while an active scope session is running. Deactivate scope first.";
+       result.outText = result.message;
+       setActiveResultJson(result, ensureActiveGroupDefined(), List.of(result.message));
+       return;
+diff --git a/src/main/java/frc/robot/BridgeUiGroupCommands.java b/src/main/java/frc/robot/BridgeUiGroupCommands.java
+index dbf1d31..e39dca6 100644
+--- a/src/main/java/frc/robot/BridgeUiGroupCommands.java
++++ b/src/main/java/frc/robot/BridgeUiGroupCommands.java
+@@ -50,11 +50,11 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
+   private static final String MESSAGE_MANUAL_DUTY_DISABLED_ESTOP =
+       "Manual duty blocked: robot disabled (E-Stop).";
+   private static final String MESSAGE_MANUAL_DUTY_CONTROLLED_SCOPE =
+-      "Manual duty blocked: device is outside the active controlled lifecycle scope.";
++      "Manual duty blocked: device is outside the active scope membership.";
+   private static final String MESSAGE_MANUAL_GROUP_DUTY_CONTROLLED_SCOPE =
+-      "Manual duty blocked: group contains device(s) outside the active controlled lifecycle scope.";
++      "Manual duty blocked: group contains device(s) outside the active scope membership.";
+   private static final String MESSAGE_ACTIVE_GROUP_LIFECYCLE_LOCKED =
+-      "Active group membership is locked while controlled lifecycle session is ACTIVE. Deactivate lifecycle first.";
++      "Active group membership is locked while an active scope session is running. Deactivate scope first.";
+   private static final String JSON_KEY_DEVICE = "device";
+   private static final String JSON_KEY_GROUP = "group";
+   private static final String JSON_KEY_MOVED = "moved";
+diff --git a/src/main/java/frc/robot/BridgeUiProfileCommands.java b/src/main/java/frc/robot/BridgeUiProfileCommands.java
+index 4d4b71f..dd635e7 100644
+--- a/src/main/java/frc/robot/BridgeUiProfileCommands.java
++++ b/src/main/java/frc/robot/BridgeUiProfileCommands.java
+@@ -53,7 +53,7 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
+   private static final String TEXT_PROFILES_RELOAD_FAILED = "Profiles reload failed: %s";
+   private static final String MESSAGE_PROFILE_NOT_FOUND = "Profile not found.";
+   private static final String MESSAGE_PROFILE_CHANGE_BLOCKED_LIFECYCLE_ACTIVE =
+-      "Profile change blocked: controlled lifecycle session is ACTIVE. Deactivate lifecycle first.";
++      "Profile change blocked: an active scope session is running. Deactivate scope first.";
+ 
+   private static final String MESSAGE_SELECT_PROFILE_REQUIRED = "selectProfile requires args.name.";
+   private static final String MESSAGE_SHOW_PROFILE_REQUIRED = "showProfile requires args.name.";
+diff --git a/src/main/java/frc/robot/BuildInfo.java b/src/main/java/frc/robot/BuildInfo.java
+index 666be64..eef70cc 100644
+--- a/src/main/java/frc/robot/BuildInfo.java
++++ b/src/main/java/frc/robot/BuildInfo.java
+@@ -7,14 +7,14 @@ package frc.robot;
+ public final class BuildInfo {
+   private BuildInfo() {}
+ 
+-  public static final String BUILD_GIT_DESCRIBE = "can-fault-finder-checkpoint-2026-07-11-dirty";
+-  public static final String BUILD_REVISION = "247";
+-  public static final String BUILD_WORKSPACE_REVISION = "220";
+-  public static final String BUILD_CODE_REVISION = "e51d5597ab17";
+-  public static final String BUILD_GIT_SHA = "85d12f9";
++  public static final String BUILD_GIT_DESCRIBE = "can-fault-finder-checkpoint-2026-07-11-2-g361fb2e-dirty";
++  public static final String BUILD_REVISION = "249";
++  public static final String BUILD_WORKSPACE_REVISION = "243";
++  public static final String BUILD_CODE_REVISION = "c22d8c6142ff";
++  public static final String BUILD_GIT_SHA = "361fb2e";
+   public static final String BUILD_GIT_BRANCH = "main";
+   public static final String BUILD_GIT_DIRTY = "dirty";
+-  public static final String BUILD_TIMESTAMP = "2026-07-11T19:36:58-04:00";
++  public static final String BUILD_TIMESTAMP = "2026-07-15T10:45:04-04:00";
+ 
+   public static final String BUILD_LABEL_REVISION = "build-revision";
+   public static final String BUILD_LABEL_WORKSPACE_REVISION = "workspace-revision";
+diff --git a/src/main/java/frc/robot/commands/local/RobotLocalCommandRegistry.java b/src/main/java/frc/robot/commands/local/RobotLocalCommandRegistry.java
+index 0e2e37e..7f79e50 100644
+--- a/src/main/java/frc/robot/commands/local/RobotLocalCommandRegistry.java
++++ b/src/main/java/frc/robot/commands/local/RobotLocalCommandRegistry.java
+@@ -328,21 +328,21 @@ public final class RobotLocalCommandRegistry {
+     register(rows, lifecycleDefinition(
+         COMMAND_LIFECYCLE_DEACTIVATE,
+         "Lifecycle Deactivate",
+-        "Deactivate the lifecycle session matching one requested label.",
++        "Deactivate the scope session matching one requested label.",
+         UI_ARG_LIFECYCLE_DEACTIVATE,
+         false,
+         legacyUiGroup));
+     register(rows, lifecycleDefinition(
+         COMMAND_LIFECYCLE_DEACTIVATE_ACTIVE,
+-        "Lifecycle Deactivate Active",
+-        "Deactivate the current lifecycle session.",
++        "Scope Deactivate Active",
++        "Deactivate the current scope session.",
+         "",
+         false,
+         legacyUiGroup));
+     register(rows, lifecycleDefinition(
+         COMMAND_SHOW_LIFECYCLE_STATE,
+-        "Show Lifecycle State",
+-        "Show controlled lifecycle state payload.",
++        "Show Scope State",
++        "Show controlled scope state payload.",
+         UI_ARG_LIFECYCLE_SHOW_JSON,
+         false,
+         legacyUiGroup));
+diff --git a/src/main/java/frc/robot/manufacturers/ctre/util/PdpStatusReader.java b/src/main/java/frc/robot/manufacturers/ctre/util/PdpStatusReader.java
+index 157d5c4..5ba1bbc 100644
+--- a/src/main/java/frc/robot/manufacturers/ctre/util/PdpStatusReader.java
++++ b/src/main/java/frc/robot/manufacturers/ctre/util/PdpStatusReader.java
+@@ -4,6 +4,7 @@ import edu.wpi.first.hal.PowerDistributionFaults;
+ import edu.wpi.first.hal.PowerDistributionStickyFaults;
+ import edu.wpi.first.wpilibj.PowerDistribution;
+ import frc.robot.manufacturers.ctre.diag.PdpStatusAttachment;
++import java.util.function.LongSupplier;
+ 
+ /**
+  * NAME
+@@ -15,14 +16,26 @@ import frc.robot.manufacturers.ctre.diag.PdpStatusAttachment;
+ public final class PdpStatusReader implements AutoCloseable {
+   private static final int INDEX_START = 0;
+   private static final int MIN_CHANNELS = 1;
+-  private final PowerDistribution pdp;
++  private static final long READ_FAILURE_COOLDOWN_NS = 1_000_000_000L;
++  private static final long NEVER_FAILED_AT_NS = Long.MIN_VALUE;
++  private static final String ERROR_READ_UNAVAILABLE_PREFIX = "cached unavailable: ";
++
++  private final PowerDistributionAccess pdp;
++  private final LongSupplier clock;
++  private long lastReadFailureAtNs = NEVER_FAILED_AT_NS;
++  private String lastReadFailureMessage = "";
+ 
+   /**
+    * NAME
+    *   PdpStatusReader - Construct a reader for a specific CAN ID.
+    */
+   public PdpStatusReader(int canId) {
+-    this.pdp = new PowerDistribution(canId, PowerDistribution.ModuleType.kCTRE);
++    this(new WpiPowerDistributionAccess(canId), System::nanoTime);
++  }
++
++  PdpStatusReader(PowerDistributionAccess pdp, LongSupplier clock) {
++    this.pdp = pdp;
++    this.clock = clock != null ? clock : System::nanoTime;
+   }
+ 
+   /**
+@@ -30,6 +43,21 @@ public final class PdpStatusReader implements AutoCloseable {
+    *   snapshot - Capture a PDP status attachment.
+    */
+   public PdpStatusAttachment snapshot() {
++    long nowNs = clock.getAsLong();
++    if (isReadFailureCooldownActive(nowNs)) {
++      throw cachedReadUnavailable();
++    }
++    try {
++      PdpStatusAttachment attachment = snapshotNow();
++      clearReadFailure();
++      return attachment;
++    } catch (RuntimeException ex) {
++      rememberReadFailure(nowNs, ex);
++      throw ex;
++    }
++  }
++
++  private PdpStatusAttachment snapshotNow() {
+     PdpStatusAttachment out = new PdpStatusAttachment();
+     PowerDistributionFaults faults = pdp.getFaults();
+     PowerDistributionStickyFaults sticky = pdp.getStickyFaults();
+@@ -59,6 +87,32 @@ public final class PdpStatusReader implements AutoCloseable {
+     return out;
+   }
+ 
++  private boolean isReadFailureCooldownActive(long nowNs) {
++    if (lastReadFailureAtNs == NEVER_FAILED_AT_NS) {
++      return false;
++    }
++    return nowNs - lastReadFailureAtNs < READ_FAILURE_COOLDOWN_NS;
++  }
++
++  private void rememberReadFailure(long nowNs, RuntimeException ex) {
++    lastReadFailureAtNs = nowNs;
++    String message = ex != null && ex.getMessage() != null ? ex.getMessage().trim() : "";
++    lastReadFailureMessage = message;
++  }
++
++  private void clearReadFailure() {
++    lastReadFailureAtNs = NEVER_FAILED_AT_NS;
++    lastReadFailureMessage = "";
++  }
++
++  private RuntimeException cachedReadUnavailable() {
++    String message = lastReadFailureMessage;
++    if (message == null || message.isBlank()) {
++      message = "power distribution reader unavailable";
++    }
++    return new IllegalStateException(ERROR_READ_UNAVAILABLE_PREFIX + message);
++  }
++
+   /**
+    * NAME
+    *   clearStickyFaults - Clear sticky PDP faults.
+@@ -83,4 +137,82 @@ public final class PdpStatusReader implements AutoCloseable {
+   public void close() {
+     pdp.close();
+   }
++
++  interface PowerDistributionAccess extends AutoCloseable {
++    PowerDistributionFaults getFaults();
++    PowerDistributionStickyFaults getStickyFaults();
++    double getVoltage();
++    double getTotalCurrent();
++    boolean getSwitchableChannel();
++    double getTemperature();
++    int getNumChannels();
++    double getCurrent(int channel);
++    void clearStickyFaults();
++    int getModule();
++    @Override
++    void close();
++  }
++
++  private static final class WpiPowerDistributionAccess implements PowerDistributionAccess {
++    private final PowerDistribution pdp;
++
++    private WpiPowerDistributionAccess(int canId) {
++      this.pdp = new PowerDistribution(canId, PowerDistribution.ModuleType.kCTRE);
++    }
++
++    @Override
++    public PowerDistributionFaults getFaults() {
++      return pdp.getFaults();
++    }
++
++    @Override
++    public PowerDistributionStickyFaults getStickyFaults() {
++      return pdp.getStickyFaults();
++    }
++
++    @Override
++    public double getVoltage() {
++      return pdp.getVoltage();
++    }
++
++    @Override
++    public double getTotalCurrent() {
++      return pdp.getTotalCurrent();
++    }
++
++    @Override
++    public boolean getSwitchableChannel() {
++      return pdp.getSwitchableChannel();
++    }
++
++    @Override
++    public double getTemperature() {
++      return pdp.getTemperature();
++    }
++
++    @Override
++    public int getNumChannels() {
++      return pdp.getNumChannels();
++    }
++
++    @Override
++    public double getCurrent(int channel) {
++      return pdp.getCurrent(channel);
++    }
++
++    @Override
++    public void clearStickyFaults() {
++      pdp.clearStickyFaults();
++    }
++
++    @Override
++    public int getModule() {
++      return pdp.getModule();
++    }
++
++    @Override
++    public void close() {
++      pdp.close();
++    }
++  }
+ }
+diff --git a/src/main/java/frc/robot/tests/dsl/DslBringupTest.java b/src/main/java/frc/robot/tests/dsl/DslBringupTest.java
+index f58101e..27d0efb 100644
+--- a/src/main/java/frc/robot/tests/dsl/DslBringupTest.java
++++ b/src/main/java/frc/robot/tests/dsl/DslBringupTest.java
+@@ -208,6 +208,11 @@ public final class DslBringupTest implements BringupTest {
+     Map<String, Object> samples = sampleAll(context, nowSec);
+     Map<String, Boolean> conditionValues = evaluateAllConditions(samples, nowSec);
+     for (DslCondition require : test.main.requires) {
++      if (shouldRevokeLatchedRequire(require, samples)) {
++        requireSatisfied.put(require.id, false);
++        requireSatisfiedAt.remove(require.id);
++        continue;
++      }
+       if (!Boolean.TRUE.equals(requireSatisfied.get(require.id))
+           && Boolean.TRUE.equals(conditionValues.get(require.id))) {
+         requireSatisfied.put(require.id, true);
+@@ -811,6 +816,21 @@ public final class DslBringupTest implements BringupTest {
+     return deviceSignal;
+   }
+ 
++  private boolean shouldRevokeLatchedRequire(DslCondition condition, Map<String, Object> samples) {
++    if (condition == null || condition.reference == null) {
++      return false;
++    }
++    if (!Boolean.TRUE.equals(requireSatisfied.get(condition.id))) {
++      return false;
++    }
++    String deviceType = resolveDeviceType(condition.reference.device);
++    if (!DslSignalRegistry.DEVICE_TYPE_PDP.equals(deviceType)
++        && !DslSignalRegistry.DEVICE_TYPE_PDH.equals(deviceType)) {
++      return false;
++    }
++    return samples.get(condition.reference.text) == null;
++  }
++
+   private Object updateAggregateSignalMax(
+       String deviceName,
+       String signalName,
+diff --git a/src/test/java/frc/robot/BridgeUiGroupCommandsTest.java b/src/test/java/frc/robot/BridgeUiGroupCommandsTest.java
+index 7803432..b91f645 100644
+--- a/src/test/java/frc/robot/BridgeUiGroupCommandsTest.java
++++ b/src/test/java/frc/robot/BridgeUiGroupCommandsTest.java
+@@ -45,11 +45,11 @@ class BridgeUiGroupCommandsTest {
+   private static final String MSG_SHOW_DEVICE_REQUIRES = "showDevice requires args.name.";
+   private static final String MSG_DEVICE_NOT_FOUND_PREFIX = "Device not found: ";
+   private static final String MSG_MANUAL_DUTY_SCOPE_BLOCKED =
+-      "Manual duty blocked: device is outside the active controlled lifecycle scope.";
++      "Manual duty blocked: device is outside the active scope membership.";
+   private static final String MSG_MANUAL_GROUP_DUTY_SCOPE_BLOCKED =
+-      "Manual duty blocked: group contains device(s) outside the active controlled lifecycle scope.";
++      "Manual duty blocked: group contains device(s) outside the active scope membership.";
+   private static final String MSG_ACTIVE_GROUP_LOCKED =
+-      "Active group membership is locked while controlled lifecycle session is ACTIVE. Deactivate lifecycle first.";
++      "Active group membership is locked while an active scope session is running. Deactivate scope first.";
+ 
+   private static final String GROUP_ALPHA = "alpha";
+   private static final String GROUP_ACTIVE = "active-group";
+diff --git a/src/test/java/frc/robot/BridgeUiProfileCommandsTest.java b/src/test/java/frc/robot/BridgeUiProfileCommandsTest.java
+index 26240e1..804c202 100644
+--- a/src/test/java/frc/robot/BridgeUiProfileCommandsTest.java
++++ b/src/test/java/frc/robot/BridgeUiProfileCommandsTest.java
+@@ -221,7 +221,7 @@ class BridgeUiProfileCommandsTest {
+ 
+     assertFalse(result.ok);
+     assertEquals(
+-        "Profile change blocked: controlled lifecycle session is ACTIVE. Deactivate lifecycle first.",
++        "Profile change blocked: an active scope session is running. Deactivate scope first.",
+         result.message);
+   }
+ 
+@@ -247,7 +247,7 @@ class BridgeUiProfileCommandsTest {
+ 
+     assertFalse(result.ok);
+     assertEquals(
+-        "Profile change blocked: controlled lifecycle session is ACTIVE. Deactivate lifecycle first.",
++        "Profile change blocked: an active scope session is running. Deactivate scope first.",
+         result.message);
+   }
+ 
+diff --git a/src/test/java/frc/robot/DslBringupTestTest.java b/src/test/java/frc/robot/DslBringupTestTest.java
+index cfab366..dde8c2d 100644
+--- a/src/test/java/frc/robot/DslBringupTestTest.java
++++ b/src/test/java/frc/robot/DslBringupTestTest.java
+@@ -18,6 +18,7 @@ import frc.robot.tests.BringupTestContext;
+ import frc.robot.tests.BringupTestResult;
+ import frc.robot.tests.dsl.DslBringupTest;
+ import frc.robot.tests.dsl.DslModels;
++import frc.robot.tests.dsl.DslSignalRegistry;
+ import java.lang.reflect.Constructor;
+ import java.lang.reflect.Field;
+ import java.util.LinkedHashMap;
+@@ -37,11 +38,14 @@ class DslBringupTestTest {
+   private static final String CONTROLLER_LABEL = "controller0";
+   private static final String CONTROLLER_TYPE = "xboxController";
+   private static final String DSL_MOTOR_TYPE = "motor";
++  private static final String PDP_LABEL = "pdp";
+   private static final String SIGNAL_A = "A";
+   private static final String SIGNAL_X = "X";
+   private static final String SIGNAL_D_UP = "D_UP";
+   private static final String SIGNAL_FAULTS = "faults";
+   private static final String SIGNAL_LEFT_Y = "leftY";
++  private static final String SIGNAL_CHANNEL0_FAULT = "channel0_fault";
++  private static final String SIGNAL_CURRENT = "current";
+   private static final String FIELD_DEVICE_REGISTRY = "DEVICE_REGISTRY";
+   private static final String CLASS_DEVICE_DEFINITION = "frc.robot.BringupUtil$DeviceDefinition";
+   private static final String FIELD_LABEL = "label";
+@@ -332,6 +336,41 @@ class DslBringupTestTest {
+     assertEquals(BringupTestResult.PASS, test.getResult());
+   }
+ 
++  @Test
++  void dslPowerDistributionRequireRevokesWhenSignalBecomesUnavailable() {
++    seedConfiguredDeviceType(PDP_LABEL, DslSignalRegistry.DEVICE_TYPE_PDP);
++    SignalRecordingDevice pdp = new SignalRecordingDevice(PDP_LABEL, DslSignalRegistry.DEVICE_TYPE_PDP);
++    pdp.setSignal(SIGNAL_CHANNEL0_FAULT, false);
++    DslBringupTest test = new DslBringupTest(buildPowerDistributionRequireTest());
++    BringupTestContext context = context(pdp);
++
++    assertTrue(test.start(context, START_SEC));
++    test.update(context, START_SEC + 0.05);
++    pdp.removeSignal(SIGNAL_CHANNEL0_FAULT);
++    test.update(context, START_SEC + 0.25);
++
++    assertEquals(BringupTestResult.FAIL, test.getResult());
++    assertEquals("until until_1: timer.elapsed >= 0.2", test.getStatus());
++    assertTrue(test.buildRunDetails().toString().contains("satisfied=false"));
++  }
++
++  @Test
++  void dslMotorRequireRemainsLatchedWhenSignalBecomesUnavailableLater() {
++    SignalRecordingDevice motor = new SignalRecordingDevice();
++    motor.setSignal(SIGNAL_CURRENT, 5.0);
++    DslBringupTest test = new DslBringupTest(buildMotorRequireLatchTest());
++    BringupTestContext context = context(motor);
++
++    assertTrue(test.start(context, START_SEC));
++    test.update(context, START_SEC + 0.05);
++    motor.removeSignal(SIGNAL_CURRENT);
++    test.update(context, START_SEC + 0.25);
++
++    assertEquals(BringupTestResult.PASS, test.getResult());
++    assertEquals("until until_1: timer.elapsed >= 0.2", test.getStatus());
++    assertTrue(test.buildRunDetails().toString().contains("satisfied=true"));
++  }
++
+   @Test
+   void dslRunScopedAggregateSignalsTrackMotorEvidenceAcrossTheRun() {
+     SignalRecordingDevice motor = new SignalRecordingDevice();
+@@ -625,6 +664,64 @@ class DslBringupTestTest {
+     return test;
+   }
+ 
++  private static DslModels.DslNormalizedTest buildPowerDistributionRequireTest() {
++    DslModels.DslNormalizedTest test = new DslModels.DslNormalizedTest();
++    test.name = "pdp_require";
++    DslModels.DslDeviceRef device = new DslModels.DslDeviceRef();
++    device.name = PDP_LABEL;
++    test.devices.add(device);
++
++    DslModels.DslCondition require = new DslModels.DslCondition();
++    require.id = "require_1";
++    require.kind = "require";
++    require.text = "require pdp.channel0_fault == false";
++    require.reference = reference(PDP_LABEL, SIGNAL_CHANNEL0_FAULT);
++    require.mode = "comparison";
++    require.operator = "==";
++    require.literal = booleanLiteral(false);
++    test.main.requires.add(require);
++
++    DslModels.DslCondition until = new DslModels.DslCondition();
++    until.id = "until_1";
++    until.kind = "until";
++    until.text = "timer.elapsed >= 0.2";
++    until.reference = reference("timer", "elapsed");
++    until.mode = "comparison";
++    until.operator = ">=";
++    until.literal = numberLiteral(0.2);
++    test.main.untils.add(until);
++    return test;
++  }
++
++  private static DslModels.DslNormalizedTest buildMotorRequireLatchTest() {
++    DslModels.DslNormalizedTest test = new DslModels.DslNormalizedTest();
++    test.name = "motor_require_latch";
++    DslModels.DslDeviceRef device = new DslModels.DslDeviceRef();
++    device.name = MOTOR_LABEL;
++    test.devices.add(device);
++
++    DslModels.DslCondition require = new DslModels.DslCondition();
++    require.id = "require_1";
++    require.kind = "require";
++    require.text = "require motor-a.current > 1.0";
++    require.reference = reference(MOTOR_LABEL, SIGNAL_CURRENT);
++    require.mode = "comparison";
++    require.operator = ">";
++    require.literal = numberLiteral(1.0);
++    test.main.requires.add(require);
++
++    DslModels.DslCondition until = new DslModels.DslCondition();
++    until.id = "until_1";
++    until.kind = "until";
++    until.text = "timer.elapsed >= 0.2";
++    until.reference = reference("timer", "elapsed");
++    until.mode = "comparison";
++    until.operator = ">=";
++    until.literal = numberLiteral(0.2);
++    test.main.untils.add(until);
++    return test;
++  }
++
+   private void seedConfiguredDeviceType(String label, String type) {
+     try {
+       Map<String, Object> registry = deviceRegistry();
+@@ -675,6 +772,13 @@ class DslBringupTestTest {
+     return literal;
+   }
+ 
++  private static DslModels.DslLiteral booleanLiteral(boolean value) {
++    DslModels.DslLiteral literal = new DslModels.DslLiteral();
++    literal.value = value;
++    literal.valueType = "boolean";
++    return literal;
++  }
++
+   private static BringupTestContext context(DeviceUnit device) {
+     RegistrationHeader header =
+         new RegistrationHeader(VENDOR, VENDOR, DEVICE_TYPE, SOURCE, OWNER, EMPTY, EMPTY);
+@@ -722,11 +826,22 @@ class DslBringupTestTest {
+   }
+ 
+   private static class RecordingDevice implements DeviceUnit {
++    private final String label;
++    private final String deviceType;
+     private int dutyWrites;
+     private int stopWrites;
+     private double lastDuty;
+     private boolean created;
+ 
++    private RecordingDevice() {
++      this(MOTOR_LABEL, DEVICE_TYPE);
++    }
++
++    private RecordingDevice(String label, String deviceType) {
++      this.label = label;
++      this.deviceType = deviceType;
++    }
++
+     @Override
+     public int getCanId() {
+       return CAN_ID;
+@@ -734,17 +849,17 @@ class DslBringupTestTest {
+ 
+     @Override
+     public RegistrationHeader getHeader() {
+-      return new RegistrationHeader(VENDOR, VENDOR, DEVICE_TYPE, SOURCE, OWNER, EMPTY, EMPTY);
++      return new RegistrationHeader(VENDOR, VENDOR, deviceType, SOURCE, OWNER, EMPTY, EMPTY);
+     }
+ 
+     @Override
+     public String getDeviceType() {
+-      return DEVICE_TYPE;
++      return deviceType;
+     }
+ 
+     @Override
+     public String getLabel() {
+-      return MOTOR_LABEL;
++      return label;
+     }
+ 
+     @Override
+@@ -790,10 +905,22 @@ class DslBringupTestTest {
+   private static final class SignalRecordingDevice extends RecordingDevice {
+     private final Map<String, Object> signals = new LinkedHashMap<>();
+ 
++    private SignalRecordingDevice() {
++      super();
++    }
++
++    private SignalRecordingDevice(String label, String deviceType) {
++      super(label, deviceType);
++    }
++
+     private void setSignal(String signalName, Object value) {
+       signals.put(signalName, value);
+     }
+ 
++    private void removeSignal(String signalName) {
++      signals.remove(signalName);
++    }
++
+     @Override
+     public Object readDslSignal(String signalName) {
+       return signals.get(signalName);
+diff --git a/tools/can_nt/bridge_cli.py b/tools/can_nt/bridge_cli.py
+index 9e8e54b..f833f2d 100644
+--- a/tools/can_nt/bridge_cli.py
++++ b/tools/can_nt/bridge_cli.py
+@@ -1853,13 +1853,13 @@ HELP_RUNTIME_TEXT = (
+ HELP_TOPIC_LIFECYCLE = "lifecycle"
+ HELP_LIFECYCLE_TEXT = (
+     "lifecycle activate <label> [mode <mode>]\n"
+-    "  Activate the controlled bringup lifecycle for one device or group label.\n"
++    "  Activate the current scope membership for one device or group label.\n"
+     "lifecycle deactivate <label>\n"
+-    "  Deactivate the active controlled lifecycle session when it matches <label>.\n"
++    "  Deactivate the active scope session when it matches <label>.\n"
+     "lifecycle deactivate-active\n"
+-    "  Deactivate whichever controlled lifecycle session is active now.\n"
++    "  Deactivate whichever scope session is active now.\n"
+     "show lifecycle-state [--json] [--pretty]\n"
+-    "  Show the robot-controlled lifecycle state snapshot."
++    "  Show the robot scope-state snapshot."
+ )
+ HELP_TOPIC_PROFILES_INIT = "profiles init"
+ HELP_PROFILES_INIT_TEXT = (
+diff --git a/tools/can_nt/bringup_ui.py b/tools/can_nt/bringup_ui.py
+index 83f44c3..4b22d36 100644
+--- a/tools/can_nt/bringup_ui.py
++++ b/tools/can_nt/bringup_ui.py
+@@ -34,7 +34,6 @@ from .command_catalog_service import (
+ )
+ from .command_workflow_service import send_tracked_command
+ from .can_bus_report_service import build_host_can_bus_report
+-from .can_fault_inference import build_fault_diagnosis, render_fault_diagnosis
+ from .passive_discovery_integration_service import (
+     ENGINE_LABEL_LEGACY,
+     ENGINE_LABEL_NEW,
+@@ -47,6 +46,12 @@ from .passive_discovery_integration_service import (
+     SECTION_PROBE,
+     SECTION_PROFILE_INVENTORY,
+     SECTION_TOPOLOGY_VIEW,
++    FAULT_SNAPSHOT_KEY_CANDIDATE_COUNT,
++    FAULT_SNAPSHOT_KEY_RAN_AT,
++    FAULT_SNAPSHOT_KEY_RENDERED_TEXT,
++    FAULT_SNAPSHOT_KEY_RESULT,
++    TEXT_EMPTY,
++    build_evidence_fault_snapshot,
+     build_interpreted_evidence_row,
+     classify_device_type,
+     build_console_snapshot_from_entries as build_console_snapshot_from_entries_shared,
+@@ -133,7 +138,6 @@ from .bridge_ops import (
+     push_config,
+     send_command,
+     show_lifecycle_state,
+-    show_runtime_state,
+     select_test_by_name,
+     ui_disconnect,
+     ui_handshake,
+@@ -159,6 +163,61 @@ from .host_ui_actions import (
+     HOST_ACTION_RECONNECT_UI_SESSION,
+     HOST_UI_ACTIONS,
+ )
++from .host_ui_state_service import (
++    MANUAL_DUTY_BLOCKED_CONTROLLED_SCOPE_TEXT as SHARED_MANUAL_DUTY_BLOCKED_CONTROLLED_SCOPE_TEXT,
++    OUTPUT_NO_SELECTED_TEST as SHARED_OUTPUT_NO_SELECTED_TEST,
++    PROFILE_NONE as SHARED_PROFILE_NONE,
++    SELECTED_TEST_STATUS_BLOCKED_DISABLED as SHARED_SELECTED_TEST_STATUS_BLOCKED_DISABLED,
++    SELECTED_TEST_STATUS_BLOCKED_ESTOP as SHARED_SELECTED_TEST_STATUS_BLOCKED_ESTOP,
++    SELECTED_TEST_STATUS_BLOCKED_NOT_TELEOP as SHARED_SELECTED_TEST_STATUS_BLOCKED_NOT_TELEOP,
++    SELECTED_TEST_STATUS_LOADED_NOT_ACTIVATED as SHARED_SELECTED_TEST_STATUS_LOADED_NOT_ACTIVATED,
++    SELECTED_TEST_STATUS_MANUAL_RESTORED as SHARED_SELECTED_TEST_STATUS_MANUAL_RESTORED,
++    RUNNABLE_SCOPE_DETAIL_MANUAL_EMPTY as SHARED_RUNNABLE_SCOPE_DETAIL_MANUAL_EMPTY,
++    RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_ACTIVATED as SHARED_RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_ACTIVATED,
++    RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_TELEOP as SHARED_RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_TELEOP,
++    RUNNABLE_SCOPE_DETAIL_SELECT_PROFILE as SHARED_RUNNABLE_SCOPE_DETAIL_SELECT_PROFILE,
++    RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_ACTIVATED as SHARED_RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_ACTIVATED,
++    RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_TELEOP as SHARED_RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_TELEOP,
++    RUNNABLE_SCOPE_KIND_MANUAL,
++    RUNNABLE_SCOPE_KIND_SELECTED_TEST,
++    RUNNABLE_STATE_LEVEL_READY,
++    RUNNABLE_STATE_LEVEL_WARN,
++    RUNNABLE_SCOPE_PANEL_DISCONNECTED_DETAIL as SHARED_RUNNABLE_SCOPE_PANEL_DISCONNECTED_DETAIL,
++    RUNNABLE_SCOPE_PANEL_READY_DETAIL as SHARED_RUNNABLE_SCOPE_PANEL_READY_DETAIL,
++    RUNNABLE_SCOPE_PANEL_WAITING_DETAIL as SHARED_RUNNABLE_SCOPE_PANEL_WAITING_DETAIL,
++    TEST_ACTIVE_GROUP_STATUS_ENABLED as SHARED_TEST_ACTIVE_GROUP_STATUS_ENABLED,
++    TEST_ACTIVE_GROUP_STATUS_INVALID as SHARED_TEST_ACTIVE_GROUP_STATUS_INVALID,
++    TEST_ACTIVE_GROUP_STATUS_LOCKED as SHARED_TEST_ACTIVE_GROUP_STATUS_LOCKED,
++    TEST_ACTIVE_GROUP_STATUS_NOT_ACTIVATED as SHARED_TEST_ACTIVE_GROUP_STATUS_NOT_ACTIVATED,
++    TEST_ACTIVE_GROUP_SINGLETON_LABELS as SHARED_TEST_ACTIVE_GROUP_SINGLETON_LABELS,
++    TEST_SCOPE_PANEL_NEUTRAL_LEVEL,
++    TEST_SCOPE_STATUS_BLOCKED_DISABLED_DETAIL as SHARED_TEST_SCOPE_STATUS_BLOCKED_DISABLED_DETAIL,
++    TEST_SCOPE_STATUS_BLOCKED_ESTOP_DETAIL as SHARED_TEST_SCOPE_STATUS_BLOCKED_ESTOP_DETAIL,
++    TEST_SCOPE_STATUS_BLOCKED_NOT_TELEOP_DETAIL as SHARED_TEST_SCOPE_STATUS_BLOCKED_NOT_TELEOP_DETAIL,
++    TEST_SCOPE_STATUS_LOADED_NOT_ACTIVATED_DETAIL as SHARED_TEST_SCOPE_STATUS_LOADED_NOT_ACTIVATED_DETAIL,
++    TEST_SCOPE_STATUS_MANUAL_RESTORED_DETAIL as SHARED_TEST_SCOPE_STATUS_MANUAL_RESTORED_DETAIL,
++    TEST_SCOPE_STATUS_MISSING_DEVICE_PREFIX as SHARED_TEST_SCOPE_STATUS_MISSING_DEVICE_PREFIX,
++    TEST_SCOPE_STATUS_NO_SELECTION_DETAIL as SHARED_TEST_SCOPE_STATUS_NO_SELECTION_DETAIL,
++    TEST_SCOPE_STATUS_REQUIRED_UNAVAILABLE_DETAIL as SHARED_TEST_SCOPE_STATUS_REQUIRED_UNAVAILABLE_DETAIL,
++    TEST_SCOPE_STATUS_READY_DETAIL as SHARED_TEST_SCOPE_STATUS_READY_DETAIL,
++    ActiveGroupMemberRowState,
++    SelectedTestScopeState,
++    SelectedTestPanelState,
++    DiagnosticProfileState,
++    RunnableScopeState,
++    RuntimeStateFetchState,
++    resolve_manual_duty_scope_state,
++    resolve_active_group_summary_state,
++    resolve_diagnostic_profile_state,
++    resolve_runtime_state_fetch_state,
++    resolve_scope_activation_notice,
++    resolve_selected_test_runtime_block_reason,
++    resolve_selected_test_panel_state,
++    resolve_selected_test_scope_state,
++    resolve_tests_active_group_member_rows,
++    resolve_runnable_scope_state,
++    should_clear_runtime_event_notice,
++)
+ from .status import SS__NORMAL
+ from tools.common.json_io import read_json, write_json
+ from tools.common.config_api import ConfigEditSession, ConfigRepository
+@@ -436,7 +495,7 @@ LIVE_SOURCE_REST = "rest"
+ LIVE_SOURCE_FILE = "file"
+ LIVE_CLOCK_FORMAT = "%H:%M:%S"
+ LIVE_CLOCK_LABEL = "Clock:"
+-PROFILE_NONE = "(none)"
++PROFILE_NONE = SHARED_PROFILE_NONE
+ NT_UI_STATE_SELECTED_PROFILE = "state/selectedProfile"
+ NT_UI_STATE_ACTIVE_RUNTIME_PROFILE = "state/activeRuntimeProfile"
+ DEFAULT_RUNTIME_STATE_RATE_HZ = 2.0
+@@ -449,7 +508,7 @@ BUTTON_DEACTIVATE_GROUP = "Deactivate Group"
+ BUTTON_PUSH_CONFIG = "Push Config"
+ BUTTON_DOWNLOAD_CONFIG = "Download Current Config"
+ BUTTON_SHOW_RUNTIME_STATE = "Show Runtime State"
+-BUTTON_SHOW_LIFECYCLE_STATE = "Show Lifecycle State"
++BUTTON_SHOW_LIFECYCLE_STATE = "Show Scope State"
+ CMD_PRINT_CAN_DIAG = "printCANdiag"
+ GROUP_SOURCE_MANUAL = "manual"
+ GROUP_SOURCE_SELECTED_TEST = "selected test"
+@@ -459,7 +518,7 @@ GROUP_SOURCE_LABEL_SELECTED_TEST = GROUP_SOURCE_LABEL_PREFIX + GROUP_SOURCE_SELE
+ OUTPUT_NOT_CONNECTED = "Not connected: command blocked."
+ OUTPUT_BUSY = "Busy: wait for current command to finish."
+ OUTPUT_NO_PROFILE = "No profile selected."
+-OUTPUT_NO_SELECTED_TEST = "no selected test"
++OUTPUT_NO_SELECTED_TEST = SHARED_OUTPUT_NO_SELECTED_TEST
+ OUTPUT_PUSH_CANCELLED = "Config push cancelled."
+ OUTPUT_DOWNLOAD_CANCELLED = "Config download cancelled."
+ OUTPUT_PUSH_START_FMT = "PUSH {path} profile={profile}"
+@@ -469,6 +528,9 @@ OUTPUT_PUSH_FAILURE = "Push Config: FAILED"
+ OUTPUT_DOWNLOAD_START_FMT = "DOWNLOAD {path}"
+ OUTPUT_RUNTIME_ACTIVATE_FMT = "CMD runtimeActivate \"{profile}\""
+ OUTPUT_RUNTIME_DEACTIVATE = "CMD runtimeDeactivate"
++OUTPUT_RUNTIME_STATE_FETCH = "CMD showRuntimeState"
++OUTPUT_RUNTIME_STATE_FETCH_OUT = "OUT showRuntimeState"
++OUTPUT_RUNTIME_STATE_FETCH_EMPTY = "Runtime state fetch returned no data."
+ OUTPUT_LIFECYCLE_ACTIVATE_FMT = (
+     "CMD lifecycleActivate \"{label}\" mode={mode} membershipMode={membership_mode}"
+ )
+@@ -525,11 +587,9 @@ MANUAL_DUTY_BLOCKED_STALE_TEXT = "Manual motor control blocked: robot state stal
+ MANUAL_DUTY_BLOCKED_ESTOP_TEXT = "Manual motor control blocked: robot estopped."
+ MANUAL_DUTY_BLOCKED_DISABLED_TEXT = "Manual motor control blocked: robot disabled."
+ MANUAL_DUTY_BLOCKED_RUNTIME_TEXT = "Manual motor control blocked: runtime inactive."
+-MANUAL_DUTY_BLOCKED_CONTROLLED_SCOPE_TEXT = (
+-    "Manual motor control blocked: device is outside the active controlled lifecycle scope."
+-)
++MANUAL_DUTY_BLOCKED_CONTROLLED_SCOPE_TEXT = SHARED_MANUAL_DUTY_BLOCKED_CONTROLLED_SCOPE_TEXT
+ ACTIVE_GROUP_LOCKED_TEXT = (
+-    "Active group membership is locked while controlled lifecycle session is ACTIVE. Deactivate lifecycle first."
++    "Active group membership is locked while an active scope session is running. Deactivate scope first."
+ )
+ MANUAL_DUTY_BUSY_TEXT = "Manual motor control blocked: command in flight."
+ MANUAL_DUTY_SCALE_ELEMENT_SLIDER = "slider"
+@@ -1047,60 +1107,30 @@ TEST_FAILURE_SIGNAL_SET_PREFIX = "signal fallback active:"
+ TEST_FAILURE_LAST_SAMPLES_PREFIX = "last samples:"
+ TEST_FAILURE_SAMPLE_LIMIT = 3
+ TEST_LIBRARY_STATUS_INACTIVE_PREFIX = "selected test inactive - "
+-TEST_LIBRARY_STATUS_READY = "selected test devices active - ready to run"
++TEST_LIBRARY_STATUS_READY = SHARED_TEST_SCOPE_STATUS_READY_DETAIL
+ TEST_LIBRARY_STATUS_NO_SELECTED_TEST = TEST_LIBRARY_STATUS_INACTIVE_PREFIX + OUTPUT_NO_SELECTED_TEST
+-TEST_LIBRARY_STATUS_LOADED_NOT_ACTIVATED = "selected test scope ready - not activated"
+-TEST_LIBRARY_STATUS_MANUAL_RESTORED = "manual active-group restored - not activated"
+-TEST_LIBRARY_STATUS_BLOCKED_ESTOP = "robot disabled (E-Stop)"
+-TEST_LIBRARY_STATUS_BLOCKED_DISABLED = "robot disabled"
+-TEST_LIBRARY_STATUS_BLOCKED_NOT_TELEOP = "robot not in teleop"
+-TEST_SCOPE_DETAIL_NO_SELECTION = (
+-    "Select a test from one of the library lists to show the devices that test uses."
+-)
+-TEST_SCOPE_DETAIL_LOADED_NOT_ACTIVATED = (
+-    "This test requires the devices shown in Selected Test Devices. "
+-    "Press Activate Group, then run the test."
+-)
+-TEST_SCOPE_DETAIL_MANUAL_RESTORED = (
+-    "The remembered manual active-group was restored after leaving Tests. "
+-    "Press Activate Group before running manual actions."
+-)
+-RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_ACTIVATED = (
+-    "Activate Group first."
+-)
+-RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_ACTIVATED = (
+-    "Activate lifecycle first."
+-)
+-RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_TELEOP = (
+-    "Switch to teleop, then Activate Group."
+-)
+-RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_TELEOP = (
+-    "Switch to teleop, then Activate lifecycle."
+-)
+-RUNNABLE_SCOPE_DETAIL_MANUAL_EMPTY = (
+-    "Active group is empty. Add devices before Activate Group."
+-)
+-RUNNABLE_SCOPE_DETAIL_SELECT_PROFILE = (
+-    "Select a profile before using manual/group controls."
+-)
+-TEST_SCOPE_DETAIL_MISSING_DEVICE_PREFIX = (
+-    "This test cannot run because a required profile device is missing: "
+-)
+-TEST_SCOPE_DETAIL_REQUIRED_UNAVAILABLE = (
+-    "This test cannot run because one or more required devices are not available."
+-)
++TEST_LIBRARY_STATUS_LOADED_NOT_ACTIVATED = SHARED_SELECTED_TEST_STATUS_LOADED_NOT_ACTIVATED
++TEST_LIBRARY_STATUS_MANUAL_RESTORED = SHARED_SELECTED_TEST_STATUS_MANUAL_RESTORED
++TEST_LIBRARY_STATUS_BLOCKED_ESTOP = SHARED_SELECTED_TEST_STATUS_BLOCKED_ESTOP
++TEST_LIBRARY_STATUS_BLOCKED_DISABLED = SHARED_SELECTED_TEST_STATUS_BLOCKED_DISABLED
++TEST_LIBRARY_STATUS_BLOCKED_NOT_TELEOP = SHARED_SELECTED_TEST_STATUS_BLOCKED_NOT_TELEOP
++TEST_SCOPE_DETAIL_NO_SELECTION = SHARED_TEST_SCOPE_STATUS_NO_SELECTION_DETAIL
++TEST_SCOPE_DETAIL_LOADED_NOT_ACTIVATED = SHARED_TEST_SCOPE_STATUS_LOADED_NOT_ACTIVATED_DETAIL
++TEST_SCOPE_DETAIL_MANUAL_RESTORED = SHARED_TEST_SCOPE_STATUS_MANUAL_RESTORED_DETAIL
++RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_ACTIVATED = SHARED_RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_ACTIVATED
++RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_ACTIVATED = SHARED_RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_ACTIVATED
++RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_TELEOP = SHARED_RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_TELEOP
++RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_TELEOP = SHARED_RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_TELEOP
++RUNNABLE_SCOPE_DETAIL_MANUAL_EMPTY = SHARED_RUNNABLE_SCOPE_DETAIL_MANUAL_EMPTY
++RUNNABLE_SCOPE_DETAIL_SELECT_PROFILE = SHARED_RUNNABLE_SCOPE_DETAIL_SELECT_PROFILE
++TEST_SCOPE_DETAIL_MISSING_DEVICE_PREFIX = SHARED_TEST_SCOPE_STATUS_MISSING_DEVICE_PREFIX
++TEST_SCOPE_DETAIL_REQUIRED_UNAVAILABLE = SHARED_TEST_SCOPE_STATUS_REQUIRED_UNAVAILABLE_DETAIL
+ TEST_SCOPE_DETAIL_NOT_LOADED_ON_ROBOT = (
+     "This test exists locally, but the robot has not loaded it into the current runnable test set."
+ )
+-TEST_SCOPE_DETAIL_BLOCKED_ESTOP = (
+-    "This test cannot run because the robot is E-stopped. Clear the E-stop before activating the group or running the test."
+-)
+-TEST_SCOPE_DETAIL_BLOCKED_DISABLED = (
+-    "This test cannot run because the robot is disabled. Enable teleop before activating the group or running the test."
+-)
+-TEST_SCOPE_DETAIL_BLOCKED_NOT_TELEOP = (
+-    "This test cannot run because the robot is not in teleop. Switch to teleop before activating the group or running the test."
+-)
++TEST_SCOPE_DETAIL_BLOCKED_ESTOP = SHARED_TEST_SCOPE_STATUS_BLOCKED_ESTOP_DETAIL
++TEST_SCOPE_DETAIL_BLOCKED_DISABLED = SHARED_TEST_SCOPE_STATUS_BLOCKED_DISABLED_DETAIL
++TEST_SCOPE_DETAIL_BLOCKED_NOT_TELEOP = SHARED_TEST_SCOPE_STATUS_BLOCKED_NOT_TELEOP_DETAIL
+ TEST_LIBRARY_LOCAL_SCOPE_PROFILE = "profile"
+ TEST_LIBRARY_LOCAL_SCOPE_CONFIG = "config"
+ TEST_LIBRARY_LOCAL_SCOPE_GLOBAL = "global"
+@@ -1110,11 +1140,9 @@ TEST_SCOPE_PANEL_INACTIVE_HEADLINE = "NOT RUNNABLE"
+ TEST_SCOPE_PANEL_NO_SELECTION_HEADLINE = "NO TEST SELECTED"
+ TEST_SCOPE_PANEL_WAITING_HEADLINE = "WAITING FOR STATE"
+ RUNNABLE_SCOPE_PANEL_TITLE = "Runnable State"
+-RUNNABLE_SCOPE_PANEL_READY_DETAIL = "manual/group controls available - ready to run"
+-RUNNABLE_SCOPE_PANEL_WAITING_DETAIL = "waiting for robot runtime state"
+-RUNNABLE_SCOPE_PANEL_DISCONNECTED_DETAIL = (
+-    "Robot connection unavailable. Power the robot and reconnect before running."
+-)
++RUNNABLE_SCOPE_PANEL_READY_DETAIL = SHARED_RUNNABLE_SCOPE_PANEL_READY_DETAIL
++RUNNABLE_SCOPE_PANEL_WAITING_DETAIL = SHARED_RUNNABLE_SCOPE_PANEL_WAITING_DETAIL
++RUNNABLE_SCOPE_PANEL_DISCONNECTED_DETAIL = SHARED_RUNNABLE_SCOPE_PANEL_DISCONNECTED_DETAIL
+ TEST_SCOPE_PANEL_READY_BG = "#dcfce7"
+ TEST_SCOPE_PANEL_READY_FG = "#166534"
+ TEST_SCOPE_PANEL_INACTIVE_BG = "#fef3c7"
+@@ -1134,12 +1162,12 @@ TEST_RESULT_FAIL_FG = "#991b1b"
+ TEST_RESULT_RUNNING_FG = "#1d4ed8"
+ TEST_RESULT_NEUTRAL_FG = "#374151"
+ TEST_ACTIVE_GROUP_TITLE = "Selected Test Devices"
+-TEST_ACTIVE_GROUP_STATUS_LOCKED = "locked"
+-TEST_ACTIVE_GROUP_STATUS_INVALID = "invalid"
+-TEST_ACTIVE_GROUP_STATUS_NOT_ACTIVATED = "not instantiated"
+-TEST_ACTIVE_GROUP_STATUS_ENABLED = "enabled"
++TEST_ACTIVE_GROUP_STATUS_LOCKED = SHARED_TEST_ACTIVE_GROUP_STATUS_LOCKED
++TEST_ACTIVE_GROUP_STATUS_INVALID = SHARED_TEST_ACTIVE_GROUP_STATUS_INVALID
++TEST_ACTIVE_GROUP_STATUS_NOT_ACTIVATED = SHARED_TEST_ACTIVE_GROUP_STATUS_NOT_ACTIVATED
++TEST_ACTIVE_GROUP_STATUS_ENABLED = SHARED_TEST_ACTIVE_GROUP_STATUS_ENABLED
+ TEST_ACTIVE_GROUP_PANEL_EMPTY = "No selected-test devices."
+-TEST_ACTIVE_GROUP_SINGLETON_LABELS = {"controller0", "roborio", "pdp"}
++TEST_ACTIVE_GROUP_SINGLETON_LABELS = SHARED_TEST_ACTIVE_GROUP_SINGLETON_LABELS
+ TEST_LIBRARY_NOTE_TEXT = (
+     "The Tests tab has three sources: external Global Library, config-shared Config Library, "
+     "and selected-profile Profile Tests. Selecting a test shows the devices required by that DSL test. "
+@@ -3715,21 +3743,12 @@ class BringupControlUI(tk.Tk):
+             about the missing activation step instead of redundantly mentioning
+             teleop again.
+         """
+-        owner_mode = self.__dict__.get("_group_owner_mode", GROUP_SOURCE_MANUAL)
+-        if (
+-            owner_mode == GROUP_SOURCE_MANUAL
+-            and self.__dict__.get("_profile_box") is not None
+-            and self._selected_profile_name() == PROFILE_NONE
+-        ):
+-            return RUNNABLE_SCOPE_DETAIL_SELECT_PROFILE
+-        mode = str(self.__dict__.get("_robot_mode_known", "") or "").strip().lower()
+-        if mode and mode != "teleop":
+-            if owner_mode == GROUP_SOURCE_SELECTED_TEST:
+-                return RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_TELEOP
+-            return RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_TELEOP
+-        if owner_mode == GROUP_SOURCE_SELECTED_TEST:
+-            return RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_ACTIVATED
+-        return RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_ACTIVATED
++        return resolve_scope_activation_notice(
++            scope_kind=self._runnable_scope_kind(),
++            local_selected_profile=self._selected_profile_name(),
++            local_profile_required=self.__dict__.get("_profile_box") is not None,
++            robot_mode=str(self.__dict__.get("_robot_mode_known", "") or "").strip().lower(),
++        )
+ 
+     def _build_visibility_ctre_raw_table_widget(self, parent: tk.Widget) -> ttk.Treeview:
+         """
+@@ -3838,6 +3857,51 @@ class BringupControlUI(tk.Tk):
+             return PROFILE_NONE
+         return _normalize_profile_name(profile_box.get())
+ 
++    def _diagnostic_profile_state(self) -> DiagnosticProfileState:
++        """
++        NAME
++            _diagnostic_profile_state - Return the shared diagnostic profile context state.
++        """
++        return resolve_diagnostic_profile_state(
++            self._selected_profile_name(),
++            self._robot_selected_profile,
++            self._robot_active_runtime_profile,
++            local_profile_required=self.__dict__.get("_profile_box") is not None,
++        )
++
++    def _runnable_scope_kind(self) -> str:
++        """
++        NAME
++            _runnable_scope_kind - Return normalized shared runnable-scope kind text.
++        """
++        owner_mode = str(self.__dict__.get("_group_owner_mode", "") or "").strip().lower()
++        if owner_mode == GROUP_SOURCE_SELECTED_TEST:
++            return RUNNABLE_SCOPE_KIND_SELECTED_TEST
++        if owner_mode == GROUP_SOURCE_MANUAL:
++            return RUNNABLE_SCOPE_KIND_MANUAL
++        if self._scope_context_kind() == GROUP_SOURCE_SELECTED_TEST:
++            return RUNNABLE_SCOPE_KIND_SELECTED_TEST
++        return RUNNABLE_SCOPE_KIND_MANUAL
++
++    def _runnable_scope_state(self, stale_state: bool) -> RunnableScopeState:
++        """
++        NAME
++            _runnable_scope_state - Return the shared runnable-scope decision state.
++        """
++        return resolve_runnable_scope_state(
++            scope_kind=self._runnable_scope_kind(),
++            local_selected_profile=self._selected_profile_name(),
++            local_profile_required=self.__dict__.get("_profile_box") is not None,
++            tcp_connected=bool(self.__dict__.get("_tcp_connected", True)),
++            runtime_state_seen=bool(self.__dict__.get("_runtime_state_seen", False)),
++            stale_state=bool(stale_state),
++            robot_enabled=bool(self.__dict__.get("_robot_enabled_known", True)),
++            robot_estopped=bool(self.__dict__.get("_robot_estopped_known", False)),
++            robot_mode=str(self.__dict__.get("_robot_mode_known", "") or "").strip().lower(),
++            manual_group_empty=self._manual_active_group_is_empty(),
++            scope_active=self._scope_is_currently_active(),
++        )
++
+     def _diagnostic_profile_context_name(self) -> str:
+         """
+         NAME
+@@ -3848,28 +3912,22 @@ class BringupControlUI(tk.Tk):
+             After that, prefer the robot's active runtime profile, then the
+             robot's selected profile, then the local UI selection.
+         """
+-        profile_box = self.__dict__.get("_profile_box")
+-        local_selected = self._selected_profile_name()
+-        if profile_box is not None and local_selected == PROFILE_NONE:
+-            return PROFILE_NONE
+-        active_name = _normalize_profile_name(self._robot_active_runtime_profile)
+-        if active_name != PROFILE_NONE:
+-            return active_name
+-        robot_selected = _normalize_profile_name(self._robot_selected_profile)
+-        if robot_selected != PROFILE_NONE:
+-            return robot_selected
+-        return local_selected
++        return self._diagnostic_profile_state().effective_profile
+ 
+     def _sync_diagnostic_profile_context(self, reload_views: bool) -> None:
+         """
+         NAME
+             _sync_diagnostic_profile_context - Re-anchor diagnostics surfaces to one profile context.
+         """
+-        name = self._diagnostic_profile_context_name()
++        state = self._diagnostic_profile_state()
++        name = state.effective_profile
+         self._refresh_profile_devices(name)
+         if reload_views and name != self._last_profile_context:
+             for live_view in self._iter_live_views():
+-                live_view.reload_profile(name)
++                if hasattr(live_view, "apply_diagnostic_profile_state"):
++                    live_view.apply_diagnostic_profile_state(state)
++                else:
++                    live_view.reload_profile(name)
+         self._last_profile_context = name
+         self.after_idle(self._refresh_evidence_view)
+ 
+@@ -4235,18 +4293,11 @@ class BringupControlUI(tk.Tk):
+         NAME
+             _is_manual_duty_target_allowed - Return whether one target label is eligible for manual duty.
+         """
+-        clean_label = str(label or NT_VALUE_EMPTY).strip().lower()
+-        if not clean_label:
+-            return False
+-        runtime_device = self._latest_runtime_devices.get(clean_label, {})
+-        if not isinstance(runtime_device, dict):
+-            return False
+-        if self._controlled_lifecycle_active_known is True:
+-            lifecycle_state = str(
+-                runtime_device.get("lifecycleState", NT_VALUE_EMPTY)
+-            ).strip()
+-            return lifecycle_state == "controlled-active"
+-        return bool(runtime_device.get("testable", False))
++        return resolve_manual_duty_scope_state(
++            label=label,
++            runtime_state_by_label=dict(self.__dict__.get("_latest_runtime_devices", {})),
++            controlled_lifecycle_active=self._controlled_lifecycle_active_known is True,
++        ).allowed
+ 
+     def _manual_duty_scope_block_message_for_targets(self, targets: List[str]) -> str:
+         """
+@@ -4256,8 +4307,13 @@ class BringupControlUI(tk.Tk):
+         if self._controlled_lifecycle_active_known is not True:
+             return NT_VALUE_EMPTY
+         for label in targets:
+-            if not self._is_manual_duty_target_allowed(label):
+-                return MANUAL_DUTY_BLOCKED_CONTROLLED_SCOPE_TEXT
++            state = resolve_manual_duty_scope_state(
++                label=label,
++                runtime_state_by_label=dict(self.__dict__.get("_latest_runtime_devices", {})),
++                controlled_lifecycle_active=True,
++            )
++            if not state.allowed:
++                return state.blocked_reason
+         return NT_VALUE_EMPTY
+ 
+     def _is_manual_motor_node(self, node: object) -> bool:
+@@ -5595,10 +5651,9 @@ class BringupControlUI(tk.Tk):
+             ):
+                 self._update_evidence_cache_incremental(max_devices=len(profile_devices))
+             rows = self._build_evidence_rows()
+-            console_snapshot = self._collect_console_snapshot()
+-            result = build_fault_diagnosis(
++            snapshot = build_evidence_fault_snapshot(
+                 evidence_rows=rows,
+-                console_snapshot=console_snapshot,
++                console_snapshot=self._collect_console_snapshot(),
+                 topology_profile=self._current_topology_profile(),
+                 now_s=now_s,
+             )
+@@ -5608,17 +5663,16 @@ class BringupControlUI(tk.Tk):
+             self._fault_finder_status_var.set(CAN_FAULT_FINDER_STATUS_NOT_RUN)
+             self._set_fault_finder_text(CAN_FAULT_FINDER_TEXT_ERROR_FMT.format(error=exc))
+             return
+-        self._fault_finder_last_run_at = now_s
+-        self._fault_finder_result = dict(result)
+-        candidates = result.get("candidates")
+-        candidate_count = len(candidates) if isinstance(candidates, list) else 0
++        self._fault_finder_last_run_at = float(snapshot.get(FAULT_SNAPSHOT_KEY_RAN_AT, now_s) or now_s)
++        self._fault_finder_result = dict(snapshot.get(FAULT_SNAPSHOT_KEY_RESULT, {}))
++        candidate_count = int(snapshot.get(FAULT_SNAPSHOT_KEY_CANDIDATE_COUNT, 0) or 0)
+         self._fault_finder_status_var.set(
+             CAN_FAULT_FINDER_STATUS_FMT.format(
+                 age=_format_age_seconds(0.0),
+                 count=candidate_count,
+             )
+         )
+-        self._set_fault_finder_text(render_fault_diagnosis(result))
++        self._set_fault_finder_text(str(snapshot.get(FAULT_SNAPSHOT_KEY_RENDERED_TEXT, TEXT_EMPTY)))
+ 
+     def _evidence_profile_generation(self) -> str:
+         """
+@@ -8382,7 +8436,7 @@ class BringupControlUI(tk.Tk):
+             "",
+             "Run All:",
+             "  Run all enabled scripted tests in order.",
+-            "  Use this after verifying the selected active group and lifecycle state.",
++            "  Use this after verifying the selected active group and scope state.",
+             "  Output: streaming results per test; use Print Next to preview order.",
+             "",
+             "Print Next:",
+@@ -8767,14 +8821,7 @@ class BringupControlUI(tk.Tk):
+         self._runtime_state_pause_until = None
+         self._runtime_state_last_poll = 0.0
+         self._runtime_state_pending_seq = None
+-        if not self._tcp_connected or not self._handshake_done:
+-            return
+-        if self._tracker.is_pending() or self._log_poll_inflight:
+-            return
+-        seq = show_runtime_state(self._session, json_output=True)
+-        if seq is not None:
+-            self._runtime_state_pending_seq = int(seq)
+-            self._runtime_state_pending_at = time.time()
++        self._fetch_runtime_state_snapshot(show_output=False, log_blocked=False)
+ 
+     def _send_handshake(self, reset: bool, force: bool = False, log: bool = True) -> None:
+         """
+@@ -8967,6 +9014,9 @@ class BringupControlUI(tk.Tk):
+         """
+         if not command:
+             return
++        if str(command or "").strip().lower() == CMD_SHOW_RUNTIME_STATE.lower():
++            self._show_runtime_state_from_ui()
++            return
+         metadata = ACTIONS_BY_NAME.get(command, {})
+         action_kind = str(metadata.get(INVENTORY_KEY_ACTION_KIND, ACTION_KIND_REMOTE_COMMAND))
+         if action_kind == ACTION_KIND_HOST_LOCAL:
+@@ -9016,9 +9066,6 @@ class BringupControlUI(tk.Tk):
+         )
+         if seq is not None:
+             self._last_sent_seq = seq
+-            if str(command or "").strip().lower() == CMD_SHOW_RUNTIME_STATE.lower():
+-                self._runtime_state_pending_seq = int(seq)
+-                self._runtime_state_pending_at = time.time()
+ 
+     def _on_test_selected(self, _event=None) -> None:
+         """
+@@ -9050,46 +9097,40 @@ class BringupControlUI(tk.Tk):
+         NAME
+             _selected_test_inactive_reason - Return the current selected-test readiness blocker.
+         """
++        return self._selected_test_scope_state().inactive_reason
++
++    def _selected_test_scope_state(self) -> SelectedTestScopeState:
++        """
++        NAME
++            _selected_test_scope_state - Return the shared selected-test readiness state.
++        """
+         selected_name = str(self._selected_test_var.get() or "").strip()
+-        if not selected_name or selected_name == PROFILE_NONE:
+-            return OUTPUT_NO_SELECTED_TEST
+-        rows = list(self.__dict__.get("_tests_active_group_rows", []))
+-        invalid_labels = [str(row.get("label", "")).strip() for row in rows if bool(row.get("invalid"))]
+-        if invalid_labels:
+-            return "missing resource/device - " + invalid_labels[0]
+-        runtime_block_reason = self._test_runtime_block_reason()
+-        if runtime_block_reason:
+-            return runtime_block_reason
+-        row = self._selected_test_row(selected_name)
+-        if not self._scope_is_currently_active():
+-            if not isinstance(row, dict):
+-                return "required devices unavailable"
+-            if self.__dict__.get("_tests_active_group_loaded_to_robot") is False:
+-                return "required devices unavailable"
+-            return TEST_LIBRARY_STATUS_LOADED_NOT_ACTIVATED
+-        if not isinstance(row, dict):
+-            return "required devices unavailable"
+-        blocked_reason = str(row.get("blockedReason", "") or "").strip()
+-        if blocked_reason:
+-            return blocked_reason
+-        runnable_now = row.get("runnableNow")
+-        if isinstance(runnable_now, bool):
+-            return "" if runnable_now else "required devices unavailable"
+-        return ""
++        return resolve_selected_test_scope_state(
++            selected_name=selected_name,
++            active_group_rows=list(self.__dict__.get("_tests_active_group_rows", [])),
++            runtime_block_reason=self._test_runtime_block_reason(),
++            scope_active=self._scope_is_currently_active(),
++            loaded_to_robot=self.__dict__.get("_tests_active_group_loaded_to_robot"),
++            selected_row=self._selected_test_row(selected_name),
++        )
++
++    def _selected_test_panel_state(self) -> SelectedTestPanelState:
++        """
++        NAME
++            _selected_test_panel_state - Return shared Tests-tab presentation state for the selected test.
++        """
++        return resolve_selected_test_panel_state(self._selected_test_scope_state())
+ 
+     def _test_runtime_block_reason(self) -> str:
+         """
+         NAME
+             _test_runtime_block_reason - Return robot-state blocker text for activation/test execution.
+         """
+-        if bool(self.__dict__.get("_robot_estopped_known", False)):
+-            return TEST_LIBRARY_STATUS_BLOCKED_ESTOP
+-        if not bool(self.__dict__.get("_robot_enabled_known", True)):
+-            return TEST_LIBRARY_STATUS_BLOCKED_DISABLED
+-        mode = str(self.__dict__.get("_robot_mode_known", "") or "").strip().lower()
+-        if mode and mode != "teleop":
+-            return TEST_LIBRARY_STATUS_BLOCKED_NOT_TELEOP
+-        return ""
++        return resolve_selected_test_runtime_block_reason(
++            robot_estopped=bool(self.__dict__.get("_robot_estopped_known", False)),
++            robot_enabled=bool(self.__dict__.get("_robot_enabled_known", True)),
++            robot_mode=str(self.__dict__.get("_robot_mode_known", "") or "").strip().lower(),
++        )
+ 
+     def _selected_test_row(self, selected_name: str) -> Optional[Dict[str, Any]]:
+         """
+@@ -9124,7 +9165,7 @@ class BringupControlUI(tk.Tk):
+         NAME
+             _selected_test_ready - Return whether the current selected test is ready to run.
+         """
+-        return self._selected_test_inactive_reason() == ""
++        return self._selected_test_scope_state().ready
+ 
+     def _latest_test_run_payload(self) -> Dict[str, Any]:
+         """
+@@ -9296,30 +9337,13 @@ class BringupControlUI(tk.Tk):
+             listbox.insert(tk.END, TEST_ACTIVE_GROUP_PANEL_EMPTY)
+             return
+         scope_active = self._scope_is_currently_active() if self._scope_context_kind() == GROUP_SOURCE_SELECTED_TEST else self._active_group_is_currently_active()
+-        for row in rows:
+-            label = str(row.get("label", "")).strip()
+-            if not label:
+-                continue
+-            statuses = [TEST_ACTIVE_GROUP_STATUS_ENABLED]
+-            if bool(row.get("locked")) or scope_active:
+-                statuses.append(TEST_ACTIVE_GROUP_STATUS_LOCKED)
+-            if bool(row.get("invalid")):
+-                statuses.append(TEST_ACTIVE_GROUP_STATUS_INVALID)
+-            runtime_device = self._runtime_device_for_label(label)
+-            instantiated = False
+-            if runtime_device:
+-                if bool(runtime_device.get("instantiated", False)):
+-                    instantiated = True
+-                elif str(label).strip().lower() in TEST_ACTIVE_GROUP_SINGLETON_LABELS:
+-                    instantiated = bool(runtime_device.get("testable", False))
+-            statuses.append(
+-                "instantiated" if scope_active and instantiated else TEST_ACTIVE_GROUP_STATUS_NOT_ACTIVATED
+-            )
+-            reason = str(row.get("reason", "")).strip()
+-            line = f"{label} | " + " | ".join(statuses)
+-            if reason:
+-                line += f" | {reason}"
+-            listbox.insert(tk.END, line)
++        runtime_state_by_label = dict(self.__dict__.get("_latest_runtime_devices", {}))
++        for state in resolve_tests_active_group_member_rows(
++            rows=rows,
++            runtime_state_by_label=runtime_state_by_label,
++            scope_active=scope_active,
++        ):
++            listbox.insert(tk.END, state.line)
+ 
+     def _refresh_selected_test_scope_status(self) -> None:
+         """
+@@ -9332,26 +9356,25 @@ class BringupControlUI(tk.Tk):
+             return
+         panel_bg = TEST_SCOPE_PANEL_NEUTRAL_BG
+         panel_fg = TEST_SCOPE_PANEL_NEUTRAL_FG
+-        inactive_reason = self._selected_test_inactive_reason()
+-        if inactive_reason:
+-            status_var.set(self._format_selected_test_scope_status_detail(inactive_reason))
++        state = self._selected_test_panel_state()
++        if state.level == TEST_SCOPE_PANEL_NEUTRAL_LEVEL:
++            status_var.set(state.detail)
+             if headline_var is not None:
+-                if inactive_reason == OUTPUT_NO_SELECTED_TEST:
+-                    headline_var.set(TEST_SCOPE_PANEL_NO_SELECTION_HEADLINE)
+-                else:
+-                    headline_var.set(TEST_SCOPE_PANEL_INACTIVE_HEADLINE)
+-            if inactive_reason == OUTPUT_NO_SELECTED_TEST:
+-                panel_bg = TEST_SCOPE_PANEL_NEUTRAL_BG
+-                panel_fg = TEST_SCOPE_PANEL_NEUTRAL_FG
+-            else:
+-                panel_bg = TEST_SCOPE_PANEL_INACTIVE_BG
+-                panel_fg = TEST_SCOPE_PANEL_INACTIVE_FG
+-        else:
+-            status_var.set(TEST_LIBRARY_STATUS_READY)
++                headline_var.set(state.headline)
++            panel_bg = TEST_SCOPE_PANEL_NEUTRAL_BG
++            panel_fg = TEST_SCOPE_PANEL_NEUTRAL_FG
++        elif state.level == RUNNABLE_STATE_LEVEL_READY:
++            status_var.set(state.detail)
+             if headline_var is not None:
+-                headline_var.set(TEST_SCOPE_PANEL_READY_HEADLINE)
++                headline_var.set(state.headline)
+             panel_bg = TEST_SCOPE_PANEL_READY_BG
+             panel_fg = TEST_SCOPE_PANEL_READY_FG
++        else:
++            status_var.set(state.detail)
++            if headline_var is not None:
++                headline_var.set(state.headline)
++            panel_bg = TEST_SCOPE_PANEL_INACTIVE_BG
++            panel_fg = TEST_SCOPE_PANEL_INACTIVE_FG
+         self._apply_selected_test_scope_panel_colors(panel_bg, panel_fg)
+ 
+     def _format_selected_test_scope_status_detail(self, inactive_reason: str) -> str:
+@@ -9359,27 +9382,15 @@ class BringupControlUI(tk.Tk):
+         NAME
+             _format_selected_test_scope_status_detail - Convert one internal blocked reason into clearer operator guidance.
+         """
+-        reason = str(inactive_reason or "").strip()
+-        if not reason:
+-            return TEST_LIBRARY_STATUS_READY
+-        if reason == OUTPUT_NO_SELECTED_TEST:
+-            return TEST_SCOPE_DETAIL_NO_SELECTION
+-        if reason == TEST_LIBRARY_STATUS_LOADED_NOT_ACTIVATED:
+-            return TEST_SCOPE_DETAIL_LOADED_NOT_ACTIVATED
+-        if reason == TEST_LIBRARY_STATUS_MANUAL_RESTORED:
+-            return TEST_SCOPE_DETAIL_MANUAL_RESTORED
+-        if reason == TEST_LIBRARY_STATUS_BLOCKED_ESTOP:
+-            return TEST_SCOPE_DETAIL_BLOCKED_ESTOP
+-        if reason == TEST_LIBRARY_STATUS_BLOCKED_DISABLED:
+-            return TEST_SCOPE_DETAIL_BLOCKED_DISABLED
+-        if reason == TEST_LIBRARY_STATUS_BLOCKED_NOT_TELEOP:
+-            return TEST_SCOPE_DETAIL_BLOCKED_NOT_TELEOP
+-        if reason.startswith("missing resource/device - "):
+-            missing = reason.split(" - ", 1)[1].strip()
+-            return TEST_SCOPE_DETAIL_MISSING_DEVICE_PREFIX + missing
+-        if reason == "required devices unavailable":
+-            return TEST_SCOPE_DETAIL_REQUIRED_UNAVAILABLE
+-        return TEST_LIBRARY_STATUS_INACTIVE_PREFIX + reason
++        state = SelectedTestScopeState(
++            selected_name=PROFILE_NONE,
++            inactive_reason=str(inactive_reason or "").strip(),
++            ready=not str(inactive_reason or "").strip(),
++            headline=TEST_SCOPE_PANEL_READY_HEADLINE if not str(inactive_reason or "").strip() else TEST_SCOPE_PANEL_INACTIVE_HEADLINE,
++            detail_reason=str(inactive_reason or "").strip(),
++            level=RUNNABLE_STATE_LEVEL_READY if not str(inactive_reason or "").strip() else RUNNABLE_STATE_LEVEL_WARN,
++        )
++        return resolve_selected_test_panel_state(state).detail
+ 
+     def _apply_selected_test_scope_panel_colors(self, background: str, foreground: str) -> None:
+         """
+@@ -10250,7 +10261,51 @@ class BringupControlUI(tk.Tk):
+         NAME
+             _show_runtime_state_from_ui - Request the runtime-state payload through the top-bar control.
+         """
+-        self._on_action(CMD_SHOW_RUNTIME_STATE)
++        self._append_output(f"{timestamp_hms()} {OUTPUT_RUNTIME_STATE_FETCH}")
++        self._last_cmd = (CMD_SHOW_RUNTIME_STATE, {"source": "rest_runtime_state"})
++        self._fetch_runtime_state_snapshot(show_output=True, log_blocked=True)
++
++    def _runtime_state_fetch_state(self) -> RuntimeStateFetchState:
++        """
++        NAME
++            _runtime_state_fetch_state - Return the shared runtime-state fetch gate for the current UI session.
++        """
++        tracker = self.__dict__.get("_tracker")
++        tracker_pending = bool(tracker.is_pending()) if tracker is not None else False
++        return resolve_runtime_state_fetch_state(
++            tcp_connected=bool(self._tcp_connected),
++            handshake_done=bool(self._handshake_done),
++            tracker_pending=tracker_pending,
++            log_poll_inflight=bool(self._log_poll_inflight),
++        )
++
++    def _fetch_runtime_state_snapshot(
++        self,
++        *,
++        show_output: bool,
++        log_blocked: bool,
++    ) -> bool:
++        """
++        NAME
++            _fetch_runtime_state_snapshot - Fetch and apply runtime-state JSON through the shared REST runtime path.
++        """
++        fetch_state = self._runtime_state_fetch_state()
++        if not fetch_state.allowed:
++            if log_blocked and fetch_state.blocked_reason:
++                self._append_output(fetch_state.blocked_reason)
++            return False
++        runtime_snapshot = self._session.fetch_runtime_state()
++        if not isinstance(runtime_snapshot, dict) or not runtime_snapshot:
++            if log_blocked:
++                self._append_output(OUTPUT_RUNTIME_STATE_FETCH_EMPTY)
++            return False
++        self._runtime_state_pending_seq = None
++        self._runtime_state_pending_at = 0.0
++        self._apply_runtime_state_payload(runtime_snapshot)
++        if show_output:
++            self._append_output(f"{timestamp_hms()} {OUTPUT_RUNTIME_STATE_FETCH_OUT}")
++            self._append_output(f"  json: {json.dumps(runtime_snapshot)}")
++        return True
+ 
+     def _selected_activation_membership_mode(self) -> str:
+         """
+@@ -10752,18 +10807,7 @@ class BringupControlUI(tk.Tk):
+         source = self._live_source_var.get()
+         if source == LIVE_SOURCE_FILE:
+             return
+-        if not self._tcp_connected or not self._handshake_done:
+-            return
+-        if self._tracker.is_pending() or self._log_poll_inflight:
+-            return
+-        if self._runtime_state_pending_seq is None:
+-            seq = show_runtime_state(self._session, json_output=True)
+-            if seq is not None:
+-                self._runtime_state_pending_seq = int(seq)
+-                self._runtime_state_pending_at = now
+-        else:
+-            if (now - self._runtime_state_pending_at) > self._runtime_state_timeout_sec:
+-                self._runtime_state_pending_seq = None
++        self._fetch_runtime_state_snapshot(show_output=False, log_blocked=False)
+ 
+     def _manual_runtime_refresh_active(self) -> bool:
+         """
+@@ -11040,48 +11084,39 @@ class BringupControlUI(tk.Tk):
+         NAME
+             _apply_live_runtime_notice_from_nt_state - Surface DS/NT state directly in Live Topology.
+         """
+-        tcp_connected = bool(self.__dict__.get("_tcp_connected", True))
+-        activation_notice = self._scope_activation_notice_text()
+-        scope_active = self._scope_is_currently_active()
+-        if not tcp_connected:
+-            self._set_runtime_state_notice(
+-                RUNNABLE_SCOPE_PANEL_DISCONNECTED_DETAIL, "error"
+-            )
+-        elif stale_state:
+-            self._set_runtime_state_notice(
+-                "Robot state stale (code not running?)", "warn"
+-            )
+-        elif estopped:
+-            self._set_runtime_state_notice("Robot E-Stop. Manual run blocked.", "error")
+-        elif not enabled:
+-            self._set_runtime_state_notice(
+-                "Robot disabled. Enable teleop to run motors.", "info"
+-            )
+-        elif self._manual_active_group_is_empty():
+-            self._set_runtime_state_notice(
+-                RUNNABLE_SCOPE_DETAIL_MANUAL_EMPTY, "warn"
+-            )
+-        elif not scope_active:
+-            self._set_runtime_state_notice(activation_notice, "warn")
+-        else:
++        state = resolve_runnable_scope_state(
++            scope_kind=self._runnable_scope_kind(),
++            local_selected_profile=self._selected_profile_name(),
++            local_profile_required=self.__dict__.get("_profile_box") is not None,
++            tcp_connected=bool(self.__dict__.get("_tcp_connected", True)),
++            runtime_state_seen=True,
++            stale_state=bool(stale_state),
++            robot_enabled=bool(enabled),
++            robot_estopped=bool(estopped),
++            robot_mode=str(self.__dict__.get("_robot_mode_known", "") or "").strip().lower(),
++            manual_group_empty=self._manual_active_group_is_empty(),
++            scope_active=self._scope_is_currently_active(),
++        )
++        if should_clear_runtime_event_notice(
++            self.__dict__.get("_runtime_event_notice_text", NT_VALUE_EMPTY),
++            state,
++        ):
++            self._clear_runtime_event_notice()
++            for live_view in self._iter_live_views():
++                if hasattr(live_view, "clear_runtime_notice"):
++                    live_view.clear_runtime_notice()
++        if state.level == "ready":
+             self._clear_runtime_state_notice()
++        else:
++            self._set_runtime_state_notice(state.detail, state.level)
+         for live_view in self._iter_live_views():
+-            if not tcp_connected:
+-                live_view.set_runtime_state_notice(
+-                    RUNNABLE_SCOPE_PANEL_DISCONNECTED_DETAIL, "error"
+-                )
+-            elif stale_state:
+-                live_view.set_runtime_state_notice("Robot state stale (code not running?)", "warn")
+-            elif estopped:
+-                live_view.set_runtime_state_notice("Robot E-Stop. Manual run blocked.", "error")
+-            elif not enabled:
+-                live_view.set_runtime_state_notice("Robot disabled. Enable teleop to run motors.", "info")
+-            elif self._manual_active_group_is_empty():
+-                live_view.set_runtime_state_notice(RUNNABLE_SCOPE_DETAIL_MANUAL_EMPTY, "warn")
+-            elif not scope_active:
+-                live_view.set_runtime_state_notice(activation_notice, "warn")
+-            else:
++            if hasattr(live_view, "apply_runnable_scope_state"):
++                live_view.apply_runnable_scope_state(state)
++                continue
++            if state.level == "ready":
+                 live_view.clear_runtime_state_notice()
++            else:
++                live_view.set_runtime_state_notice(state.detail, state.level)
+ 
+     def _selected_profile_from_command_event(
+         self,
+@@ -11377,6 +11412,7 @@ class BringupControlUI(tk.Tk):
+         """
+         self._refresh_scope_context_label()
+         self._refresh_selected_test_scope_status()
++        runnable_state = self._runnable_scope_state(stale_state=self._state_stale)
+         allow = (
+             self._tcp_connected
+             and self._handshake_done
+@@ -11404,15 +11440,8 @@ class BringupControlUI(tk.Tk):
+             activate_allowed = allow
+             if activate_allowed and self._test_runtime_block_reason():
+                 activate_allowed = False
+-            if (
+-                activate_allowed
+-                and self._scope_context_kind() != GROUP_SOURCE_SELECTED_TEST
+-                and self.__dict__.get("_profile_box") is not None
+-                and self._selected_profile_name() == PROFILE_NONE
+-            ):
+-                activate_allowed = False
+             if activate_allowed and self._scope_context_kind() != GROUP_SOURCE_SELECTED_TEST:
+-                activate_allowed = not self._manual_active_group_is_empty()
++                activate_allowed = runnable_state.activation_allowed
+             if (
+                 activate_allowed
+                 and self._scope_context_kind() == GROUP_SOURCE_SELECTED_TEST
+diff --git a/tools/can_nt/can_fault_inference.py b/tools/can_nt/can_fault_inference.py
+index 5c0d7a7..6e04cf3 100644
+--- a/tools/can_nt/can_fault_inference.py
++++ b/tools/can_nt/can_fault_inference.py
+@@ -389,9 +389,8 @@ def build_fault_diagnosis(
+     ran_at = time.time() if now_s is None else float(now_s)
+     rows = [dict(row) for row in evidence_rows if isinstance(row, Mapping)]
+     infrastructure_rows = [row for row in rows if _is_infrastructure_row(row)]
+-    non_infrastructure_rows = [row for row in rows if not _is_infrastructure_row(row)]
+-    affected_rows = [row for row in non_infrastructure_rows if _is_affected_row(row)]
+-    degraded_rows = [row for row in non_infrastructure_rows if _is_degraded_row(row)]
++    affected_rows = [row for row in rows if _is_affected_row(row)]
++    degraded_rows = [row for row in rows if _is_degraded_row(row)]
+     affected_labels = [_row_label(row) for row in affected_rows if _row_label(row)]
+     degraded_labels = [_row_label(row) for row in degraded_rows if _row_label(row)]
+     affected_set = set(affected_labels)
+@@ -491,36 +490,6 @@ def build_fault_diagnosis(
+                 )
+             )
+ 
+-        infrastructure_missing = list(infrastructure.get(KEY_INFRA_MISSING, []))
+-        infrastructure_conflict = list(infrastructure.get(KEY_INFRA_CONFLICT, []))
+-        infrastructure_affected = infrastructure_missing + infrastructure_conflict
+-        if infrastructure_affected and not affected_labels:
+-            fault_class = (
+-                FAULT_CLASS_CONTROLLER_SIDE
+-                if any(label.lower() == "roborio" for label in infrastructure_affected) or len(infrastructure_affected) > 1
+-                else FAULT_CLASS_SINGLE_DEVICE
+-            )
+-            summary = (
+-                "Infrastructure device evidence is missing or conflicted."
+-                if fault_class == FAULT_CLASS_SINGLE_DEVICE
+-                else TEXT_CONTROLLER
+-            )
+-            checks = [CHECK_INFRA, RECHECK_OBSERVATION]
+-            if fault_class == FAULT_CLASS_CONTROLLER_SIDE:
+-                checks = [CHECK_CONTROLLER, RECHECK_OBSERVATION]
+-            candidates.append(
+-                _candidate(
+-                    fault_class=fault_class,
+-                    confidence=CONFIDENCE_MEDIUM,
+-                    summary=summary,
+-                    affected=infrastructure_affected,
+-                    region="infrastructure CAN/power entry path",
+-                    supporting=infrastructure_affected,
+-                    conflicting=[],
+-                    checks=checks,
+-                )
+-            )
+-
+         if not candidates:
+             return {
+                 KEY_STATUS: STATUS_NO_FAULT,
+diff --git a/tools/can_nt/generated/robot_local_commands_generated.py b/tools/can_nt/generated/robot_local_commands_generated.py
+index 81d31f2..61c5480 100644
+--- a/tools/can_nt/generated/robot_local_commands_generated.py
++++ b/tools/can_nt/generated/robot_local_commands_generated.py
+@@ -644,7 +644,7 @@ COMMANDS = [{'name': 'addMotor',
+   'showInHostUi': False,
+   'uiSection': 'Lifecycle',
+   'uiLabel': 'Lifecycle Deactivate',
+-  'uiDescription': 'Deactivate the lifecycle session matching one requested label.',
++  'uiDescription': 'Deactivate the scope session matching one requested label.',
+   'uiArgsJson': '{"label":"active-group"}'},
+  {'name': 'lifecycleDeactivateActive',
+   'group': 'GROUP',
+@@ -654,8 +654,8 @@ COMMANDS = [{'name': 'addMotor',
+   'autoStopOnSourceLoss': False,
+   'showInHostUi': False,
+   'uiSection': 'Lifecycle',
+-  'uiLabel': 'Lifecycle Deactivate Active',
+-  'uiDescription': 'Deactivate the current lifecycle session.',
++  'uiLabel': 'Scope Deactivate Active',
++  'uiDescription': 'Deactivate the current scope session.',
+   'uiArgsJson': ''},
+  {'name': 'showLifecycleState',
+   'group': 'GROUP',
+@@ -665,8 +665,8 @@ COMMANDS = [{'name': 'addMotor',
+   'autoStopOnSourceLoss': False,
+   'showInHostUi': False,
+   'uiSection': 'Lifecycle',
+-  'uiLabel': 'Show Lifecycle State',
+-  'uiDescription': 'Show controlled lifecycle state payload.',
++  'uiLabel': 'Show Scope State',
++  'uiDescription': 'Show controlled scope state payload.',
+   'uiArgsJson': '{"json":true}'},
+  {'name': 'groupCreate',
+   'group': 'GROUP',
+@@ -1162,7 +1162,7 @@ COMMANDS_BY_NAME = {'activeAdd': {'autoStopOnSourceLoss': False,
+                          'name': 'lifecycleDeactivate',
+                          'showInHostUi': False,
+                          'uiArgsJson': '{"label":"active-group"}',
+-                         'uiDescription': 'Deactivate the lifecycle session matching one requested label.',
++                         'uiDescription': 'Deactivate the scope session matching one requested label.',
+                          'uiLabel': 'Lifecycle Deactivate',
+                          'uiSection': 'Lifecycle'},
+  'lifecycleDeactivateActive': {'autoStopOnSourceLoss': False,
+@@ -1173,7 +1173,7 @@ COMMANDS_BY_NAME = {'activeAdd': {'autoStopOnSourceLoss': False,
+                                'name': 'lifecycleDeactivateActive',
+                                'showInHostUi': False,
+                                'uiArgsJson': '',
+-                               'uiDescription': 'Deactivate the current lifecycle session.',
++                               'uiDescription': 'Deactivate the current scope session.',
+                                'uiLabel': 'Lifecycle Deactivate Active',
+                                'uiSection': 'Lifecycle'},
+  'manualDeviceDutyClear': {'autoStopOnSourceLoss': False,
+@@ -1558,8 +1558,8 @@ COMMANDS_BY_NAME = {'activeAdd': {'autoStopOnSourceLoss': False,
+                         'name': 'showLifecycleState',
+                         'showInHostUi': False,
+                         'uiArgsJson': '{"json":true}',
+-                        'uiDescription': 'Show controlled lifecycle state payload.',
+-                        'uiLabel': 'Show Lifecycle State',
++                        'uiDescription': 'Show controlled scope state payload.',
++                        'uiLabel': 'Show Scope State',
+                         'uiSection': 'Lifecycle'},
+  'showProfile': {'autoStopOnSourceLoss': False,
+                  'controllerAllowed': False,
+diff --git a/tools/can_nt/passive_discovery_integration_service.py b/tools/can_nt/passive_discovery_integration_service.py
+index 2126e8e..10a94e7 100644
+--- a/tools/can_nt/passive_discovery_integration_service.py
++++ b/tools/can_nt/passive_discovery_integration_service.py
+@@ -17,6 +17,7 @@ import tempfile
+ from pathlib import Path
+ from typing import Any, Dict, List, Mapping, Optional, Tuple
+ 
++from tools.can_nt.can_fault_inference import build_fault_diagnosis, render_fault_diagnosis
+ from tools.common.config_api.repository import ConfigRepository
+ from tools.common.motor_runtime_verdict import (
+     RESULT_ELECTRICAL,
+@@ -59,6 +60,11 @@ TEXT_SECTION_SEPARATOR = "; "
+ TEXT_ENGINE_BANNER_PREFIX = "Evidence Engine: "
+ TEXT_ROLLOUT_PREFIX = "rollout="
+ TEXT_SECTION_PREFIX = "sections="
++FAULT_SNAPSHOT_KEY_ROWS = "rows"
++FAULT_SNAPSHOT_KEY_RESULT = "result"
++FAULT_SNAPSHOT_KEY_RENDERED_TEXT = "renderedText"
++FAULT_SNAPSHOT_KEY_CANDIDATE_COUNT = "candidateCount"
++FAULT_SNAPSHOT_KEY_RAN_AT = "ranAt"
+ KEY_DEVICE_TYPE = "deviceType"
+ KEY_PROFILE_NODE = "profileNode"
+ KEY_BUS = "bus"
+@@ -372,6 +378,11 @@ EVIDENCE_NOTE_PASSIVE_WITHOUT_PROBE_RESULT = "Passive CAN traffic is present, bu
+ EVIDENCE_NOTE_PASSIVE_OVERRIDES_RUNTIME_ABSENCE = "Passive CAN shows recurring device-emitted traffic even though the robot-local presence snapshot did not observe this device."
+ EVIDENCE_NOTE_INFRA_SCOPE_ABSENCE = "Infrastructure device is outside the current motion-test scope; local snapshot absence is not treated as definitive missing evidence."
+ EVIDENCE_NOTE_INFRA_RUNTIME_PRESENT = "Infrastructure singleton runtime telemetry is present even though the current motion-test scope did not include this device."
++EVIDENCE_NOTE_INFRA_PASSIVE_PRESENT = "Infrastructure device observed by passive CAN even though the current motion-test scope did not include it."
++EVIDENCE_NOTE_INFRA_PASSIVE_LIMITED = "Infrastructure device observed by passive CAN, but active test-scope/runtime evidence is limited."
++EVIDENCE_NOTE_CONSOLE_DEVICE_TIMEOUT = "Device-targeted stale/timeout console evidence present."
++EVIDENCE_NOTE_CONSOLE_DEVICE_TIMEOUT_CONFLICT = "Fresh targeted console fault evidence conflicts with weak/stale positive presence evidence."
++EVIDENCE_NOTE_INFRA_CONSOLE_MISSING = "Fresh device-targeted console timeout evidence with no fresh positive corroboration is being treated as missing infrastructure presence."
+ EVIDENCE_NOTE_NONE = "No major source conflict."
+ ENRICHMENT_SOURCE_CTRE = "ctreHttp"
+ ENRICHMENT_SOURCE_TOPOLOGY = "topology"
+@@ -1851,9 +1862,7 @@ def build_interpreted_evidence_row(
+                 confidence = EVIDENCE_CONFIDENCE_MEDIUM
+                 evidence_state = EVIDENCE_STATE_DEGRADED
+                 if is_infrastructure_device:
+-                    notes.append(
+-                        "Infrastructure device observed by passive CAN even though the current motion-test scope did not include it."
+-                    )
++                    notes.append(EVIDENCE_NOTE_INFRA_PASSIVE_PRESENT)
+                 else:
+                     evidence_conflicted = True
+                     notes.append(EVIDENCE_NOTE_PASSIVE_OVERRIDES_RUNTIME_ABSENCE)
+@@ -1953,7 +1962,7 @@ def build_interpreted_evidence_row(
+         confidence = passive_confidence if passive_device is not None else EVIDENCE_CONFIDENCE_MEDIUM
+         if is_infrastructure_device and passive_device is None:
+             evidence_state = EVIDENCE_STATE_DEGRADED
+-            notes.append("Infrastructure device observed by passive CAN, but active test-scope/runtime evidence is limited.")
++            notes.append(EVIDENCE_NOTE_INFRA_PASSIVE_LIMITED)
+         else:
+             evidence_state = EVIDENCE_STATE_OK
+     elif existence == EVIDENCE_STATUS_UNKNOWN and passive_device is not None and passive_expected_status == "missing":
+@@ -1984,7 +1993,7 @@ def build_interpreted_evidence_row(
+         operability = EVIDENCE_STATUS_FAILED
+         confidence = EVIDENCE_CONFIDENCE_LOW if confidence == EVIDENCE_CONFIDENCE_HIGH else EVIDENCE_CONFIDENCE_MEDIUM
+         evidence_state = EVIDENCE_STATE_FAILED
+-        notes.append("Device-targeted stale/timeout console evidence present.")
++        notes.append(EVIDENCE_NOTE_CONSOLE_DEVICE_TIMEOUT)
+     probe_invalidated_by_console = bool(
+         console_targets_failure and probe_bucket != PROBE_BUCKET_NOT_RUN and probe_age_bucket in {PROBE_AGE_AGING, PROBE_AGE_STALE}
+     )
+@@ -2015,9 +2024,20 @@ def build_interpreted_evidence_row(
+         if existence == EVIDENCE_STATUS_PRESENT:
+             existence = EVIDENCE_STATUS_CONFLICT
+             evidence_conflicted = True
+-            notes.append("Fresh targeted console fault evidence conflicts with weak/stale positive presence evidence.")
++            notes.append(EVIDENCE_NOTE_CONSOLE_DEVICE_TIMEOUT_CONFLICT)
+         elif existence == EVIDENCE_STATUS_UNKNOWN:
+             confidence = EVIDENCE_CONFIDENCE_LOW
++    if (
++        is_infrastructure_device
++        and console_targets_failure
++        and not stronger_positive_contradiction
++        and not runtime_infrastructure_present
++    ):
++        existence = EVIDENCE_STATUS_ABSENT
++        operability = EVIDENCE_STATUS_FAILED
++        confidence = EVIDENCE_CONFIDENCE_MEDIUM
++        evidence_state = EVIDENCE_STATE_FAILED
++        notes.append(EVIDENCE_NOTE_INFRA_CONSOLE_MISSING)
+     if bool(system_console.get(CONSOLE_KEY_SYSTEM_CONFLICT)):
+         notes.append("System-level console fault may reflect broader CAN isolation.")
+         evidence_conflicted = True
+@@ -2258,6 +2278,35 @@ def build_interpreted_evidence_row(
+     }
+ 
+ 
++def build_evidence_fault_snapshot(
++    *,
++    evidence_rows: List[Mapping[str, Any]],
++    console_snapshot: Optional[Mapping[str, Any]],
++    topology_profile: Optional[Mapping[str, Any]],
++    now_s: float,
++) -> Dict[str, Any]:
++    """
++    NAME
++        build_evidence_fault_snapshot - Freeze evidence rows and their derived fault-finder diagnosis in one shared contract.
++    """
++    frozen_rows = [dict(row) for row in evidence_rows]
++    result = build_fault_diagnosis(
++        evidence_rows=frozen_rows,
++        console_snapshot=console_snapshot,
++        topology_profile=topology_profile,
++        now_s=now_s,
++    )
++    candidates = result.get("candidates")
++    candidate_count = len(candidates) if isinstance(candidates, list) else 0
++    return {
++        FAULT_SNAPSHOT_KEY_ROWS: frozen_rows,
++        FAULT_SNAPSHOT_KEY_RESULT: dict(result),
++        FAULT_SNAPSHOT_KEY_RENDERED_TEXT: render_fault_diagnosis(result),
++        FAULT_SNAPSHOT_KEY_CANDIDATE_COUNT: candidate_count,
++        FAULT_SNAPSHOT_KEY_RAN_AT: now_s,
++    }
++
++
+ def build_runtime_device_detail_snapshot(
+     runtime_device: Optional[Mapping[str, Any]],
+     *,
+diff --git a/tools/can_nt/tests/test_bridge_cli_visibility.py b/tools/can_nt/tests/test_bridge_cli_visibility.py
+index 8d4944f..c689839 100644
+--- a/tools/can_nt/tests/test_bridge_cli_visibility.py
++++ b/tools/can_nt/tests/test_bridge_cli_visibility.py
+@@ -1,6 +1,6 @@
+ """
+ NAME
+-    test_bridge_cli_visibility.py - Unit tests for CLI visibility and lifecycle state.
++    test_bridge_cli_visibility.py - Unit tests for CLI visibility and scope state.
+ """
+ 
+ from __future__ import annotations
+@@ -1120,8 +1120,8 @@ class BridgeCliVisibilityTests(unittest.TestCase):
+             seq=1,
+             name="selectProfile",
+             status="ok",
+-            message="Profile change blocked: controlled lifecycle session is ACTIVE. Deactivate lifecycle first.",
+-            text="Profile change blocked: controlled lifecycle session is ACTIVE. Deactivate lifecycle first.",
++            message="Profile change blocked: an active scope session is running. Deactivate scope first.",
++            text="Profile change blocked: an active scope session is running. Deactivate scope first.",
+             json_text="",
+             ts=0.0,
+             session_id="",
+diff --git a/tools/can_nt/tests/test_bringup_ui_actions.py b/tools/can_nt/tests/test_bringup_ui_actions.py
+index a9ae86f..5a9dbfe 100644
+--- a/tools/can_nt/tests/test_bringup_ui_actions.py
++++ b/tools/can_nt/tests/test_bringup_ui_actions.py
+@@ -20,6 +20,7 @@ from tools.can_nt.bringup_ui import (
+     CMD_PRINT_CAN_DIAG,
+     CMD_SHOW_LIFECYCLE_STATE,
+     GROUP_ACTIVE_NAME,
++    GROUP_SOURCE_SELECTED_TEST,
+     GROUP_RUN_ARG_GROUP,
+     HIDDEN_LEFT_RAIL_COMMANDS,
+     INVENTORY_KEY_ACTION_KIND,
+@@ -1887,11 +1888,11 @@ class BringupUiActionMetadataTests(unittest.TestCase):
+         ui._apply_live_runtime_notice_from_nt_state(True, False, False)
+ 
+         self.assertEqual(
+-            [("Activate lifecycle first.", "warn")],
++            [("Activate scope first.", "warn")],
+             recorded,
+         )
+         self.assertEqual(
+-            ("Activate lifecycle first.", "warn"),
++            ("Activate scope first.", "warn"),
+             live_view.notice,
+         )
+ 
+@@ -1911,6 +1912,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
+         class _LiveView:
+             def __init__(self) -> None:
+                 self.notice = None
++                self.event_cleared = False
+ 
+             def set_runtime_state_notice(self, text, level) -> None:
+                 self.notice = (text, level)
+@@ -1918,16 +1920,22 @@ class BringupUiActionMetadataTests(unittest.TestCase):
+             def clear_runtime_state_notice(self) -> None:
+                 self.notice = None
+ 
++            def clear_runtime_notice(self) -> None:
++                self.event_cleared = True
++
+         ui = BringupControlUI.__new__(BringupControlUI)
+         ui._group_owner_mode = "manual"
+         ui._runtime_active_known = False
+         ui._controlled_lifecycle_active_known = True
+         ui._scope_is_currently_active = lambda: True
+         ui._manual_active_group_is_empty = lambda: False
++        ui._runtime_event_notice_text = "Robot disabled."
+         recorded = []
++        event_clears = []
+         live_view = _LiveView()
+         ui._set_runtime_state_notice = lambda text, level="warn": recorded.append((text, level))
+         ui._clear_runtime_state_notice = lambda: recorded.append(("__clear__", "clear"))
++        ui._clear_runtime_event_notice = lambda: event_clears.append("event")
+         ui._iter_live_views = lambda: [live_view]
+ 
+         ui._apply_live_runtime_notice_from_nt_state(True, False, False)
+@@ -1936,6 +1944,8 @@ class BringupUiActionMetadataTests(unittest.TestCase):
+             [("__clear__", "clear")],
+             recorded,
+         )
++        self.assertEqual(["event"], event_clears)
++        self.assertTrue(live_view.event_cleared)
+         self.assertIsNone(live_view.notice)
+ 
+     def test_live_runtime_notice_uses_runtime_active_group_payload_when_device_rows_lack_group_label(self) -> None:
+@@ -3005,7 +3015,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
+         )
+ 
+         self.assertEqual(
+-            [("Activate lifecycle first.", "warn")],
++            [("Activate scope first.", "warn")],
+             notices,
+         )
+ 
+@@ -3036,7 +3046,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
+         }
+ 
+         self.assertIn(
+-            "outside the active controlled lifecycle scope",
++            "outside the active scope membership",
+             ui._manual_duty_scope_block_message_for_targets(["SPARKMAX/NEO 25"]),
+         )
+ 
+@@ -3822,25 +3832,43 @@ class BringupUiActionMetadataTests(unittest.TestCase):
+         self.assertFalse(ui._state_stale)
+         self.assertEqual([(False, False, False)], runtime_notice_calls)
+ 
+-    def test_show_runtime_state_action_marks_runtime_response_pending(self) -> None:
++    def test_show_runtime_state_action_fetches_and_applies_shared_rest_runtime_state(self) -> None:
+         ui = BringupControlUI.__new__(BringupControlUI)
+         ui._tcp_connected = True
+-        ui._session = object()
++        ui._handshake_done = True
++        ui._log_poll_inflight = False
++        ui._session = type(
++            "SessionStub",
++            (),
++            {
++                "fetch_runtime_state": staticmethod(
++                    lambda: {
++                        "generatedAtMs": 123.0,
++                        "selectedProfile": "test_minimal_25_9",
++                        "devices": [],
++                    }
++                )
++            },
++        )()
+         ui._tracker = type("TrackerStub", (), {"is_pending": lambda _self: False})()
+-        ui._append_output = lambda _line: None
+-        ui._append_test_output = lambda _line: None
+-        ui._is_test_activity_command = lambda _name: False
+-        ui._runtime_state_pending_seq = None
++        output_lines: list[str] = []
++        ui._append_output = output_lines.append
++        ui._runtime_state_pending_seq = 77
+         ui._runtime_state_pending_at = 0.0
+-        ui._last_sent_seq = None
++        applied_payloads: list[dict[str, object]] = []
++        ui._apply_runtime_state_payload = lambda payload: applied_payloads.append(dict(payload))
+         ui._last_cmd = None
+ 
+-        with patch("tools.can_nt.bringup_ui.send_tracked_command", return_value=77):
+-            ui._on_action("showRuntimeState")
++        ui._on_action("showRuntimeState")
+ 
+-        self.assertEqual(77, ui._last_sent_seq)
+-        self.assertEqual(77, ui._runtime_state_pending_seq)
+-        self.assertGreater(ui._runtime_state_pending_at, 0.0)
++        self.assertEqual(
++            {"generatedAtMs": 123.0, "selectedProfile": "test_minimal_25_9", "devices": []},
++            applied_payloads[0],
++        )
++        self.assertIsNone(ui._runtime_state_pending_seq)
++        self.assertEqual(("showRuntimeState", {"source": "rest_runtime_state"}), ui._last_cmd)
++        self.assertTrue(any("CMD showRuntimeState" in line for line in output_lines))
++        self.assertTrue(any("OUT showRuntimeState" in line for line in output_lines))
+ 
+     def test_poll_nt_disconnect_transition_resets_runtime_context(self) -> None:
+         ui = BringupControlUI.__new__(BringupControlUI)
+@@ -4187,7 +4215,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
+         ui._on_active_group_member_toggled("FALCON 9", True)
+ 
+         self.assertTrue(
+-            any("locked while controlled lifecycle session is ACTIVE" in line for line in ui._append_output_lines)
++            any("locked while an active scope session is running" in line for line in ui._append_output_lines)
+         )
+ 
+     def test_active_group_toggle_is_blocked_until_runtime_state_is_loaded(self) -> None:
+diff --git a/tools/can_nt/tests/test_passive_discovery_integration_service.py b/tools/can_nt/tests/test_passive_discovery_integration_service.py
+index 6beddc1..6653da3 100644
+--- a/tools/can_nt/tests/test_passive_discovery_integration_service.py
++++ b/tools/can_nt/tests/test_passive_discovery_integration_service.py
+@@ -10,6 +10,11 @@ import unittest
+ from tools.can_nt.passive_discovery_integration_service import (
+     ATTACHMENT_TYPE_ACTIVE_PRESENCE_PROBE,
+     ENGINE_LABEL_NEW,
++    FAULT_SNAPSHOT_KEY_CANDIDATE_COUNT,
++    FAULT_SNAPSHOT_KEY_RAN_AT,
++    FAULT_SNAPSHOT_KEY_RENDERED_TEXT,
++    FAULT_SNAPSHOT_KEY_RESULT,
++    FAULT_SNAPSHOT_KEY_ROWS,
+     SECTION_CONSOLE,
+     SECTION_ENRICHMENT,
+     SECTION_INTERPRETATION,
+@@ -21,6 +26,7 @@ from tools.can_nt.passive_discovery_integration_service import (
+     SECTION_TOPOLOGY_VIEW,
+     build_enrichment_run_snapshot,
+     build_console_snapshot_from_entries,
++    build_evidence_fault_snapshot,
+     build_interpreted_evidence_row,
+     build_manual_snapshot,
+     build_runtime_probe_snapshot,
+@@ -842,6 +848,60 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
+         self.assertEqual("unknown", row["state"])
+         self.assertEqual("unknown", row["presenceState"])
+ 
++    def test_interpreted_row_marks_infrastructure_missing_from_fresh_targeted_console_timeout_without_positive_corroboration(self) -> None:
++        row = build_interpreted_evidence_row(
++            label="pdp",
++            presence_entry={
++                "bucket": "absent",
++                "score": 0.0,
++                "ageText": "1.0s ago",
++                "existence": "ABSENT",
++                "confidence": "MEDIUM",
++            },
++            passive_device=None,
++            visibility_device=None,
++            runtime_device={
++                "instantiated": True,
++                "lifecycleState": "instantiated-present",
++                "lastSeenMs": 1000,
++            },
++            console_entry={
++                "summary": "HAL: CAN Receive has Timed Out",
++                "hasError": True,
++                "hasWarn": False,
++                "totalCount": 3,
++                "freshness": "fresh",
++                "records": [
++                    {
++                        "scope": "device",
++                        "faultFamily": "ctre_timeout",
++                        "freshness": "fresh",
++                        "totalCount": 3,
++                    }
++                ],
++                "events": [
++                    "HAL: CAN Receive has Timed Out",
++                ],
++            },
++            system_console={},
++            manual_entry=None,
++            manual_observation=None,
++            manual_motion=None,
++            probe_pending=False,
++            last_probe_completed_at=20.0,
++            probe_run_count=1,
++            now_s=40.0,
++        )
++
++        self.assertEqual("ABSENT", row["existence"])
++        self.assertEqual("FAILED", row["operability"])
++        self.assertEqual("failed", row["state"])
++        self.assertEqual("missing", row["presenceState"])
++        self.assertIn(
++            "Fresh device-targeted console timeout evidence with no fresh positive corroboration is being treated as missing infrastructure presence.",
++            row["notesText"],
++        )
++
+     def test_interpreted_row_keeps_infrastructure_unknown_when_passive_profile_row_is_missing_without_packets(self) -> None:
+         passive_device = DeviceRecord(
+             identity=DeviceIdentity(manufacturer=1, device_type=1, device_id=0),
+@@ -891,6 +951,36 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
+         self.assertEqual("unknown", row["state"])
+         self.assertEqual("LOW", row["confidence"])
+ 
++    def test_build_evidence_fault_snapshot_freezes_rows_and_rendered_result(self) -> None:
++        snapshot = build_evidence_fault_snapshot(
++            evidence_rows=[
++                {
++                    "label": "FALCON 9",
++                    "existence": "ABSENT",
++                    "operability": "FAILED",
++                    "identity": "MATCHING",
++                    "confidence": "HIGH",
++                    "state": "missing",
++                    "notesText": "Runtime snapshot did not observe device.",
++                }
++            ],
++            console_snapshot={},
++            topology_profile={},
++            now_s=10.0,
++        )
++
++        self.assertEqual(10.0, snapshot[FAULT_SNAPSHOT_KEY_RAN_AT])
++        self.assertEqual(1, snapshot[FAULT_SNAPSHOT_KEY_CANDIDATE_COUNT])
++        self.assertEqual("FALCON 9", snapshot[FAULT_SNAPSHOT_KEY_ROWS][0]["label"])
++        self.assertEqual(
++            ["FALCON 9"],
++            snapshot[FAULT_SNAPSHOT_KEY_RESULT]["candidates"][0]["affectedDevices"],
++        )
++        self.assertIn(
++            "single_device_unreachable",
++            snapshot[FAULT_SNAPSHOT_KEY_RENDERED_TEXT],
++        )
++
+     def test_interpreted_row_marks_no_rotation_motor_failure_as_failed_state(self) -> None:
+         row = build_interpreted_evidence_row(
+             label="FALCON 9",
+diff --git a/tools/can_topology/live_topology_view.py b/tools/can_topology/live_topology_view.py
+index bbf980c..bb7d1f9 100644
+--- a/tools/can_topology/live_topology_view.py
++++ b/tools/can_topology/live_topology_view.py
+@@ -143,6 +143,29 @@ from tools.can_nt.visibility_constants import (
+     VIS_KEY_VISIBILITY,
+     VIS_VISIBLE_TRUE,
+ )
++from tools.can_nt.host_ui_state_service import (
++    ACTIVE_GROUP_STATUS_EDITABLE_TEXT as SHARED_ACTIVE_GROUP_STATUS_EDITABLE_TEXT,
++    ACTIVE_GROUP_STATUS_EMPTY_TEXT as SHARED_ACTIVE_GROUP_STATUS_EMPTY_TEXT,
++    ACTIVE_GROUP_STATUS_LOCKED_TEXT as SHARED_ACTIVE_GROUP_STATUS_LOCKED_TEXT,
++    ACTIVE_GROUP_STATUS_NONE_TEXT as SHARED_ACTIVE_GROUP_STATUS_NONE_TEXT,
++    ACTIVE_GROUP_STATUS_READY_TEXT as SHARED_ACTIVE_GROUP_STATUS_READY_TEXT,
++    ACTIVE_GROUP_STATUS_WAITING_TEXT as SHARED_ACTIVE_GROUP_STATUS_WAITING_TEXT,
++    ACTIVE_GROUP_SUMMARY_EMPTY_TEXT as SHARED_ACTIVE_GROUP_SUMMARY_EMPTY_TEXT,
++    ActiveScopeMembershipState,
++    ActiveGroupSummaryState,
++    PROFILE_NONE as SHARED_PROFILE_NONE,
++    RUNNABLE_PANEL_INACTIVE_HEADLINE as SHARED_RUNNABLE_PANEL_INACTIVE_HEADLINE,
++    RUNNABLE_PANEL_READY_HEADLINE as SHARED_RUNNABLE_PANEL_READY_HEADLINE,
++    RUNNABLE_PANEL_WAITING_HEADLINE as SHARED_RUNNABLE_PANEL_WAITING_HEADLINE,
++    RUNNABLE_SCOPE_KIND_MANUAL,
++    RUNNABLE_SCOPE_PANEL_READY_DETAIL as SHARED_RUNNABLE_SCOPE_PANEL_READY_DETAIL,
++    RUNNABLE_SCOPE_PANEL_WAITING_DETAIL as SHARED_RUNNABLE_SCOPE_PANEL_WAITING_DETAIL,
++    RunnableScopeState,
++    resolve_active_group_summary_state,
++    resolve_active_scope_membership_state,
++    resolve_runnable_scope_state,
++    should_clear_runtime_event_notice,
++)
+ 
+ # Constants (presence confidence values and colors).
+ PRESENCE_CONF_HIGH = "HIGH"
+@@ -168,11 +191,11 @@ NOTICE_COLOR_WARN_FG = "#c2410c"
+ NOTICE_COLOR_ERROR_BG = "#fef2f2"
+ NOTICE_COLOR_ERROR_FG = "#b91c1c"
+ RUNNABLE_PANEL_TITLE = "Runnable State"
+-RUNNABLE_PANEL_READY_HEADLINE = "READY TO RUN"
+-RUNNABLE_PANEL_INACTIVE_HEADLINE = "NOT RUNNABLE"
+-RUNNABLE_PANEL_WAITING_HEADLINE = "WAITING FOR STATE"
+-RUNNABLE_PANEL_READY_DETAIL = "manual/group controls available - ready to run"
+-RUNNABLE_PANEL_WAITING_DETAIL = "waiting for robot runtime state"
++RUNNABLE_PANEL_READY_HEADLINE = SHARED_RUNNABLE_PANEL_READY_HEADLINE
++RUNNABLE_PANEL_INACTIVE_HEADLINE = SHARED_RUNNABLE_PANEL_INACTIVE_HEADLINE
++RUNNABLE_PANEL_WAITING_HEADLINE = SHARED_RUNNABLE_PANEL_WAITING_HEADLINE
++RUNNABLE_PANEL_READY_DETAIL = SHARED_RUNNABLE_SCOPE_PANEL_READY_DETAIL
++RUNNABLE_PANEL_WAITING_DETAIL = SHARED_RUNNABLE_SCOPE_PANEL_WAITING_DETAIL
+ RUNNABLE_PANEL_MANUAL_NOT_ACTIVATED_DETAIL = (
+     "Activate Group first."
+ )
+@@ -343,18 +366,18 @@ RUNTIME_PROBE_AGE_STALE = "stale"
+ RUNTIME_PROBE_AGE_AGING = "aging"
+ RUNTIME_PROBE_AGE_FRESH = "fresh"
+ TITLE_TEXT_DEFAULT = "Live Topology"
+-PROFILE_NONE = "(none)"
++PROFILE_NONE = SHARED_PROFILE_NONE
+ FIT_RETRY_DELAY_MS = 25
+ SELECTION_FRAME_TEXT = "Selection"
+ ACTIVE_GROUP_NAME = "active-group"
+ ACTIVE_GROUP_FRAME_TEXT = "Active Group"
+-ACTIVE_GROUP_STATUS_NONE_TEXT = "Status: (not present)"
+-ACTIVE_GROUP_STATUS_EMPTY_TEXT = "Status: empty - add devices to activate"
+-ACTIVE_GROUP_STATUS_WAITING_TEXT = "Status: waiting for runtime state"
+-ACTIVE_GROUP_STATUS_EDITABLE_TEXT = "Status: membership editor - add devices, then activate"
+-ACTIVE_GROUP_STATUS_LOCKED_TEXT = "Status: locked by active controlled session"
+-ACTIVE_GROUP_STATUS_READY_TEXT = "Status: active and ready to run"
+-ACTIVE_GROUP_EMPTY_TEXT = "(empty)"
++ACTIVE_GROUP_STATUS_NONE_TEXT = SHARED_ACTIVE_GROUP_STATUS_NONE_TEXT
++ACTIVE_GROUP_STATUS_EMPTY_TEXT = SHARED_ACTIVE_GROUP_STATUS_EMPTY_TEXT
++ACTIVE_GROUP_STATUS_WAITING_TEXT = SHARED_ACTIVE_GROUP_STATUS_WAITING_TEXT
++ACTIVE_GROUP_STATUS_EDITABLE_TEXT = SHARED_ACTIVE_GROUP_STATUS_EDITABLE_TEXT
++ACTIVE_GROUP_STATUS_LOCKED_TEXT = SHARED_ACTIVE_GROUP_STATUS_LOCKED_TEXT
++ACTIVE_GROUP_STATUS_READY_TEXT = SHARED_ACTIVE_GROUP_STATUS_READY_TEXT
++ACTIVE_GROUP_EMPTY_TEXT = SHARED_ACTIVE_GROUP_SUMMARY_EMPTY_TEXT
+ ACTIVE_GROUP_NONE_TEXT = "(not present)"
+ ACTIVE_GROUP_ELIGIBLE_EMPTY_TEXT = "(no eligible motors)"
+ ACTIVE_GROUP_RULES_TEXT = "Rules: Active Add appends next created motor in profile order. Active Next rotates the primary member."
+@@ -462,7 +485,7 @@ DETAIL_TITLE_FULL_PROBE_AGE = "Full Probe Age"
+ DETAIL_TITLE_FULL_PROBE_SCORE = "Full Probe Score"
+ DETAIL_TITLE_FULL_PROBE_STATUS = "Full Probe Status"
+ DETAIL_TITLE_FULL_PROBE_MESSAGE = "Full Probe Message"
+-DETAIL_TITLE_LIFECYCLE_STATE = "Lifecycle State"
++DETAIL_TITLE_LIFECYCLE_STATE = "Scope State"
+ DETAIL_TITLE_TESTABLE = "Testable"
+ DETAIL_TITLE_OVERRIDE_ACTIVE = "Override Active"
+ DETAIL_TITLE_OVERRIDE_ORIGINATED = "Override Originated"
+@@ -1459,6 +1482,14 @@ class LiveTopologyView(ttk.Frame):
+         if self._fit_on_load:
+             self.schedule_fit_to_window()
+ 
++    def apply_diagnostic_profile_state(self, profile_state: object) -> None:
++        """
++        NAME
++            apply_diagnostic_profile_state - Reload the diagram from one shared diagnostic profile state.
++        """
++        effective_profile = getattr(profile_state, "effective_profile", PROFILE_NONE)
++        self.reload_profile(str(effective_profile or PROFILE_NONE).strip() or PROFILE_NONE)
++
+     def _bind_vertical_mousewheel(self, widget: tk.Widget, canvas: tk.Canvas) -> None:
+         """
+         NAME
+@@ -1775,6 +1806,7 @@ class LiveTopologyView(ttk.Frame):
+         runtime_active: Optional[bool] = None
+         robot_enabled: Optional[bool] = None
+         robot_estopped: Optional[bool] = None
++        robot_mode: str = EMPTY_STRING
+         controlled_lifecycle_active = False
+         runtime_groups: List[Dict[str, object]] = []
+         if isinstance(payload, dict):
+@@ -1787,6 +1819,7 @@ class LiveTopologyView(ttk.Frame):
+             estopped_raw = payload.get("estopped")
+             if isinstance(estopped_raw, bool):
+                 robot_estopped = estopped_raw
++            robot_mode = str(payload.get("mode", EMPTY_STRING) or EMPTY_STRING).strip().lower()
+             controlled_raw = payload.get("controlledLifecycleActive")
+             if isinstance(controlled_raw, bool):
+                 controlled_lifecycle_active = controlled_raw
+@@ -1905,6 +1938,7 @@ class LiveTopologyView(ttk.Frame):
+                 controlled_lifecycle_active,
+                 robot_enabled,
+                 robot_estopped,
++                robot_mode,
+             )
+         self._update_details()
+         if fingerprint == self._runtime_fingerprint:
+@@ -2023,6 +2057,18 @@ class LiveTopologyView(ttk.Frame):
+         self._runtime_event_notice_text = EMPTY_STRING
+         self._refresh_runtime_notice()
+ 
++    def apply_runnable_scope_state(self, state: RunnableScopeState) -> None:
++        """
++        NAME
++            apply_runnable_scope_state - Apply one shared runnable-scope state to the live-topology notice.
++        """
++        if should_clear_runtime_event_notice(self._runtime_event_notice_text, state):
++            self.clear_runtime_notice()
++        if state.level == "ready":
++            self.clear_runtime_state_notice()
++            return
++        self.set_runtime_state_notice(state.detail, state.level)
++
+     def _refresh_runtime_notice(self) -> None:
+         """
+         NAME
+@@ -2075,21 +2121,32 @@ class LiveTopologyView(ttk.Frame):
+         controlled_lifecycle_active: Optional[bool],
+         robot_enabled: Optional[bool],
+         robot_estopped: Optional[bool],
++        robot_mode: str,
+     ) -> None:
+         """
+         NAME
+             _apply_runtime_notice_from_state - Derive a live-topology notice from runtime state.
+         """
+-        if robot_estopped is True:
+-            self.set_runtime_state_notice("Robot E-Stop. Manual run blocked.", "error")
+-            return
+-        if robot_enabled is False:
+-            self.set_runtime_state_notice("Robot disabled. Enable teleop to run motors.", "info")
+-            return
+-        if controlled_lifecycle_active is not True and runtime_active is not True:
+-            self.set_runtime_state_notice(RUNNABLE_PANEL_MANUAL_NOT_ACTIVATED_DETAIL, "warn")
+-            return
+-        self.clear_runtime_state_notice()
++        state = resolve_runnable_scope_state(
++            scope_kind=RUNNABLE_SCOPE_KIND_MANUAL,
++            local_selected_profile=self._profile_name,
++            local_profile_required=False,
++            tcp_connected=True,
++            runtime_state_seen=True,
++            stale_state=False,
++            robot_enabled=robot_enabled is not False,
++            robot_estopped=robot_estopped is True,
++            robot_mode=robot_mode,
++            manual_group_empty=False
++            if controlled_lifecycle_active is True or runtime_active is True
++            else (
++                not bool(group_member_map(self._effective_group_by_name(ACTIVE_GROUP_NAME), enabled_only=False))
++                if self._effective_group_by_name(ACTIVE_GROUP_NAME) is not None
++                else False
++            ),
++            scope_active=controlled_lifecycle_active is True or runtime_active is True,
++        )
++        self.apply_runnable_scope_state(state)
+ 
+     def _on_canvas_click(self, event: tk.Event) -> None:
+         """
+@@ -2729,15 +2786,52 @@ class LiveTopologyView(ttk.Frame):
+             return
+         member_map = group_member_map(active_group, enabled_only=False)
+         primary_label = group_primary_label(active_group, enabled_only=False)
+-        self._set_active_group_status_text(
+-            self._active_group_status_text(active_group, member_map)
+-        )
+-        if primary_label:
+-            self._active_group_summary_var.set(f"Primary: {primary_label}")
+-        else:
+-            self._active_group_summary_var.set(ACTIVE_GROUP_EMPTY_TEXT)
++        state = self._active_scope_membership_state(member_map, primary_label)
++        self._set_active_group_status_text(state.status_text)
++        self._active_group_summary_var.set(state.summary_text)
+         self._render_active_group_rows(member_map, primary_label)
+ 
++    def _active_group_summary_state(
++        self,
++        member_map: Dict[str, Dict[str, object]],
++        primary_label: object,
++    ) -> ActiveGroupSummaryState:
++        """
++        NAME
++            _active_group_summary_state - Return shared active-group summary state for the current runtime view.
++        """
++        runtime_state_by_label = (
++            self._runtime_state if isinstance(self._runtime_state, dict) else {}
++        )
++        return resolve_active_group_summary_state(
++            runtime_state_seen=bool(self.__dict__.get("_runtime_state_seen", False)),
++            controlled_lifecycle_active=bool(self.__dict__.get("_controlled_lifecycle_active", False)),
++            member_map=member_map,
++            runtime_state_by_label=runtime_state_by_label,
++            primary_label=primary_label,
++        )
++
++    def _active_scope_membership_state(
++        self,
++        member_map: Dict[str, Dict[str, object]],
++        primary_label: object,
++    ) -> ActiveScopeMembershipState:
++        """
++        NAME
++            _active_scope_membership_state - Return shared active-scope membership state for the topology side panel.
++        """
++        runtime_state_by_label = (
++            self._runtime_state if isinstance(self._runtime_state, dict) else {}
++        )
++        return resolve_active_scope_membership_state(
++            runtime_state_seen=bool(self.__dict__.get("_runtime_state_seen", False)),
++            controlled_lifecycle_active=bool(self.__dict__.get("_controlled_lifecycle_active", False)),
++            member_map=member_map,
++            runtime_state_by_label=runtime_state_by_label,
++            primary_label=primary_label,
++            eligible_labels=self._active_scope_eligible_labels(),
++        )
++
+     def _set_active_group_status_text(self, text: str) -> None:
+         """
+         NAME
+@@ -2756,15 +2850,8 @@ class LiveTopologyView(ttk.Frame):
+         NAME
+             _active_group_status_text - Return plain-language status for the active-group panel.
+         """
+-        if not self.__dict__.get("_runtime_state_seen", False):
+-            return ACTIVE_GROUP_STATUS_WAITING_TEXT
+-        if not member_map:
+-            return ACTIVE_GROUP_STATUS_EMPTY_TEXT
+-        if self._controlled_lifecycle_active:
+-            if self._all_active_group_members_present(member_map):
+-                return ACTIVE_GROUP_STATUS_READY_TEXT
+-            return ACTIVE_GROUP_STATUS_LOCKED_TEXT
+-        return ACTIVE_GROUP_STATUS_EDITABLE_TEXT
++        del active_group
++        return self._active_scope_membership_state(member_map, EMPTY_STRING).status_text
+ 
+     def _all_active_group_members_present(
+         self,
+@@ -2774,19 +2861,12 @@ class LiveTopologyView(ttk.Frame):
+         NAME
+             _all_active_group_members_present - Return whether all active-group members currently show presence.
+         """
+-        if not member_map:
+-            return False
+-        for label_key in member_map.keys():
+-            live = self._runtime_state.get(label_key, {})
+-            presence = live.get("presenceConfidence")
+-            if not isinstance(presence, (int, float)) or float(presence) < 0.5:
+-                return False
+-        return True
++        return self._active_scope_membership_state(member_map, EMPTY_STRING).all_members_present
+ 
+-    def _eligible_active_group_labels(self) -> List[str]:
++    def _active_scope_eligible_labels(self) -> List[str]:
+         """
+         NAME
+-            _eligible_active_group_labels - Return eligible motor labels for the active-group management panel.
++            _active_scope_eligible_labels - Return sorted eligible labels for active-scope membership editing.
+         """
+         labels: List[str] = []
+         seen = set()
+@@ -2803,6 +2883,13 @@ class LiveTopologyView(ttk.Frame):
+         labels.sort(key=lambda item: item.lower())
+         return labels
+ 
++    def _eligible_active_group_labels(self) -> List[str]:
++        """
++        NAME
++            _eligible_active_group_labels - Return eligible motor labels for the active-group management panel.
++        """
++        return self._active_scope_membership_state({}, EMPTY_STRING).eligible_labels
++
+     def _active_group_members_editable(self) -> bool:
+         """
+         NAME
+@@ -2814,11 +2901,7 @@ class LiveTopologyView(ttk.Frame):
+             read-only so the operator does not see checkboxes toggle and then snap
+             back on the first runtime refresh.
+         """
+-        if not self.__dict__.get("_runtime_state_seen", False):
+-            return False
+-        if self._controlled_lifecycle_active:
+-            return False
+-        return True
++        return self._active_scope_membership_state({}, EMPTY_STRING).editable
+ 
+     def _render_active_group_rows(
+         self,
+@@ -2832,7 +2915,8 @@ class LiveTopologyView(ttk.Frame):
+         frame = self._active_group_rows_frame
+         if frame is None:
+             return
+-        eligible_labels = self._eligible_active_group_labels()
++        membership_state = self._active_scope_membership_state(member_map, primary_label)
++        eligible_labels = membership_state.eligible_labels
+         expected_keys = {label.lower() for label in eligible_labels}
+         stale_keys = [
+             key for key in self._active_group_row_widgets.keys() if key not in expected_keys
+@@ -2909,7 +2993,7 @@ class LiveTopologyView(ttk.Frame):
+                     if checked and label_key == primary_label.strip().lower()
+                     else EMPTY_STRING
+                 )
+-                checkbox_state = "normal" if self._active_group_members_editable() else "disabled"
++                checkbox_state = "normal" if membership_state.editable else "disabled"
+                 detail_parts = []
+                 if primary_text:
+                     detail_parts.append(primary_text)
+diff --git a/tools/can_topology/tests/test_live_topology_view.py b/tools/can_topology/tests/test_live_topology_view.py
+index e089821..5d10421 100644
+--- a/tools/can_topology/tests/test_live_topology_view.py
++++ b/tools/can_topology/tests/test_live_topology_view.py
+@@ -133,6 +133,7 @@ class LiveTopologyViewTests(unittest.TestCase):
+         view._nodes = []
+         view._diagram_meta = {}
+         view._bridge_groups = []
++        view._runtime_groups = []
+         view._runtime_state = {}
+         view._presence_overrides = {}
+         view._overlay_lens = live_view_module.TOPOLOGY_LENS_RUNTIME
+@@ -272,7 +273,7 @@ class LiveTopologyViewTests(unittest.TestCase):
+         view.set_runtime_state_notice = lambda text, level="warn": notices.append((text, level))
+         view.clear_runtime_state_notice = lambda: notices.append(("__clear__", "clear"))
+ 
+-        view._apply_runtime_notice_from_state(False, False, True, False)
++        view._apply_runtime_notice_from_state(False, False, True, False, "teleop")
+ 
+         self.assertEqual(
+             [("Activate Group first.", "warn")],
+@@ -285,10 +286,37 @@ class LiveTopologyViewTests(unittest.TestCase):
+         view.set_runtime_state_notice = lambda text, level="warn": notices.append((text, level))
+         view.clear_runtime_state_notice = lambda: notices.append(("__clear__", "clear"))
+ 
+-        view._apply_runtime_notice_from_state(False, True, True, False)
++        view._apply_runtime_notice_from_state(False, True, True, False, "teleop")
+ 
+         self.assertEqual([("__clear__", "clear")], notices)
+ 
++    def test_apply_runnable_scope_state_clears_stale_disabled_event_when_scope_is_ready(self) -> None:
++        view = self._make_view()
++        view._runtime_event_notice_text = "Robot disabled."
++        clears = []
++        view.clear_runtime_notice = lambda: clears.append("event")
++        notices = []
++        view.set_runtime_state_notice = lambda text, level="warn": notices.append((text, level))
++        view.clear_runtime_state_notice = lambda: notices.append(("__clear__", "clear"))
++        state = live_view_module.resolve_runnable_scope_state(
++            scope_kind=live_view_module.RUNNABLE_SCOPE_KIND_MANUAL,
++            local_selected_profile="test_minimal_25_9",
++            local_profile_required=False,
++            tcp_connected=True,
++            runtime_state_seen=True,
++            stale_state=False,
++            robot_enabled=True,
++            robot_estopped=False,
++            robot_mode="teleop",
++            manual_group_empty=False,
++            scope_active=True,
++        )
++
++        view.apply_runnable_scope_state(state)
++
++        self.assertEqual(["event"], clears)
++        self.assertEqual([("__clear__", "clear")], notices)
++
+     def test_runtime_notice_warning_uses_attention_palette(self) -> None:
+         view = self._make_view()
+         view._runtime_state_seen = True
+@@ -438,7 +466,7 @@ class LiveTopologyViewTests(unittest.TestCase):
+         view.set_runtime_state_notice = lambda text, level="warn": notices.append((text, level))
+         view.clear_runtime_state_notice = lambda: notices.append(("__clear__", "clear"))
+ 
+-        view._apply_runtime_notice_from_state(False, False, False, False)
++        view._apply_runtime_notice_from_state(False, False, False, False, "teleop")
+ 
+         self.assertEqual(
+             [("Robot disabled. Enable teleop to run motors.", "info")],
+diff --git a/tools/common/build_info.py b/tools/common/build_info.py
+index 943ec46..d94225e 100644
+--- a/tools/common/build_info.py
++++ b/tools/common/build_info.py
+@@ -11,14 +11,14 @@ from hashlib import sha256
+ from pathlib import Path
+ from time import time
+ 
+-BUILD_GIT_DESCRIBE = "can-fault-finder-checkpoint-2026-07-11-dirty"
+-BUILD_REVISION = "247"
+-BUILD_WORKSPACE_REVISION = "220"
+-BUILD_CODE_REVISION = "e51d5597ab17"
+-BUILD_GIT_SHA = "85d12f9"
++BUILD_GIT_DESCRIBE = "can-fault-finder-checkpoint-2026-07-11-2-g361fb2e-dirty"
++BUILD_REVISION = "249"
++BUILD_WORKSPACE_REVISION = "243"
++BUILD_CODE_REVISION = "c22d8c6142ff"
++BUILD_GIT_SHA = "361fb2e"
+ BUILD_GIT_BRANCH = "main"
+ BUILD_GIT_DIRTY = "dirty"
+-BUILD_TIMESTAMP = "2026-07-11T19:36:58-04:00"
++BUILD_TIMESTAMP = "2026-07-15T10:45:04-04:00"
+ 
+ BUILD_LABEL_REVISION = "build-revision"
+ BUILD_LABEL_WORKSPACE_REVISION = "workspace-revision"

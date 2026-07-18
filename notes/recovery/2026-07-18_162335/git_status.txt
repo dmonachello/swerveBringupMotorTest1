@@ -1,0 +1,33 @@
+ M AGENTS.md
+ M "Feature Spec - CAN Bus Debug Final Push.md"
+ M README.md
+ M docs/ADD_A_NEW_DEVICE.md
+ M docs/FEATURE_SPEC_SHARED_UI_CONTEXT_AND_CENTRALIZED_CONTROL.md
+ M src/main/java/frc/robot/BridgeUiCommandHandler.java
+ M src/main/java/frc/robot/BridgeUiGroupCommands.java
+ M src/main/java/frc/robot/BridgeUiProfileCommands.java
+ M src/main/java/frc/robot/BuildInfo.java
+ M src/main/java/frc/robot/commands/local/RobotLocalCommandRegistry.java
+ M src/main/java/frc/robot/manufacturers/ctre/util/PdpStatusReader.java
+ M src/main/java/frc/robot/tests/dsl/DslBringupTest.java
+ M src/test/java/frc/robot/BridgeUiGroupCommandsTest.java
+ M src/test/java/frc/robot/BridgeUiProfileCommandsTest.java
+ M src/test/java/frc/robot/DslBringupTestTest.java
+ M tools/can_nt/bridge_cli.py
+ M tools/can_nt/bringup_ui.py
+ M tools/can_nt/can_fault_inference.py
+ M tools/can_nt/generated/robot_local_commands_generated.py
+ M tools/can_nt/passive_discovery_integration_service.py
+ M tools/can_nt/tests/test_bridge_cli_visibility.py
+ M tools/can_nt/tests/test_bringup_ui_actions.py
+ M tools/can_nt/tests/test_passive_discovery_integration_service.py
+ M tools/can_topology/live_topology_view.py
+ M tools/can_topology/tests/test_live_topology_view.py
+ M tools/common/build_info.py
+?? docs/mocs/
+?? notes/journal/2026-07-18-centralized-control-refactor-recovery.md
+?? notes/recovery/
+?? src/test/java/frc/robot/manufacturers/
+?? tools/can_nt/host_ui_state_service.py
+?? tools/can_nt/tests/test_host_ui_state_service.py
+?? tools/docs_maintenance/
