@@ -18,6 +18,7 @@ import frc.robot.tests.BringupTestContext;
 import frc.robot.tests.BringupTestResult;
 import frc.robot.tests.dsl.DslBringupTest;
 import frc.robot.tests.dsl.DslModels;
+import frc.robot.tests.dsl.DslSignalRegistry;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.util.LinkedHashMap;
@@ -37,11 +38,14 @@ class DslBringupTestTest {
   private static final String CONTROLLER_LABEL = "controller0";
   private static final String CONTROLLER_TYPE = "xboxController";
   private static final String DSL_MOTOR_TYPE = "motor";
+  private static final String PDP_LABEL = "pdp";
   private static final String SIGNAL_A = "A";
   private static final String SIGNAL_X = "X";
   private static final String SIGNAL_D_UP = "D_UP";
   private static final String SIGNAL_FAULTS = "faults";
   private static final String SIGNAL_LEFT_Y = "leftY";
+  private static final String SIGNAL_CHANNEL0_FAULT = "channel0_fault";
+  private static final String SIGNAL_CURRENT = "current";
   private static final String FIELD_DEVICE_REGISTRY = "DEVICE_REGISTRY";
   private static final String CLASS_DEVICE_DEFINITION = "frc.robot.BringupUtil$DeviceDefinition";
   private static final String FIELD_LABEL = "label";
@@ -330,6 +334,41 @@ class DslBringupTestTest {
     test.update(context, START_SEC + 0.20);
 
     assertEquals(BringupTestResult.PASS, test.getResult());
+  }
+
+  @Test
+  void dslPowerDistributionRequireRevokesWhenSignalBecomesUnavailable() {
+    seedConfiguredDeviceType(PDP_LABEL, DslSignalRegistry.DEVICE_TYPE_PDP);
+    SignalRecordingDevice pdp = new SignalRecordingDevice(PDP_LABEL, DslSignalRegistry.DEVICE_TYPE_PDP);
+    pdp.setSignal(SIGNAL_CHANNEL0_FAULT, false);
+    DslBringupTest test = new DslBringupTest(buildPowerDistributionRequireTest());
+    BringupTestContext context = context(pdp);
+
+    assertTrue(test.start(context, START_SEC));
+    test.update(context, START_SEC + 0.05);
+    pdp.removeSignal(SIGNAL_CHANNEL0_FAULT);
+    test.update(context, START_SEC + 0.25);
+
+    assertEquals(BringupTestResult.FAIL, test.getResult());
+    assertEquals("until until_1: timer.elapsed >= 0.2", test.getStatus());
+    assertTrue(test.buildRunDetails().toString().contains("satisfied=false"));
+  }
+
+  @Test
+  void dslMotorRequireRemainsLatchedWhenSignalBecomesUnavailableLater() {
+    SignalRecordingDevice motor = new SignalRecordingDevice();
+    motor.setSignal(SIGNAL_CURRENT, 5.0);
+    DslBringupTest test = new DslBringupTest(buildMotorRequireLatchTest());
+    BringupTestContext context = context(motor);
+
+    assertTrue(test.start(context, START_SEC));
+    test.update(context, START_SEC + 0.05);
+    motor.removeSignal(SIGNAL_CURRENT);
+    test.update(context, START_SEC + 0.25);
+
+    assertEquals(BringupTestResult.PASS, test.getResult());
+    assertEquals("until until_1: timer.elapsed >= 0.2", test.getStatus());
+    assertTrue(test.buildRunDetails().toString().contains("satisfied=true"));
   }
 
   @Test
@@ -625,6 +664,64 @@ class DslBringupTestTest {
     return test;
   }
 
+  private static DslModels.DslNormalizedTest buildPowerDistributionRequireTest() {
+    DslModels.DslNormalizedTest test = new DslModels.DslNormalizedTest();
+    test.name = "pdp_require";
+    DslModels.DslDeviceRef device = new DslModels.DslDeviceRef();
+    device.name = PDP_LABEL;
+    test.devices.add(device);
+
+    DslModels.DslCondition require = new DslModels.DslCondition();
+    require.id = "require_1";
+    require.kind = "require";
+    require.text = "require pdp.channel0_fault == false";
+    require.reference = reference(PDP_LABEL, SIGNAL_CHANNEL0_FAULT);
+    require.mode = "comparison";
+    require.operator = "==";
+    require.literal = booleanLiteral(false);
+    test.main.requires.add(require);
+
+    DslModels.DslCondition until = new DslModels.DslCondition();
+    until.id = "until_1";
+    until.kind = "until";
+    until.text = "timer.elapsed >= 0.2";
+    until.reference = reference("timer", "elapsed");
+    until.mode = "comparison";
+    until.operator = ">=";
+    until.literal = numberLiteral(0.2);
+    test.main.untils.add(until);
+    return test;
+  }
+
+  private static DslModels.DslNormalizedTest buildMotorRequireLatchTest() {
+    DslModels.DslNormalizedTest test = new DslModels.DslNormalizedTest();
+    test.name = "motor_require_latch";
+    DslModels.DslDeviceRef device = new DslModels.DslDeviceRef();
+    device.name = MOTOR_LABEL;
+    test.devices.add(device);
+
+    DslModels.DslCondition require = new DslModels.DslCondition();
+    require.id = "require_1";
+    require.kind = "require";
+    require.text = "require motor-a.current > 1.0";
+    require.reference = reference(MOTOR_LABEL, SIGNAL_CURRENT);
+    require.mode = "comparison";
+    require.operator = ">";
+    require.literal = numberLiteral(1.0);
+    test.main.requires.add(require);
+
+    DslModels.DslCondition until = new DslModels.DslCondition();
+    until.id = "until_1";
+    until.kind = "until";
+    until.text = "timer.elapsed >= 0.2";
+    until.reference = reference("timer", "elapsed");
+    until.mode = "comparison";
+    until.operator = ">=";
+    until.literal = numberLiteral(0.2);
+    test.main.untils.add(until);
+    return test;
+  }
+
   private void seedConfiguredDeviceType(String label, String type) {
     try {
       Map<String, Object> registry = deviceRegistry();
@@ -675,6 +772,13 @@ class DslBringupTestTest {
     return literal;
   }
 
+  private static DslModels.DslLiteral booleanLiteral(boolean value) {
+    DslModels.DslLiteral literal = new DslModels.DslLiteral();
+    literal.value = value;
+    literal.valueType = "boolean";
+    return literal;
+  }
+
   private static BringupTestContext context(DeviceUnit device) {
     RegistrationHeader header =
         new RegistrationHeader(VENDOR, VENDOR, DEVICE_TYPE, SOURCE, OWNER, EMPTY, EMPTY);
@@ -722,10 +826,21 @@ class DslBringupTestTest {
   }
 
   private static class RecordingDevice implements DeviceUnit {
+    private final String label;
+    private final String deviceType;
     private int dutyWrites;
     private int stopWrites;
     private double lastDuty;
     private boolean created;
+
+    private RecordingDevice() {
+      this(MOTOR_LABEL, DEVICE_TYPE);
+    }
+
+    private RecordingDevice(String label, String deviceType) {
+      this.label = label;
+      this.deviceType = deviceType;
+    }
 
     @Override
     public int getCanId() {
@@ -734,17 +849,17 @@ class DslBringupTestTest {
 
     @Override
     public RegistrationHeader getHeader() {
-      return new RegistrationHeader(VENDOR, VENDOR, DEVICE_TYPE, SOURCE, OWNER, EMPTY, EMPTY);
+      return new RegistrationHeader(VENDOR, VENDOR, deviceType, SOURCE, OWNER, EMPTY, EMPTY);
     }
 
     @Override
     public String getDeviceType() {
-      return DEVICE_TYPE;
+      return deviceType;
     }
 
     @Override
     public String getLabel() {
-      return MOTOR_LABEL;
+      return label;
     }
 
     @Override
@@ -790,8 +905,20 @@ class DslBringupTestTest {
   private static final class SignalRecordingDevice extends RecordingDevice {
     private final Map<String, Object> signals = new LinkedHashMap<>();
 
+    private SignalRecordingDevice() {
+      super();
+    }
+
+    private SignalRecordingDevice(String label, String deviceType) {
+      super(label, deviceType);
+    }
+
     private void setSignal(String signalName, Object value) {
       signals.put(signalName, value);
+    }
+
+    private void removeSignal(String signalName) {
+      signals.remove(signalName);
     }
 
     @Override
