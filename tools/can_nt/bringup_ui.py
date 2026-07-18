@@ -206,6 +206,7 @@ from .host_ui_state_service import (
     DiagnosticProfileState,
     RunnableScopeState,
     RuntimeStateFetchState,
+    UiContextState,
     resolve_manual_duty_scope_state,
     resolve_active_group_summary_state,
     resolve_diagnostic_profile_state,
@@ -216,6 +217,7 @@ from .host_ui_state_service import (
     resolve_selected_test_scope_state,
     resolve_tests_active_group_member_rows,
     resolve_runnable_scope_state,
+    resolve_ui_context_state,
     should_clear_runtime_event_notice,
 )
 from .status import SS__NORMAL
@@ -3857,15 +3859,46 @@ class BringupControlUI(tk.Tk):
             return PROFILE_NONE
         return _normalize_profile_name(profile_box.get())
 
+    def _ui_context_state(self) -> UiContextState:
+        """
+        NAME
+            _ui_context_state - Return the shared UI context snapshot for current host/robot state.
+        """
+        owner_mode = str(self.__dict__.get("_group_owner_mode", "") or "").strip().lower()
+        scope_kind = RUNNABLE_SCOPE_KIND_MANUAL
+        if owner_mode == GROUP_SOURCE_SELECTED_TEST:
+            scope_kind = RUNNABLE_SCOPE_KIND_SELECTED_TEST
+        elif owner_mode == GROUP_SOURCE_MANUAL:
+            scope_kind = RUNNABLE_SCOPE_KIND_MANUAL
+        elif self._scope_context_kind() == GROUP_SOURCE_SELECTED_TEST:
+            scope_kind = RUNNABLE_SCOPE_KIND_SELECTED_TEST
+        selected_test_var = self.__dict__.get("_selected_test_var")
+        selected_test_name = NT_VALUE_EMPTY
+        if selected_test_var is not None and hasattr(selected_test_var, "get"):
+            selected_test_name = str(selected_test_var.get() or "").strip()
+        return resolve_ui_context_state(
+            local_selected_profile=self._selected_profile_name(),
+            robot_selected_profile=self.__dict__.get("_robot_selected_profile", PROFILE_NONE),
+            robot_active_runtime_profile=self.__dict__.get(
+                "_robot_active_runtime_profile", PROFILE_NONE
+            ),
+            selected_test_name=selected_test_name,
+            scope_kind=scope_kind,
+            transport_connected=bool(self.__dict__.get("_tcp_connected", True)),
+            handshake_ready=bool(self.__dict__.get("_handshake_done", False)),
+            has_robot_runtime_state=bool(self.__dict__.get("_runtime_state_seen", False)),
+        )
+
     def _diagnostic_profile_state(self) -> DiagnosticProfileState:
         """
         NAME
             _diagnostic_profile_state - Return the shared diagnostic profile context state.
         """
+        context = self._ui_context_state()
         return resolve_diagnostic_profile_state(
-            self._selected_profile_name(),
-            self._robot_selected_profile,
-            self._robot_active_runtime_profile,
+            context.local_selected_profile,
+            context.robot_selected_profile,
+            context.robot_active_runtime_profile,
             local_profile_required=self.__dict__.get("_profile_box") is not None,
         )
 
@@ -3874,26 +3907,20 @@ class BringupControlUI(tk.Tk):
         NAME
             _runnable_scope_kind - Return normalized shared runnable-scope kind text.
         """
-        owner_mode = str(self.__dict__.get("_group_owner_mode", "") or "").strip().lower()
-        if owner_mode == GROUP_SOURCE_SELECTED_TEST:
-            return RUNNABLE_SCOPE_KIND_SELECTED_TEST
-        if owner_mode == GROUP_SOURCE_MANUAL:
-            return RUNNABLE_SCOPE_KIND_MANUAL
-        if self._scope_context_kind() == GROUP_SOURCE_SELECTED_TEST:
-            return RUNNABLE_SCOPE_KIND_SELECTED_TEST
-        return RUNNABLE_SCOPE_KIND_MANUAL
+        return self._ui_context_state().scope_kind
 
     def _runnable_scope_state(self, stale_state: bool) -> RunnableScopeState:
         """
         NAME
             _runnable_scope_state - Return the shared runnable-scope decision state.
         """
+        context = self._ui_context_state()
         return resolve_runnable_scope_state(
-            scope_kind=self._runnable_scope_kind(),
-            local_selected_profile=self._selected_profile_name(),
+            scope_kind=context.scope_kind,
+            local_selected_profile=context.local_selected_profile,
             local_profile_required=self.__dict__.get("_profile_box") is not None,
-            tcp_connected=bool(self.__dict__.get("_tcp_connected", True)),
-            runtime_state_seen=bool(self.__dict__.get("_runtime_state_seen", False)),
+            tcp_connected=context.transport_connected,
+            runtime_state_seen=context.has_robot_runtime_state,
             stale_state=bool(stale_state),
             robot_enabled=bool(self.__dict__.get("_robot_enabled_known", True)),
             robot_estopped=bool(self.__dict__.get("_robot_estopped_known", False)),

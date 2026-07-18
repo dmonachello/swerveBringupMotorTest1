@@ -127,6 +127,24 @@ RUNTIME_FETCH_BLOCK_LOG_POLL = "Busy: wait for current log poll to finish."
 
 
 @dataclass(frozen=True)
+class UiContextState:
+    """
+    NAME
+        UiContextState - Shared host-side UI context snapshot.
+    """
+
+    local_selected_profile: str
+    robot_selected_profile: str
+    robot_active_runtime_profile: str
+    selected_test_name: str
+    scope_kind: str
+    has_local_profile_selection: bool
+    has_robot_runtime_state: bool
+    transport_connected: bool
+    handshake_ready: bool
+
+
+@dataclass(frozen=True)
 class DiagnosticProfileState:
     """
     NAME
@@ -266,6 +284,50 @@ def _normalize_profile_name(value: object) -> str:
     """
     clean = str(value or "").strip()
     return clean if clean else PROFILE_NONE
+
+
+def _normalize_scope_kind(value: object) -> str:
+    """
+    NAME
+        _normalize_scope_kind - Return one normalized runnable-scope kind.
+    """
+    clean = str(value or RUNNABLE_SCOPE_KIND_MANUAL).strip().lower()
+    if clean == RUNNABLE_SCOPE_KIND_SELECTED_TEST:
+        return RUNNABLE_SCOPE_KIND_SELECTED_TEST
+    return RUNNABLE_SCOPE_KIND_MANUAL
+
+
+def resolve_ui_context_state(
+    *,
+    local_selected_profile: object,
+    robot_selected_profile: object,
+    robot_active_runtime_profile: object,
+    selected_test_name: object,
+    scope_kind: object,
+    transport_connected: bool,
+    handshake_ready: bool,
+    has_robot_runtime_state: bool,
+) -> UiContextState:
+    """
+    NAME
+        resolve_ui_context_state - Build one shared UI context snapshot from host and robot state.
+    """
+    local_selected = _normalize_profile_name(local_selected_profile)
+    robot_selected = _normalize_profile_name(robot_selected_profile)
+    robot_active_runtime = _normalize_profile_name(robot_active_runtime_profile)
+    selected_test = str(selected_test_name or "").strip()
+    normalized_scope = _normalize_scope_kind(scope_kind)
+    return UiContextState(
+        local_selected_profile=local_selected,
+        robot_selected_profile=robot_selected,
+        robot_active_runtime_profile=robot_active_runtime,
+        selected_test_name=selected_test,
+        scope_kind=normalized_scope,
+        has_local_profile_selection=local_selected != PROFILE_NONE,
+        has_robot_runtime_state=bool(has_robot_runtime_state),
+        transport_connected=bool(transport_connected),
+        handshake_ready=bool(handshake_ready),
+    )
 
 
 def resolve_diagnostic_profile_state(

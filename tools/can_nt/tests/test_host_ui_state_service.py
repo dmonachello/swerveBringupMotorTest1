@@ -24,12 +24,14 @@ from tools.can_nt.host_ui_state_service import (
     RUNNABLE_SCOPE_DETAIL_DISABLED,
     RUNNABLE_SCOPE_DETAIL_SELECT_PROFILE,
     RUNNABLE_SCOPE_KIND_MANUAL,
+    RUNNABLE_SCOPE_KIND_SELECTED_TEST,
     RUNNABLE_SCOPE_PANEL_WAITING_DETAIL,
     resolve_active_scope_membership_state,
     resolve_diagnostic_profile_state,
     resolve_manual_duty_scope_state,
     resolve_runtime_state_fetch_state,
     resolve_runnable_scope_state,
+    resolve_ui_context_state,
     should_clear_runtime_event_notice,
 )
 
@@ -52,6 +54,28 @@ class HostUiStateServiceTests(unittest.TestCase):
         self.assertEqual(PROFILE_NONE, state.effective_profile)
         self.assertEqual(BLANK_REASON_LOCAL_PROFILE_REQUIRED, state.blank_reason)
         self.assertEqual(PROFILE_CONTEXT_SOURCE_BLANK, state.profile_context_source)
+
+    def test_resolve_ui_context_state_tracks_scope_and_transport_flags(self) -> None:
+        state = resolve_ui_context_state(
+            local_selected_profile="test_minimal_25_9",
+            robot_selected_profile="robot_selected",
+            robot_active_runtime_profile="robot_active",
+            selected_test_name="smoke_test",
+            scope_kind=RUNNABLE_SCOPE_KIND_SELECTED_TEST,
+            transport_connected=True,
+            handshake_ready=False,
+            has_robot_runtime_state=True,
+        )
+
+        self.assertEqual("test_minimal_25_9", state.local_selected_profile)
+        self.assertEqual("robot_selected", state.robot_selected_profile)
+        self.assertEqual("robot_active", state.robot_active_runtime_profile)
+        self.assertEqual("smoke_test", state.selected_test_name)
+        self.assertEqual(RUNNABLE_SCOPE_KIND_SELECTED_TEST, state.scope_kind)
+        self.assertTrue(state.has_local_profile_selection)
+        self.assertTrue(state.transport_connected)
+        self.assertFalse(state.handshake_ready)
+        self.assertTrue(state.has_robot_runtime_state)
 
     def test_resolve_diagnostic_profile_state_prefers_robot_active_runtime(self) -> None:
         state = resolve_diagnostic_profile_state(
