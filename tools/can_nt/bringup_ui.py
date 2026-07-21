@@ -34,7 +34,6 @@ from .command_catalog_service import (
 )
 from .command_workflow_service import send_tracked_command
 from .can_bus_report_service import build_host_can_bus_report
-from .can_fault_inference import build_fault_diagnosis, render_fault_diagnosis
 from .passive_discovery_integration_service import (
     ENGINE_LABEL_LEGACY,
     ENGINE_LABEL_NEW,
@@ -47,11 +46,20 @@ from .passive_discovery_integration_service import (
     SECTION_PROBE,
     SECTION_PROFILE_INVENTORY,
     SECTION_TOPOLOGY_VIEW,
+    FAULT_SNAPSHOT_KEY_CANDIDATE_COUNT,
+    FAULT_SNAPSHOT_KEY_RAN_AT,
+    FAULT_SNAPSHOT_KEY_RENDERED_TEXT,
+    FAULT_SNAPSHOT_KEY_RESULT,
+    TEXT_EMPTY,
+    build_evidence_fault_snapshot,
     build_interpreted_evidence_row,
     classify_device_type,
     build_console_snapshot_from_entries as build_console_snapshot_from_entries_shared,
     build_enrichment_run_snapshot,
     build_live_passive_result,
+    build_passive_device_detail_snapshot,
+    build_passive_visibility_deep_dive_text,
+    build_interpreted_device_detail_snapshot,
     build_manual_snapshot,
     build_runtime_probe_snapshot,
     build_runtime_presence_catalog,
@@ -116,9 +124,16 @@ from .passive_discovery_integration_service import (
     MANUAL_SUMMARY_FIELD,
     PROBE_SUMMARY_FIELD,
     PROBE_TEXT_FIELD,
+    ENRICHMENT_RUN_METADATA_KEY,
     ENRICHMENT_RUN_DEVICES_KEY,
     ENRICHMENT_RUN_LABEL,
     ENRICHMENT_RUN_RECORDS_KEY,
+    ENRICHMENT_RUN_STATUS_KEY,
+    ENRICHMENT_RUN_SUMMARY_KEY,
+    ENRICHMENT_RUN_WARNINGS_KEY,
+    ENRICHMENT_SOURCE_CONSOLE_LOG,
+    ENRICHMENT_SOURCE_CTRE,
+    ENRICHMENT_SOURCE_TOPOLOGY,
     ENRICHMENT_DEVICE_KEY_CTRE,
 )
 from .bridge_ops import (
@@ -133,7 +148,6 @@ from .bridge_ops import (
     push_config,
     send_command,
     show_lifecycle_state,
-    show_runtime_state,
     select_test_by_name,
     ui_disconnect,
     ui_handshake,
@@ -158,6 +172,68 @@ from .host_ui_actions import (
     HOST_ACTION_DSL_TEST_VALIDATE,
     HOST_ACTION_RECONNECT_UI_SESSION,
     HOST_UI_ACTIONS,
+)
+from .host_ui_state_service import (
+    MANUAL_DUTY_BLOCKED_CONTROLLED_SCOPE_TEXT as SHARED_MANUAL_DUTY_BLOCKED_CONTROLLED_SCOPE_TEXT,
+    OUTPUT_NO_SELECTED_TEST as SHARED_OUTPUT_NO_SELECTED_TEST,
+    PROFILE_NONE as SHARED_PROFILE_NONE,
+    SELECTED_TEST_STATUS_BLOCKED_DISABLED as SHARED_SELECTED_TEST_STATUS_BLOCKED_DISABLED,
+    SELECTED_TEST_STATUS_BLOCKED_ESTOP as SHARED_SELECTED_TEST_STATUS_BLOCKED_ESTOP,
+    SELECTED_TEST_STATUS_BLOCKED_NOT_TELEOP as SHARED_SELECTED_TEST_STATUS_BLOCKED_NOT_TELEOP,
+    SELECTED_TEST_STATUS_LOADED_NOT_ACTIVATED as SHARED_SELECTED_TEST_STATUS_LOADED_NOT_ACTIVATED,
+    SELECTED_TEST_STATUS_MANUAL_RESTORED as SHARED_SELECTED_TEST_STATUS_MANUAL_RESTORED,
+    RUNNABLE_SCOPE_DETAIL_MANUAL_EMPTY as SHARED_RUNNABLE_SCOPE_DETAIL_MANUAL_EMPTY,
+    RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_ACTIVATED as SHARED_RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_ACTIVATED,
+    RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_TELEOP as SHARED_RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_TELEOP,
+    RUNNABLE_SCOPE_DETAIL_SELECT_PROFILE as SHARED_RUNNABLE_SCOPE_DETAIL_SELECT_PROFILE,
+    RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_ACTIVATED as SHARED_RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_ACTIVATED,
+    RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_TELEOP as SHARED_RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_TELEOP,
+    RUNNABLE_SCOPE_KIND_MANUAL,
+    RUNNABLE_SCOPE_KIND_SELECTED_TEST,
+    RUNNABLE_STATE_LEVEL_ERROR,
+    RUNNABLE_STATE_LEVEL_NEUTRAL,
+    RUNNABLE_STATE_LEVEL_READY,
+    RUNNABLE_STATE_LEVEL_WARN,
+    RUNNABLE_SCOPE_PANEL_DISCONNECTED_DETAIL as SHARED_RUNNABLE_SCOPE_PANEL_DISCONNECTED_DETAIL,
+    RUNNABLE_SCOPE_PANEL_READY_DETAIL as SHARED_RUNNABLE_SCOPE_PANEL_READY_DETAIL,
+    RUNNABLE_SCOPE_PANEL_WAITING_DETAIL as SHARED_RUNNABLE_SCOPE_PANEL_WAITING_DETAIL,
+    TEST_ACTIVE_GROUP_STATUS_ENABLED as SHARED_TEST_ACTIVE_GROUP_STATUS_ENABLED,
+    TEST_ACTIVE_GROUP_STATUS_INVALID as SHARED_TEST_ACTIVE_GROUP_STATUS_INVALID,
+    TEST_ACTIVE_GROUP_STATUS_LOCKED as SHARED_TEST_ACTIVE_GROUP_STATUS_LOCKED,
+    TEST_ACTIVE_GROUP_STATUS_NOT_ACTIVATED as SHARED_TEST_ACTIVE_GROUP_STATUS_NOT_ACTIVATED,
+    TEST_ACTIVE_GROUP_SINGLETON_LABELS as SHARED_TEST_ACTIVE_GROUP_SINGLETON_LABELS,
+    TEST_SCOPE_PANEL_NEUTRAL_LEVEL,
+    TEST_SCOPE_STATUS_BLOCKED_DISABLED_DETAIL as SHARED_TEST_SCOPE_STATUS_BLOCKED_DISABLED_DETAIL,
+    TEST_SCOPE_STATUS_BLOCKED_ESTOP_DETAIL as SHARED_TEST_SCOPE_STATUS_BLOCKED_ESTOP_DETAIL,
+    TEST_SCOPE_STATUS_BLOCKED_NOT_TELEOP_DETAIL as SHARED_TEST_SCOPE_STATUS_BLOCKED_NOT_TELEOP_DETAIL,
+    TEST_SCOPE_STATUS_LOADED_NOT_ACTIVATED_DETAIL as SHARED_TEST_SCOPE_STATUS_LOADED_NOT_ACTIVATED_DETAIL,
+    TEST_SCOPE_STATUS_MANUAL_RESTORED_DETAIL as SHARED_TEST_SCOPE_STATUS_MANUAL_RESTORED_DETAIL,
+    TEST_SCOPE_STATUS_MISSING_DEVICE_PREFIX as SHARED_TEST_SCOPE_STATUS_MISSING_DEVICE_PREFIX,
+    TEST_SCOPE_STATUS_NO_SELECTION_DETAIL as SHARED_TEST_SCOPE_STATUS_NO_SELECTION_DETAIL,
+    TEST_SCOPE_STATUS_REQUIRED_UNAVAILABLE_DETAIL as SHARED_TEST_SCOPE_STATUS_REQUIRED_UNAVAILABLE_DETAIL,
+    TEST_SCOPE_STATUS_READY_DETAIL as SHARED_TEST_SCOPE_STATUS_READY_DETAIL,
+    ActiveGroupMemberRowState,
+    SelectedTestScopeState,
+    SelectedTestPanelState,
+    DiagnosticProfileState,
+    RunnableScopeState,
+    RuntimeStateFetchState,
+    TopologySceneState,
+    UiContextState,
+    resolve_manual_duty_scope_state,
+    resolve_active_group_summary_state,
+    resolve_manual_duty_binding_state,
+    resolve_diagnostic_profile_state,
+    resolve_runtime_state_fetch_state,
+    resolve_scope_activation_notice,
+    resolve_selected_test_runtime_block_reason,
+    resolve_selected_test_panel_state,
+    resolve_selected_test_scope_state,
+    resolve_topology_scene_state,
+    resolve_tests_active_group_member_rows,
+    resolve_runnable_scope_state,
+    resolve_ui_context_state,
+    should_clear_runtime_event_notice,
 )
 from .status import SS__NORMAL
 from tools.common.json_io import read_json, write_json
@@ -436,7 +512,7 @@ LIVE_SOURCE_REST = "rest"
 LIVE_SOURCE_FILE = "file"
 LIVE_CLOCK_FORMAT = "%H:%M:%S"
 LIVE_CLOCK_LABEL = "Clock:"
-PROFILE_NONE = "(none)"
+PROFILE_NONE = SHARED_PROFILE_NONE
 NT_UI_STATE_SELECTED_PROFILE = "state/selectedProfile"
 NT_UI_STATE_ACTIVE_RUNTIME_PROFILE = "state/activeRuntimeProfile"
 DEFAULT_RUNTIME_STATE_RATE_HZ = 2.0
@@ -449,7 +525,7 @@ BUTTON_DEACTIVATE_GROUP = "Deactivate Group"
 BUTTON_PUSH_CONFIG = "Push Config"
 BUTTON_DOWNLOAD_CONFIG = "Download Current Config"
 BUTTON_SHOW_RUNTIME_STATE = "Show Runtime State"
-BUTTON_SHOW_LIFECYCLE_STATE = "Show Lifecycle State"
+BUTTON_SHOW_LIFECYCLE_STATE = "Show Scope State"
 CMD_PRINT_CAN_DIAG = "printCANdiag"
 GROUP_SOURCE_MANUAL = "manual"
 GROUP_SOURCE_SELECTED_TEST = "selected test"
@@ -459,7 +535,7 @@ GROUP_SOURCE_LABEL_SELECTED_TEST = GROUP_SOURCE_LABEL_PREFIX + GROUP_SOURCE_SELE
 OUTPUT_NOT_CONNECTED = "Not connected: command blocked."
 OUTPUT_BUSY = "Busy: wait for current command to finish."
 OUTPUT_NO_PROFILE = "No profile selected."
-OUTPUT_NO_SELECTED_TEST = "no selected test"
+OUTPUT_NO_SELECTED_TEST = SHARED_OUTPUT_NO_SELECTED_TEST
 OUTPUT_PUSH_CANCELLED = "Config push cancelled."
 OUTPUT_DOWNLOAD_CANCELLED = "Config download cancelled."
 OUTPUT_PUSH_START_FMT = "PUSH {path} profile={profile}"
@@ -469,6 +545,18 @@ OUTPUT_PUSH_FAILURE = "Push Config: FAILED"
 OUTPUT_DOWNLOAD_START_FMT = "DOWNLOAD {path}"
 OUTPUT_RUNTIME_ACTIVATE_FMT = "CMD runtimeActivate \"{profile}\""
 OUTPUT_RUNTIME_DEACTIVATE = "CMD runtimeDeactivate"
+OUTPUT_RUNTIME_STATE_FETCH = "CMD showRuntimeState"
+OUTPUT_RUNTIME_STATE_FETCH_OUT = "OUT showRuntimeState"
+OUTPUT_RUNTIME_STATE_FETCH_EMPTY = "Runtime state fetch returned no data."
+OUTPUT_EVIDENCE_ENRICHMENT_RUN_FMT = "RUN enrichment profile={profile} rio={rio} devices={devices}"
+OUTPUT_EVIDENCE_ENRICHMENT_RESULT_FMT = "OUT enrichment deviceMatches={devices} warnings={warnings}"
+OUTPUT_EVIDENCE_ENRICHMENT_SOURCE_FMT = "  {source}: status={status} summary={summary}"
+OUTPUT_EVIDENCE_ENRICHMENT_SOURCE_UNKNOWN = "unknown"
+OUTPUT_EVIDENCE_ENRICHMENT_SOURCES = (
+    ENRICHMENT_SOURCE_TOPOLOGY,
+    ENRICHMENT_SOURCE_CTRE,
+    ENRICHMENT_SOURCE_CONSOLE_LOG,
+)
 OUTPUT_LIFECYCLE_ACTIVATE_FMT = (
     "CMD lifecycleActivate \"{label}\" mode={mode} membershipMode={membership_mode}"
 )
@@ -525,11 +613,9 @@ MANUAL_DUTY_BLOCKED_STALE_TEXT = "Manual motor control blocked: robot state stal
 MANUAL_DUTY_BLOCKED_ESTOP_TEXT = "Manual motor control blocked: robot estopped."
 MANUAL_DUTY_BLOCKED_DISABLED_TEXT = "Manual motor control blocked: robot disabled."
 MANUAL_DUTY_BLOCKED_RUNTIME_TEXT = "Manual motor control blocked: runtime inactive."
-MANUAL_DUTY_BLOCKED_CONTROLLED_SCOPE_TEXT = (
-    "Manual motor control blocked: device is outside the active controlled lifecycle scope."
-)
+MANUAL_DUTY_BLOCKED_CONTROLLED_SCOPE_TEXT = SHARED_MANUAL_DUTY_BLOCKED_CONTROLLED_SCOPE_TEXT
 ACTIVE_GROUP_LOCKED_TEXT = (
-    "Active group membership is locked while controlled lifecycle session is ACTIVE. Deactivate lifecycle first."
+    "Active group membership is locked while an active scope session is running. Deactivate scope first."
 )
 MANUAL_DUTY_BUSY_TEXT = "Manual motor control blocked: command in flight."
 MANUAL_DUTY_SCALE_ELEMENT_SLIDER = "slider"
@@ -555,11 +641,12 @@ UI_PREFS_KEY_SHOW_VISIBILITY_TAB = "showVisibilityTab"
 UI_PREFS_KEY_SHOW_WALL_CLOCK = "showWallClock"
 
 # Constants (visibility UI).
-VIS_TAB_LABEL = "Visibility"
+VIS_TAB_LABEL = "CAN Visibility"
 VIS_COL_DEVICE = "Device"
 VIS_COL_IDENTITY = "Identity"
 VIS_COL_LAST_SEEN = "Last Seen"
 VIS_COL_PACKETS = "Packets"
+VIS_COL_EXISTENCE_PACKETS = "Exist Pkts"
 VIS_COL_RATE = "Rate"
 VIS_COL_PROBE_BUCKET = "Full Probe"
 VIS_COL_PROBE_SCORE = "Full Probe Score"
@@ -567,10 +654,10 @@ VIS_COL_VISIBLE = "Visible"
 VIS_VALUE_YES = "Y"
 VIS_VALUE_NO = "N"
 VIS_VALUE_UNKNOWN = "?"
-VIS_MODE_LABEL = "Visibility Mode"
+VIS_MODE_LABEL = "CAN Visibility Mode"
 VIS_SUMMARY_FMT = "Sources: {sources} | Devices: {devices} | All: {all} | Some: {some} | None: {none}"
 VIS_PANEL_SCOPE = VIS_SCOPE_BOTH
-VIS_EMPTY_MESSAGE = "Visibility provider not available."
+VIS_EMPTY_MESSAGE = "CAN visibility provider not available."
 VIS_LAST_SEEN_UNKNOWN = "--"
 VIS_REFRESH_SEC = 0.5
 VIS_SOURCE_COUNT_UNKNOWN = "--"
@@ -587,17 +674,19 @@ VIS_RENAME_SUCCESS_FMT = "Renamed discovered device: {old_label} -> {new_label}"
 VIS_DEFINED_SECTION_LABEL = "Defined Nodes"
 VIS_UNRECOGNIZED_SECTION_LABEL = "Unrecognized Nodes"
 VIS_CTRE_RAW_SECTION_LABEL = "CTRE Raw Decode"
+VIS_PASSIVE_DEEP_DIVE_SECTION_LABEL = "Shared Passive CAN Deep Dive"
 VIS_CLEAR_PANELS_BUTTON = "Clear Panels"
 VIS_PACKETS_UNKNOWN = "--"
 VIS_RATE_UNKNOWN = "--"
 VIS_RATE_FMT = "{value:.1f}/s"
+VIS_DETAIL_TEXT_HEIGHT = 14
 VIS_TABLE_SPLIT_ORIENT = "vertical"
 VIS_RAW_EMPTY_MESSAGE = "Select a CTRE row to inspect contributing raw IDs."
 LIVE_TOPOLOGY_TAB_LABEL = "Live Topology"
 LIVE_LENS_LABEL = "Lens:"
 LIVE_LENS_OPTION_EVIDENCE = "Evidence"
 LIVE_LENS_OPTION_RUNTIME = "Runtime"
-LIVE_LENS_OPTION_VISIBILITY = "Visibility"
+LIVE_LENS_OPTION_VISIBILITY = "CAN Visibility"
 LIVE_LENS_OPTION_LABELS = (
     LIVE_LENS_OPTION_EVIDENCE,
     LIVE_LENS_OPTION_RUNTIME,
@@ -663,15 +752,18 @@ NOTICE_COLOR_WARN_FG = "#c2410c"
 NOTICE_COLOR_ERROR_BG = "#fef2f2"
 NOTICE_COLOR_ERROR_FG = "#b91c1c"
 COLOR_KEY_TITLE = "Live Topology Color Key"
-COLOR_KEY_GEOMETRY = "420x360"
-COLOR_KEY_MIN_WIDTH = 360
-COLOR_KEY_MIN_HEIGHT = 300
+COLOR_KEY_GEOMETRY = "460x520"
+COLOR_KEY_MIN_WIDTH = 420
+COLOR_KEY_MIN_HEIGHT = 460
 COLOR_SWATCH_WIDTH = 3
 COLOR_SWATCH_RELIEF = "solid"
 COLOR_SWATCH_BORDER = 1
-COLOR_KEY_SECTION_PRESENCE = "Presence Mode"
-COLOR_KEY_SECTION_VISIBILITY = "Visibility Mode"
-COLOR_KEY_SECTION_ANALYZER = "Analyzer Node"
+COLOR_KEY_SECTION_RUNTIME = "Runtime Lens"
+COLOR_KEY_SECTION_VISIBILITY = "CAN Visibility Lens"
+COLOR_KEY_SECTION_EVIDENCE = "Evidence Lens"
+COLOR_KEY_SECTION_BASE = "Base Topology Fallback"
+COLOR_KEY_SECTION_OVERLAYS = "Overlays"
+COLOR_KEY_SECTION_ANALYZER = "Analyzer Availability"
 COLOR_KEY_PRESENCE_HIGH = "#2f7a2f"
 COLOR_KEY_PRESENCE_LOW = "#f59e0b"
 COLOR_KEY_PRESENCE_NONE = "#dc2626"
@@ -679,20 +771,46 @@ COLOR_KEY_VIS_ALL = "#16a34a"
 COLOR_KEY_VIS_SOME = "#f59e0b"
 COLOR_KEY_VIS_NONE = "#dc2626"
 COLOR_KEY_VIS_UNKNOWN = "#9ca3af"
+COLOR_KEY_EVIDENCE_OK = "#2f7a2f"
+COLOR_KEY_EVIDENCE_DEGRADED = "#d97706"
+COLOR_KEY_EVIDENCE_FAILED = "#dc2626"
+COLOR_KEY_EVIDENCE_UNKNOWN = "#9ca3af"
+COLOR_KEY_EVIDENCE_IDENTITY = "#c2410c"
+COLOR_KEY_BASE_REV = "#ffd5a6"
+COLOR_KEY_BASE_NI = "#e7e7e7"
+COLOR_KEY_BASE_ANALYZER = "#cbd5f5"
+COLOR_KEY_OVERLAY_SELECTED = "#ffffff"
+COLOR_KEY_OVERLAY_GROUP = "#dbeafe"
 COLOR_KEY_ANALYZER_OK = "#16a34a"
 COLOR_KEY_ANALYZER_UNKNOWN = "#9ca3af"
-COLOR_KEY_TEXT_PRESENCE_HIGH = "Green: high confidence or recently seen."
-COLOR_KEY_TEXT_PRESENCE_LOW = "Amber: low confidence or stale (> 2s since last seen / last update)."
-COLOR_KEY_TEXT_PRESENCE_NONE = "Red: explicit missing / none."
-COLOR_KEY_TEXT_VIS_ALL = "Green: visible on all available sources."
-COLOR_KEY_TEXT_VIS_SOME = "Amber: visible on some but not all sources."
-COLOR_KEY_TEXT_VIS_NONE = "Red: visible on no available sources."
-COLOR_KEY_TEXT_VIS_UNKNOWN = "Gray: unknown or source unavailable."
-COLOR_KEY_TEXT_ANALYZER_OK = "Green: analyzer source is available."
-COLOR_KEY_TEXT_ANALYZER_UNKNOWN = "Gray: analyzer source unavailable."
+COLOR_KEY_TEXT_RUNTIME_HIGH = "Green: runtime presence is high confidence or recently seen."
+COLOR_KEY_TEXT_RUNTIME_LOW = "Amber: runtime presence is low confidence or stale (> 2s since last seen / last update)."
+COLOR_KEY_TEXT_RUNTIME_NONE = "Red: runtime presence explicitly missing / none."
+COLOR_KEY_TEXT_VIS_ALL = "Green: fresh device-emitted CAN evidence is proving presence."
+COLOR_KEY_TEXT_VIS_SOME = "Amber: passive CAN evidence exists but presence is weak or low-confidence."
+COLOR_KEY_TEXT_VIS_NONE = "Red: no device-emitted CAN evidence currently proves presence (traffic-only or none)."
+COLOR_KEY_TEXT_VIS_UNKNOWN = "Gray: no passive CAN verdict is available yet."
+COLOR_KEY_TEXT_EVIDENCE_OK = "Green: interpreted evidence says OK."
+COLOR_KEY_TEXT_EVIDENCE_DEGRADED = "Amber: interpreted evidence says degraded."
+COLOR_KEY_TEXT_EVIDENCE_FAILED = "Red: interpreted evidence says failed or missing."
+COLOR_KEY_TEXT_EVIDENCE_UNKNOWN = "Gray: interpreted evidence is unknown."
+COLOR_KEY_TEXT_EVIDENCE_IDENTITY = "Orange-red: identity mismatch / identity-specific issue."
+COLOR_KEY_TEXT_BASE_REV = "Light orange: base REV vendor/category fill when no active lens color overrides it."
+COLOR_KEY_TEXT_BASE_NI = "Light gray: base NI/roboRIO or other fallback topology fill when no active lens color overrides it."
+COLOR_KEY_TEXT_BASE_ANALYZER = "Light blue: base analyzer/category fill when no active lens color overrides it."
+COLOR_KEY_TEXT_OVERLAY_SELECTED = "White dashed selection box: current selected device."
+COLOR_KEY_TEXT_OVERLAY_GROUP = "Blue group boxes/labels: topology group overlays, not lens node colors."
+COLOR_KEY_TEXT_ANALYZER_OK = "Green: analyzer node in CAN Visibility lens when the source is available."
+COLOR_KEY_TEXT_ANALYZER_UNKNOWN = "Gray: analyzer node in CAN Visibility lens when the source is unavailable."
+COLOR_KEY_TEXT_HEADER = (
+    "This window is a reference for all Live Topology color modes. "
+    "The Lens dropdown selects which lens colors are active for CAN nodes."
+)
 COLOR_KEY_TEXT_TIME_NOTE = (
-    "Time factor: Presence mode turns stale at about 2.0 s without a fresh last-seen update. "
-    "The Visibility table Last Seen column shows the same recency in age form."
+    "Truth note: when the active lens does not provide a live color for a node, the diagram falls back to base topology "
+    "vendor/category colors. Overlays such as selection boxes and group outlines are separate from node fill colors. "
+    "Runtime lens stale timing is about 2.0 s without a fresh last-seen update; the CAN Visibility table Last Seen column "
+    "shows the same recency in age form."
 )
 COLOR_KEY_SECTION_PAD = (10, 8)
 COLOR_KEY_ROW_PADY = 2
@@ -716,6 +834,7 @@ VIS_COL_DEVICE_WIDTH = 240
 VIS_COL_IDENTITY_WIDTH = 110
 VIS_COL_LAST_SEEN_WIDTH = 90
 VIS_COL_PACKETS_WIDTH = 80
+VIS_COL_EXISTENCE_PACKETS_WIDTH = 84
 VIS_COL_RATE_WIDTH = 80
 VIS_COL_PROBE_BUCKET_WIDTH = 90
 VIS_COL_PROBE_SCORE_WIDTH = 92
@@ -1047,60 +1166,30 @@ TEST_FAILURE_SIGNAL_SET_PREFIX = "signal fallback active:"
 TEST_FAILURE_LAST_SAMPLES_PREFIX = "last samples:"
 TEST_FAILURE_SAMPLE_LIMIT = 3
 TEST_LIBRARY_STATUS_INACTIVE_PREFIX = "selected test inactive - "
-TEST_LIBRARY_STATUS_READY = "selected test devices active - ready to run"
+TEST_LIBRARY_STATUS_READY = SHARED_TEST_SCOPE_STATUS_READY_DETAIL
 TEST_LIBRARY_STATUS_NO_SELECTED_TEST = TEST_LIBRARY_STATUS_INACTIVE_PREFIX + OUTPUT_NO_SELECTED_TEST
-TEST_LIBRARY_STATUS_LOADED_NOT_ACTIVATED = "selected test scope ready - not activated"
-TEST_LIBRARY_STATUS_MANUAL_RESTORED = "manual active-group restored - not activated"
-TEST_LIBRARY_STATUS_BLOCKED_ESTOP = "robot disabled (E-Stop)"
-TEST_LIBRARY_STATUS_BLOCKED_DISABLED = "robot disabled"
-TEST_LIBRARY_STATUS_BLOCKED_NOT_TELEOP = "robot not in teleop"
-TEST_SCOPE_DETAIL_NO_SELECTION = (
-    "Select a test from one of the library lists to show the devices that test uses."
-)
-TEST_SCOPE_DETAIL_LOADED_NOT_ACTIVATED = (
-    "This test requires the devices shown in Selected Test Devices. "
-    "Press Activate Group, then run the test."
-)
-TEST_SCOPE_DETAIL_MANUAL_RESTORED = (
-    "The remembered manual active-group was restored after leaving Tests. "
-    "Press Activate Group before running manual actions."
-)
-RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_ACTIVATED = (
-    "Activate Group first."
-)
-RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_ACTIVATED = (
-    "Activate lifecycle first."
-)
-RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_TELEOP = (
-    "Switch to teleop, then Activate Group."
-)
-RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_TELEOP = (
-    "Switch to teleop, then Activate lifecycle."
-)
-RUNNABLE_SCOPE_DETAIL_MANUAL_EMPTY = (
-    "Active group is empty. Add devices before Activate Group."
-)
-RUNNABLE_SCOPE_DETAIL_SELECT_PROFILE = (
-    "Select a profile before using manual/group controls."
-)
-TEST_SCOPE_DETAIL_MISSING_DEVICE_PREFIX = (
-    "This test cannot run because a required profile device is missing: "
-)
-TEST_SCOPE_DETAIL_REQUIRED_UNAVAILABLE = (
-    "This test cannot run because one or more required devices are not available."
-)
+TEST_LIBRARY_STATUS_LOADED_NOT_ACTIVATED = SHARED_SELECTED_TEST_STATUS_LOADED_NOT_ACTIVATED
+TEST_LIBRARY_STATUS_MANUAL_RESTORED = SHARED_SELECTED_TEST_STATUS_MANUAL_RESTORED
+TEST_LIBRARY_STATUS_BLOCKED_ESTOP = SHARED_SELECTED_TEST_STATUS_BLOCKED_ESTOP
+TEST_LIBRARY_STATUS_BLOCKED_DISABLED = SHARED_SELECTED_TEST_STATUS_BLOCKED_DISABLED
+TEST_LIBRARY_STATUS_BLOCKED_NOT_TELEOP = SHARED_SELECTED_TEST_STATUS_BLOCKED_NOT_TELEOP
+TEST_SCOPE_DETAIL_NO_SELECTION = SHARED_TEST_SCOPE_STATUS_NO_SELECTION_DETAIL
+TEST_SCOPE_DETAIL_LOADED_NOT_ACTIVATED = SHARED_TEST_SCOPE_STATUS_LOADED_NOT_ACTIVATED_DETAIL
+TEST_SCOPE_DETAIL_MANUAL_RESTORED = SHARED_TEST_SCOPE_STATUS_MANUAL_RESTORED_DETAIL
+RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_ACTIVATED = SHARED_RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_ACTIVATED
+RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_ACTIVATED = SHARED_RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_ACTIVATED
+RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_TELEOP = SHARED_RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_TELEOP
+RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_TELEOP = SHARED_RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_TELEOP
+RUNNABLE_SCOPE_DETAIL_MANUAL_EMPTY = SHARED_RUNNABLE_SCOPE_DETAIL_MANUAL_EMPTY
+RUNNABLE_SCOPE_DETAIL_SELECT_PROFILE = SHARED_RUNNABLE_SCOPE_DETAIL_SELECT_PROFILE
+TEST_SCOPE_DETAIL_MISSING_DEVICE_PREFIX = SHARED_TEST_SCOPE_STATUS_MISSING_DEVICE_PREFIX
+TEST_SCOPE_DETAIL_REQUIRED_UNAVAILABLE = SHARED_TEST_SCOPE_STATUS_REQUIRED_UNAVAILABLE_DETAIL
 TEST_SCOPE_DETAIL_NOT_LOADED_ON_ROBOT = (
     "This test exists locally, but the robot has not loaded it into the current runnable test set."
 )
-TEST_SCOPE_DETAIL_BLOCKED_ESTOP = (
-    "This test cannot run because the robot is E-stopped. Clear the E-stop before activating the group or running the test."
-)
-TEST_SCOPE_DETAIL_BLOCKED_DISABLED = (
-    "This test cannot run because the robot is disabled. Enable teleop before activating the group or running the test."
-)
-TEST_SCOPE_DETAIL_BLOCKED_NOT_TELEOP = (
-    "This test cannot run because the robot is not in teleop. Switch to teleop before activating the group or running the test."
-)
+TEST_SCOPE_DETAIL_BLOCKED_ESTOP = SHARED_TEST_SCOPE_STATUS_BLOCKED_ESTOP_DETAIL
+TEST_SCOPE_DETAIL_BLOCKED_DISABLED = SHARED_TEST_SCOPE_STATUS_BLOCKED_DISABLED_DETAIL
+TEST_SCOPE_DETAIL_BLOCKED_NOT_TELEOP = SHARED_TEST_SCOPE_STATUS_BLOCKED_NOT_TELEOP_DETAIL
 TEST_LIBRARY_LOCAL_SCOPE_PROFILE = "profile"
 TEST_LIBRARY_LOCAL_SCOPE_CONFIG = "config"
 TEST_LIBRARY_LOCAL_SCOPE_GLOBAL = "global"
@@ -1110,11 +1199,9 @@ TEST_SCOPE_PANEL_INACTIVE_HEADLINE = "NOT RUNNABLE"
 TEST_SCOPE_PANEL_NO_SELECTION_HEADLINE = "NO TEST SELECTED"
 TEST_SCOPE_PANEL_WAITING_HEADLINE = "WAITING FOR STATE"
 RUNNABLE_SCOPE_PANEL_TITLE = "Runnable State"
-RUNNABLE_SCOPE_PANEL_READY_DETAIL = "manual/group controls available - ready to run"
-RUNNABLE_SCOPE_PANEL_WAITING_DETAIL = "waiting for robot runtime state"
-RUNNABLE_SCOPE_PANEL_DISCONNECTED_DETAIL = (
-    "Robot connection unavailable. Power the robot and reconnect before running."
-)
+RUNNABLE_SCOPE_PANEL_READY_DETAIL = SHARED_RUNNABLE_SCOPE_PANEL_READY_DETAIL
+RUNNABLE_SCOPE_PANEL_WAITING_DETAIL = SHARED_RUNNABLE_SCOPE_PANEL_WAITING_DETAIL
+RUNNABLE_SCOPE_PANEL_DISCONNECTED_DETAIL = SHARED_RUNNABLE_SCOPE_PANEL_DISCONNECTED_DETAIL
 TEST_SCOPE_PANEL_READY_BG = "#dcfce7"
 TEST_SCOPE_PANEL_READY_FG = "#166534"
 TEST_SCOPE_PANEL_INACTIVE_BG = "#fef3c7"
@@ -1134,12 +1221,18 @@ TEST_RESULT_FAIL_FG = "#991b1b"
 TEST_RESULT_RUNNING_FG = "#1d4ed8"
 TEST_RESULT_NEUTRAL_FG = "#374151"
 TEST_ACTIVE_GROUP_TITLE = "Selected Test Devices"
-TEST_ACTIVE_GROUP_STATUS_LOCKED = "locked"
-TEST_ACTIVE_GROUP_STATUS_INVALID = "invalid"
-TEST_ACTIVE_GROUP_STATUS_NOT_ACTIVATED = "not instantiated"
-TEST_ACTIVE_GROUP_STATUS_ENABLED = "enabled"
+TEST_ACTIVE_GROUP_STATUS_LOCKED = SHARED_TEST_ACTIVE_GROUP_STATUS_LOCKED
+TEST_ACTIVE_GROUP_STATUS_INVALID = SHARED_TEST_ACTIVE_GROUP_STATUS_INVALID
+TEST_ACTIVE_GROUP_STATUS_ENABLED = SHARED_TEST_ACTIVE_GROUP_STATUS_ENABLED
 TEST_ACTIVE_GROUP_PANEL_EMPTY = "No selected-test devices."
-TEST_ACTIVE_GROUP_SINGLETON_LABELS = {"controller0", "roborio", "pdp"}
+TEST_ACTIVE_GROUP_SINGLETON_LABELS = SHARED_TEST_ACTIVE_GROUP_SINGLETON_LABELS
+TEST_ACTIVE_GROUP_COL_LABEL = "Label"
+TEST_ACTIVE_GROUP_COL_ENABLED = "Enabled"
+TEST_ACTIVE_GROUP_COL_LOCKED = "Locked"
+TEST_ACTIVE_GROUP_COL_INSTANTIATED = "Instantiated"
+TEST_ACTIVE_GROUP_COL_SCOPE_ACTIVE = "Scope Active"
+TEST_ACTIVE_GROUP_COL_NOTE = "Note"
+TEST_ACTIVE_GROUP_EMPTY_VALUE = ""
 TEST_LIBRARY_NOTE_TEXT = (
     "The Tests tab has three sources: external Global Library, config-shared Config Library, "
     "and selected-profile Profile Tests. Selecting a test shows the devices required by that DSL test. "
@@ -1880,12 +1973,14 @@ class BringupControlUI(tk.Tk):
         self._visibility_table: Optional[ttk.Treeview] = None
         self._visibility_unrecognized_table: Optional[ttk.Treeview] = None
         self._visibility_ctre_raw_table: Optional[ttk.Treeview] = None
+        self._visibility_passive_detail_text: Optional[tk.Text] = None
         self._visibility_row_meta: Dict[str, Dict[str, object]] = {}
         self._visibility_selected_label = NT_VALUE_EMPTY
         self._visibility_selected_unexpected = False
         self._visibility_summary_var = tk.StringVar(value=VIS_SOURCE_COUNT_UNKNOWN)
         self._latest_visibility_snapshot: Dict[str, Any] = {}
         self._latest_visibility_summary: Dict[str, Any] = {}
+        self._latest_passive_result = None
         self._fault_finder_status_var = tk.StringVar(value=CAN_FAULT_FINDER_STATUS_NOT_RUN)
         self._fault_finder_text: Optional[tk.Text] = None
         self._fault_finder_last_run_at = 0.0
@@ -1979,6 +2074,9 @@ class BringupControlUI(tk.Tk):
         self._runtime_state_seen = False
         self._runtime_active_known: Optional[bool] = None
         self._controlled_lifecycle_active_known: Optional[bool] = None
+        self._pending_runtime_active_expected: Optional[bool] = None
+        self._pending_controlled_lifecycle_expected: Optional[bool] = None
+        self._pending_scope_member_labels_expected: Tuple[str, ...] = tuple()
         self._robot_enabled_known = True
         self._robot_estopped_known = False
         self._robot_mode_known = "disabled"
@@ -2072,7 +2170,7 @@ class BringupControlUI(tk.Tk):
         )
         self._show_visibility_tab_var = tk.BooleanVar(value=self._ui_show_visibility_tab)
         prefs_menu.add_checkbutton(
-            label="Show Visibility Tab",
+            label="Show CAN Visibility Tab",
             variable=self._show_visibility_tab_var,
             command=self._set_show_visibility_tab_pref,
         )
@@ -2684,16 +2782,36 @@ class BringupControlUI(tk.Tk):
         devices_table.bind("<Double-1>", self._on_test_library_device_double_click)
         active_group_body = ttk.Frame(active_group_frame)
         active_group_body.pack(fill="both", expand=True)
-        active_group_list = tk.Listbox(
+        active_group_table = ttk.Treeview(
             active_group_body,
-            exportselection=False,
+            columns=(
+                TEST_ACTIVE_GROUP_COL_LABEL,
+                TEST_ACTIVE_GROUP_COL_ENABLED,
+                TEST_ACTIVE_GROUP_COL_LOCKED,
+                TEST_ACTIVE_GROUP_COL_INSTANTIATED,
+                TEST_ACTIVE_GROUP_COL_SCOPE_ACTIVE,
+                TEST_ACTIVE_GROUP_COL_NOTE,
+            ),
+            show="headings",
             height=TEST_LIBRARY_LISTBOX_HEIGHT,
         )
-        active_group_list.pack(side="left", fill="both", expand=True)
-        active_group_scroll = ttk.Scrollbar(active_group_body, command=active_group_list.yview)
+        active_group_table.heading(TEST_ACTIVE_GROUP_COL_LABEL, text=TEST_ACTIVE_GROUP_COL_LABEL)
+        active_group_table.heading(TEST_ACTIVE_GROUP_COL_ENABLED, text=TEST_ACTIVE_GROUP_COL_ENABLED)
+        active_group_table.heading(TEST_ACTIVE_GROUP_COL_LOCKED, text=TEST_ACTIVE_GROUP_COL_LOCKED)
+        active_group_table.heading(TEST_ACTIVE_GROUP_COL_INSTANTIATED, text=TEST_ACTIVE_GROUP_COL_INSTANTIATED)
+        active_group_table.heading(TEST_ACTIVE_GROUP_COL_SCOPE_ACTIVE, text=TEST_ACTIVE_GROUP_COL_SCOPE_ACTIVE)
+        active_group_table.heading(TEST_ACTIVE_GROUP_COL_NOTE, text=TEST_ACTIVE_GROUP_COL_NOTE)
+        active_group_table.column(TEST_ACTIVE_GROUP_COL_LABEL, width=150, anchor="w")
+        active_group_table.column(TEST_ACTIVE_GROUP_COL_ENABLED, width=70, anchor="center")
+        active_group_table.column(TEST_ACTIVE_GROUP_COL_LOCKED, width=70, anchor="center")
+        active_group_table.column(TEST_ACTIVE_GROUP_COL_INSTANTIATED, width=90, anchor="center")
+        active_group_table.column(TEST_ACTIVE_GROUP_COL_SCOPE_ACTIVE, width=90, anchor="center")
+        active_group_table.column(TEST_ACTIVE_GROUP_COL_NOTE, width=160, anchor="w")
+        active_group_table.pack(side="left", fill="both", expand=True)
+        active_group_scroll = ttk.Scrollbar(active_group_body, command=active_group_table.yview)
         active_group_scroll.pack(side="right", fill="y")
-        active_group_list.configure(yscrollcommand=active_group_scroll.set)
-        self._tests_active_group_list = active_group_list
+        active_group_table.configure(yscrollcommand=active_group_scroll.set)
+        self._tests_active_group_table = active_group_table
         lower_notebook = ttk.Notebook(activity_area)
         lower_notebook.pack(fill="both", expand=True, pady=(8, 0))
         results_frame = ttk.Frame(lower_notebook, padding=8)
@@ -2850,12 +2968,27 @@ class BringupControlUI(tk.Tk):
             padding=VIS_PAD_TABLE,
         )
         table_panel.add(ctre_raw_frame, weight=2)
-        self._visibility_ctre_raw_table = self._build_visibility_ctre_raw_table_widget(ctre_raw_frame)
+        ctre_raw_body = ttk.Panedwindow(ctre_raw_frame, orient="vertical")
+        ctre_raw_body.pack(fill=VIS_FILL_BOTH, expand=True)
+        raw_table_frame = ttk.Frame(ctre_raw_body)
+        ctre_raw_body.add(raw_table_frame, weight=2)
+        self._visibility_ctre_raw_table = self._build_visibility_ctre_raw_table_widget(raw_table_frame)
+        passive_detail_frame = ttk.LabelFrame(
+            ctre_raw_body,
+            text=VIS_PASSIVE_DEEP_DIVE_SECTION_LABEL,
+            padding=6,
+        )
+        ctre_raw_body.add(passive_detail_frame, weight=3)
+        passive_detail_text = tk.Text(passive_detail_frame, height=VIS_DETAIL_TEXT_HEIGHT, wrap="word")
+        passive_detail_text.pack(fill=VIS_FILL_BOTH, expand=True)
+        passive_detail_text.configure(state="disabled")
+        self._visibility_passive_detail_text = passive_detail_text
 
         if self._visibility_provider is None:
             self._visibility_table.insert(VIS_TREE_ROOT, VIS_TREE_END, values=[VIS_EMPTY_MESSAGE])
         elif self._visibility_ctre_raw_table is not None:
             self._visibility_ctre_raw_table.insert(VIS_TREE_ROOT, VIS_TREE_END, values=[VIS_RAW_EMPTY_MESSAGE])
+        self._set_visibility_passive_detail_text(EVIDENCE_SOURCE_NONE)
 
     def _build_visibility_table_widget(self, parent: tk.Widget) -> ttk.Treeview:
         """
@@ -2898,6 +3031,20 @@ class BringupControlUI(tk.Tk):
                 values=[VIS_EMPTY_MESSAGE],
             )
         self._populate_ctre_raw_table([])
+        self._set_visibility_passive_detail_text(EVIDENCE_SOURCE_NONE)
+
+    def _set_visibility_passive_detail_text(self, text_value: str) -> None:
+        """
+        NAME
+            _set_visibility_passive_detail_text - Replace the shared passive CAN deep-dive block for the selected visibility row.
+        """
+        widget = self.__dict__.get("_visibility_passive_detail_text")
+        if widget is None:
+            return
+        widget.configure(state="normal")
+        widget.delete("1.0", "end")
+        widget.insert("1.0", text_value or EVIDENCE_SOURCE_NONE)
+        widget.configure(state="disabled")
 
     def _build_evidence_panel(self, parent: tk.Widget) -> None:
         """
@@ -3715,21 +3862,12 @@ class BringupControlUI(tk.Tk):
             about the missing activation step instead of redundantly mentioning
             teleop again.
         """
-        owner_mode = self.__dict__.get("_group_owner_mode", GROUP_SOURCE_MANUAL)
-        if (
-            owner_mode == GROUP_SOURCE_MANUAL
-            and self.__dict__.get("_profile_box") is not None
-            and self._selected_profile_name() == PROFILE_NONE
-        ):
-            return RUNNABLE_SCOPE_DETAIL_SELECT_PROFILE
-        mode = str(self.__dict__.get("_robot_mode_known", "") or "").strip().lower()
-        if mode and mode != "teleop":
-            if owner_mode == GROUP_SOURCE_SELECTED_TEST:
-                return RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_TELEOP
-            return RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_TELEOP
-        if owner_mode == GROUP_SOURCE_SELECTED_TEST:
-            return RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_ACTIVATED
-        return RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_ACTIVATED
+        return resolve_scope_activation_notice(
+            scope_kind=self._runnable_scope_kind(),
+            local_selected_profile=self._selected_profile_name(),
+            local_profile_required=self.__dict__.get("_profile_box") is not None,
+            robot_mode=str(self.__dict__.get("_robot_mode_known", "") or "").strip().lower(),
+        )
 
     def _build_visibility_ctre_raw_table_widget(self, parent: tk.Widget) -> ttk.Treeview:
         """
@@ -3838,6 +3976,192 @@ class BringupControlUI(tk.Tk):
             return PROFILE_NONE
         return _normalize_profile_name(profile_box.get())
 
+    def _ui_context_state(self) -> UiContextState:
+        """
+        NAME
+            _ui_context_state - Return the shared UI context snapshot for current host/robot state.
+        """
+        owner_mode = str(self.__dict__.get("_group_owner_mode", "") or "").strip().lower()
+        scope_kind = RUNNABLE_SCOPE_KIND_MANUAL
+        if owner_mode == GROUP_SOURCE_SELECTED_TEST:
+            scope_kind = RUNNABLE_SCOPE_KIND_SELECTED_TEST
+        elif owner_mode == GROUP_SOURCE_MANUAL:
+            scope_kind = RUNNABLE_SCOPE_KIND_MANUAL
+        elif self._scope_context_kind() == GROUP_SOURCE_SELECTED_TEST:
+            scope_kind = RUNNABLE_SCOPE_KIND_SELECTED_TEST
+        selected_test_var = self.__dict__.get("_selected_test_var")
+        selected_test_name = NT_VALUE_EMPTY
+        if selected_test_var is not None and hasattr(selected_test_var, "get"):
+            selected_test_name = str(selected_test_var.get() or "").strip()
+        return resolve_ui_context_state(
+            local_selected_profile=self._selected_profile_name(),
+            robot_selected_profile=self.__dict__.get("_robot_selected_profile", PROFILE_NONE),
+            robot_active_runtime_profile=self.__dict__.get(
+                "_robot_active_runtime_profile", PROFILE_NONE
+            ),
+            selected_test_name=selected_test_name,
+            scope_kind=scope_kind,
+            transport_connected=bool(self.__dict__.get("_tcp_connected", True)),
+            handshake_ready=bool(self.__dict__.get("_handshake_done", False)),
+            has_robot_runtime_state=bool(self.__dict__.get("_runtime_state_seen", False)),
+        )
+
+    def _diagnostic_profile_state(self) -> DiagnosticProfileState:
+        """
+        NAME
+            _diagnostic_profile_state - Return the shared diagnostic profile context state.
+        """
+        context = self._ui_context_state()
+        return resolve_diagnostic_profile_state(
+            context.local_selected_profile,
+            context.robot_selected_profile,
+            context.robot_active_runtime_profile,
+            local_profile_required=self.__dict__.get("_profile_box") is not None,
+        )
+
+    def _runnable_scope_kind(self) -> str:
+        """
+        NAME
+            _runnable_scope_kind - Return normalized shared runnable-scope kind text.
+        """
+        return self._ui_context_state().scope_kind
+
+    def _runnable_scope_state(self, stale_state: bool) -> RunnableScopeState:
+        """
+        NAME
+            _runnable_scope_state - Return the shared runnable-scope decision state.
+        """
+        context = self._ui_context_state()
+        return resolve_runnable_scope_state(
+            scope_kind=context.scope_kind,
+            local_selected_profile=context.local_selected_profile,
+            local_profile_required=self.__dict__.get("_profile_box") is not None,
+            tcp_connected=context.transport_connected,
+            runtime_state_seen=context.has_robot_runtime_state,
+            stale_state=bool(stale_state),
+            robot_enabled=bool(self.__dict__.get("_robot_enabled_known", True)),
+            robot_estopped=bool(self.__dict__.get("_robot_estopped_known", False)),
+            robot_mode=str(self.__dict__.get("_robot_mode_known", "") or "").strip().lower(),
+            manual_group_empty=self._manual_active_group_is_empty(),
+            scope_active=self._scope_is_currently_active(),
+            transition_pending=self._scope_transition_pending(),
+        )
+
+    def _scope_transition_pending(self) -> bool:
+        """
+        NAME
+            _scope_transition_pending - Return whether a scope/runtime transition is awaiting runtime confirmation.
+        """
+        return (
+            self.__dict__.get("_pending_runtime_active_expected") is not None
+            or self.__dict__.get("_pending_controlled_lifecycle_expected") is not None
+            or bool(self.__dict__.get("_pending_scope_member_labels_expected", tuple()))
+        )
+
+    def _begin_scope_transition_wait(
+        self,
+        *,
+        runtime_active_expected: Optional[bool] = None,
+        controlled_lifecycle_expected: Optional[bool] = None,
+        expected_member_labels: Optional[List[str]] = None,
+    ) -> None:
+        """
+        NAME
+            _begin_scope_transition_wait - Record one accepted command that still needs a confirming runtime snapshot.
+        """
+        if runtime_active_expected is not None:
+            self._pending_runtime_active_expected = bool(runtime_active_expected)
+        if controlled_lifecycle_expected is not None:
+            self._pending_controlled_lifecycle_expected = bool(controlled_lifecycle_expected)
+        if expected_member_labels is not None:
+            self._pending_scope_member_labels_expected = tuple(
+                sorted(
+                    {
+                        str(label or NT_VALUE_EMPTY).strip().lower()
+                        for label in expected_member_labels
+                        if str(label or NT_VALUE_EMPTY).strip()
+                    }
+                )
+            )
+
+    def _clear_scope_transition_wait(self) -> None:
+        """
+        NAME
+            _clear_scope_transition_wait - Clear all pending scope/runtime transition wait state.
+        """
+        self._pending_runtime_active_expected = None
+        self._pending_controlled_lifecycle_expected = None
+        self._pending_scope_member_labels_expected = tuple()
+
+    def _current_scope_expected_member_labels(self) -> List[str]:
+        """
+        NAME
+            _current_scope_expected_member_labels - Return expected device labels for the current scope activation.
+        """
+        if self._scope_context_kind() == GROUP_SOURCE_SELECTED_TEST:
+            return [
+                str(row.get("label", "")).strip()
+                for row in self.__dict__.get("_tests_active_group_rows", [])
+                if isinstance(row, dict) and bool(row.get("enabled", True)) and str(row.get("label", "")).strip()
+            ]
+        return [
+            str(row.get("label", "")).strip()
+            for row in self._runtime_active_group_members()
+            if isinstance(row, dict) and bool(row.get("enabled", True)) and str(row.get("label", "")).strip()
+        ]
+
+    def _runtime_device_confirms_scope_member(
+        self,
+        runtime_device: Optional[Dict[str, Any]],
+    ) -> bool:
+        """
+        NAME
+            _runtime_device_confirms_scope_member - Return whether one runtime device row confirms active-scope membership.
+        """
+        if not isinstance(runtime_device, dict):
+            return False
+        lifecycle_state = str(runtime_device.get("lifecycleState", NT_VALUE_EMPTY)).strip().lower()
+        if lifecycle_state == "controlled-active":
+            return True
+        if bool(runtime_device.get("testable", False)):
+            return True
+        if bool(runtime_device.get("instantiated", False)):
+            return True
+        active_group_label = str(runtime_device.get("activeGroupLabel", NT_VALUE_EMPTY)).strip().lower()
+        return active_group_label == GROUP_ACTIVE_NAME
+
+    def _maybe_complete_scope_transition_wait(self, payload: Dict[str, Any]) -> None:
+        """
+        NAME
+            _maybe_complete_scope_transition_wait - Clear transition wait entries once runtime state confirms them.
+        """
+        runtime_active_expected = self.__dict__.get("_pending_runtime_active_expected")
+        if runtime_active_expected is not None:
+            runtime_active = payload.get("runtimeActive")
+            if isinstance(runtime_active, bool) and runtime_active == bool(runtime_active_expected):
+                self._pending_runtime_active_expected = None
+        controlled_expected = self.__dict__.get("_pending_controlled_lifecycle_expected")
+        if controlled_expected is not None:
+            controlled_active = payload.get("controlledLifecycleActive")
+            if isinstance(controlled_active, bool) and controlled_active == bool(controlled_expected):
+                self._pending_controlled_lifecycle_expected = None
+        expected_labels = tuple(self.__dict__.get("_pending_scope_member_labels_expected", tuple()))
+        if expected_labels:
+            latest_runtime_devices = self.__dict__.get("_latest_runtime_devices", {})
+            if isinstance(latest_runtime_devices, dict) and all(
+                self._runtime_device_confirms_scope_member(
+                    latest_runtime_devices.get(label_key)
+                )
+                for label_key in expected_labels
+            ):
+                self._pending_scope_member_labels_expected = tuple()
+        if (
+            self.__dict__.get("_pending_runtime_active_expected") is None
+            and self.__dict__.get("_pending_controlled_lifecycle_expected") is None
+            and not self.__dict__.get("_pending_scope_member_labels_expected", tuple())
+        ):
+            self._clear_scope_transition_wait()
+
     def _diagnostic_profile_context_name(self) -> str:
         """
         NAME
@@ -3848,28 +4172,38 @@ class BringupControlUI(tk.Tk):
             After that, prefer the robot's active runtime profile, then the
             robot's selected profile, then the local UI selection.
         """
-        profile_box = self.__dict__.get("_profile_box")
-        local_selected = self._selected_profile_name()
-        if profile_box is not None and local_selected == PROFILE_NONE:
-            return PROFILE_NONE
-        active_name = _normalize_profile_name(self._robot_active_runtime_profile)
-        if active_name != PROFILE_NONE:
-            return active_name
-        robot_selected = _normalize_profile_name(self._robot_selected_profile)
-        if robot_selected != PROFILE_NONE:
-            return robot_selected
-        return local_selected
+        return self._diagnostic_profile_state().effective_profile
+
+    def _topology_scene_state(self) -> TopologySceneState:
+        """
+        NAME
+            _topology_scene_state - Return the shared topology scene decision for live topology consumers.
+        """
+        profile_state = self._diagnostic_profile_state()
+        return resolve_topology_scene_state(
+            effective_profile=profile_state.effective_profile,
+            show_blank_profile_state=profile_state.show_blank_profile_state,
+            blank_reason=profile_state.blank_reason,
+            current_profile_name=self.__dict__.get("_last_profile_context", PROFILE_NONE),
+        )
 
     def _sync_diagnostic_profile_context(self, reload_views: bool) -> None:
         """
         NAME
             _sync_diagnostic_profile_context - Re-anchor diagnostics surfaces to one profile context.
         """
-        name = self._diagnostic_profile_context_name()
+        state = self._diagnostic_profile_state()
+        topology_scene_state = self._topology_scene_state()
+        name = state.effective_profile
         self._refresh_profile_devices(name)
         if reload_views and name != self._last_profile_context:
             for live_view in self._iter_live_views():
-                live_view.reload_profile(name)
+                if hasattr(live_view, "apply_topology_scene_state"):
+                    live_view.apply_topology_scene_state(topology_scene_state)
+                elif hasattr(live_view, "apply_diagnostic_profile_state"):
+                    live_view.apply_diagnostic_profile_state(state)
+                else:
+                    live_view.reload_profile(name)
         self._last_profile_context = name
         self.after_idle(self._refresh_evidence_view)
 
@@ -3948,10 +4282,35 @@ class BringupControlUI(tk.Tk):
         NAME
             _refresh_profile_devices - Refresh label->device mapping for the profile.
         """
+        def _catalog_fingerprint(mapping: Dict[str, Dict[str, Any]]) -> Tuple[Tuple[Any, ...], ...]:
+            rows: List[Tuple[Any, ...]] = []
+            for key, device in sorted(mapping.items()):
+                if not isinstance(device, dict):
+                    continue
+                rows.append(
+                    (
+                        str(key).strip().lower(),
+                        str(device.get(DEVICE_KEY_LABEL, NT_VALUE_EMPTY)).strip(),
+                        int(device.get(KEY_MANUFACTURER, 0) or 0),
+                        int(device.get(KEY_DEVICE_TYPE, 0) or 0),
+                        int(device.get(KEY_ID, 0) or 0),
+                    )
+                )
+            return tuple(rows)
+
         name = _normalize_profile_name(profile_name)
+        previous_profile_name = _normalize_profile_name(
+            self.__dict__.get("_evidence_enrichment_profile_name", PROFILE_NONE)
+        )
+        previous_fingerprint = self.__dict__.get(
+            "_evidence_enrichment_profile_fingerprint", ()
+        )
         if name == PROFILE_NONE:
             self._profile_devices = {}
-            self._evidence_enrichment_snapshot = default_enrichment_run_snapshot()
+            if previous_profile_name != PROFILE_NONE:
+                self._evidence_enrichment_snapshot = default_enrichment_run_snapshot()
+            self._evidence_enrichment_profile_name = PROFILE_NONE
+            self._evidence_enrichment_profile_fingerprint = ()
             self._set_evidence_engine_section_label(SECTION_PROFILE_INVENTORY, ENGINE_LABEL_NEW)
             self._set_evidence_engine_section_label(SECTION_ENRICHMENT, ENGINE_LABEL_NEW)
             self._set_evidence_engine_section_label(SECTION_TOPOLOGY_VIEW, ENGINE_LABEL_NEW)
@@ -3969,7 +4328,10 @@ class BringupControlUI(tk.Tk):
                 devices, _expected = get_profile(name)
             except Exception:
                 self._profile_devices = {}
-                self._evidence_enrichment_snapshot = default_enrichment_run_snapshot()
+                if previous_profile_name != name:
+                    self._evidence_enrichment_snapshot = default_enrichment_run_snapshot()
+                self._evidence_enrichment_profile_name = name
+                self._evidence_enrichment_profile_fingerprint = ()
                 self._set_evidence_engine_section_label(SECTION_PROFILE_INVENTORY, ENGINE_LABEL_LEGACY)
                 if self._visibility_provider is not None:
                     self._visibility_provider.set_expected_devices([])
@@ -3982,7 +4344,11 @@ class BringupControlUI(tk.Tk):
                     continue
                 mapping[label.lower()] = device
         self._profile_devices = mapping
-        self._evidence_enrichment_snapshot = default_enrichment_run_snapshot()
+        current_fingerprint = _catalog_fingerprint(mapping)
+        if previous_profile_name != name or previous_fingerprint != current_fingerprint:
+            self._evidence_enrichment_snapshot = default_enrichment_run_snapshot()
+        self._evidence_enrichment_profile_name = name
+        self._evidence_enrichment_profile_fingerprint = current_fingerprint
         self._set_evidence_engine_section_label(
             SECTION_PROFILE_INVENTORY,
             ENGINE_LABEL_NEW if loaded_from_passive_discovery else ENGINE_LABEL_LEGACY,
@@ -4135,12 +4501,15 @@ class BringupControlUI(tk.Tk):
             _iter_live_views - Return all instantiated topology views.
         """
         views: List[LiveTopologyView] = []
-        if self._live_view is not None:
-            views.append(self._live_view)
-        if self._visibility_live_view is not None:
-            views.append(self._visibility_live_view)
-        if self._evidence_live_view is not None:
-            views.append(self._evidence_live_view)
+        live_view = self.__dict__.get("_live_view")
+        visibility_live_view = self.__dict__.get("_visibility_live_view")
+        evidence_live_view = self.__dict__.get("_evidence_live_view")
+        if live_view is not None:
+            views.append(live_view)
+        if visibility_live_view is not None:
+            views.append(visibility_live_view)
+        if evidence_live_view is not None:
+            views.append(evidence_live_view)
         return views
 
     def _reset_ui_session_runtime_context(self) -> None:
@@ -4153,6 +4522,9 @@ class BringupControlUI(tk.Tk):
         self._runtime_state_pending_at = 0.0
         self._runtime_active_known = None
         self._controlled_lifecycle_active_known = None
+        self._pending_runtime_active_expected = None
+        self._pending_controlled_lifecycle_expected = None
+        self._pending_scope_member_labels_expected = tuple()
         self._robot_enabled_known = False
         self._robot_estopped_known = False
         self._robot_mode_known = "disabled"
@@ -4235,18 +4607,11 @@ class BringupControlUI(tk.Tk):
         NAME
             _is_manual_duty_target_allowed - Return whether one target label is eligible for manual duty.
         """
-        clean_label = str(label or NT_VALUE_EMPTY).strip().lower()
-        if not clean_label:
-            return False
-        runtime_device = self._latest_runtime_devices.get(clean_label, {})
-        if not isinstance(runtime_device, dict):
-            return False
-        if self._controlled_lifecycle_active_known is True:
-            lifecycle_state = str(
-                runtime_device.get("lifecycleState", NT_VALUE_EMPTY)
-            ).strip()
-            return lifecycle_state == "controlled-active"
-        return bool(runtime_device.get("testable", False))
+        return resolve_manual_duty_scope_state(
+            label=label,
+            runtime_state_by_label=dict(self.__dict__.get("_latest_runtime_devices", {})),
+            controlled_lifecycle_active=self._controlled_lifecycle_active_known is True,
+        ).allowed
 
     def _manual_duty_scope_block_message_for_targets(self, targets: List[str]) -> str:
         """
@@ -4256,9 +4621,25 @@ class BringupControlUI(tk.Tk):
         if self._controlled_lifecycle_active_known is not True:
             return NT_VALUE_EMPTY
         for label in targets:
-            if not self._is_manual_duty_target_allowed(label):
-                return MANUAL_DUTY_BLOCKED_CONTROLLED_SCOPE_TEXT
+            state = resolve_manual_duty_scope_state(
+                label=label,
+                runtime_state_by_label=dict(self.__dict__.get("_latest_runtime_devices", {})),
+                controlled_lifecycle_active=True,
+            )
+            if not state.allowed:
+                return state.blocked_reason
         return NT_VALUE_EMPTY
+
+    def _manual_duty_binding_block_message_for_targets(self, targets: List[str]) -> str:
+        """
+        NAME
+            _manual_duty_binding_block_message_for_targets - Return one binding-ownership block reason for manual duty targets.
+        """
+        state = resolve_manual_duty_binding_state(
+            target_labels=list(targets or []),
+            runtime_groups=self._latest_runtime_state_payload_groups(),
+        )
+        return NT_VALUE_EMPTY if state.allowed else state.blocked_reason
 
     def _is_manual_motor_node(self, node: object) -> bool:
         """
@@ -4289,10 +4670,6 @@ class BringupControlUI(tk.Tk):
             label = str(getattr(node, "label", NT_VALUE_EMPTY)).strip()
         if not label:
             return
-        scope_blocked = self._manual_duty_scope_block_message_for_targets([label])
-        if scope_blocked:
-            self._append_output(scope_blocked)
-            return
         self._open_manual_duty_targets(label, [label], int(event.x_root), int(event.y_root))
 
     def _on_live_group_right_click(self, group: Dict[str, Any], _event: tk.Event) -> None:
@@ -4310,10 +4687,6 @@ class BringupControlUI(tk.Tk):
         targets = self._resolved_group_motor_targets(group_payload)
         if not targets:
             self._append_output(f"Group has no motor targets: {group_name}")
-            return
-        scope_blocked = self._manual_duty_scope_block_message_for_targets(targets)
-        if scope_blocked:
-            self._append_output(scope_blocked)
             return
         self._open_manual_group_duty_targets(group_name, targets, int(_event.x_root), int(_event.y_root))
 
@@ -4390,6 +4763,14 @@ class BringupControlUI(tk.Tk):
         if self._tracker.is_pending():
             self._append_output(MANUAL_DUTY_BUSY_TEXT)
             return
+        scope_blocked = self._manual_duty_scope_block_message_for_targets(targets)
+        if scope_blocked:
+            self._append_output(scope_blocked)
+            return
+        binding_blocked = self._manual_duty_binding_block_message_for_targets(targets)
+        if binding_blocked:
+            self._append_output(binding_blocked)
+            return
         self._request_runtime_state_refresh()
         self._open_manual_duty_popup(label, targets, MANUAL_DUTY_NO_LABEL, x_root, y_root)
 
@@ -4410,6 +4791,14 @@ class BringupControlUI(tk.Tk):
             return
         if self._tracker.is_pending():
             self._append_output(MANUAL_DUTY_BUSY_TEXT)
+            return
+        scope_blocked = self._manual_duty_scope_block_message_for_targets(targets)
+        if scope_blocked:
+            self._append_output(scope_blocked)
+            return
+        binding_blocked = self._manual_duty_binding_block_message_for_targets(targets)
+        if binding_blocked:
+            self._append_output(binding_blocked)
             return
         self._request_runtime_state_refresh()
         self._open_manual_duty_popup(
@@ -4975,6 +5364,8 @@ class BringupControlUI(tk.Tk):
         shown_all = 0
         shown_some = 0
         shown_none = 0
+        passive_result = self._current_passive_result()
+        existence_packet_counts = self._visibility_existence_packet_counts(passive_result)
         for device in devices:
             if not isinstance(device, dict):
                 continue
@@ -4993,6 +5384,9 @@ class BringupControlUI(tk.Tk):
                 self._format_visibility_identity(device),
                 self._format_visibility_last_seen(metrics),
                 self._format_visibility_packet_count(metrics),
+                self._format_visibility_existence_packet_count(
+                    existence_packet_counts.get(label.strip().lower())
+                ),
                 self._format_visibility_packet_rate(metrics),
                 _format_runtime_probe_bucket(runtime_device),
                 _format_runtime_probe_score(runtime_device),
@@ -5047,6 +5441,10 @@ class BringupControlUI(tk.Tk):
             meta = self._visibility_row_meta.get(selected_defined_item, {})
             raw_ids = meta.get(VIS_ROW_META_RAW_IDS, [])
             self._populate_ctre_raw_table(raw_ids if isinstance(raw_ids, list) else [])
+            self._apply_visibility_selection(
+                str(meta.get(VIS_ROW_META_LABEL, NT_VALUE_EMPTY)).strip(),
+                passive_result=passive_result,
+            )
         elif selected_unrecognized_item:
             self._visibility_unrecognized_table.selection_set(selected_unrecognized_item)
             self._visibility_unrecognized_table.focus(selected_unrecognized_item)
@@ -5054,8 +5452,13 @@ class BringupControlUI(tk.Tk):
             meta = self._visibility_row_meta.get(selected_unrecognized_item, {})
             raw_ids = meta.get(VIS_ROW_META_RAW_IDS, [])
             self._populate_ctre_raw_table(raw_ids if isinstance(raw_ids, list) else [])
+            self._apply_visibility_selection(
+                str(meta.get(VIS_ROW_META_LABEL, NT_VALUE_EMPTY)).strip(),
+                passive_result=passive_result,
+            )
         else:
             self._populate_ctre_raw_table([])
+            self._set_visibility_passive_detail_text(EVIDENCE_SOURCE_NONE)
         self._update_visibility_summary(scoped_summary)
         for live_view in self._iter_live_views():
             live_view.set_visibility_snapshot(snapshot)
@@ -5076,6 +5479,7 @@ class BringupControlUI(tk.Tk):
             VIS_COL_IDENTITY,
             VIS_COL_LAST_SEEN,
             VIS_COL_PACKETS,
+            VIS_COL_EXISTENCE_PACKETS,
             VIS_COL_RATE,
             VIS_COL_PROBE_BUCKET,
             VIS_COL_PROBE_SCORE,
@@ -5105,6 +5509,13 @@ class BringupControlUI(tk.Tk):
         table.column(
             VIS_COL_PACKETS,
             width=VIS_COL_PACKETS_WIDTH,
+            anchor=VIS_TREE_ANCHOR_CENTER,
+            stretch=False,
+        )
+        table.heading(VIS_COL_EXISTENCE_PACKETS, text=VIS_COL_EXISTENCE_PACKETS, anchor=VIS_TREE_ANCHOR_CENTER)
+        table.column(
+            VIS_COL_EXISTENCE_PACKETS,
+            width=VIS_COL_EXISTENCE_PACKETS_WIDTH,
             anchor=VIS_TREE_ANCHOR_CENTER,
             stretch=False,
         )
@@ -5522,12 +5933,55 @@ class BringupControlUI(tk.Tk):
             _run_evidence_enrichment - Run host-side enrichment sources and refresh the Evidence view.
         """
         profile_name = str(self._profile_box.get()).strip()
+        rio_host = str(getattr(self, "_rio_host", NT_VALUE_EMPTY)).strip()
+        self._append_output(
+            f"{timestamp_hms()} "
+            + OUTPUT_EVIDENCE_ENRICHMENT_RUN_FMT.format(
+                profile=profile_name or PROFILE_NONE,
+                rio=rio_host or NT_VALUE_EMPTY,
+                devices=len(self._profile_devices),
+            )
+        )
         self._evidence_enrichment_snapshot = build_enrichment_run_snapshot(
             profile_devices=self._profile_devices,
             profile_name=profile_name,
-            rio_host=str(getattr(self, "_rio_host", NT_VALUE_EMPTY)).strip(),
+            rio_host=rio_host,
             output_log_text=self._current_output_text(),
         )
+        snapshot_devices = self._evidence_enrichment_snapshot.get(ENRICHMENT_RUN_DEVICES_KEY, {})
+        snapshot_warnings = self._evidence_enrichment_snapshot.get(ENRICHMENT_RUN_WARNINGS_KEY, ())
+        self._append_output(
+            OUTPUT_EVIDENCE_ENRICHMENT_RESULT_FMT.format(
+                devices=len(snapshot_devices) if isinstance(snapshot_devices, dict) else 0,
+                warnings=len(tuple(snapshot_warnings)) if isinstance(snapshot_warnings, (list, tuple)) else 0,
+            )
+        )
+        metadata = self._evidence_enrichment_snapshot.get(ENRICHMENT_RUN_METADATA_KEY, {})
+        if isinstance(metadata, dict):
+            for source_name in OUTPUT_EVIDENCE_ENRICHMENT_SOURCES:
+                source_entry = metadata.get(source_name, {})
+                if not isinstance(source_entry, dict):
+                    continue
+                self._append_output(
+                    OUTPUT_EVIDENCE_ENRICHMENT_SOURCE_FMT.format(
+                        source=source_name or OUTPUT_EVIDENCE_ENRICHMENT_SOURCE_UNKNOWN,
+                        status=str(
+                            source_entry.get(ENRICHMENT_RUN_STATUS_KEY, OUTPUT_EVIDENCE_ENRICHMENT_SOURCE_UNKNOWN)
+                        ).strip()
+                        or OUTPUT_EVIDENCE_ENRICHMENT_SOURCE_UNKNOWN,
+                        summary=str(
+                            source_entry.get(ENRICHMENT_RUN_SUMMARY_KEY, OUTPUT_EVIDENCE_ENRICHMENT_SOURCE_UNKNOWN)
+                        ).strip()
+                        or OUTPUT_EVIDENCE_ENRICHMENT_SOURCE_UNKNOWN,
+                    )
+                )
+        self._evidence_eval_source_fingerprints = {}
+        for label_key in self._profile_devices.keys():
+            self._mark_evidence_dirty(
+                label_key,
+                EVIDENCE_DIRTY_PRIORITY_SCOPE,
+                EVIDENCE_DIRTY_REASON_PROFILE,
+            )
         self._refresh_evidence_enrichment_status()
         self._refresh_evidence_view()
         selected_label = str(self._evidence_selected_title_var.get()).strip()
@@ -5595,10 +6049,9 @@ class BringupControlUI(tk.Tk):
             ):
                 self._update_evidence_cache_incremental(max_devices=len(profile_devices))
             rows = self._build_evidence_rows()
-            console_snapshot = self._collect_console_snapshot()
-            result = build_fault_diagnosis(
+            snapshot = build_evidence_fault_snapshot(
                 evidence_rows=rows,
-                console_snapshot=console_snapshot,
+                console_snapshot=self._collect_console_snapshot(),
                 topology_profile=self._current_topology_profile(),
                 now_s=now_s,
             )
@@ -5608,17 +6061,16 @@ class BringupControlUI(tk.Tk):
             self._fault_finder_status_var.set(CAN_FAULT_FINDER_STATUS_NOT_RUN)
             self._set_fault_finder_text(CAN_FAULT_FINDER_TEXT_ERROR_FMT.format(error=exc))
             return
-        self._fault_finder_last_run_at = now_s
-        self._fault_finder_result = dict(result)
-        candidates = result.get("candidates")
-        candidate_count = len(candidates) if isinstance(candidates, list) else 0
+        self._fault_finder_last_run_at = float(snapshot.get(FAULT_SNAPSHOT_KEY_RAN_AT, now_s) or now_s)
+        self._fault_finder_result = dict(snapshot.get(FAULT_SNAPSHOT_KEY_RESULT, {}))
+        candidate_count = int(snapshot.get(FAULT_SNAPSHOT_KEY_CANDIDATE_COUNT, 0) or 0)
         self._fault_finder_status_var.set(
             CAN_FAULT_FINDER_STATUS_FMT.format(
                 age=_format_age_seconds(0.0),
                 count=candidate_count,
             )
         )
-        self._set_fault_finder_text(render_fault_diagnosis(result))
+        self._set_fault_finder_text(str(snapshot.get(FAULT_SNAPSHOT_KEY_RENDERED_TEXT, TEXT_EMPTY)))
 
     def _evidence_profile_generation(self) -> str:
         """
@@ -6080,7 +6532,9 @@ class BringupControlUI(tk.Tk):
             self._visibility_provider,
             self._profile_devices,
             ctre_enrichment=self._ctre_enrichment_rows_from_snapshot(),
-            enrichment_records=tuple(self._evidence_enrichment_snapshot.get(ENRICHMENT_RUN_RECORDS_KEY, ()) or ()),
+            enrichment_records=tuple(
+                self.__dict__.get("_evidence_enrichment_snapshot", {}).get(ENRICHMENT_RUN_RECORDS_KEY, ()) or ()
+            ),
         )
         passive_devices_by_identity = index_run_result_by_identity(passive_result)
         presence_entries_by_label = build_runtime_presence_catalog(
@@ -6261,9 +6715,16 @@ class BringupControlUI(tk.Tk):
             str(row.get("label", NT_VALUE_EMPTY)).strip().lower(): str(row.get("state", EVIDENCE_STATE_UNKNOWN)).strip().lower()
             for row in rows
         }
+        evidence_detail_snapshot = {
+            str(row.get("label", NT_VALUE_EMPTY)).strip().lower(): build_interpreted_device_detail_snapshot(row)
+            for row in rows
+            if str(row.get("label", NT_VALUE_EMPTY)).strip()
+        }
         for topology_view in self._iter_live_views():
             if hasattr(topology_view, "set_evidence_snapshot"):
                 topology_view.set_evidence_snapshot(evidence_snapshot)
+            if hasattr(topology_view, "set_evidence_detail_snapshot"):
+                topology_view.set_evidence_detail_snapshot(evidence_detail_snapshot)
         for row in shown_rows:
             table.insert(
                 VIS_TREE_ROOT,
@@ -6425,6 +6886,15 @@ class BringupControlUI(tk.Tk):
             return VIS_PACKETS_UNKNOWN
         return str(total)
 
+    def _format_visibility_existence_packet_count(self, packet_count: Optional[int]) -> str:
+        """
+        NAME
+            _format_visibility_existence_packet_count - Format the count of direct device-emitted packets supporting existence.
+        """
+        if not isinstance(packet_count, int):
+            return VIS_PACKETS_UNKNOWN
+        return str(max(0, int(packet_count)))
+
     def _format_visibility_packet_rate(self, metrics: Dict[str, object]) -> str:
         """
         NAME
@@ -6442,6 +6912,121 @@ class BringupControlUI(tk.Tk):
         if not seen_any:
             return VIS_RATE_UNKNOWN
         return VIS_RATE_FMT.format(value=total)
+
+    def _current_passive_result(self):
+        """
+        NAME
+            _current_passive_result - Build and cache the shared passive CAN analyzer result for the current profile and visibility window.
+        """
+        passive_result = build_live_passive_result(
+            self._visibility_provider,
+            self._profile_devices,
+            ctre_enrichment=self._ctre_enrichment_rows_from_snapshot(),
+            enrichment_records=tuple(self._evidence_enrichment_snapshot.get(ENRICHMENT_RUN_RECORDS_KEY, ()) or ()),
+        )
+        self._latest_passive_result = passive_result
+        visibility_devices = {}
+        latest_visibility_snapshot = self.__dict__.get("_latest_visibility_snapshot", {})
+        devices = latest_visibility_snapshot.get(VIS_KEY_DEVICES) if isinstance(latest_visibility_snapshot, dict) else None
+        if isinstance(devices, list):
+            for device in devices:
+                if not isinstance(device, dict):
+                    continue
+                device_label = str(device.get(VIS_KEY_LABEL, NT_VALUE_EMPTY)).strip()
+                if device_label:
+                    visibility_devices[device_label.lower()] = device
+        passive_detail_snapshot = {
+            str(getattr(device, "profile_label", NT_VALUE_EMPTY)).strip().lower(): build_passive_device_detail_snapshot(
+                str(getattr(device, "profile_label", NT_VALUE_EMPTY)).strip(),
+                passive_result=passive_result,
+                visibility_device=visibility_devices.get(
+                    str(getattr(device, "profile_label", NT_VALUE_EMPTY)).strip().lower()
+                ),
+            )
+            for device in getattr(passive_result, "device_records", ())
+            if str(getattr(device, "profile_label", NT_VALUE_EMPTY)).strip()
+        }
+        for visibility_label, visibility_device in visibility_devices.items():
+            if visibility_label in passive_detail_snapshot:
+                continue
+            passive_detail_snapshot[visibility_label] = build_passive_device_detail_snapshot(
+                visibility_label,
+                passive_result=passive_result,
+                visibility_device=visibility_device,
+            )
+        for topology_view in self._iter_live_views():
+            if hasattr(topology_view, "set_passive_detail_snapshot"):
+                topology_view.set_passive_detail_snapshot(passive_detail_snapshot)
+        return passive_result
+
+    def _visibility_existence_packet_counts(self, passive_result=None) -> Dict[str, int]:
+        """
+        NAME
+            _visibility_existence_packet_counts - Build per-label counts of passive device-emitted packets that support existence.
+        """
+        if passive_result is None:
+            passive_result = self._current_passive_result()
+        if passive_result is None:
+            return {}
+        family_counts = {}
+        for family in getattr(passive_result, "family_records", ()):
+            family_key = getattr(family, "key", None)
+            family_role = str(getattr(family, "role", NT_VALUE_EMPTY)).strip()
+            metrics = getattr(family, "metrics", None)
+            count_value = getattr(metrics, "count", None)
+            if family_key is None or not family_role.startswith("DEVICE_EMITTED_") or not isinstance(count_value, (int, float)):
+                continue
+            family_counts[family_key] = max(0, int(count_value))
+        counts_by_label: Dict[str, int] = {}
+        for device in getattr(passive_result, "device_records", ()):
+            label_key = str(getattr(device, "profile_label", NT_VALUE_EMPTY)).strip().lower()
+            if not label_key:
+                continue
+            total = 0
+            for family_key in tuple(getattr(device, "evidence_family_keys", ()) or ()):
+                total += int(family_counts.get(family_key, 0) or 0)
+            counts_by_label[label_key] = total
+        return counts_by_label
+
+    def _apply_visibility_selection(self, label: str, *, passive_result=None) -> None:
+        """
+        NAME
+            _apply_visibility_selection - Update the CAN Visibility deep-dive panel for one selected row.
+        """
+        clean_label = str(label or NT_VALUE_EMPTY).strip()
+        if not clean_label:
+            self._set_visibility_passive_detail_text(EVIDENCE_SOURCE_NONE)
+            return
+        visibility_device = None
+        devices = self._latest_visibility_snapshot.get(VIS_KEY_DEVICES)
+        if isinstance(devices, list):
+            for device in devices:
+                if not isinstance(device, dict):
+                    continue
+                device_label = str(device.get(VIS_KEY_LABEL, NT_VALUE_EMPTY)).strip()
+                if device_label.lower() == clean_label.lower():
+                    visibility_device = device
+                    break
+        metrics = (
+            visibility_device.get(VIS_KEY_METRICS)
+            if isinstance(visibility_device, dict) and isinstance(visibility_device.get(VIS_KEY_METRICS), dict)
+            else {}
+        )
+        if passive_result is None:
+            passive_result = self.__dict__.get("_latest_passive_result")
+        if passive_result is None:
+            passive_result = self._current_passive_result()
+        self._set_visibility_passive_detail_text(
+            build_passive_visibility_deep_dive_text(
+                label=clean_label,
+                passive_result=passive_result,
+                visibility_device=visibility_device,
+                visibility_identity_text=self._format_visibility_identity(visibility_device or {}),
+                visibility_last_seen_text=self._format_visibility_last_seen(metrics),
+                visibility_packet_count_text=self._format_visibility_packet_count(metrics),
+                visibility_packet_rate_text=self._format_visibility_packet_rate(metrics),
+            )
+        )
 
     def _format_visibility_rate_value(self, value: object) -> str:
         """
@@ -6523,7 +7108,7 @@ class BringupControlUI(tk.Tk):
     def _on_visibility_row_selected(self, event: tk.Event) -> None:
         """
         NAME
-            _on_visibility_row_selected - Update the CTRE raw decode panel from the selected visibility row.
+            _on_visibility_row_selected - Update the raw-ID and shared passive CAN detail panes from the selected visibility row.
         """
         widget = event.widget
         if not isinstance(widget, ttk.Treeview):
@@ -6540,6 +7125,7 @@ class BringupControlUI(tk.Tk):
         )
         raw_ids = meta.get(VIS_ROW_META_RAW_IDS, [])
         self._populate_ctre_raw_table(raw_ids if isinstance(raw_ids, list) else [])
+        self._apply_visibility_selection(self._visibility_selected_label)
 
     def _populate_ctre_raw_table(self, raw_ids: List[Dict[str, object]]) -> None:
         """
@@ -6992,13 +7578,20 @@ class BringupControlUI(tk.Tk):
         body = ttk.Frame(window, padding=10)
         body.pack(fill="both", expand=True)
 
+        ttk.Label(
+            body,
+            text=COLOR_KEY_TEXT_HEADER,
+            wraplength=400,
+            justify="left",
+        ).pack(anchor="w", pady=(0, 8))
+
         self._add_color_key_section(
             body,
-            COLOR_KEY_SECTION_PRESENCE,
+            COLOR_KEY_SECTION_RUNTIME,
             [
-                (COLOR_KEY_PRESENCE_HIGH, COLOR_KEY_TEXT_PRESENCE_HIGH),
-                (COLOR_KEY_PRESENCE_LOW, COLOR_KEY_TEXT_PRESENCE_LOW),
-                (COLOR_KEY_PRESENCE_NONE, COLOR_KEY_TEXT_PRESENCE_NONE),
+                (COLOR_KEY_PRESENCE_HIGH, COLOR_KEY_TEXT_RUNTIME_HIGH),
+                (COLOR_KEY_PRESENCE_LOW, COLOR_KEY_TEXT_RUNTIME_LOW),
+                (COLOR_KEY_PRESENCE_NONE, COLOR_KEY_TEXT_RUNTIME_NONE),
             ],
         )
         self._add_color_key_section(
@@ -7009,6 +7602,34 @@ class BringupControlUI(tk.Tk):
                 (COLOR_KEY_VIS_SOME, COLOR_KEY_TEXT_VIS_SOME),
                 (COLOR_KEY_VIS_NONE, COLOR_KEY_TEXT_VIS_NONE),
                 (COLOR_KEY_VIS_UNKNOWN, COLOR_KEY_TEXT_VIS_UNKNOWN),
+            ],
+        )
+        self._add_color_key_section(
+            body,
+            COLOR_KEY_SECTION_EVIDENCE,
+            [
+                (COLOR_KEY_EVIDENCE_OK, COLOR_KEY_TEXT_EVIDENCE_OK),
+                (COLOR_KEY_EVIDENCE_DEGRADED, COLOR_KEY_TEXT_EVIDENCE_DEGRADED),
+                (COLOR_KEY_EVIDENCE_FAILED, COLOR_KEY_TEXT_EVIDENCE_FAILED),
+                (COLOR_KEY_EVIDENCE_UNKNOWN, COLOR_KEY_TEXT_EVIDENCE_UNKNOWN),
+                (COLOR_KEY_EVIDENCE_IDENTITY, COLOR_KEY_TEXT_EVIDENCE_IDENTITY),
+            ],
+        )
+        self._add_color_key_section(
+            body,
+            COLOR_KEY_SECTION_BASE,
+            [
+                (COLOR_KEY_BASE_REV, COLOR_KEY_TEXT_BASE_REV),
+                (COLOR_KEY_BASE_NI, COLOR_KEY_TEXT_BASE_NI),
+                (COLOR_KEY_BASE_ANALYZER, COLOR_KEY_TEXT_BASE_ANALYZER),
+            ],
+        )
+        self._add_color_key_section(
+            body,
+            COLOR_KEY_SECTION_OVERLAYS,
+            [
+                (COLOR_KEY_OVERLAY_SELECTED, COLOR_KEY_TEXT_OVERLAY_SELECTED),
+                (COLOR_KEY_OVERLAY_GROUP, COLOR_KEY_TEXT_OVERLAY_GROUP),
             ],
         )
         self._add_color_key_section(
@@ -8382,7 +9003,7 @@ class BringupControlUI(tk.Tk):
             "",
             "Run All:",
             "  Run all enabled scripted tests in order.",
-            "  Use this after verifying the selected active group and lifecycle state.",
+            "  Use this after verifying the selected active group and scope state.",
             "  Output: streaming results per test; use Print Next to preview order.",
             "",
             "Print Next:",
@@ -8443,7 +9064,7 @@ class BringupControlUI(tk.Tk):
             "Lens:",
             "  - Evidence: interpreted device-state lens shared with the Evidence tab.",
             "  - Runtime: direct runtime/presence lens from robot-local state.",
-            "  - Visibility: passive observer visibility lens.",
+            "  - CAN Visibility: passive observer visibility lens.",
             "",
             "Show Groups:",
             "  Toggles group boxes/labels from bridgeConfig by-profile groups.",
@@ -8479,7 +9100,7 @@ class BringupControlUI(tk.Tk):
             "",
             "CAN visibility mismatch:",
             "  Start the PC tool: tools\\can_nt\\run_can_nt.cmd --profile <profile>",
-            "  Use --channel COMx if auto-detect fails, then compare CAN Bus and Visibility.",
+            "  Use --channel COMx if auto-detect fails, then compare CAN Bus and CAN Visibility.",
         ]
         return "\n".join(lines)
 
@@ -8767,14 +9388,7 @@ class BringupControlUI(tk.Tk):
         self._runtime_state_pause_until = None
         self._runtime_state_last_poll = 0.0
         self._runtime_state_pending_seq = None
-        if not self._tcp_connected or not self._handshake_done:
-            return
-        if self._tracker.is_pending() or self._log_poll_inflight:
-            return
-        seq = show_runtime_state(self._session, json_output=True)
-        if seq is not None:
-            self._runtime_state_pending_seq = int(seq)
-            self._runtime_state_pending_at = time.time()
+        self._fetch_runtime_state_snapshot(show_output=False, log_blocked=False)
 
     def _send_handshake(self, reset: bool, force: bool = False, log: bool = True) -> None:
         """
@@ -8967,6 +9581,9 @@ class BringupControlUI(tk.Tk):
         """
         if not command:
             return
+        if str(command or "").strip().lower() == CMD_SHOW_RUNTIME_STATE.lower():
+            self._show_runtime_state_from_ui()
+            return
         metadata = ACTIONS_BY_NAME.get(command, {})
         action_kind = str(metadata.get(INVENTORY_KEY_ACTION_KIND, ACTION_KIND_REMOTE_COMMAND))
         if action_kind == ACTION_KIND_HOST_LOCAL:
@@ -9016,9 +9633,6 @@ class BringupControlUI(tk.Tk):
         )
         if seq is not None:
             self._last_sent_seq = seq
-            if str(command or "").strip().lower() == CMD_SHOW_RUNTIME_STATE.lower():
-                self._runtime_state_pending_seq = int(seq)
-                self._runtime_state_pending_at = time.time()
 
     def _on_test_selected(self, _event=None) -> None:
         """
@@ -9050,46 +9664,71 @@ class BringupControlUI(tk.Tk):
         NAME
             _selected_test_inactive_reason - Return the current selected-test readiness blocker.
         """
-        selected_name = str(self._selected_test_var.get() or "").strip()
-        if not selected_name or selected_name == PROFILE_NONE:
-            return OUTPUT_NO_SELECTED_TEST
-        rows = list(self.__dict__.get("_tests_active_group_rows", []))
-        invalid_labels = [str(row.get("label", "")).strip() for row in rows if bool(row.get("invalid"))]
-        if invalid_labels:
-            return "missing resource/device - " + invalid_labels[0]
-        runtime_block_reason = self._test_runtime_block_reason()
-        if runtime_block_reason:
-            return runtime_block_reason
-        row = self._selected_test_row(selected_name)
-        if not self._scope_is_currently_active():
-            if not isinstance(row, dict):
-                return "required devices unavailable"
-            if self.__dict__.get("_tests_active_group_loaded_to_robot") is False:
-                return "required devices unavailable"
-            return TEST_LIBRARY_STATUS_LOADED_NOT_ACTIVATED
-        if not isinstance(row, dict):
-            return "required devices unavailable"
-        blocked_reason = str(row.get("blockedReason", "") or "").strip()
-        if blocked_reason:
-            return blocked_reason
-        runnable_now = row.get("runnableNow")
-        if isinstance(runnable_now, bool):
-            return "" if runnable_now else "required devices unavailable"
-        return ""
+        return self._selected_test_scope_state().inactive_reason
+
+    def _selected_test_name(self) -> str:
+        """
+        NAME
+            _selected_test_name - Return the current selected-test name or PROFILE_NONE.
+        """
+        selected_test_var = self.__dict__.get("_selected_test_var")
+        if selected_test_var is None or not hasattr(selected_test_var, "get"):
+            return PROFILE_NONE
+        name = str(selected_test_var.get() or "").strip()
+        return name if name else PROFILE_NONE
+
+    def _tests_active_group_scope_active(self) -> bool:
+        """
+        NAME
+            _tests_active_group_scope_active - Return whether the Tests-tab scope rows should render as active.
+        """
+        if self._scope_context_kind() == GROUP_SOURCE_SELECTED_TEST:
+            return self._scope_is_currently_active()
+        return self._active_group_is_currently_active()
+
+    def _tests_active_group_member_row_states(self) -> List[ActiveGroupMemberRowState]:
+        """
+        NAME
+            _tests_active_group_member_row_states - Return shared Selected Test Devices row states.
+        """
+        return resolve_tests_active_group_member_rows(
+            rows=list(self.__dict__.get("_tests_active_group_rows", [])),
+            runtime_state_by_label=dict(self.__dict__.get("_latest_runtime_devices", {})),
+            scope_active=self._tests_active_group_scope_active(),
+        )
+
+    def _selected_test_scope_state(self) -> SelectedTestScopeState:
+        """
+        NAME
+            _selected_test_scope_state - Return the shared selected-test readiness state.
+        """
+        selected_name = self._selected_test_name()
+        return resolve_selected_test_scope_state(
+            selected_name=selected_name,
+            active_group_rows=list(self.__dict__.get("_tests_active_group_rows", [])),
+            runtime_block_reason=self._test_runtime_block_reason(),
+            scope_active=self._scope_is_currently_active(),
+            loaded_to_robot=self.__dict__.get("_tests_active_group_loaded_to_robot"),
+            selected_row=self._selected_test_row(selected_name),
+        )
+
+    def _selected_test_panel_state(self) -> SelectedTestPanelState:
+        """
+        NAME
+            _selected_test_panel_state - Return shared Tests-tab presentation state for the selected test.
+        """
+        return resolve_selected_test_panel_state(self._selected_test_scope_state())
 
     def _test_runtime_block_reason(self) -> str:
         """
         NAME
             _test_runtime_block_reason - Return robot-state blocker text for activation/test execution.
         """
-        if bool(self.__dict__.get("_robot_estopped_known", False)):
-            return TEST_LIBRARY_STATUS_BLOCKED_ESTOP
-        if not bool(self.__dict__.get("_robot_enabled_known", True)):
-            return TEST_LIBRARY_STATUS_BLOCKED_DISABLED
-        mode = str(self.__dict__.get("_robot_mode_known", "") or "").strip().lower()
-        if mode and mode != "teleop":
-            return TEST_LIBRARY_STATUS_BLOCKED_NOT_TELEOP
-        return ""
+        return resolve_selected_test_runtime_block_reason(
+            robot_estopped=bool(self.__dict__.get("_robot_estopped_known", False)),
+            robot_enabled=bool(self.__dict__.get("_robot_enabled_known", True)),
+            robot_mode=str(self.__dict__.get("_robot_mode_known", "") or "").strip().lower(),
+        )
 
     def _selected_test_row(self, selected_name: str) -> Optional[Dict[str, Any]]:
         """
@@ -9124,7 +9763,7 @@ class BringupControlUI(tk.Tk):
         NAME
             _selected_test_ready - Return whether the current selected test is ready to run.
         """
-        return self._selected_test_inactive_reason() == ""
+        return self._selected_test_scope_state().ready
 
     def _latest_test_run_payload(self) -> Dict[str, Any]:
         """
@@ -9287,39 +9926,39 @@ class BringupControlUI(tk.Tk):
         NAME
             _refresh_tests_active_group_panel - Render the Tests-tab read-only active-group rows.
         """
-        listbox = getattr(self, "_tests_active_group_list", None)
-        if listbox is None:
+        table = getattr(self, "_tests_active_group_table", None)
+        if table is None:
             return
-        listbox.delete(0, tk.END)
+        for item_id in table.get_children():
+            table.delete(item_id)
         rows = list(self.__dict__.get("_tests_active_group_rows", []))
         if not rows:
-            listbox.insert(tk.END, TEST_ACTIVE_GROUP_PANEL_EMPTY)
-            return
-        scope_active = self._scope_is_currently_active() if self._scope_context_kind() == GROUP_SOURCE_SELECTED_TEST else self._active_group_is_currently_active()
-        for row in rows:
-            label = str(row.get("label", "")).strip()
-            if not label:
-                continue
-            statuses = [TEST_ACTIVE_GROUP_STATUS_ENABLED]
-            if bool(row.get("locked")) or scope_active:
-                statuses.append(TEST_ACTIVE_GROUP_STATUS_LOCKED)
-            if bool(row.get("invalid")):
-                statuses.append(TEST_ACTIVE_GROUP_STATUS_INVALID)
-            runtime_device = self._runtime_device_for_label(label)
-            instantiated = False
-            if runtime_device:
-                if bool(runtime_device.get("instantiated", False)):
-                    instantiated = True
-                elif str(label).strip().lower() in TEST_ACTIVE_GROUP_SINGLETON_LABELS:
-                    instantiated = bool(runtime_device.get("testable", False))
-            statuses.append(
-                "instantiated" if scope_active and instantiated else TEST_ACTIVE_GROUP_STATUS_NOT_ACTIVATED
+            table.insert(
+                "",
+                "end",
+                values=(
+                    TEST_ACTIVE_GROUP_PANEL_EMPTY,
+                    TEST_ACTIVE_GROUP_EMPTY_VALUE,
+                    TEST_ACTIVE_GROUP_EMPTY_VALUE,
+                    TEST_ACTIVE_GROUP_EMPTY_VALUE,
+                    TEST_ACTIVE_GROUP_EMPTY_VALUE,
+                    TEST_ACTIVE_GROUP_EMPTY_VALUE,
+                ),
             )
-            reason = str(row.get("reason", "")).strip()
-            line = f"{label} | " + " | ".join(statuses)
-            if reason:
-                line += f" | {reason}"
-            listbox.insert(tk.END, line)
+            return
+        for state in self._tests_active_group_member_row_states():
+            table.insert(
+                "",
+                "end",
+                values=(
+                    state.label,
+                    state.enabled_text,
+                    state.locked_text,
+                    state.instantiated_text,
+                    state.scope_active_text,
+                    state.note_text,
+                ),
+            )
 
     def _refresh_selected_test_scope_status(self) -> None:
         """
@@ -9332,26 +9971,25 @@ class BringupControlUI(tk.Tk):
             return
         panel_bg = TEST_SCOPE_PANEL_NEUTRAL_BG
         panel_fg = TEST_SCOPE_PANEL_NEUTRAL_FG
-        inactive_reason = self._selected_test_inactive_reason()
-        if inactive_reason:
-            status_var.set(self._format_selected_test_scope_status_detail(inactive_reason))
+        state = self._selected_test_panel_state()
+        if state.level == TEST_SCOPE_PANEL_NEUTRAL_LEVEL:
+            status_var.set(state.detail)
             if headline_var is not None:
-                if inactive_reason == OUTPUT_NO_SELECTED_TEST:
-                    headline_var.set(TEST_SCOPE_PANEL_NO_SELECTION_HEADLINE)
-                else:
-                    headline_var.set(TEST_SCOPE_PANEL_INACTIVE_HEADLINE)
-            if inactive_reason == OUTPUT_NO_SELECTED_TEST:
-                panel_bg = TEST_SCOPE_PANEL_NEUTRAL_BG
-                panel_fg = TEST_SCOPE_PANEL_NEUTRAL_FG
-            else:
-                panel_bg = TEST_SCOPE_PANEL_INACTIVE_BG
-                panel_fg = TEST_SCOPE_PANEL_INACTIVE_FG
-        else:
-            status_var.set(TEST_LIBRARY_STATUS_READY)
+                headline_var.set(state.headline)
+            panel_bg = TEST_SCOPE_PANEL_NEUTRAL_BG
+            panel_fg = TEST_SCOPE_PANEL_NEUTRAL_FG
+        elif state.level == RUNNABLE_STATE_LEVEL_READY:
+            status_var.set(state.detail)
             if headline_var is not None:
-                headline_var.set(TEST_SCOPE_PANEL_READY_HEADLINE)
+                headline_var.set(state.headline)
             panel_bg = TEST_SCOPE_PANEL_READY_BG
             panel_fg = TEST_SCOPE_PANEL_READY_FG
+        else:
+            status_var.set(state.detail)
+            if headline_var is not None:
+                headline_var.set(state.headline)
+            panel_bg = TEST_SCOPE_PANEL_INACTIVE_BG
+            panel_fg = TEST_SCOPE_PANEL_INACTIVE_FG
         self._apply_selected_test_scope_panel_colors(panel_bg, panel_fg)
 
     def _format_selected_test_scope_status_detail(self, inactive_reason: str) -> str:
@@ -9359,27 +9997,15 @@ class BringupControlUI(tk.Tk):
         NAME
             _format_selected_test_scope_status_detail - Convert one internal blocked reason into clearer operator guidance.
         """
-        reason = str(inactive_reason or "").strip()
-        if not reason:
-            return TEST_LIBRARY_STATUS_READY
-        if reason == OUTPUT_NO_SELECTED_TEST:
-            return TEST_SCOPE_DETAIL_NO_SELECTION
-        if reason == TEST_LIBRARY_STATUS_LOADED_NOT_ACTIVATED:
-            return TEST_SCOPE_DETAIL_LOADED_NOT_ACTIVATED
-        if reason == TEST_LIBRARY_STATUS_MANUAL_RESTORED:
-            return TEST_SCOPE_DETAIL_MANUAL_RESTORED
-        if reason == TEST_LIBRARY_STATUS_BLOCKED_ESTOP:
-            return TEST_SCOPE_DETAIL_BLOCKED_ESTOP
-        if reason == TEST_LIBRARY_STATUS_BLOCKED_DISABLED:
-            return TEST_SCOPE_DETAIL_BLOCKED_DISABLED
-        if reason == TEST_LIBRARY_STATUS_BLOCKED_NOT_TELEOP:
-            return TEST_SCOPE_DETAIL_BLOCKED_NOT_TELEOP
-        if reason.startswith("missing resource/device - "):
-            missing = reason.split(" - ", 1)[1].strip()
-            return TEST_SCOPE_DETAIL_MISSING_DEVICE_PREFIX + missing
-        if reason == "required devices unavailable":
-            return TEST_SCOPE_DETAIL_REQUIRED_UNAVAILABLE
-        return TEST_LIBRARY_STATUS_INACTIVE_PREFIX + reason
+        state = SelectedTestScopeState(
+            selected_name=PROFILE_NONE,
+            inactive_reason=str(inactive_reason or "").strip(),
+            ready=not str(inactive_reason or "").strip(),
+            headline=TEST_SCOPE_PANEL_READY_HEADLINE if not str(inactive_reason or "").strip() else TEST_SCOPE_PANEL_INACTIVE_HEADLINE,
+            detail_reason=str(inactive_reason or "").strip(),
+            level=RUNNABLE_STATE_LEVEL_READY if not str(inactive_reason or "").strip() else RUNNABLE_STATE_LEVEL_WARN,
+        )
+        return resolve_selected_test_panel_state(state).detail
 
     def _apply_selected_test_scope_panel_colors(self, background: str, foreground: str) -> None:
         """
@@ -10250,7 +10876,51 @@ class BringupControlUI(tk.Tk):
         NAME
             _show_runtime_state_from_ui - Request the runtime-state payload through the top-bar control.
         """
-        self._on_action(CMD_SHOW_RUNTIME_STATE)
+        self._append_output(f"{timestamp_hms()} {OUTPUT_RUNTIME_STATE_FETCH}")
+        self._last_cmd = (CMD_SHOW_RUNTIME_STATE, {"source": "rest_runtime_state"})
+        self._fetch_runtime_state_snapshot(show_output=True, log_blocked=True)
+
+    def _runtime_state_fetch_state(self) -> RuntimeStateFetchState:
+        """
+        NAME
+            _runtime_state_fetch_state - Return the shared runtime-state fetch gate for the current UI session.
+        """
+        tracker = self.__dict__.get("_tracker")
+        tracker_pending = bool(tracker.is_pending()) if tracker is not None else False
+        return resolve_runtime_state_fetch_state(
+            tcp_connected=bool(self._tcp_connected),
+            handshake_done=bool(self._handshake_done),
+            tracker_pending=tracker_pending,
+            log_poll_inflight=bool(self._log_poll_inflight),
+        )
+
+    def _fetch_runtime_state_snapshot(
+        self,
+        *,
+        show_output: bool,
+        log_blocked: bool,
+    ) -> bool:
+        """
+        NAME
+            _fetch_runtime_state_snapshot - Fetch and apply runtime-state JSON through the shared REST runtime path.
+        """
+        fetch_state = self._runtime_state_fetch_state()
+        if not fetch_state.allowed:
+            if log_blocked and fetch_state.blocked_reason:
+                self._append_output(fetch_state.blocked_reason)
+            return False
+        runtime_snapshot = self._session.fetch_runtime_state()
+        if not isinstance(runtime_snapshot, dict) or not runtime_snapshot:
+            if log_blocked:
+                self._append_output(OUTPUT_RUNTIME_STATE_FETCH_EMPTY)
+            return False
+        self._runtime_state_pending_seq = None
+        self._runtime_state_pending_at = 0.0
+        self._apply_runtime_state_payload(runtime_snapshot)
+        if show_output:
+            self._append_output(f"{timestamp_hms()} {OUTPUT_RUNTIME_STATE_FETCH_OUT}")
+            self._append_output(f"  json: {json.dumps(runtime_snapshot)}")
+        return True
 
     def _selected_activation_membership_mode(self) -> str:
         """
@@ -10752,18 +11422,7 @@ class BringupControlUI(tk.Tk):
         source = self._live_source_var.get()
         if source == LIVE_SOURCE_FILE:
             return
-        if not self._tcp_connected or not self._handshake_done:
-            return
-        if self._tracker.is_pending() or self._log_poll_inflight:
-            return
-        if self._runtime_state_pending_seq is None:
-            seq = show_runtime_state(self._session, json_output=True)
-            if seq is not None:
-                self._runtime_state_pending_seq = int(seq)
-                self._runtime_state_pending_at = now
-        else:
-            if (now - self._runtime_state_pending_at) > self._runtime_state_timeout_sec:
-                self._runtime_state_pending_seq = None
+        self._fetch_runtime_state_snapshot(show_output=False, log_blocked=False)
 
     def _manual_runtime_refresh_active(self) -> bool:
         """
@@ -10855,18 +11514,10 @@ class BringupControlUI(tk.Tk):
         detail_var = self.__dict__.get(detail_var_attr)
         if panel is None or headline_var is None or detail_var is None:
             return
-        runtime_state_seen = bool(self.__dict__.get("_runtime_state_seen", False))
-        if not self._tcp_connected:
-            headline = TEST_SCOPE_PANEL_INACTIVE_HEADLINE
-            bg = TEST_SCOPE_PANEL_ERROR_BG
-            fg = TEST_SCOPE_PANEL_ERROR_FG
-            detail = RUNNABLE_SCOPE_PANEL_DISCONNECTED_DETAIL
-        elif not self._handshake_done or not runtime_state_seen:
-            headline = TEST_SCOPE_PANEL_WAITING_HEADLINE
-            bg = TEST_SCOPE_PANEL_NEUTRAL_BG
-            fg = TEST_SCOPE_PANEL_NEUTRAL_FG
-            detail = RUNNABLE_SCOPE_PANEL_WAITING_DETAIL
-        elif self._runtime_state_notice_text:
+        state = self._runnable_scope_state(
+            stale_state=bool(self.__dict__.get("_state_stale", False))
+        )
+        if self._runtime_state_notice_text:
             headline = TEST_SCOPE_PANEL_INACTIVE_HEADLINE
             if self._runtime_state_notice_level == "error":
                 bg = TEST_SCOPE_PANEL_ERROR_BG
@@ -10885,10 +11536,20 @@ class BringupControlUI(tk.Tk):
                 fg = TEST_SCOPE_PANEL_INACTIVE_FG
             detail = self._runtime_event_notice_text
         else:
-            headline = TEST_SCOPE_PANEL_READY_HEADLINE
-            bg = TEST_SCOPE_PANEL_READY_BG
-            fg = TEST_SCOPE_PANEL_READY_FG
-            detail = RUNNABLE_SCOPE_PANEL_READY_DETAIL
+            headline = state.headline
+            detail = state.detail
+            if state.level == RUNNABLE_STATE_LEVEL_READY:
+                bg = TEST_SCOPE_PANEL_READY_BG
+                fg = TEST_SCOPE_PANEL_READY_FG
+            elif state.level == RUNNABLE_STATE_LEVEL_ERROR:
+                bg = TEST_SCOPE_PANEL_ERROR_BG
+                fg = TEST_SCOPE_PANEL_ERROR_FG
+            elif state.level == RUNNABLE_STATE_LEVEL_NEUTRAL:
+                bg = TEST_SCOPE_PANEL_NEUTRAL_BG
+                fg = TEST_SCOPE_PANEL_NEUTRAL_FG
+            else:
+                bg = TEST_SCOPE_PANEL_INACTIVE_BG
+                fg = TEST_SCOPE_PANEL_INACTIVE_FG
         headline_var.set(headline)
         detail_var.set(detail)
         panel.configure(bg=bg, highlightbackground=TEST_SCOPE_PANEL_BORDER)
@@ -10904,6 +11565,7 @@ class BringupControlUI(tk.Tk):
         """
         self._latest_runtime_state_payload = dict(payload or {})
         self._runtime_state_seen = True
+        self._maybe_complete_scope_transition_wait(payload)
         latest_runtime_devices: Dict[str, Dict[str, Any]] = {}
         runtime_active = payload.get("runtimeActive")
         if isinstance(runtime_active, bool):
@@ -11040,48 +11702,39 @@ class BringupControlUI(tk.Tk):
         NAME
             _apply_live_runtime_notice_from_nt_state - Surface DS/NT state directly in Live Topology.
         """
-        tcp_connected = bool(self.__dict__.get("_tcp_connected", True))
-        activation_notice = self._scope_activation_notice_text()
-        scope_active = self._scope_is_currently_active()
-        if not tcp_connected:
-            self._set_runtime_state_notice(
-                RUNNABLE_SCOPE_PANEL_DISCONNECTED_DETAIL, "error"
-            )
-        elif stale_state:
-            self._set_runtime_state_notice(
-                "Robot state stale (code not running?)", "warn"
-            )
-        elif estopped:
-            self._set_runtime_state_notice("Robot E-Stop. Manual run blocked.", "error")
-        elif not enabled:
-            self._set_runtime_state_notice(
-                "Robot disabled. Enable teleop to run motors.", "info"
-            )
-        elif self._manual_active_group_is_empty():
-            self._set_runtime_state_notice(
-                RUNNABLE_SCOPE_DETAIL_MANUAL_EMPTY, "warn"
-            )
-        elif not scope_active:
-            self._set_runtime_state_notice(activation_notice, "warn")
-        else:
+        state = resolve_runnable_scope_state(
+            scope_kind=self._runnable_scope_kind(),
+            local_selected_profile=self._selected_profile_name(),
+            local_profile_required=self.__dict__.get("_profile_box") is not None,
+            tcp_connected=bool(self.__dict__.get("_tcp_connected", True)),
+            runtime_state_seen=True,
+            stale_state=bool(stale_state),
+            robot_enabled=bool(enabled),
+            robot_estopped=bool(estopped),
+            robot_mode=str(self.__dict__.get("_robot_mode_known", "") or "").strip().lower(),
+            manual_group_empty=self._manual_active_group_is_empty(),
+            scope_active=self._scope_is_currently_active(),
+        )
+        if should_clear_runtime_event_notice(
+            self.__dict__.get("_runtime_event_notice_text", NT_VALUE_EMPTY),
+            state,
+        ):
+            self._clear_runtime_event_notice()
+            for live_view in self._iter_live_views():
+                if hasattr(live_view, "clear_runtime_notice"):
+                    live_view.clear_runtime_notice()
+        if state.level == "ready":
             self._clear_runtime_state_notice()
+        else:
+            self._set_runtime_state_notice(state.detail, state.level)
         for live_view in self._iter_live_views():
-            if not tcp_connected:
-                live_view.set_runtime_state_notice(
-                    RUNNABLE_SCOPE_PANEL_DISCONNECTED_DETAIL, "error"
-                )
-            elif stale_state:
-                live_view.set_runtime_state_notice("Robot state stale (code not running?)", "warn")
-            elif estopped:
-                live_view.set_runtime_state_notice("Robot E-Stop. Manual run blocked.", "error")
-            elif not enabled:
-                live_view.set_runtime_state_notice("Robot disabled. Enable teleop to run motors.", "info")
-            elif self._manual_active_group_is_empty():
-                live_view.set_runtime_state_notice(RUNNABLE_SCOPE_DETAIL_MANUAL_EMPTY, "warn")
-            elif not scope_active:
-                live_view.set_runtime_state_notice(activation_notice, "warn")
-            else:
+            if hasattr(live_view, "apply_runnable_scope_state"):
+                live_view.apply_runnable_scope_state(state)
+                continue
+            if state.level == "ready":
                 live_view.clear_runtime_state_notice()
+            else:
+                live_view.set_runtime_state_notice(state.detail, state.level)
 
     def _selected_profile_from_command_event(
         self,
@@ -11351,23 +12004,32 @@ class BringupControlUI(tk.Tk):
             for live_view in self._iter_live_views():
                 live_view.clear_runtime_notice()
         if command == "runtimeactivate" and state == "ok":
-            self._runtime_active_known = True
+            self._begin_scope_transition_wait(runtime_active_expected=True)
             self._clear_runtime_event_notice()
         elif command == "runtimedeactivate" and state == "ok":
-            self._runtime_active_known = False
+            self._begin_scope_transition_wait(runtime_active_expected=False, expected_member_labels=[])
             self._clear_runtime_event_notice()
         elif command == "lifecycleactivate" and state == "ok":
-            self._controlled_lifecycle_active_known = True
+            self._begin_scope_transition_wait(
+                controlled_lifecycle_expected=True,
+                expected_member_labels=self._current_scope_expected_member_labels(),
+            )
             self._clear_runtime_event_notice()
         elif command == "activateselectedtestdevices" and state == "ok":
-            self._controlled_lifecycle_active_known = True
+            self._begin_scope_transition_wait(
+                controlled_lifecycle_expected=True,
+                expected_member_labels=self._current_scope_expected_member_labels(),
+            )
             self._clear_runtime_event_notice()
         elif command in {
             "lifecycledeactivate",
             "lifecycledeactivateactive",
             "deactivateselectedtestdevices",
         } and state == "ok":
-            self._controlled_lifecycle_active_known = False
+            self._begin_scope_transition_wait(
+                controlled_lifecycle_expected=False,
+                expected_member_labels=[],
+            )
             self._clear_runtime_event_notice()
 
     def _update_action_enabled(self) -> None:
@@ -11377,6 +12039,7 @@ class BringupControlUI(tk.Tk):
         """
         self._refresh_scope_context_label()
         self._refresh_selected_test_scope_status()
+        runnable_state = self._runnable_scope_state(stale_state=self._state_stale)
         allow = (
             self._tcp_connected
             and self._handshake_done
@@ -11404,25 +12067,18 @@ class BringupControlUI(tk.Tk):
             activate_allowed = allow
             if activate_allowed and self._test_runtime_block_reason():
                 activate_allowed = False
-            if (
-                activate_allowed
-                and self._scope_context_kind() != GROUP_SOURCE_SELECTED_TEST
-                and self.__dict__.get("_profile_box") is not None
-                and self._selected_profile_name() == PROFILE_NONE
-            ):
-                activate_allowed = False
             if activate_allowed and self._scope_context_kind() != GROUP_SOURCE_SELECTED_TEST:
-                activate_allowed = not self._manual_active_group_is_empty()
+                activate_allowed = runnable_state.activation_allowed
             if (
                 activate_allowed
                 and self._scope_context_kind() == GROUP_SOURCE_SELECTED_TEST
-                and str(self._selected_test_var.get() or "").strip() in ("", PROFILE_NONE)
+                and self._selected_test_name() == PROFILE_NONE
             ):
                 activate_allowed = False
             if activate_allowed and self._scope_context_kind() == GROUP_SOURCE_SELECTED_TEST:
-                tests_active_group_rows = self.__dict__.get("_tests_active_group_rows", [])
                 activate_allowed = not any(
-                    bool(row.get("invalid")) for row in tests_active_group_rows
+                    SHARED_TEST_ACTIVE_GROUP_STATUS_INVALID in state.statuses
+                    for state in self._tests_active_group_member_row_states()
                 )
             activate_scope_button.state(
                 ["!disabled"] if activate_allowed else ["disabled"]
@@ -11430,7 +12086,9 @@ class BringupControlUI(tk.Tk):
         deactivate_scope_button = getattr(self, "_deactivate_scope_button", None)
         if deactivate_scope_button is not None:
             deactivate_allowed = (
-                allow and self.__dict__.get("_controlled_lifecycle_active_known") is True
+                allow
+                and not self._scope_transition_pending()
+                and self.__dict__.get("_controlled_lifecycle_active_known") is True
             )
             deactivate_scope_button.state(
                 ["!disabled"] if deactivate_allowed else ["disabled"]
@@ -11438,7 +12096,10 @@ class BringupControlUI(tk.Tk):
         run_selected_button = getattr(self, "_tests_run_selected_button", None)
         if run_selected_button is not None:
             run_selected_allowed = (
-                allow and not self._test_runtime_block_reason() and self._selected_test_ready()
+                allow
+                and not self._scope_transition_pending()
+                and not self._test_runtime_block_reason()
+                and self._selected_test_ready()
             )
             run_selected_button.state(
                 ["!disabled"] if run_selected_allowed else ["disabled"]

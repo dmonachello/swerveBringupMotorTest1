@@ -72,6 +72,12 @@ This must apply to:
 - what active-group state means
 - how stale/invalidated device evidence is interpreted
 
+Additional trust rule:
+
+- one activate/deactivate transition must produce one trustworthy shared runtime/scope snapshot
+- if the system is still converging after a transition, shared state must surface that explicitly instead of presenting partial stale meaning as current truth
+- users must not need repeated deactivate/activate cycles before trusting what the UI shows
+
 ## Architectural Direction
 
 Introduce shared host-side state objects/services that own the full contract for:
@@ -219,6 +225,12 @@ The following must come from one shared state object:
 
 No separate copies of “why can’t I run?” logic should remain in different panels.
 
+Additional activation-trust requirement:
+
+- active-group intent, runtime instantiated-device state, and runnable messaging must resolve from the same shared transition snapshot or generation
+- a surface must not continue showing pre-transition scope/runtime meaning after a new activation/deactivation transition has been accepted
+- if a transition has not yet converged, shared state must expose a waiting or resync state rather than silently reusing older ready-state conclusions
+
 ### Requirement 3: One Decision Path For Evidence Invalidation
 
 The following must come from one shared interpreter:
@@ -293,6 +305,11 @@ Consumers:
 - activate/deactivate buttons
 - selected-test readiness messaging
 
+Expected result:
+
+- one accepted activation/deactivation transition yields one shared runnable/runtime interpretation
+- a device must not appear absent from the effective active runtime set on first activation and then become present only after a retry unless the shared state explicitly reported a convergence/waiting condition
+
 ### Phase 4: Centralize Active-Group View Model
 
 Create a shared active-group view model.
@@ -302,6 +319,11 @@ Consumers:
 - live topology side panel
 - tests-tab active-group panel
 - any activation/selection status panels
+
+Expected result:
+
+- active-group membership, active runtime scope, and selected-test scope membership stay aligned under one shared state transition
+- the UI must not train operators to “deactivate/reactivate again” as a normal way to get the true active-group result
 
 ### Phase 5: Tighten Interpreted Evidence Ownership
 
@@ -314,6 +336,12 @@ Continue moving evidence precedence and invalidation into the shared interpreted
 
 all consume the same meaning without local reinterpretation.
 
+Additional rule:
+
+- interpreted evidence must be built from a coherent frozen snapshot of the inputs used for that evaluation
+- the system must not mix evidence from unrelated time windows and present it as one current truth
+- when newer scope/runtime state invalidates older probe/evidence conclusions, the invalidation must be explicit in shared state
+
 ## Implementation Constraints
 
 - prefer small, reversible steps
@@ -321,6 +349,8 @@ all consume the same meaning without local reinterpretation.
 - add focused regression tests for each newly centralized contract
 - do not reintroduce local fallbacks once a shared service owns the rule
 - preserve existing UI look/feel where possible while moving meaning into common code
+- do not silently reuse stale activation/runtime snapshots after activate/deactivate transitions
+- if convergence requires more than one polling cycle, represent that as explicit shared waiting/resync state instead of stale ready state
 
 ## Regression Requirements
 
@@ -348,6 +378,17 @@ Add scenario-style regressions for:
 
 - button enablement and runnable-status panels stay aligned under the same state transition
 
+5. First activation trustworthiness:
+
+- when a valid active group is activated, the first completed shared runtime/scope snapshot must match the real activated device set
+- if a device is runnable and instantiated on that first activation, the shared state must not require a deactivate/reactivate retry before showing it consistently across control and evidence surfaces
+- if convergence is not complete, the shared state must say so explicitly instead of showing stale ready-state output
+
+6. Snapshot coherence:
+
+- interpreted evidence for one evaluation is derived from one frozen input bundle
+- probe/runtime/passive/manual/enrichment data from different time windows are either explicitly marked stale/mismatched or excluded from the final current-truth interpretation
+
 ## Acceptance Criteria
 
 This feature is complete when:
@@ -355,6 +396,9 @@ This feature is complete when:
 - there is one shared decision path for blank vs populated profile-backed diagnostics
 - there is one shared decision path for runnable/activation messaging
 - there is one shared decision path for evidence invalidation
+- one activate/deactivate cycle produces one trustworthy shared runtime/scope result without requiring operator ritual retries
+- stale pre-transition runtime/activation state is not presented as current truth after a new transition is accepted
+- evidence interpretation is derived from coherent frozen snapshots instead of ad hoc mixed cache timing
 - startup and reconnect behavior no longer depend on per-view fallback rules
 - changing one central contract no longer requires patching several tabs/panels separately
 

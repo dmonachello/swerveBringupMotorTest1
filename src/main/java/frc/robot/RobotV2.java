@@ -41,7 +41,7 @@ public class RobotV2 extends TimedRobot {
       RobotLocalAxisCommandId.RIGHT_DRIVE.wireName();
   private static final String COMMAND_RUN_TEST =
       RobotLocalCommandRegistry.COMMAND_RUN_TEST;
-  private static final String MESSAGE_NON_TEST_ACTUATION_BLOCKED =
+  private static final String MESSAGE_NON_TEST_DIRECT_ACTUATION_BLOCKED =
       "Actuation blocked: no active test.";
   private static final String REASON_PROFILE_ACTIVATE = "profileActivate";
   private static final String REASON_RUNTIME_DEACTIVATE = "runtimeDeactivate";
@@ -238,12 +238,14 @@ public class RobotV2 extends TimedRobot {
         uiHandler != null && uiHandler.isRobotLocalCommandActive(COMMAND_RUN_TEST));
 
     boolean actuationRequested = isActuationRequested(neoSpeed, krakenSpeed);
-    // Apply outputs only while a test is actively running.
+    // Apply direct joystick outputs only while a test is actively running.
+    // Group bindings are evaluated independently below when host/runtime policy
+    // allows the active scope to exist.
     if (core().isTestRunning()) {
       core().setSpeeds(neoSpeed, krakenSpeed);
       warnedNonTestActuationBlocked = false;
     } else if (actuationRequested && !warnedNonTestActuationBlocked) {
-      BringupPrinter.enqueue(MESSAGE_NON_TEST_ACTUATION_BLOCKED);
+      BringupPrinter.enqueue(MESSAGE_NON_TEST_DIRECT_ACTUATION_BLOCKED);
       warnedNonTestActuationBlocked = true;
     } else if (!actuationRequested) {
       warnedNonTestActuationBlocked = false;
@@ -278,9 +280,7 @@ public class RobotV2 extends TimedRobot {
       state.dpadDown = pov == POV_DOWN;
       state.dpadLeft = pov == POV_LEFT;
     }
-    if (core().isTestRunning()) {
-      bridgeGroups().applyBindings(inputs, core(), bridgeSelected());
-    }
+    bridgeGroups().applyBindings(inputs, core(), bridgeSelected());
 
   }
 
@@ -433,6 +433,9 @@ public class RobotV2 extends TimedRobot {
     bridgeGroups().clear();
     bridgeSelected().device = TEXT_EMPTY;
     bridgeSelected().enabled = false;
+    bridgeSelected().group = TEXT_EMPTY;
+    bridgeSelected().groupEnabled = false;
+    bridgeSelected().groupMembers.clear();
     BringupUtil.BridgeProfileRuntimeConfig config =
         BringupUtil.getProfileBridgeConfig(BringupUtil.getActiveCanProfile());
     boolean loadedGroups = false;
@@ -471,6 +474,9 @@ public class RobotV2 extends TimedRobot {
         && !config.selectedDevice.device.isBlank()) {
       bridgeSelected().device = config.selectedDevice.device;
       bridgeSelected().enabled = config.selectedDevice.enabled;
+      bridgeSelected().group = TEXT_EMPTY;
+      bridgeSelected().groupEnabled = false;
+      bridgeSelected().groupMembers.clear();
     }
     if (!loadedGroups) {
       syncDefaultGroup();

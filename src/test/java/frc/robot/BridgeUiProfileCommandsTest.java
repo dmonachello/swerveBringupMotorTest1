@@ -221,7 +221,7 @@ class BridgeUiProfileCommandsTest {
 
     assertFalse(result.ok);
     assertEquals(
-        "Profile change blocked: controlled lifecycle session is ACTIVE. Deactivate lifecycle first.",
+        "Profile change blocked: an active scope session is running. Deactivate scope first.",
         result.message);
   }
 
@@ -247,7 +247,7 @@ class BridgeUiProfileCommandsTest {
 
     assertFalse(result.ok);
     assertEquals(
-        "Profile change blocked: controlled lifecycle session is ACTIVE. Deactivate lifecycle first.",
+        "Profile change blocked: an active scope session is running. Deactivate scope first.",
         result.message);
   }
 

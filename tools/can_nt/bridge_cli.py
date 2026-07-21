@@ -17,6 +17,15 @@ from pathlib import Path
 import argparse
 
 KEY_DEVICE_COUNT = "deviceCount"
+KEY_PRIMARY_LABEL = "primaryLabel"
+KEY_ENABLED_MEMBER_COUNT = "enabledMemberCount"
+KEY_HAS_MEMBERS = "hasMembers"
+KEY_ALL_ENABLED_MEMBERS_PRESENT = "allEnabledMembersPresent"
+KEY_LOCKED = "locked"
+KEY_INVALID = "invalid"
+KEY_SCOPE_ACTIVE = "scopeActive"
+KEY_RUNTIME_PRESENT = "runtimePresent"
+KEY_TESTABLE = "testable"
 
 SCRIPT_PATH = Path(__file__).resolve()
 REPO_ROOT = SCRIPT_PATH.parents[2]
@@ -214,6 +223,7 @@ from tools.common.topology_parse import (
     topology_node_lookup,
     topology_profile_from_payload,
 )
+from tools.common.group_contract import resolve_group_state_from_member_map
 from tools.common.profile_constants import (
     BRIDGE_CONFIG_SCHEMA_VERSION,
     EDGE_TYPE_CAN_DROP,
@@ -1853,13 +1863,13 @@ HELP_RUNTIME_TEXT = (
 HELP_TOPIC_LIFECYCLE = "lifecycle"
 HELP_LIFECYCLE_TEXT = (
     "lifecycle activate <label> [mode <mode>]\n"
-    "  Activate the controlled bringup lifecycle for one device or group label.\n"
+    "  Activate the current scope membership for one device or group label.\n"
     "lifecycle deactivate <label>\n"
-    "  Deactivate the active controlled lifecycle session when it matches <label>.\n"
+    "  Deactivate the active scope session when it matches <label>.\n"
     "lifecycle deactivate-active\n"
-    "  Deactivate whichever controlled lifecycle session is active now.\n"
+    "  Deactivate whichever scope session is active now.\n"
     "show lifecycle-state [--json] [--pretty]\n"
-    "  Show the robot-controlled lifecycle state snapshot."
+    "  Show the robot scope-state snapshot."
 )
 HELP_TOPIC_PROFILES_INIT = "profiles init"
 HELP_PROFILES_INIT_TEXT = (
@@ -3594,6 +3604,85 @@ class BridgeCli:
             KEY_TEMP: True,
         }
 
+    def _resolved_local_group_state(
+        self,
+        group: Dict[str, object],
+        *,
+        scope_active: bool,
+    ):
+        """
+        NAME
+            _resolved_local_group_state - Return shared resolved state for one local group payload.
+        """
+        member_map: Dict[str, Dict[str, object]] = {}
+        members = group.get(KEY_MEMBERS, []) or []
+        primary_label = EMPTY_STRING
+        if isinstance(members, list):
+            for member in members:
+                label = _group_member_label(member)
+                if not label:
+                    continue
+                if not primary_label and (
+                    not isinstance(member, dict) or bool(member.get(KEY_ENABLED, True))
+                ):
+                    primary_label = label
+                member_map[label.strip().lower()] = (
+                    dict(member)
+                    if isinstance(member, dict)
+                    else _group_member_entry(label, True)
+                )
+        return resolve_group_state_from_member_map(
+            name=group.get(KEY_NAME, EMPTY_STRING),
+            member_map=member_map,
+            runtime_state_by_label={},
+            primary_label=primary_label,
+            scope_active=scope_active,
+            singleton_labels=(),
+        )
+
+    def _resolved_local_group_payload(
+        self,
+        group: Dict[str, object],
+        *,
+        scope_active: bool,
+        binding_count: int,
+    ) -> Dict[str, object]:
+        """
+        NAME
+            _resolved_local_group_payload - Build one local group payload from the shared group contract.
+        """
+        resolved = self._resolved_local_group_state(group, scope_active=scope_active)
+        payload: Dict[str, object] = {
+            KEY_NAME: str(group.get(KEY_NAME, EMPTY_STRING)).strip(),
+            KEY_ENABLED: bool(group.get(KEY_ENABLED, True)),
+            KEY_PRIMARY_LABEL: resolved.primary_label,
+            KEY_MEMBER_COUNT: resolved.member_count,
+            KEY_ENABLED_MEMBER_COUNT: resolved.enabled_member_count,
+            KEY_HAS_MEMBERS: resolved.has_members,
+            KEY_ALL_ENABLED_MEMBERS_PRESENT: resolved.all_enabled_members_present,
+            KEY_BINDING_COUNT: binding_count,
+            KEY_MEMBERS: [],
+            KEY_BRIDGE_BINDINGS: list(group.get(KEY_BRIDGE_BINDINGS, []) or []),
+        }
+        payload_members = payload[KEY_MEMBERS]
+        if isinstance(payload_members, list):
+            for member in resolved.members:
+                payload_members.append(
+                    {
+                        KEY_LABEL: member.label,
+                        KEY_ENABLED: member.enabled,
+                        KEY_LOCKED: member.locked,
+                        KEY_INVALID: member.invalid,
+                        KEY_SCOPE_ACTIVE: member.scope_active,
+                        KEY_RUNTIME_PRESENT: member.runtime_present,
+                        KEY_INSTANTIATED: member.instantiated,
+                        KEY_TESTABLE: member.testable,
+                    }
+                )
+        if KEY_TEMP in group:
+            payload[KEY_TEMP] = bool(group.get(KEY_TEMP, False))
+        return payload
+
     def _global_name_conflict(self, name: str, skip_group: Optional[str] = None) -> Optional[str]:
         """
         NAME
@@ -3684,16 +3773,8 @@ class BridgeCli:
         group = self._find_named_local_group(group_name)
         if group is None:
             return None
-        members = group.get(KEY_MEMBERS, []) or []
-        labels: List[str] = []
-        for member in members:
-            if isinstance(member, dict):
-                label = _group_member_label(member)
-            else:
-                label = str(member).strip()
-            if label:
-                labels.append(label)
-        return labels
+        resolved = self._resolved_local_group_state(group, scope_active=False)
+        return [member.label for member in resolved.members if member.label]
 
     def _write_target_group_members(self, group_name: str, members: List[str]) -> StatusResult:
         """
@@ -4712,7 +4793,11 @@ class BridgeCli:
         )
         fault_rows = self._collect_runtime_fault_rows(runtime_payload) if isinstance(runtime_payload, dict) else []
         active_group = self._active_group_payload()
-        members = active_group.get(KEY_MEMBERS, []) if isinstance(active_group, dict) else []
+        active_group_resolved = self._resolved_local_group_payload(
+            active_group,
+            scope_active=False,
+            binding_count=COUNT_ZERO,
+        )
         components = runtime_details.get(KEY_RUNTIME_COMPONENTS, []) if isinstance(runtime_details, dict) else []
         recent_event = self._tiu_recent_events[-1] if self._tiu_recent_events else MESSAGE_TIU_UNSET
         output_count = len(self._tiu_cli_output)
@@ -4746,7 +4831,7 @@ class BridgeCli:
                 f"profile={str(runtime_payload.get(KEY_PROFILE, EMPTY_STRING)).strip() if isinstance(runtime_payload, dict) else MESSAGE_TIU_UNSET}"
             ),
             (
-                f"runtime: group-members={len(members) if isinstance(members, list) else COUNT_ZERO} "
+                f"runtime: group-members={active_group_resolved.get(KEY_MEMBER_COUNT, COUNT_ZERO)} "
                 f"active-test-set={self._tests_active_set or MESSAGE_TIU_UNSET} "
                 f"components={len(components) if isinstance(components, list) else COUNT_ZERO}"
             ),
@@ -4974,11 +5059,15 @@ class BridgeCli:
     def _tiu_runtime_lines(self) -> List[str]:
         runtime_details = self._runtime_details_snapshot_local()
         active_group = self._active_group_payload()
-        members = active_group.get(KEY_MEMBERS, []) if isinstance(active_group, dict) else []
+        active_group_resolved = self._resolved_local_group_payload(
+            active_group,
+            scope_active=False,
+            binding_count=COUNT_ZERO,
+        )
         components = runtime_details.get(KEY_RUNTIME_COMPONENTS, []) if isinstance(runtime_details, dict) else []
         return [
             MESSAGE_TIU_RUNTIME_FMT.format(
-                members=len(members) if isinstance(members, list) else COUNT_ZERO,
+                members=active_group_resolved.get(KEY_MEMBER_COUNT, COUNT_ZERO),
                 test_set=self._tests_active_set or MESSAGE_TIU_UNSET,
                 components=len(components) if isinstance(components, list) else COUNT_ZERO,
             )
@@ -13280,32 +13369,34 @@ class BridgeCli:
 
         if target == SHOW_TARGET_GROUPS:
             lines = []
-            active_count = len(self._active_group_members)
-            groups_payload = [
-                {
-                    KEY_NAME: GROUP_NAME_ACTIVE,
-                    KEY_ENABLED: True,
-                    KEY_MEMBER_COUNT: active_count,
-                    KEY_BINDING_COUNT: COUNT_ZERO,
-                    KEY_TEMP: True,
-                }
-            ]
-            active_members = active_group_payload.get(KEY_MEMBERS, [])
+            active_group_resolved = self._resolved_local_group_payload(
+                active_group_payload,
+                scope_active=False,
+                binding_count=COUNT_ZERO,
+            )
+            groups_payload = [active_group_resolved]
             lines.append(
                 TEXT_GROUPS_ENTRY.format(
                     name=GROUP_NAME_ACTIVE,
                     state=TEXT_ENABLED,
-                    members=len(active_members) if isinstance(active_members, list) else COUNT_ZERO,
+                    members=active_group_resolved.get(KEY_MEMBER_COUNT, COUNT_ZERO),
                     bindings=COUNT_ZERO,
                 )
             )
             for group in groups:
                 if not isinstance(group, dict):
                     continue
-                name = str(group.get(KEY_NAME, EMPTY_STRING)).strip()
-                enabled = bool(group.get(KEY_ENABLED, True))
-                members = group.get(KEY_MEMBER_COUNT, 0)
-                bindings = group.get(KEY_BINDING_COUNT, 0)
+                group_name = str(group.get(KEY_NAME, EMPTY_STRING)).strip()
+                source_group = self._find_named_local_group(group_name) or group
+                bindings = len(source_group.get(KEY_BRIDGE_BINDINGS, []) or [])
+                resolved_payload = self._resolved_local_group_payload(
+                    source_group,
+                    scope_active=False,
+                    binding_count=bindings,
+                )
+                name = str(resolved_payload.get(KEY_NAME, EMPTY_STRING)).strip()
+                enabled = bool(resolved_payload.get(KEY_ENABLED, True))
+                members = resolved_payload.get(KEY_MEMBER_COUNT, COUNT_ZERO)
                 state = TEXT_ENABLED if enabled else TEXT_DISABLED
                 lines.append(
                     TEXT_GROUPS_ENTRY.format(
@@ -13315,7 +13406,7 @@ class BridgeCli:
                         bindings=bindings,
                     )
                 )
-                groups_payload.append(group)
+                groups_payload.append(resolved_payload)
             if not lines:
                 _print_local(TEXT_GROUPS_NONE, {KEY_BRIDGE_GROUPS: groups_payload})
                 return StatusResult(code=SS__NORMAL)
@@ -13329,18 +13420,27 @@ class BridgeCli:
                 match = active_group_payload
             else:
                 match = payload if isinstance(payload, dict) else {}
-            members = match.get(KEY_MEMBERS, []) or []
             bindings = match.get(KEY_BRIDGE_BINDINGS, []) or []
+            resolved_payload = self._resolved_local_group_payload(
+                match,
+                scope_active=False,
+                binding_count=len(bindings),
+            )
+            members = resolved_payload.get(KEY_MEMBERS, []) or []
             lines = [
                 TEXT_GROUP_HEADER.format(
                     name=name,
-                    state=TEXT_ENABLED if match.get(KEY_ENABLED, True) else TEXT_DISABLED,
+                    state=TEXT_ENABLED if resolved_payload.get(KEY_ENABLED, True) else TEXT_DISABLED,
                 ),
             ]
             lines.append(TEXT_GROUP_MEMBERS_HEADER)
             if members:
                 for member in members:
-                    device = _group_member_label(member)
+                    device = (
+                        str(member.get(KEY_LABEL, EMPTY_STRING)).strip()
+                        if isinstance(member, dict)
+                        else EMPTY_STRING
+                    )
                     enabled = bool(member.get(KEY_ENABLED, True)) if isinstance(member, dict) else True
                     if device:
                         state = TEXT_ENABLED if enabled else TEXT_DISABLED
@@ -13369,7 +13469,7 @@ class BridgeCli:
                         )
             else:
                 lines.append(TEXT_GROUP_NONE)
-            _print_local(SEP_NEWLINE.join(lines), payload)
+            _print_local(SEP_NEWLINE.join(lines), resolved_payload)
             return StatusResult(code=SS__NORMAL)
 
         if target == SHOW_TARGET_DEVICES:
@@ -13550,15 +13650,24 @@ class BridgeCli:
             selected_state = TEXT_STATUS_ON if selected_enabled else TEXT_STATUS_OFF
             payload_runtime = dict(payload)
             payload_runtime[KEY_GROUP_COUNT] = group_count
-            payload_runtime[KEY_BRIDGE_GROUPS] = [
-                {
-                    KEY_NAME: GROUP_NAME_ACTIVE,
-                    KEY_ENABLED: True,
-                    KEY_MEMBERS: list(self._active_group_members),
-                    KEY_BRIDGE_BINDINGS: [],
-                    KEY_TEMP: True,
-                }
-            ] + list(groups)
+            resolved_runtime_groups = [
+                self._resolved_local_group_payload(
+                    active_group_payload,
+                    scope_active=False,
+                    binding_count=COUNT_ZERO,
+                )
+            ]
+            for group in groups:
+                if not isinstance(group, dict):
+                    continue
+                resolved_runtime_groups.append(
+                    self._resolved_local_group_payload(
+                        group,
+                        scope_active=False,
+                        binding_count=len(group.get(KEY_BRIDGE_BINDINGS, []) or []),
+                    )
+                )
+            payload_runtime[KEY_BRIDGE_GROUPS] = resolved_runtime_groups
             status_lines = [
                 TEXT_STATUS_HEADER,
                 TEXT_STATUS_BUILD.format(value=build_value),
@@ -13574,28 +13683,26 @@ class BridgeCli:
                 group_lines.append(TEXT_GROUPS_NONE)
             else:
                 group_lines.append(TEXT_GROUPS_HEADER)
-                active_members = active_group_payload.get(KEY_MEMBERS, [])
+                active_group_resolved = resolved_runtime_groups[COUNT_ZERO]
                 group_lines.append(
                     TEXT_GROUPS_ENTRY.format(
                         name=GROUP_NAME_ACTIVE,
                         state=TEXT_ENABLED,
-                        members=len(active_members) if isinstance(active_members, list) else COUNT_ZERO,
+                        members=active_group_resolved.get(KEY_MEMBER_COUNT, COUNT_ZERO),
                         bindings=COUNT_ZERO,
                     )
                 )
-                for group in groups:
-                    if not isinstance(group, dict):
-                        continue
+                for group in resolved_runtime_groups[COUNT_ONE:]:
                     name = str(group.get(KEY_NAME, EMPTY_STRING)).strip()
                     enabled = bool(group.get(KEY_ENABLED, True))
-                    members = group.get(KEY_MEMBERS, []) or []
-                    bindings = group.get(KEY_BRIDGE_BINDINGS, []) or []
+                    members = int(group.get(KEY_MEMBER_COUNT, COUNT_ZERO))
+                    bindings = int(group.get(KEY_BINDING_COUNT, COUNT_ZERO))
                     group_lines.append(
                         TEXT_GROUPS_ENTRY.format(
                             name=name,
                             state=TEXT_ENABLED if enabled else TEXT_DISABLED,
-                            members=len(members),
-                            bindings=len(bindings),
+                            members=members,
+                            bindings=bindings,
                         )
                     )
             _print_local(SEP_NEWLINE.join(status_lines + [""] + group_lines), payload_runtime)
@@ -13998,18 +14105,16 @@ class BridgeCli:
         if group is None:
             return []
         bindings = group.get(KEY_BRIDGE_BINDINGS, []) or []
-        members = group.get(KEY_MEMBERS, []) or []
-        total_members = COUNT_ZERO
-        enabled_members = COUNT_ZERO
-        for member in members:
-            if isinstance(member, dict):
-                total_members += COUNT_ONE
-                if bool(member.get(KEY_ENABLED, True)):
-                    enabled_members += COUNT_ONE
-            elif isinstance(member, str):
-                total_members += COUNT_ONE
-                enabled_members += COUNT_ONE
-        group_enabled = bool(group.get(KEY_ENABLED, True))
+        resolved_payload = self._resolved_local_group_payload(
+            group,
+            scope_active=self._is_active_group(group_name),
+            binding_count=len(bindings) if isinstance(bindings, list) else COUNT_ZERO,
+        )
+        total_members = int(resolved_payload.get(KEY_MEMBER_COUNT, COUNT_ZERO))
+        enabled_members = int(
+            resolved_payload.get(KEY_ENABLED_MEMBER_COUNT, COUNT_ZERO)
+        )
+        group_enabled = bool(resolved_payload.get(KEY_ENABLED, True))
         controller_names = self._known_controller_names()
         diagnostics: List[Dict[str, object]] = []
         for index, binding in enumerate(bindings, start=COUNT_ONE):

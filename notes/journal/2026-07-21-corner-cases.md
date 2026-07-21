@@ -1,0 +1,4 @@
+- Corner cases keep surfacing that need cleanup.
+- I am trying to err on the side of safety and consistency.
+- One example is when a controller is bound to a group and we also have UI right-click popup control over that same group or overlapping devices.
+- The system needs clear priority rules, clear current active ownership, and explicit handling for who is allowed to drive what and when.

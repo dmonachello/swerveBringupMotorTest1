@@ -14,9 +14,11 @@ DESCRIPTION
 
 import os
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
+from tools.can_nt.can_fault_inference import build_fault_diagnosis, render_fault_diagnosis
 from tools.common.config_api.repository import ConfigRepository
 from tools.common.motor_runtime_verdict import (
     RESULT_ELECTRICAL,
@@ -59,6 +61,11 @@ TEXT_SECTION_SEPARATOR = "; "
 TEXT_ENGINE_BANNER_PREFIX = "Evidence Engine: "
 TEXT_ROLLOUT_PREFIX = "rollout="
 TEXT_SECTION_PREFIX = "sections="
+FAULT_SNAPSHOT_KEY_ROWS = "rows"
+FAULT_SNAPSHOT_KEY_RESULT = "result"
+FAULT_SNAPSHOT_KEY_RENDERED_TEXT = "renderedText"
+FAULT_SNAPSHOT_KEY_CANDIDATE_COUNT = "candidateCount"
+FAULT_SNAPSHOT_KEY_RAN_AT = "ranAt"
 KEY_DEVICE_TYPE = "deviceType"
 KEY_PROFILE_NODE = "profileNode"
 KEY_BUS = "bus"
@@ -100,11 +107,14 @@ EVIDENCE_CONFIDENCE_HIGH = "HIGH"
 EVIDENCE_CONFIDENCE_MEDIUM = "MEDIUM"
 EVIDENCE_CONFIDENCE_LOW = "LOW"
 EVIDENCE_SOURCE_NONE = "--"
+EVIDENCE_SOURCE_LOCAL_SNAPSHOT = "localSnapshot"
+EVIDENCE_SOURCE_RUNTIME_STATE = "runtimeState"
 RUNTIME_DEVICE_KEY_ATTACHMENTS = "attachments"
 RUNTIME_DEVICE_KEY_PRESENCE_CONFIDENCE = "presenceConfidence"
 RUNTIME_DEVICE_KEY_INSTANTIATED = "instantiated"
 RUNTIME_DEVICE_KEY_LAST_SEEN_MS = "lastSeenMs"
 RUNTIME_DEVICE_KEY_LIFECYCLE_STATE = "lifecycleState"
+RUNTIME_DEVICE_KEY_ACTIVE_GROUP_LABEL = "activeGroupLabel"
 RUNTIME_DEVICE_KEY_BUS_V = "busV"
 RUNTIME_DEVICE_KEY_TOTAL_CURRENT_A = "totalCurrentA"
 RUNTIME_DEVICE_KEY_TEMP_C = "tempC"
@@ -341,6 +351,101 @@ INTERPRET_KEY_LAST_STATE_CHANGE_AT = "lastStateChangeAt"
 INTERPRET_KEY_LAST_EVALUATION_AT = "lastEvaluationAt"
 INTERPRET_KEY_CHANGE_REASON = "changeReason"
 INTERPRET_KEY_EVENT_LOG = "eventLog"
+
+
+@dataclass(frozen=True)
+class InterpretedDeviceState:
+    """
+    NAME
+        InterpretedDeviceState - Shared typed interpreted evidence contract for one device.
+
+    DESCRIPTION
+        Holds the canonical interpreted evidence state before legacy row-dict adapters
+        are applied for existing UI and fault-finder consumers.
+    """
+
+    label: str
+    device_type: str
+    passive: str
+    console: str
+    probe: str
+    probe_score: str
+    manual: str
+    existence: str
+    operability: str
+    identity: str
+    confidence: str
+    presence_text: str
+    passive_text: str
+    console_text: str
+    probe_text: str
+    manual_text: str
+    enrichment_text: str
+    notes_text: str
+    state: str
+    conflicted: bool
+    presence_score: int
+    presence_state: str
+    presence_reasons: List[str]
+    freshness: str
+    source_scores: Dict[str, Any]
+    dirty: bool = False
+    dirty_reasons: List[str] = None
+    last_known_good_at: Optional[float] = None
+    last_seen_present_at: Optional[float] = None
+    last_seen_missing_at: Optional[float] = None
+    last_state_change_at: Optional[float] = None
+    last_evaluation_at: Optional[float] = None
+    change_reason: str = EVIDENCE_SOURCE_NONE
+    event_log: List[Mapping[str, Any]] = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "presence_reasons", list(self.presence_reasons or []))
+        object.__setattr__(self, "source_scores", dict(self.source_scores or {}))
+        object.__setattr__(self, "dirty_reasons", list(self.dirty_reasons or []))
+        object.__setattr__(self, "event_log", list(self.event_log or []))
+
+    def to_row(self) -> Dict[str, Any]:
+        """
+        NAME
+            to_row - Adapt the typed state to the legacy interpreted-row mapping contract.
+        """
+        return {
+            INTERPRET_KEY_LABEL: self.label,
+            INTERPRET_KEY_DEVICE_TYPE: self.device_type,
+            INTERPRET_KEY_PASSIVE: self.passive,
+            INTERPRET_KEY_CONSOLE: self.console,
+            INTERPRET_KEY_PROBE: self.probe,
+            INTERPRET_KEY_PROBE_SCORE: self.probe_score,
+            INTERPRET_KEY_MANUAL: self.manual,
+            INTERPRET_KEY_EXISTENCE: self.existence,
+            INTERPRET_KEY_OPERABILITY: self.operability,
+            INTERPRET_KEY_IDENTITY: self.identity,
+            INTERPRET_KEY_CONFIDENCE: self.confidence,
+            INTERPRET_KEY_PRESENCE_TEXT: self.presence_text,
+            INTERPRET_KEY_PASSIVE_TEXT: self.passive_text,
+            INTERPRET_KEY_CONSOLE_TEXT: self.console_text,
+            INTERPRET_KEY_PROBE_TEXT: self.probe_text,
+            INTERPRET_KEY_MANUAL_TEXT: self.manual_text,
+            INTERPRET_KEY_ENRICHMENT_TEXT: self.enrichment_text,
+            INTERPRET_KEY_NOTES_TEXT: self.notes_text,
+            INTERPRET_KEY_STATE: self.state,
+            INTERPRET_KEY_CONFLICTED: self.conflicted,
+            INTERPRET_KEY_PRESENCE_SCORE: self.presence_score,
+            INTERPRET_KEY_PRESENCE_STATE: self.presence_state,
+            INTERPRET_KEY_PRESENCE_REASONS: list(self.presence_reasons),
+            INTERPRET_KEY_FRESHNESS: self.freshness,
+            INTERPRET_KEY_SOURCE_SCORES: dict(self.source_scores),
+            INTERPRET_KEY_DIRTY: self.dirty,
+            INTERPRET_KEY_DIRTY_REASONS: list(self.dirty_reasons),
+            INTERPRET_KEY_LAST_KNOWN_GOOD_AT: self.last_known_good_at,
+            INTERPRET_KEY_LAST_SEEN_PRESENT_AT: self.last_seen_present_at,
+            INTERPRET_KEY_LAST_SEEN_MISSING_AT: self.last_seen_missing_at,
+            INTERPRET_KEY_LAST_STATE_CHANGE_AT: self.last_state_change_at,
+            INTERPRET_KEY_LAST_EVALUATION_AT: self.last_evaluation_at,
+            INTERPRET_KEY_CHANGE_REASON: self.change_reason,
+            INTERPRET_KEY_EVENT_LOG: list(self.event_log),
+        }
 EVIDENCE_NOTE_SEPARATOR = " | "
 EVIDENCE_TEXT_DEVICE_TIMEOUT = "timeout"
 EVIDENCE_TEXT_CAN_MESSAGE_STALE = "can message is stale"
@@ -372,7 +477,13 @@ EVIDENCE_NOTE_PASSIVE_WITHOUT_PROBE_RESULT = "Passive CAN traffic is present, bu
 EVIDENCE_NOTE_PASSIVE_OVERRIDES_RUNTIME_ABSENCE = "Passive CAN shows recurring device-emitted traffic even though the robot-local presence snapshot did not observe this device."
 EVIDENCE_NOTE_INFRA_SCOPE_ABSENCE = "Infrastructure device is outside the current motion-test scope; local snapshot absence is not treated as definitive missing evidence."
 EVIDENCE_NOTE_INFRA_RUNTIME_PRESENT = "Infrastructure singleton runtime telemetry is present even though the current motion-test scope did not include this device."
+EVIDENCE_NOTE_INFRA_PASSIVE_PRESENT = "Infrastructure device observed by passive CAN even though the current motion-test scope did not include it."
+EVIDENCE_NOTE_INFRA_PASSIVE_LIMITED = "Infrastructure device observed by passive CAN, but active test-scope/runtime evidence is limited."
+EVIDENCE_NOTE_CONSOLE_DEVICE_TIMEOUT = "Device-targeted stale/timeout console evidence present."
+EVIDENCE_NOTE_CONSOLE_DEVICE_TIMEOUT_CONFLICT = "Fresh targeted console fault evidence conflicts with weak/stale positive presence evidence."
+EVIDENCE_NOTE_INFRA_CONSOLE_MISSING = "Fresh device-targeted console timeout evidence with no fresh positive corroboration is being treated as missing infrastructure presence."
 EVIDENCE_NOTE_NONE = "No major source conflict."
+EVIDENCE_NOTE_RUNTIME_SNAPSHOT_UNCONFIRMED_MOTION = "Runtime scope snapshot says present, but recent motion check and passive CAN did not confirm the motor as physically present."
 ENRICHMENT_SOURCE_CTRE = "ctreHttp"
 ENRICHMENT_SOURCE_TOPOLOGY = "topology"
 ENRICHMENT_SOURCE_CONSOLE_LOG = "consoleLog"
@@ -417,6 +528,7 @@ ENRICHMENT_NOTE_CTRE_ONLY = "CTRE HTTP reported this CTRE device even though pas
 ENRICHMENT_NOTE_CTRE_FAULTS = "CTRE HTTP reported active or sticky fault fields."
 ENRICHMENT_NOTE_CONSOLE_ENRICHMENT_ERROR = "Console-log enrichment found device-specific warning/error evidence."
 ENRICHMENT_NOTE_TOPOLOGY_CONFIRMED = "Topology enrichment confirms this device is part of the selected profile layout."
+ENRICHMENT_NOTE_RUN_FMT = "Host enrichment ran {age}; ctreHttp={ctre}; topology={topology}; consoleLog={console}."
 DETAIL_SNAPSHOT_PRESENCE = "presence"
 DETAIL_SNAPSHOT_PRESENCE_STATUS = "presenceStatus"
 DETAIL_SNAPSHOT_PRESENCE_AGE = "presenceAge"
@@ -426,6 +538,9 @@ DETAIL_SNAPSHOT_FULL_PROBE_AGE = "fullProbeAge"
 DETAIL_SNAPSHOT_FULL_PROBE_SCORE = "fullProbeScore"
 DETAIL_SNAPSHOT_FULL_PROBE_STATUS = "fullProbeStatus"
 DETAIL_SNAPSHOT_FULL_PROBE_MESSAGE = "fullProbeMessage"
+DETAIL_SNAPSHOT_GROUP_MEMBER = "groupMember"
+DETAIL_SNAPSHOT_SCOPE_ACTIVE = "scopeActive"
+DETAIL_SNAPSHOT_INSTANTIATED = "instantiated"
 DETAIL_SNAPSHOT_LIFECYCLE_STATE = "lifecycleState"
 DETAIL_SNAPSHOT_TESTABLE = "testable"
 DETAIL_SNAPSHOT_OVERRIDE_ACTIVE = "overrideActive"
@@ -464,6 +579,8 @@ EVIDENCE_FIELD_POSITION_ROT = "positionRot"
 VIS_IDENTITY_UNKNOWN = "--"
 VIS_PACKET_COUNT_UNKNOWN = "--"
 VIS_PACKET_RATE_UNKNOWN = "--"
+ACTIVE_GROUP_NAME = "active-group"
+LIFECYCLE_STATE_CONTROLLED_ACTIVE = "controlled-active"
 
 
 def default_profile_path() -> str:
@@ -1634,7 +1751,7 @@ def build_manual_snapshot(
     }
 
 
-def build_interpreted_evidence_row(
+def build_interpreted_device_state(
     *,
     label: str,
     presence_entry: Optional[Mapping[str, Any]],
@@ -1655,10 +1772,10 @@ def build_interpreted_evidence_row(
     visibility_last_seen_text: str = VIS_IDENTITY_UNKNOWN,
     visibility_packet_count_text: str = VIS_PACKET_COUNT_UNKNOWN,
     visibility_packet_rate_text: str = VIS_PACKET_RATE_UNKNOWN,
-) -> Dict[str, Any]:
+) -> InterpretedDeviceState:
     """
     NAME
-        build_interpreted_evidence_row - Build one shared Evidence-tab interpretation row.
+        build_interpreted_device_state - Build one shared typed Evidence-tab interpretation state.
     """
     if now_s is None:
         import time
@@ -1746,6 +1863,7 @@ def build_interpreted_evidence_row(
     console_has_warn = bool(console_entry.get(CONSOLE_KEY_HAS_WARN)) if isinstance(console_entry, Mapping) else False
     console_targets_failure = _console_entry_targets_device_failure(console_entry)
     enrichment_entry = _enrichment_device_entry(enrichment_snapshot, label)
+    enrichment_run_note = _build_enrichment_run_note(enrichment_snapshot, now_s=now_s)
     manual_auto_result = (
         str(manual_observation.get("autoResult", TEXT_EMPTY)).strip()
         if isinstance(manual_observation, Mapping)
@@ -1765,6 +1883,8 @@ def build_interpreted_evidence_row(
     identity = passive_identity
     confidence = EVIDENCE_CONFIDENCE_LOW
     notes: list[str] = []
+    if enrichment_run_note:
+        notes.append(enrichment_run_note)
     evidence_state = EVIDENCE_STATE_UNKNOWN
     evidence_conflicted = False
     cmd_duty = _runtime_device_field_from_mapping(runtime_device, EVIDENCE_FIELD_CMD_DUTY)
@@ -1851,9 +1971,7 @@ def build_interpreted_evidence_row(
                 confidence = EVIDENCE_CONFIDENCE_MEDIUM
                 evidence_state = EVIDENCE_STATE_DEGRADED
                 if is_infrastructure_device:
-                    notes.append(
-                        "Infrastructure device observed by passive CAN even though the current motion-test scope did not include it."
-                    )
+                    notes.append(EVIDENCE_NOTE_INFRA_PASSIVE_PRESENT)
                 else:
                     evidence_conflicted = True
                     notes.append(EVIDENCE_NOTE_PASSIVE_OVERRIDES_RUNTIME_ABSENCE)
@@ -1953,7 +2071,7 @@ def build_interpreted_evidence_row(
         confidence = passive_confidence if passive_device is not None else EVIDENCE_CONFIDENCE_MEDIUM
         if is_infrastructure_device and passive_device is None:
             evidence_state = EVIDENCE_STATE_DEGRADED
-            notes.append("Infrastructure device observed by passive CAN, but active test-scope/runtime evidence is limited.")
+            notes.append(EVIDENCE_NOTE_INFRA_PASSIVE_LIMITED)
         else:
             evidence_state = EVIDENCE_STATE_OK
     elif existence == EVIDENCE_STATUS_UNKNOWN and passive_device is not None and passive_expected_status == "missing":
@@ -1984,7 +2102,7 @@ def build_interpreted_evidence_row(
         operability = EVIDENCE_STATUS_FAILED
         confidence = EVIDENCE_CONFIDENCE_LOW if confidence == EVIDENCE_CONFIDENCE_HIGH else EVIDENCE_CONFIDENCE_MEDIUM
         evidence_state = EVIDENCE_STATE_FAILED
-        notes.append("Device-targeted stale/timeout console evidence present.")
+        notes.append(EVIDENCE_NOTE_CONSOLE_DEVICE_TIMEOUT)
     probe_invalidated_by_console = bool(
         console_targets_failure and probe_bucket != PROBE_BUCKET_NOT_RUN and probe_age_bucket in {PROBE_AGE_AGING, PROBE_AGE_STALE}
     )
@@ -2015,9 +2133,20 @@ def build_interpreted_evidence_row(
         if existence == EVIDENCE_STATUS_PRESENT:
             existence = EVIDENCE_STATUS_CONFLICT
             evidence_conflicted = True
-            notes.append("Fresh targeted console fault evidence conflicts with weak/stale positive presence evidence.")
+            notes.append(EVIDENCE_NOTE_CONSOLE_DEVICE_TIMEOUT_CONFLICT)
         elif existence == EVIDENCE_STATUS_UNKNOWN:
             confidence = EVIDENCE_CONFIDENCE_LOW
+    if (
+        is_infrastructure_device
+        and console_targets_failure
+        and not stronger_positive_contradiction
+        and not runtime_infrastructure_present
+    ):
+        existence = EVIDENCE_STATUS_ABSENT
+        operability = EVIDENCE_STATUS_FAILED
+        confidence = EVIDENCE_CONFIDENCE_MEDIUM
+        evidence_state = EVIDENCE_STATE_FAILED
+        notes.append(EVIDENCE_NOTE_INFRA_CONSOLE_MISSING)
     if bool(system_console.get(CONSOLE_KEY_SYSTEM_CONFLICT)):
         notes.append("System-level console fault may reflect broader CAN isolation.")
         evidence_conflicted = True
@@ -2125,6 +2254,43 @@ def build_interpreted_evidence_row(
                 notes.append("Motor commanded with little current and no motion; possible electrical/output-path issue.")
             else:
                 notes.append(EVIDENCE_MOTION_NOTE_NO_ROTATION)
+    runtime_presence_from_local_snapshot = bool(
+        isinstance(presence_entry, Mapping)
+        and str(presence_entry.get(PRESENCE_KEY_SOURCE, EVIDENCE_SOURCE_NONE)).strip() == EVIDENCE_SOURCE_LOCAL_SNAPSHOT
+        and str(presence_entry.get(PRESENCE_KEY_EXISTENCE, EVIDENCE_STATUS_UNKNOWN)).strip().upper() == EVIDENCE_STATUS_PRESENT
+    )
+    motion_like_runtime_device = bool(
+        not is_infrastructure_device
+        and (
+            device_type == DEVICE_CLASS_MOTION
+            or any(
+                isinstance(value, (int, float))
+                for value in (
+                    cmd_duty,
+                    applied_duty,
+                    velocity_rpm,
+                    motor_current,
+                    position_rot,
+                )
+            )
+        )
+    )
+    weak_motion_presence_contradiction = bool(
+        motion_like_runtime_device
+        and runtime_presence_from_local_snapshot
+        and manual_recent_observation
+        and manual_auto_result == MANUAL_AUTO_RESULT_NO_ROTATION
+        and not passive_supports_presence_override
+        and probe_bucket in (VIS_IDENTITY_UNKNOWN, PROBE_BUCKET_NOT_RUN)
+        and not isinstance(ctre_enrichment_entry, Mapping)
+    )
+    if weak_motion_presence_contradiction:
+        existence = EVIDENCE_STATUS_CONFLICT
+        operability = EVIDENCE_STATUS_FAILED
+        confidence = EVIDENCE_CONFIDENCE_LOW
+        evidence_state = EVIDENCE_STATE_FAILED
+        evidence_conflicted = True
+        notes.append(EVIDENCE_NOTE_RUNTIME_SNAPSHOT_UNCONFIRMED_MOTION)
     if identity == EVIDENCE_STATUS_MATCHING and existence == EVIDENCE_STATUS_PRESENT:
         if evidence_state == EVIDENCE_STATE_UNKNOWN:
             evidence_state = EVIDENCE_STATE_IDENTITY
@@ -2220,41 +2386,119 @@ def build_interpreted_evidence_row(
         enrichment_entry=enrichment_entry,
         now_s=now_s,
     )
+    return InterpretedDeviceState(
+        label=label,
+        device_type=device_type,
+        passive=passive_summary,
+        console=console_summary or EVIDENCE_SOURCE_NONE,
+        probe=probe_summary_value,
+        probe_score=probe_score_value,
+        manual=manual_summary_value,
+        existence=existence,
+        operability=operability,
+        identity=identity,
+        confidence=confidence,
+        presence_text=presence_text,
+        passive_text=passive_text,
+        console_text=console_text,
+        probe_text=probe_text,
+        manual_text=manual_text,
+        enrichment_text=enrichment_text,
+        notes_text=EVIDENCE_NOTE_SEPARATOR.join(notes),
+        state=evidence_state,
+        conflicted=evidence_conflicted,
+        presence_score=presence_score,
+        presence_state=presence_state,
+        presence_reasons=list(notes),
+        freshness=freshness,
+        source_scores=source_scores,
+        dirty=False,
+        dirty_reasons=[],
+        last_known_good_at=None,
+        last_seen_present_at=None,
+        last_seen_missing_at=None,
+        last_state_change_at=None,
+        last_evaluation_at=None,
+        change_reason=EVIDENCE_SOURCE_NONE,
+        event_log=[],
+    )
+
+
+def build_interpreted_evidence_row(
+    *,
+    label: str,
+    presence_entry: Optional[Mapping[str, Any]],
+    passive_device: Optional[Any],
+    enrichment_snapshot: Optional[Mapping[str, Any]] = None,
+    visibility_device: Optional[Mapping[str, Any]],
+    runtime_device: Optional[Mapping[str, Any]],
+    console_entry: Optional[Mapping[str, Any]],
+    system_console: Mapping[str, Any],
+    manual_entry: Optional[Mapping[str, Any]],
+    manual_observation: Optional[Mapping[str, Any]],
+    manual_motion: Optional[Mapping[str, Any]],
+    probe_pending: bool,
+    last_probe_completed_at: float,
+    probe_run_count: int,
+    now_s: Optional[float] = None,
+    visibility_identity_text: str = VIS_IDENTITY_UNKNOWN,
+    visibility_last_seen_text: str = VIS_IDENTITY_UNKNOWN,
+    visibility_packet_count_text: str = VIS_PACKET_COUNT_UNKNOWN,
+    visibility_packet_rate_text: str = VIS_PACKET_RATE_UNKNOWN,
+) -> Dict[str, Any]:
+    """
+    NAME
+        build_interpreted_evidence_row - Build the legacy interpreted row adapter from shared typed state.
+    """
+    return build_interpreted_device_state(
+        label=label,
+        presence_entry=presence_entry,
+        passive_device=passive_device,
+        enrichment_snapshot=enrichment_snapshot,
+        visibility_device=visibility_device,
+        runtime_device=runtime_device,
+        console_entry=console_entry,
+        system_console=system_console,
+        manual_entry=manual_entry,
+        manual_observation=manual_observation,
+        manual_motion=manual_motion,
+        probe_pending=probe_pending,
+        last_probe_completed_at=last_probe_completed_at,
+        probe_run_count=probe_run_count,
+        now_s=now_s,
+        visibility_identity_text=visibility_identity_text,
+        visibility_last_seen_text=visibility_last_seen_text,
+        visibility_packet_count_text=visibility_packet_count_text,
+        visibility_packet_rate_text=visibility_packet_rate_text,
+    ).to_row()
+
+
+def build_evidence_fault_snapshot(
+    *,
+    evidence_rows: List[Mapping[str, Any]],
+    console_snapshot: Optional[Mapping[str, Any]],
+    topology_profile: Optional[Mapping[str, Any]],
+    now_s: float,
+) -> Dict[str, Any]:
+    """
+    NAME
+        build_evidence_fault_snapshot - Freeze evidence rows and their derived fault-finder diagnosis in one shared contract.
+    """
+    frozen_rows = [dict(row) for row in evidence_rows]
+    result = build_fault_diagnosis(
+        evidence_rows=frozen_rows,
+        console_snapshot=console_snapshot,
+        topology_profile=topology_profile,
+        now_s=now_s,
+    )
+    candidates = result.get("candidates")
+    candidate_count = len(candidates) if isinstance(candidates, list) else 0
     return {
-        INTERPRET_KEY_LABEL: label,
-        INTERPRET_KEY_DEVICE_TYPE: device_type,
-        INTERPRET_KEY_PASSIVE: passive_summary,
-        INTERPRET_KEY_CONSOLE: console_summary or EVIDENCE_SOURCE_NONE,
-        INTERPRET_KEY_PROBE: probe_summary_value,
-        INTERPRET_KEY_PROBE_SCORE: probe_score_value,
-        INTERPRET_KEY_MANUAL: manual_summary_value,
-        INTERPRET_KEY_EXISTENCE: existence,
-        INTERPRET_KEY_OPERABILITY: operability,
-        INTERPRET_KEY_IDENTITY: identity,
-        INTERPRET_KEY_CONFIDENCE: confidence,
-        INTERPRET_KEY_PRESENCE_TEXT: presence_text,
-        INTERPRET_KEY_PASSIVE_TEXT: passive_text,
-        INTERPRET_KEY_CONSOLE_TEXT: console_text,
-        INTERPRET_KEY_PROBE_TEXT: probe_text,
-        INTERPRET_KEY_MANUAL_TEXT: manual_text,
-        INTERPRET_KEY_ENRICHMENT_TEXT: enrichment_text,
-        INTERPRET_KEY_NOTES_TEXT: EVIDENCE_NOTE_SEPARATOR.join(notes),
-        INTERPRET_KEY_STATE: evidence_state,
-        INTERPRET_KEY_CONFLICTED: evidence_conflicted,
-        INTERPRET_KEY_PRESENCE_SCORE: presence_score,
-        INTERPRET_KEY_PRESENCE_STATE: presence_state,
-        INTERPRET_KEY_PRESENCE_REASONS: list(notes),
-        INTERPRET_KEY_FRESHNESS: freshness,
-        INTERPRET_KEY_SOURCE_SCORES: source_scores,
-        INTERPRET_KEY_DIRTY: False,
-        INTERPRET_KEY_DIRTY_REASONS: [],
-        INTERPRET_KEY_LAST_KNOWN_GOOD_AT: None,
-        INTERPRET_KEY_LAST_SEEN_PRESENT_AT: None,
-        INTERPRET_KEY_LAST_SEEN_MISSING_AT: None,
-        INTERPRET_KEY_LAST_STATE_CHANGE_AT: None,
-        INTERPRET_KEY_LAST_EVALUATION_AT: None,
-        INTERPRET_KEY_CHANGE_REASON: EVIDENCE_SOURCE_NONE,
-        INTERPRET_KEY_EVENT_LOG: [],
+        FAULT_SNAPSHOT_KEY_ROWS: frozen_rows,
+        FAULT_SNAPSHOT_KEY_RESULT: dict(result),
+        FAULT_SNAPSHOT_KEY_RENDERED_TEXT: render_fault_diagnosis(result),
+        FAULT_SNAPSHOT_KEY_CANDIDATE_COUNT: candidate_count,
+        FAULT_SNAPSHOT_KEY_RAN_AT: now_s,
     }
 
 
@@ -2282,6 +2526,9 @@ def build_runtime_device_detail_snapshot(
         DETAIL_SNAPSHOT_FULL_PROBE_SCORE: EVIDENCE_SOURCE_NONE,
         DETAIL_SNAPSHOT_FULL_PROBE_STATUS: EVIDENCE_SOURCE_NONE,
         DETAIL_SNAPSHOT_FULL_PROBE_MESSAGE: EVIDENCE_SOURCE_NONE,
+        DETAIL_SNAPSHOT_GROUP_MEMBER: EVIDENCE_SOURCE_NONE,
+        DETAIL_SNAPSHOT_SCOPE_ACTIVE: EVIDENCE_SOURCE_NONE,
+        DETAIL_SNAPSHOT_INSTANTIATED: EVIDENCE_SOURCE_NONE,
         DETAIL_SNAPSHOT_LIFECYCLE_STATE: EVIDENCE_SOURCE_NONE,
         DETAIL_SNAPSHOT_TESTABLE: EVIDENCE_SOURCE_NONE,
         DETAIL_SNAPSHOT_OVERRIDE_ACTIVE: EVIDENCE_SOURCE_NONE,
@@ -2345,7 +2592,22 @@ def build_runtime_device_detail_snapshot(
         if isinstance(probe, Mapping)
         else EVIDENCE_SOURCE_NONE
     )
-    snapshot[DETAIL_SNAPSHOT_LIFECYCLE_STATE] = str(runtime_device.get("lifecycleState", EVIDENCE_SOURCE_NONE)).strip() or EVIDENCE_SOURCE_NONE
+    lifecycle_state = str(
+        runtime_device.get(RUNTIME_DEVICE_KEY_LIFECYCLE_STATE, EVIDENCE_SOURCE_NONE)
+    ).strip() or EVIDENCE_SOURCE_NONE
+    active_group_label = str(
+        runtime_device.get(RUNTIME_DEVICE_KEY_ACTIVE_GROUP_LABEL, EVIDENCE_SOURCE_NONE)
+    ).strip().lower()
+    snapshot[DETAIL_SNAPSHOT_GROUP_MEMBER] = _bool_text(
+        active_group_label == ACTIVE_GROUP_NAME
+    )
+    snapshot[DETAIL_SNAPSHOT_SCOPE_ACTIVE] = _bool_text(
+        lifecycle_state.lower() == LIFECYCLE_STATE_CONTROLLED_ACTIVE
+    )
+    snapshot[DETAIL_SNAPSHOT_INSTANTIATED] = _bool_text(
+        runtime_device.get(RUNTIME_DEVICE_KEY_INSTANTIATED)
+    )
+    snapshot[DETAIL_SNAPSHOT_LIFECYCLE_STATE] = lifecycle_state
     snapshot[DETAIL_SNAPSHOT_TESTABLE] = _bool_text(runtime_device.get("testable"))
     snapshot[DETAIL_SNAPSHOT_OVERRIDE_ACTIVE] = _bool_text(runtime_device.get("overrideActive"))
     snapshot[DETAIL_SNAPSHOT_OVERRIDE_ORIGINATED] = _bool_text(runtime_device.get("overrideOriginated"))
@@ -2371,6 +2633,112 @@ def build_runtime_device_detail_snapshot(
             position_delta_rot = max_abs_position_delta_rot
     snapshot[DETAIL_SNAPSHOT_POSITION_DELTA_ROT] = _format_optional_float(position_delta_rot, precision=2)
     snapshot[DETAIL_SNAPSHOT_TEMP_C] = _format_optional_float(_runtime_device_field_from_mapping(runtime_device, "tempC"), precision=1)
+    return snapshot
+
+
+def build_passive_device_detail_snapshot(
+    label: str,
+    *,
+    passive_result: Optional[RunResult],
+    visibility_device: Optional[Mapping[str, Any]] = None,
+    now_s: Optional[float] = None,
+) -> Dict[str, str]:
+    """
+    NAME
+        build_passive_device_detail_snapshot - Build one shared passive CAN detail snapshot for lens-aware inspectors.
+    """
+    if now_s is None:
+        import time
+
+        now_s = time.time()
+    snapshot = {
+        DETAIL_SNAPSHOT_PRESENCE: EVIDENCE_SOURCE_NONE,
+        DETAIL_SNAPSHOT_PRESENCE_STATUS: EVIDENCE_SOURCE_NONE,
+        DETAIL_SNAPSHOT_PRESENCE_AGE: EVIDENCE_SOURCE_NONE,
+        DETAIL_SNAPSHOT_PRESENCE_SOURCE: EVIDENCE_SOURCE_NONE,
+        DETAIL_SNAPSHOT_LAST_SEEN: EVIDENCE_SOURCE_NONE,
+    }
+    clean_label = str(label or TEXT_EMPTY).strip().lower()
+    if not clean_label or not isinstance(passive_result, RunResult):
+        return snapshot
+    visibility_metrics = (
+        visibility_device.get("metrics")
+        if isinstance(visibility_device, Mapping) and isinstance(visibility_device.get("metrics"), Mapping)
+        else {}
+    )
+    device_record = None
+    for candidate in passive_result.device_records:
+        candidate_label = str(candidate.profile_label or TEXT_EMPTY).strip().lower()
+        if candidate_label == clean_label:
+            device_record = candidate
+            break
+    if device_record is None:
+        latest_seen_ms: Optional[float] = None
+        for metric_entry in visibility_metrics.values():
+            if not isinstance(metric_entry, Mapping):
+                continue
+            last_seen_ms = metric_entry.get("lastSeenMs")
+            if not isinstance(last_seen_ms, (int, float)):
+                continue
+            latest_seen_ms = (
+                float(last_seen_ms)
+                if latest_seen_ms is None
+                else max(latest_seen_ms, float(last_seen_ms))
+            )
+        if isinstance(latest_seen_ms, (int, float)):
+            snapshot[DETAIL_SNAPSHOT_PRESENCE] = _format_optional_float(0.0, precision=2)
+            snapshot[DETAIL_SNAPSHOT_PRESENCE_STATUS] = "none"
+            snapshot[DETAIL_SNAPSHOT_PRESENCE_AGE] = _format_last_seen_text(latest_seen_ms, now_s)
+            snapshot[DETAIL_SNAPSHOT_PRESENCE_SOURCE] = "passiveCan"
+            snapshot[DETAIL_SNAPSHOT_LAST_SEEN] = _format_last_seen_text(latest_seen_ms, now_s)
+        return snapshot
+    family_records_by_key = {family.key: family for family in passive_result.family_records}
+    evidence_families: List[FamilyRecord] = []
+    last_seen_s: Optional[float] = None
+    for family_key in tuple(device_record.evidence_family_keys or ()):
+        family = family_records_by_key.get(family_key)
+        if family is None:
+            continue
+        evidence_families.append(family)
+        family_last_seen_s = getattr(family.metrics, "last_seen_s", None)
+        if isinstance(family_last_seen_s, (int, float)):
+            last_seen_s = max(float(last_seen_s), float(family_last_seen_s)) if isinstance(last_seen_s, (int, float)) else float(family_last_seen_s)
+    age_sec = None
+    if isinstance(last_seen_s, (int, float)):
+        age_sec = max(float(now_s) - float(last_seen_s), 0.0)
+    snapshot[DETAIL_SNAPSHOT_PRESENCE] = _format_optional_float(float(device_record.presence_score) / 100.0, precision=2)
+    snapshot[DETAIL_SNAPSHOT_PRESENCE_STATUS] = str(device_record.presence_confidence or EVIDENCE_SOURCE_NONE).strip() or EVIDENCE_SOURCE_NONE
+    snapshot[DETAIL_SNAPSHOT_PRESENCE_AGE] = _format_age_text(age_sec)
+    snapshot[DETAIL_SNAPSHOT_PRESENCE_SOURCE] = "passiveCan"
+    snapshot[DETAIL_SNAPSHOT_LAST_SEEN] = _format_age_text(age_sec)
+    return snapshot
+
+
+def build_interpreted_device_detail_snapshot(
+    evidence_row: Optional[Mapping[str, Any]],
+) -> Dict[str, str]:
+    """
+    NAME
+        build_interpreted_device_detail_snapshot - Build one shared interpreted-evidence detail snapshot for lens-aware inspectors.
+    """
+    snapshot = {
+        DETAIL_SNAPSHOT_PRESENCE: EVIDENCE_SOURCE_NONE,
+        DETAIL_SNAPSHOT_PRESENCE_STATUS: EVIDENCE_SOURCE_NONE,
+        DETAIL_SNAPSHOT_PRESENCE_AGE: EVIDENCE_SOURCE_NONE,
+        DETAIL_SNAPSHOT_PRESENCE_SOURCE: EVIDENCE_SOURCE_NONE,
+    }
+    if not isinstance(evidence_row, Mapping):
+        return snapshot
+    presence_score = evidence_row.get(INTERPRET_KEY_PRESENCE_SCORE)
+    if isinstance(presence_score, (int, float)):
+        snapshot[DETAIL_SNAPSHOT_PRESENCE] = _format_optional_float(float(presence_score) / 100.0, precision=2)
+    snapshot[DETAIL_SNAPSHOT_PRESENCE_STATUS] = str(
+        evidence_row.get(INTERPRET_KEY_PRESENCE_STATE, EVIDENCE_SOURCE_NONE)
+    ).strip() or EVIDENCE_SOURCE_NONE
+    snapshot[DETAIL_SNAPSHOT_PRESENCE_AGE] = str(
+        evidence_row.get(INTERPRET_KEY_FRESHNESS, EVIDENCE_SOURCE_NONE)
+    ).strip() or EVIDENCE_SOURCE_NONE
+    snapshot[DETAIL_SNAPSHOT_PRESENCE_SOURCE] = "interpretedEvidence"
     return snapshot
 
 
@@ -2843,6 +3211,136 @@ def _build_passive_text(
     return EVIDENCE_SOURCE_NONE
 
 
+def build_passive_visibility_deep_dive_text(
+    *,
+    label: str,
+    passive_result: Optional[RunResult],
+    visibility_device: Optional[Mapping[str, Any]],
+    visibility_identity_text: str,
+    visibility_last_seen_text: str,
+    visibility_packet_count_text: str,
+    visibility_packet_rate_text: str,
+) -> str:
+    """
+    NAME
+        build_passive_visibility_deep_dive_text - Render one CAN Visibility deep-dive block from the shared passive analyzer result.
+    """
+    clean_label = str(label or TEXT_EMPTY).strip()
+    if not clean_label:
+        return EVIDENCE_SOURCE_NONE
+    passive_device: Optional[DeviceRecord] = None
+    if isinstance(passive_result, RunResult):
+        for device in passive_result.device_records:
+            device_label = str(device.profile_label or TEXT_EMPTY).strip()
+            if device_label.lower() == clean_label.lower():
+                passive_device = device
+                break
+    if passive_device is None:
+        return "\n".join(
+            [
+                "Shared Passive CAN Deep Dive",
+                f"label={clean_label}",
+                "No shared passive CAN analysis result available for this device.",
+                EVIDENCE_NOTE_SEPARATOR.join(
+                    (
+                        f"observerIdentity={visibility_identity_text}",
+                        f"lastSeen={visibility_last_seen_text}",
+                        f"packets={visibility_packet_count_text}",
+                        f"rate={visibility_packet_rate_text}",
+                    )
+                ),
+            ]
+        )
+    family_records_by_key = {
+        family.key: family
+        for family in passive_result.family_records
+    } if isinstance(passive_result, RunResult) else {}
+    evidence_family_keys = tuple(passive_device.evidence_family_keys or ())
+    evidence_families: List[FamilyRecord] = []
+    supporting_families: List[FamilyRecord] = []
+    evidence_packet_count = 0
+    for family_key in evidence_family_keys:
+        family = family_records_by_key.get(family_key)
+        if family is None:
+            continue
+        if str(family.role or TEXT_EMPTY).startswith("DEVICE_EMITTED_"):
+            evidence_families.append(family)
+            evidence_packet_count += int(getattr(family.metrics, "count", 0) or 0)
+        else:
+            supporting_families.append(family)
+    family_count = len(evidence_families) + len(supporting_families)
+    lines: List[str] = [
+        "Shared Passive CAN Deep Dive",
+        EVIDENCE_NOTE_SEPARATOR.join(
+            (
+                f"label={clean_label}",
+                "source=passive_discovery_poc",
+                f"presence={passive_device.presence_confidence}",
+                f"passiveScore={int(passive_device.presence_score)}/100",
+                f"expected={passive_device.expected_status}",
+            )
+        ),
+        EVIDENCE_NOTE_SEPARATOR.join(
+            (
+                f"observerIdentity={visibility_identity_text}",
+                f"lastSeen={visibility_last_seen_text}",
+                f"packets={visibility_packet_count_text}",
+                f"rate={visibility_packet_rate_text}",
+                f"existencePackets={evidence_packet_count}",
+            )
+        ),
+        EVIDENCE_NOTE_SEPARATOR.join(
+            (
+                f"evidenceFamilies={len(evidence_families)}",
+                f"supportingFamilies={len(supporting_families)}",
+                f"familyTotal={family_count}",
+                f"evidenceSources={TEXT_COMMA_DELIM.join(passive_device.evidence_sources) or EVIDENCE_SOURCE_NONE}",
+            )
+        ),
+        "",
+        "Evidence Families",
+    ]
+    if evidence_families:
+        for family in evidence_families:
+            lines.append(_passive_visibility_family_detail_line(family, counts_for_presence=True))
+    else:
+        lines.append("No fresh device-emitted families are currently contributing to passive presence.")
+    lines.extend(("", "Supporting / Reference Families"))
+    if supporting_families:
+        for family in supporting_families:
+            lines.append(_passive_visibility_family_detail_line(family, counts_for_presence=False))
+    else:
+        lines.append("No supporting/reference-only families were retained for this device.")
+    lines.extend(("", "Evidence Gaps"))
+    gaps = tuple(passive_device.evidence_gaps or ())
+    if gaps:
+        for gap in gaps[:8]:
+            lines.append(f"- {str(gap).strip()}")
+    else:
+        lines.append("No major passive CAN evidence gaps reported.")
+    return "\n".join(lines)
+
+
+def _passive_visibility_family_detail_line(
+    family: FamilyRecord,
+    *,
+    counts_for_presence: bool,
+) -> str:
+    """
+    NAME
+        _passive_visibility_family_detail_line - Render one compact family-level CAN evidence line.
+    """
+    return EVIDENCE_NOTE_SEPARATOR.join(
+        (
+            f"api={int(family.key.api_class)}/{int(family.key.api_index)}",
+            f"role={str(family.role or TEXT_EMPTY).strip() or EVIDENCE_SOURCE_NONE}",
+            f"rate={float(getattr(family.metrics, 'rate_hz', 0.0) or 0.0):.1f}Hz",
+            f"count={int(getattr(family.metrics, 'count', 0) or 0)}",
+            f"countsForPresence={'yes' if counts_for_presence else 'no'}",
+        )
+    )
+
+
 def _bool_text(value: Any) -> str:
     """
     NAME
@@ -3074,6 +3572,50 @@ def _build_enrichment_text(
     return "\n".join(lines)
 
 
+def _build_enrichment_run_note(
+    enrichment_snapshot: Optional[Mapping[str, Any]],
+    *,
+    now_s: Optional[float] = None,
+) -> str:
+    """
+    NAME
+        _build_enrichment_run_note - Format one concise enrichment-run clue for shared notes/conflict text.
+    """
+    if not isinstance(enrichment_snapshot, Mapping):
+        return TEXT_EMPTY
+    refreshed_snapshot = refresh_enrichment_run_snapshot_age(enrichment_snapshot, now_s=now_s)
+    ran_at = refreshed_snapshot.get(ENRICHMENT_RUN_AT_EPOCH_KEY)
+    if not isinstance(ran_at, (int, float)) or float(ran_at) <= 0.0:
+        return TEXT_EMPTY
+    metadata = refreshed_snapshot.get(ENRICHMENT_RUN_METADATA_KEY)
+    if not isinstance(metadata, Mapping):
+        return TEXT_EMPTY
+    ctre_row = metadata.get(ENRICHMENT_SOURCE_CTRE, {})
+    topology_row = metadata.get(ENRICHMENT_SOURCE_TOPOLOGY, {})
+    console_row = metadata.get(ENRICHMENT_SOURCE_CONSOLE_LOG, {})
+    return ENRICHMENT_NOTE_RUN_FMT.format(
+        age=str(refreshed_snapshot.get(ENRICHMENT_RUN_AGE_KEY, EVIDENCE_SOURCE_NONE)).strip() or EVIDENCE_SOURCE_NONE,
+        ctre=str(
+            ctre_row.get(ENRICHMENT_RUN_STATUS_KEY, ENRICHMENT_STATUS_NOT_RUN)
+            if isinstance(ctre_row, Mapping)
+            else ENRICHMENT_STATUS_NOT_RUN
+        ).strip()
+        or ENRICHMENT_STATUS_NOT_RUN,
+        topology=str(
+            topology_row.get(ENRICHMENT_RUN_STATUS_KEY, ENRICHMENT_STATUS_NOT_RUN)
+            if isinstance(topology_row, Mapping)
+            else ENRICHMENT_STATUS_NOT_RUN
+        ).strip()
+        or ENRICHMENT_STATUS_NOT_RUN,
+        console=str(
+            console_row.get(ENRICHMENT_RUN_STATUS_KEY, ENRICHMENT_STATUS_NOT_RUN)
+            if isinstance(console_row, Mapping)
+            else ENRICHMENT_STATUS_NOT_RUN
+        ).strip()
+        or ENRICHMENT_STATUS_NOT_RUN,
+    )
+
+
 def _index_topology_by_label(topology_record: Any) -> Dict[str, Dict[str, Any]]:
     """
     NAME
@@ -3145,7 +3687,7 @@ def _normalize_presence_entry(
         message = str(attachment.get(PRESENCE_KEY_MESSAGE, EVIDENCE_SOURCE_NONE)).strip() or EVIDENCE_SOURCE_NONE
     elif isinstance(score_value, (int, float)):
         bucket = _presence_bucket_from_score(float(score_value))
-        source = "runtimeState"
+        source = EVIDENCE_SOURCE_RUNTIME_STATE
     age_seconds = _presence_age_seconds(updated_at_ms, now_s)
     return {
         KEY_LABEL: label,

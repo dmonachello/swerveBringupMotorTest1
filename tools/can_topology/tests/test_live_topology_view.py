@@ -133,10 +133,13 @@ class LiveTopologyViewTests(unittest.TestCase):
         view._nodes = []
         view._diagram_meta = {}
         view._bridge_groups = []
+        view._runtime_groups = []
         view._runtime_state = {}
         view._presence_overrides = {}
         view._overlay_lens = live_view_module.TOPOLOGY_LENS_RUNTIME
         view._evidence_state = {}
+        view._passive_detail_state = {}
+        view._evidence_detail_state = {}
         view._visibility_enabled = False
         view._visibility_state = {}
         view._visibility_sources = {}
@@ -165,6 +168,10 @@ class LiveTopologyViewTests(unittest.TestCase):
         view._detail_vars = {}
         view._group_inspector_name = ""
         view._group_inspector_targets = []
+        view._selection_inspector_mode = live_view_module.GROUP_INSPECTOR_MODE_DEVICE
+        view._group_inspector_frame = None
+        view._detail_device_frame = None
+        view._manual_test_observations = {}
         view._connection_filter_vars = {
             key: _BoolVarStub(True) for key in live_view_module.CONNECTION_FILTERS_ORDER
         }
@@ -175,6 +182,131 @@ class LiveTopologyViewTests(unittest.TestCase):
         view.update_idletasks = lambda: None
         view._redraw = lambda *_args, **_kwargs: None
         return view
+
+    def _attach_detail_vars(self, view: live_view_module.LiveTopologyView) -> None:
+        view._detail_vars = {
+            key: _StringVarStub("--")
+            for key in (
+                live_view_module.DETAIL_KEY_LABEL,
+                live_view_module.DETAIL_KEY_CAN_ID,
+                live_view_module.DETAIL_KEY_PRESENCE,
+                live_view_module.DETAIL_KEY_PRESENCE_STATUS,
+                live_view_module.DETAIL_KEY_PRESENCE_AGE,
+                live_view_module.DETAIL_KEY_PRESENCE_SOURCE,
+                live_view_module.DETAIL_KEY_FULL_PROBE_BUCKET,
+                live_view_module.DETAIL_KEY_FULL_PROBE_AGE,
+                live_view_module.DETAIL_KEY_FULL_PROBE_SCORE,
+                live_view_module.DETAIL_KEY_FULL_PROBE_STATUS,
+                live_view_module.DETAIL_KEY_FULL_PROBE_MESSAGE,
+                live_view_module.DETAIL_KEY_GROUP_MEMBER,
+                live_view_module.DETAIL_KEY_SCOPE_ACTIVE,
+                live_view_module.DETAIL_KEY_INSTANTIATED,
+                live_view_module.DETAIL_KEY_LIFECYCLE_STATE,
+                live_view_module.DETAIL_KEY_TESTABLE,
+                live_view_module.DETAIL_KEY_OVERRIDE_ACTIVE,
+                live_view_module.DETAIL_KEY_OVERRIDE_ORIGINATED,
+                live_view_module.DETAIL_KEY_OVERRIDE_FAILURE,
+                live_view_module.DETAIL_KEY_NOT_TESTABLE_REASON,
+                live_view_module.DETAIL_KEY_LAST_SEEN,
+                live_view_module.DETAIL_KEY_CURRENT_A,
+                live_view_module.DETAIL_KEY_CURRENT_AVG_A,
+                live_view_module.DETAIL_KEY_CURRENT_PEAK_A,
+                live_view_module.DETAIL_KEY_CURRENT_NONZERO,
+                live_view_module.DETAIL_KEY_CURRENT_SAMPLES,
+                live_view_module.DETAIL_KEY_CMD_DUTY,
+                live_view_module.DETAIL_KEY_APPLIED_DUTY,
+                live_view_module.DETAIL_KEY_VEL_RPM,
+                live_view_module.DETAIL_KEY_POSITION_ROT,
+                live_view_module.DETAIL_KEY_POSITION_DELTA_ROT,
+                live_view_module.DETAIL_KEY_TEMP_C,
+                live_view_module.DETAIL_KEY_SELECTED,
+            )
+        }
+
+    def test_visibility_lens_selection_details_use_passive_snapshot(self) -> None:
+        view = self._make_view()
+        self._attach_detail_vars(view)
+        view._selected_node = type("NodeStub", (), {"label": "roborio", "can_id": 0})()
+        view._runtime_state = {
+            "roborio": {
+                "presenceConfidence": 0.0,
+                "attachments": [
+                    {"type": "presenceCheck", "source": "localSnapshot", "status": "warning"},
+                ],
+                "lifecycleState": "in-scope-stale",
+                "instantiated": False,
+                "testable": False,
+            }
+        }
+        view.set_passive_detail_snapshot(
+            {
+                "roborio": {
+                    live_view_module.DETAIL_SNAPSHOT_PRESENCE: "0.78",
+                    live_view_module.DETAIL_SNAPSHOT_PRESENCE_STATUS: "medium",
+                    live_view_module.DETAIL_SNAPSHOT_PRESENCE_AGE: "0.0s ago",
+                    live_view_module.DETAIL_SNAPSHOT_PRESENCE_SOURCE: "passiveCan",
+                    live_view_module.DETAIL_SNAPSHOT_LAST_SEEN: "0.0s ago",
+                }
+            }
+        )
+
+        view.set_overlay_lens(live_view_module.TOPOLOGY_LENS_VISIBILITY)
+
+        self.assertEqual("0.78", view._detail_vars[live_view_module.DETAIL_KEY_PRESENCE].get())
+        self.assertEqual(
+            "medium",
+            view._detail_vars[live_view_module.DETAIL_KEY_PRESENCE_STATUS].get(),
+        )
+        self.assertEqual(
+            "passiveCan",
+            view._detail_vars[live_view_module.DETAIL_KEY_PRESENCE_SOURCE].get(),
+        )
+        self.assertEqual(
+            "in-scope-stale",
+            view._detail_vars[live_view_module.DETAIL_KEY_LIFECYCLE_STATE].get(),
+        )
+
+    def test_evidence_lens_selection_details_use_interpreted_snapshot(self) -> None:
+        view = self._make_view()
+        self._attach_detail_vars(view)
+        view._selected_node = type("NodeStub", (), {"label": "FALCON 9", "can_id": 9})()
+        view._runtime_state = {
+            "falcon 9": {
+                "presenceConfidence": 0.0,
+                "attachments": [
+                    {"type": "presenceCheck", "source": "localSnapshot", "status": "warning"},
+                ],
+                "lifecycleState": "defined",
+                "instantiated": False,
+                "testable": False,
+            }
+        }
+        view.set_evidence_detail_snapshot(
+            {
+                "falcon 9": {
+                    live_view_module.DETAIL_SNAPSHOT_PRESENCE: "1.00",
+                    live_view_module.DETAIL_SNAPSHOT_PRESENCE_STATUS: "present",
+                    live_view_module.DETAIL_SNAPSHOT_PRESENCE_AGE: "fresh",
+                    live_view_module.DETAIL_SNAPSHOT_PRESENCE_SOURCE: "interpretedEvidence",
+                }
+            }
+        )
+
+        view.set_overlay_lens(live_view_module.TOPOLOGY_LENS_EVIDENCE)
+
+        self.assertEqual("1.00", view._detail_vars[live_view_module.DETAIL_KEY_PRESENCE].get())
+        self.assertEqual(
+            "present",
+            view._detail_vars[live_view_module.DETAIL_KEY_PRESENCE_STATUS].get(),
+        )
+        self.assertEqual(
+            "interpretedEvidence",
+            view._detail_vars[live_view_module.DETAIL_KEY_PRESENCE_SOURCE].get(),
+        )
+        self.assertEqual(
+            "defined",
+            view._detail_vars[live_view_module.DETAIL_KEY_LIFECYCLE_STATE].get(),
+        )
 
     def test_filter_helpers_toggle_all_and_none(self) -> None:
         view = self._make_view()
@@ -259,6 +391,14 @@ class LiveTopologyViewTests(unittest.TestCase):
 
         self.assertFalse(view._active_group_members_editable())
 
+    def test_active_group_members_not_editable_during_transition_resync(self) -> None:
+        view = self._make_view()
+        view._runtime_state_seen = True
+        view._controlled_lifecycle_active = False
+        view._scope_transition_pending = True
+
+        self.assertFalse(view._active_group_members_editable())
+
     def test_active_group_members_editable_after_runtime_state_when_unlocked(self) -> None:
         view = self._make_view()
         view._runtime_state_seen = True
@@ -272,7 +412,7 @@ class LiveTopologyViewTests(unittest.TestCase):
         view.set_runtime_state_notice = lambda text, level="warn": notices.append((text, level))
         view.clear_runtime_state_notice = lambda: notices.append(("__clear__", "clear"))
 
-        view._apply_runtime_notice_from_state(False, False, True, False)
+        view._apply_runtime_notice_from_state(False, False, True, False, "teleop")
 
         self.assertEqual(
             [("Activate Group first.", "warn")],
@@ -285,8 +425,35 @@ class LiveTopologyViewTests(unittest.TestCase):
         view.set_runtime_state_notice = lambda text, level="warn": notices.append((text, level))
         view.clear_runtime_state_notice = lambda: notices.append(("__clear__", "clear"))
 
-        view._apply_runtime_notice_from_state(False, True, True, False)
+        view._apply_runtime_notice_from_state(False, True, True, False, "teleop")
 
+        self.assertEqual([("__clear__", "clear")], notices)
+
+    def test_apply_runnable_scope_state_clears_stale_disabled_event_when_scope_is_ready(self) -> None:
+        view = self._make_view()
+        view._runtime_event_notice_text = "Robot disabled."
+        clears = []
+        view.clear_runtime_notice = lambda: clears.append("event")
+        notices = []
+        view.set_runtime_state_notice = lambda text, level="warn": notices.append((text, level))
+        view.clear_runtime_state_notice = lambda: notices.append(("__clear__", "clear"))
+        state = live_view_module.resolve_runnable_scope_state(
+            scope_kind=live_view_module.RUNNABLE_SCOPE_KIND_MANUAL,
+            local_selected_profile="test_minimal_25_9",
+            local_profile_required=False,
+            tcp_connected=True,
+            runtime_state_seen=True,
+            stale_state=False,
+            robot_enabled=True,
+            robot_estopped=False,
+            robot_mode="teleop",
+            manual_group_empty=False,
+            scope_active=True,
+        )
+
+        view.apply_runnable_scope_state(state)
+
+        self.assertEqual(["event"], clears)
         self.assertEqual([("__clear__", "clear")], notices)
 
     def test_runtime_notice_warning_uses_attention_palette(self) -> None:
@@ -432,13 +599,31 @@ class LiveTopologyViewTests(unittest.TestCase):
             view._live_fill(node, 0),
         )
 
+    def test_visibility_lens_prefers_passive_none_over_broad_visibility_state(self) -> None:
+        view = self._make_view()
+        node = type("NodeStub", (), {"label": "falcon 9", "interface": "CAN", "category": "krakens"})()
+        view._visibility_state = {"falcon 9": live_view_module.VIS_STATE_ALL}
+        view._passive_detail_state = {
+            "falcon 9": {
+                live_view_module.DETAIL_SNAPSHOT_PRESENCE: "0.00",
+                live_view_module.DETAIL_SNAPSHOT_PRESENCE_STATUS: "none",
+                live_view_module.DETAIL_SNAPSHOT_PRESENCE_SOURCE: "passiveCan",
+            }
+        }
+        view.set_overlay_lens(live_view_module.TOPOLOGY_LENS_VISIBILITY)
+
+        self.assertEqual(
+            live_view_module.VIS_COLOR_NONE,
+            view._live_fill(node, 0),
+        )
+
     def test_runtime_notice_prefers_disabled_over_activation_blocker(self) -> None:
         view = self._make_view()
         notices = []
         view.set_runtime_state_notice = lambda text, level="warn": notices.append((text, level))
         view.clear_runtime_state_notice = lambda: notices.append(("__clear__", "clear"))
 
-        view._apply_runtime_notice_from_state(False, False, False, False)
+        view._apply_runtime_notice_from_state(False, False, False, False, "teleop")
 
         self.assertEqual(
             [("Robot disabled. Enable teleop to run motors.", "info")],
@@ -499,6 +684,18 @@ class LiveTopologyViewTests(unittest.TestCase):
 
         self.assertEqual(
             live_view_module.ACTIVE_GROUP_STATUS_LOCKED_TEXT,
+            view._active_group_status_text({"name": "active-group"}, {"falcon 9": {}}),
+        )
+
+    def test_active_group_status_reports_resync_during_transition_wait(self) -> None:
+        view = self._make_view()
+        view._runtime_state_seen = True
+        view._controlled_lifecycle_active = True
+        view._scope_transition_pending = True
+        view._runtime_state = {"falcon 9": {"presenceConfidence": 1.0}}
+
+        self.assertEqual(
+            live_view_module.ACTIVE_GROUP_STATUS_RESYNC_TEXT,
             view._active_group_status_text({"name": "active-group"}, {"falcon 9": {}}),
         )
 
@@ -959,6 +1156,44 @@ class LiveTopologyViewTests(unittest.TestCase):
         finally:
             live_view_module._load_profiles_payload = original_load_payload
 
+    def test_apply_diagnostic_profile_state_uses_shared_blank_scene_decision(self) -> None:
+        view = self._make_view()
+        applied = []
+        view.reload_profile = lambda profile_name=None: applied.append(profile_name)
+        view._profile_name = "demo"
+
+        profile_state = type(
+            "ProfileStateStub",
+            (),
+            {
+                "effective_profile": live_view_module.PROFILE_NONE,
+                "show_blank_profile_state": True,
+                "blank_reason": "Local profile selection required.",
+            },
+        )()
+
+        view.apply_diagnostic_profile_state(profile_state)
+
+        self.assertEqual([live_view_module.PROFILE_NONE], applied)
+
+    def test_apply_topology_scene_state_skips_reload_when_scene_is_unchanged(self) -> None:
+        view = self._make_view()
+        reloads = []
+        view.reload_profile = lambda profile_name=None: reloads.append(profile_name)
+        view._profile_name = "demo"
+
+        scene_state = live_view_module.TopologySceneState(
+            profile_name="demo",
+            is_blank=False,
+            blank_reason="",
+            active_group_meaningful=True,
+            should_reload=False,
+        )
+
+        view.apply_topology_scene_state(scene_state)
+
+        self.assertEqual([], reloads)
+
     def test_reload_profile_error_clears_active_group_details_immediately(self) -> None:
         view = self._make_view()
         view._update_details_calls = 0
@@ -979,6 +1214,53 @@ class LiveTopologyViewTests(unittest.TestCase):
         finally:
             live_view_module._load_profiles_payload = original_load_payload
             view._redraw = original_redraw
+
+    def test_reload_profile_missing_requested_profile_clears_instead_of_falling_back(self) -> None:
+        view = self._make_view()
+        view._nodes = [
+            live_view_module.LiveNode(
+                key=1,
+                category="roborio",
+                label="roborio",
+                can_id=0,
+                bus_index=0,
+                row=0,
+                x=0.0,
+            )
+        ]
+        view._diagram_meta = {"stale": True}
+        view._bridge_groups = [{"name": "active-group"}]
+        view._update_details_calls = 0
+        view._update_details = lambda: setattr(
+            view, "_update_details_calls", view._update_details_calls + 1
+        )
+
+        original_load_payload = live_view_module._load_profiles_payload
+
+        try:
+            live_view_module._load_profiles_payload = lambda: (
+                {
+                    "defaultProfile": "demo",
+                    "profiles": {
+                        "demo": {
+                            "devices": [
+                                {"label": "FALCON 9", "type": "motor", "deviceType": 2, "id": 9},
+                            ]
+                        }
+                    },
+                },
+                "",
+            )
+
+            view.reload_profile("missing_profile")
+
+            self.assertEqual([], view._nodes)
+            self.assertEqual({}, view._diagram_meta)
+            self.assertEqual([], view._bridge_groups)
+            self.assertEqual("Profile: missing_profile (missing)", view._status_label.text)
+            self.assertEqual(1, view._update_details_calls)
+        finally:
+            live_view_module._load_profiles_payload = original_load_payload
 
     def test_effective_groups_preserve_static_members_when_runtime_group_only_has_counts(self) -> None:
         view = self._make_view()

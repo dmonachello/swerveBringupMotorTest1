@@ -1,0 +1,44 @@
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   AGENTS.md
+	modified:   Feature Spec - CAN Bus Debug Final Push.md
+	modified:   README.md
+	modified:   docs/ADD_A_NEW_DEVICE.md
+	modified:   docs/FEATURE_SPEC_SHARED_UI_CONTEXT_AND_CENTRALIZED_CONTROL.md
+	modified:   src/main/java/frc/robot/BridgeUiCommandHandler.java
+	modified:   src/main/java/frc/robot/BridgeUiGroupCommands.java
+	modified:   src/main/java/frc/robot/BridgeUiProfileCommands.java
+	modified:   src/main/java/frc/robot/BuildInfo.java
+	modified:   src/main/java/frc/robot/commands/local/RobotLocalCommandRegistry.java
+	modified:   src/main/java/frc/robot/manufacturers/ctre/util/PdpStatusReader.java
+	modified:   src/main/java/frc/robot/tests/dsl/DslBringupTest.java
+	modified:   src/test/java/frc/robot/BridgeUiGroupCommandsTest.java
+	modified:   src/test/java/frc/robot/BridgeUiProfileCommandsTest.java
+	modified:   src/test/java/frc/robot/DslBringupTestTest.java
+	modified:   tools/can_nt/bridge_cli.py
+	modified:   tools/can_nt/bringup_ui.py
+	modified:   tools/can_nt/can_fault_inference.py
+	modified:   tools/can_nt/generated/robot_local_commands_generated.py
+	modified:   tools/can_nt/passive_discovery_integration_service.py
+	modified:   tools/can_nt/tests/test_bridge_cli_visibility.py
+	modified:   tools/can_nt/tests/test_bringup_ui_actions.py
+	modified:   tools/can_nt/tests/test_passive_discovery_integration_service.py
+	modified:   tools/can_topology/live_topology_view.py
+	modified:   tools/can_topology/tests/test_live_topology_view.py
+	modified:   tools/common/build_info.py
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	docs/mocs/
+	notes/journal/2026-07-18-centralized-control-refactor-recovery.md
+	notes/recovery/
+	src/test/java/frc/robot/manufacturers/
+	tools/can_nt/host_ui_state_service.py
+	tools/can_nt/tests/test_host_ui_state_service.py
+	tools/docs_maintenance/
+
+no changes added to commit (use "git add" and/or "git commit -a")

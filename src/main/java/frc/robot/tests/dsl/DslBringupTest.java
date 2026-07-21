@@ -208,6 +208,11 @@ public final class DslBringupTest implements BringupTest {
     Map<String, Object> samples = sampleAll(context, nowSec);
     Map<String, Boolean> conditionValues = evaluateAllConditions(samples, nowSec);
     for (DslCondition require : test.main.requires) {
+      if (shouldRevokeLatchedRequire(require, samples)) {
+        requireSatisfied.put(require.id, false);
+        requireSatisfiedAt.remove(require.id);
+        continue;
+      }
       if (!Boolean.TRUE.equals(requireSatisfied.get(require.id))
           && Boolean.TRUE.equals(conditionValues.get(require.id))) {
         requireSatisfied.put(require.id, true);
@@ -809,6 +814,21 @@ public final class DslBringupTest implements BringupTest {
       return start != null ? position - start.doubleValue() : position;
     }
     return deviceSignal;
+  }
+
+  private boolean shouldRevokeLatchedRequire(DslCondition condition, Map<String, Object> samples) {
+    if (condition == null || condition.reference == null) {
+      return false;
+    }
+    if (!Boolean.TRUE.equals(requireSatisfied.get(condition.id))) {
+      return false;
+    }
+    String deviceType = resolveDeviceType(condition.reference.device);
+    if (!DslSignalRegistry.DEVICE_TYPE_PDP.equals(deviceType)
+        && !DslSignalRegistry.DEVICE_TYPE_PDH.equals(deviceType)) {
+      return false;
+    }
+    return samples.get(condition.reference.text) == null;
   }
 
   private Object updateAggregateSignalMax(

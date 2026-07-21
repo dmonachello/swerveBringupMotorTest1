@@ -91,6 +91,59 @@ class CanFaultInferenceTests(unittest.TestCase):
             result["candidates"][0]["affectedDevices"],
         )
 
+    def test_strong_current_positive_motor_evidence_suppresses_stale_branch_candidate(self) -> None:
+        topology = {
+            "nodes": [
+                {"key": 1, "objectType": "device", "deviceRef": "FALCON 9"},
+                {"key": 2, "objectType": "device", "deviceRef": "SPARKMAX/NEO 25"},
+            ],
+            "edges": [
+                {"edgeType": "can_trunk", "fromNode": 1, "toNode": 2},
+            ],
+        }
+
+        result = build_fault_diagnosis(
+            evidence_rows=[
+                {
+                    "label": "FALCON 9",
+                    "existence": "CONFLICT",
+                    "operability": "OK",
+                    "confidence": "HIGH",
+                    "state": "degraded",
+                    "manual": "Rotation detected",
+                    "manualText": "autoResult=Rotation detected\nmotionCheck=pass",
+                    "sourceScores": {
+                        "runtime": {"score": 90, "state": "present", "reason": "Runtime presence snapshot present."},
+                        "probe": {"score": 95, "state": "present", "reason": "Fresh Full Probe present."},
+                        "manual": {"score": 60, "state": "present", "reason": "Manual evidence recorded."},
+                        "passive": {"score": 85, "state": "present", "reason": "Passive CAN visibility."},
+                        "console": {"score": 50, "state": "unknown", "reason": "No console warn/error evidence."},
+                    },
+                },
+                {
+                    "label": "SPARKMAX/NEO 25",
+                    "existence": "ABSENT",
+                    "operability": "UNKNOWN",
+                    "confidence": "MEDIUM",
+                    "state": "missing",
+                    "manual": "Rotation detected",
+                    "manualText": "autoResult=Rotation detected\nmotionCheck=pass",
+                    "sourceScores": {
+                        "runtime": {"score": 90, "state": "present", "reason": "Runtime presence snapshot present."},
+                        "probe": {"score": 95, "state": "present", "reason": "Fresh Full Probe present."},
+                        "manual": {"score": 60, "state": "present", "reason": "Manual evidence recorded."},
+                        "passive": {"score": 85, "state": "present", "reason": "Passive CAN visibility."},
+                        "console": {"score": 50, "state": "unknown", "reason": "No console warn/error evidence."},
+                    },
+                },
+            ],
+            topology_profile=topology,
+            now_s=10.0,
+        )
+
+        self.assertEqual(STATUS_NO_FAULT, result["status"])
+        self.assertEqual([], result["candidates"])
+
     def test_passive_observer_presence_prevents_scope_absence_from_becoming_fault(self) -> None:
         result = build_fault_diagnosis(
             evidence_rows=[

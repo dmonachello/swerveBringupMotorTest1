@@ -1,6 +1,6 @@
 """
 NAME
-    test_bridge_cli_visibility.py - Unit tests for CLI visibility and lifecycle state.
+    test_bridge_cli_visibility.py - Unit tests for CLI visibility and scope state.
 """
 
 from __future__ import annotations
@@ -1120,8 +1120,8 @@ class BridgeCliVisibilityTests(unittest.TestCase):
             seq=1,
             name="selectProfile",
             status="ok",
-            message="Profile change blocked: controlled lifecycle session is ACTIVE. Deactivate lifecycle first.",
-            text="Profile change blocked: controlled lifecycle session is ACTIVE. Deactivate lifecycle first.",
+            message="Profile change blocked: an active scope session is running. Deactivate scope first.",
+            text="Profile change blocked: an active scope session is running. Deactivate scope first.",
             json_text="",
             ts=0.0,
             session_id="",
@@ -1504,6 +1504,30 @@ class BridgeCliVisibilityTests(unittest.TestCase):
         self.assertEqual(result.code, SS__CONFIG__INVALID)
         self.assertIn("Binding test result: FAIL", output.getvalue())
         self.assertIn("controller not found", output.getvalue())
+
+    def test_group_bind_list_reports_blocked_when_all_members_disabled(self) -> None:
+        cli = self._build_cli()
+        cli._modes = [CliMode("group", group="motion")]
+        cli._bindings_payload = {
+            "controllers": [{"name": "controller0", "type": "XBOX", "port": 0}],
+            "bindings": [],
+        }
+        cli._local_config[KEY_BRIDGE_BY_PROFILE][PROFILE_NAME][KEY_GROUPS] = [  # type: ignore[index]
+            {
+                "name": "motion",
+                "enabled": True,
+                "members": [{"label": "motor1", "enabled": False}],
+                "bindings": [{"input": "controller0.leftY", "kind": "analog"}],
+            }
+        ]
+
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            result = cli._execute_line("bind list")
+
+        self.assertEqual(result.code, SS__NORMAL)
+        self.assertIn("status=BLOCKED", output.getvalue())
+        self.assertIn("group has no enabled members", output.getvalue())
 
     def test_group_bind_question_help_uses_diagnostic_specific_suggestions(self) -> None:
         cli = self._build_cli()

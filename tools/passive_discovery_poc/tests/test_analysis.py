@@ -202,6 +202,132 @@ class PassiveDiscoveryAnalysisTests(unittest.TestCase):
         self.assertEqual("DEVICE_EMITTED_SECONDARY_STATUS", by_family[(46, 1)].role)
         self.assertEqual("DEVICE_EMITTED_HEARTBEAT_HOUSEKEEPING", by_family[(47, 0)].role)
 
+    def test_roborio_periodic_status_family_counts_as_device_emitted_presence(self) -> None:
+        frames = []
+        for index in range(25):
+            frames.append(
+                NormalizedFrame(
+                    timestamp_s=0.006 + (0.020 * float(index)),
+                    can_id=int("01011840", 16),
+                    dlc=8,
+                    data_hex="8101184008000000",
+                    is_extended=True,
+                    is_rtr=False,
+                    manufacturer=1,
+                    device_type=1,
+                    api_class=6,
+                    api_index=1,
+                    device_id=0,
+                    observer_source="test",
+                )
+            )
+
+        result = analyze_frames(
+            frames=frames,
+            expected_rows={(1, 1, 0): {"label": "roborio", "model": "roborio"}},
+        )
+
+        self.assertEqual(1, len(result.family_records))
+        self.assertEqual("DEVICE_EMITTED_PRIMARY_STATUS", result.family_records[0].role)
+        self.assertEqual("observed", result.device_records[0].expected_status)
+        self.assertEqual("medium", result.device_records[0].presence_confidence)
+
+    def test_ctre_motor_verified_status_families_count_as_presence_evidence(self) -> None:
+        frames = []
+        for index in range(50):
+            frames.append(
+                NormalizedFrame(
+                    timestamp_s=0.01 * float(index),
+                    can_id=int("02041D49", 16),
+                    dlc=8,
+                    data_hex="0000000000000000",
+                    is_extended=True,
+                    is_rtr=False,
+                    manufacturer=4,
+                    device_type=2,
+                    api_class=11,
+                    api_index=1,
+                    device_id=9,
+                    observer_source="test",
+                )
+            )
+        for index in range(5):
+            frames.append(
+                NormalizedFrame(
+                    timestamp_s=0.25 * float(index),
+                    can_id=int("02041CC9", 16),
+                    dlc=8,
+                    data_hex="0000000000000001",
+                    is_extended=True,
+                    is_rtr=False,
+                    manufacturer=4,
+                    device_type=2,
+                    api_class=11,
+                    api_index=5,
+                    device_id=9,
+                    observer_source="test",
+                )
+            )
+
+        result = analyze_frames(
+            frames=frames,
+            expected_rows={(4, 2, 9): {"label": "FALCON 9", "model": "falcon"}},
+        )
+
+        by_family = {(family.key.api_class, family.key.api_index): family for family in result.family_records}
+        self.assertEqual("DEVICE_EMITTED_PRIMARY_STATUS", by_family[(11, 1)].role)
+        self.assertEqual("DEVICE_EMITTED_SECONDARY_STATUS", by_family[(11, 5)].role)
+        self.assertEqual("observed", result.device_records[0].expected_status)
+        self.assertEqual("high", result.device_records[0].presence_confidence)
+
+    def test_ctre_motor_reference_family_does_not_count_as_device_emitted_presence(self) -> None:
+        frames = []
+        for index in range(20):
+            frames.append(
+                NormalizedFrame(
+                    timestamp_s=0.05 * float(index),
+                    can_id=int("02041CC9", 16),
+                    dlc=8,
+                    data_hex="0000000000000000",
+                    is_extended=True,
+                    is_rtr=False,
+                    manufacturer=4,
+                    device_type=2,
+                    api_class=7,
+                    api_index=3,
+                    device_id=9,
+                    observer_source="test",
+                )
+            )
+        for index in range(50):
+            frames.append(
+                NormalizedFrame(
+                    timestamp_s=0.01 * float(index),
+                    can_id=int("02041D49", 16),
+                    dlc=8,
+                    data_hex="0000000000000000",
+                    is_extended=True,
+                    is_rtr=False,
+                    manufacturer=4,
+                    device_type=2,
+                    api_class=7,
+                    api_index=5,
+                    device_id=9,
+                    observer_source="test",
+                )
+            )
+
+        result = analyze_frames(
+            frames=frames,
+            expected_rows={(4, 2, 9): {"label": "FALCON 9", "model": "falcon"}},
+        )
+
+        by_family = {(family.key.api_class, family.key.api_index): family for family in result.family_records}
+        self.assertEqual("UNKNOWN", by_family[(7, 3)].role)
+        self.assertEqual("UNKNOWN", by_family[(7, 5)].role)
+        self.assertEqual("missing", result.device_records[0].expected_status)
+        self.assertEqual("uncertain", result.device_records[0].presence_confidence)
+
 
 if __name__ == "__main__":
     unittest.main()

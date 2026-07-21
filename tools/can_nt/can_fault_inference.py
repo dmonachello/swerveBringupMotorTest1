@@ -71,6 +71,7 @@ ROW_KEY_PRESENCE_REASONS = "presenceReasons"
 ROW_KEY_PROBE = "probe"
 ROW_KEY_STATE = "state"
 ROW_KEY_SOURCE_SCORES = "sourceScores"
+ROW_KEY_MANUAL_TEXT = "manualText"
 PASSIVE_TOKEN_PRESENCE_PREFIX = "presence="
 PASSIVE_TOKEN_SCORE_PREFIX = "score="
 PASSIVE_TOKEN_PACKET_PREFIX = "packets="
@@ -135,6 +136,27 @@ CHECK_CONTROLLER = "Verify roboRIO power/code connection and compare robot-local
 CHECK_INFRA = "Inspect infrastructure power/CAN connections at the affected singleton device first."
 
 CAN_EDGE_TYPES = {EDGE_TYPE_CAN_TRUNK, EDGE_TYPE_CAN_DROP, EDGE_TYPE_CAN_TAP}
+SOURCE_NAME_RUNTIME = "runtime"
+SOURCE_NAME_PROBE = "probe"
+SOURCE_NAME_MANUAL = "manual"
+SOURCE_NAME_PASSIVE = "passive"
+SOURCE_NAME_CONSOLE = "console"
+SOURCE_SCORE_STATE = "state"
+SOURCE_SCORE_PRESENT = "present"
+SOURCE_SCORE_UNKNOWN = "unknown"
+SOURCE_SCORE_CONFLICT = "conflict"
+SOURCE_SCORE_REASON = "reason"
+SOURCE_SCORE_SCORE = "score"
+MANUAL_SUCCESS_TOKEN_ROTATION = "rotation detected"
+MANUAL_SUCCESS_TOKEN_CORRECT = "correct response"
+MANUAL_SUCCESS_TOKEN_MOTION_PASS = "motioncheck=pass"
+POSITIVE_SOURCE_SCORE_RUNTIME = 70.0
+POSITIVE_SOURCE_SCORE_PROBE = 90.0
+POSITIVE_SOURCE_SCORE_MANUAL = 60.0
+POSITIVE_SOURCE_SCORE_PASSIVE = 70.0
+POSITIVE_CURRENT_SOURCE_MIN_COUNT = 2
+CONSOLE_SCORE_NEUTRAL = 50.0
+TEXT_NONE = "--"
 
 
 def _clean_text(value: object) -> str:
@@ -211,6 +233,75 @@ def _observer_indicates_presence(row: Mapping[str, Any]) -> bool:
     return False
 
 
+def _source_score_entry(row: Mapping[str, Any], source_name: str) -> Optional[Mapping[str, Any]]:
+    source_scores = row.get(ROW_KEY_SOURCE_SCORES)
+    if not isinstance(source_scores, Mapping):
+        return None
+    source_entry = source_scores.get(source_name)
+    return source_entry if isinstance(source_entry, Mapping) else None
+
+
+def _source_score_present(
+    row: Mapping[str, Any],
+    source_name: str,
+    minimum_score: float,
+) -> bool:
+    source_entry = _source_score_entry(row, source_name)
+    if not isinstance(source_entry, Mapping):
+        return False
+    source_state = _clean_text(source_entry.get(SOURCE_SCORE_STATE)).lower()
+    source_score = source_entry.get(SOURCE_SCORE_SCORE)
+    return (
+        source_state == PRESENCE_STATE_PRESENT
+        or (
+            isinstance(source_score, (int, float))
+            and float(source_score) >= minimum_score
+        )
+    )
+
+
+def _manual_indicates_success(row: Mapping[str, Any]) -> bool:
+    manual_summary = _clean_text(row.get(ROW_KEY_MANUAL)).lower()
+    manual_text = _clean_text(row.get(ROW_KEY_MANUAL_TEXT)).lower()
+    return any(
+        token in manual_summary or token in manual_text
+        for token in (
+            MANUAL_SUCCESS_TOKEN_ROTATION,
+            MANUAL_SUCCESS_TOKEN_CORRECT,
+            MANUAL_SUCCESS_TOKEN_MOTION_PASS,
+        )
+    )
+
+
+def _console_is_current_negative(row: Mapping[str, Any]) -> bool:
+    source_entry = _source_score_entry(row, SOURCE_NAME_CONSOLE)
+    if not isinstance(source_entry, Mapping):
+        return False
+    source_state = _clean_text(source_entry.get(SOURCE_SCORE_STATE)).lower()
+    source_score = source_entry.get(SOURCE_SCORE_SCORE)
+    if source_state == PRESENCE_STATE_CONFLICT:
+        return True
+    return isinstance(source_score, (int, float)) and float(source_score) < CONSOLE_SCORE_NEUTRAL
+
+
+def _has_strong_current_positive_counterevidence(row: Mapping[str, Any]) -> bool:
+    if _console_is_current_negative(row):
+        return False
+    positive_sources = 0
+    if _source_score_present(row, SOURCE_NAME_RUNTIME, POSITIVE_SOURCE_SCORE_RUNTIME):
+        positive_sources += 1
+    if _source_score_present(row, SOURCE_NAME_PROBE, POSITIVE_SOURCE_SCORE_PROBE):
+        positive_sources += 1
+    if (
+        _source_score_present(row, SOURCE_NAME_MANUAL, POSITIVE_SOURCE_SCORE_MANUAL)
+        and _manual_indicates_success(row)
+    ):
+        positive_sources += 1
+    if _source_score_present(row, SOURCE_NAME_PASSIVE, POSITIVE_SOURCE_SCORE_PASSIVE):
+        positive_sources += 1
+    return positive_sources >= POSITIVE_CURRENT_SOURCE_MIN_COUNT
+
+
 def _infrastructure_bucket(row: Mapping[str, Any]) -> str:
     existence = _clean_text(row.get(ROW_KEY_EXISTENCE)).upper()
     state = _clean_text(row.get(ROW_KEY_STATE)).lower()
@@ -237,18 +328,27 @@ def _is_affected_row(row: Mapping[str, Any]) -> bool:
     existence = _clean_text(row.get(ROW_KEY_EXISTENCE)).upper()
     operability = _clean_text(row.get(ROW_KEY_OPERABILITY)).upper()
     presence_state = _clean_text(row.get(ROW_KEY_PRESENCE_STATE)).lower()
+    strong_positive_counterevidence = _has_strong_current_positive_counterevidence(row)
     if operability in {VALUE_FAILED, VALUE_CONFLICT}:
         return True
     if state == STATE_FAILED:
         return True
     if presence_state == PRESENCE_STATE_CONFLICT:
+        if strong_positive_counterevidence:
+            return False
         return True
     if _observer_indicates_presence(row) and (state == STATE_MISSING or existence == VALUE_ABSENT):
         return False
     if presence_state == PRESENCE_STATE_MISSING:
+        if strong_positive_counterevidence:
+            return False
         return True
     if state == STATE_MISSING:
+        if strong_positive_counterevidence:
+            return False
         return True
+    if strong_positive_counterevidence and existence in {VALUE_ABSENT, VALUE_CONFLICT}:
+        return False
     return existence in {VALUE_ABSENT, VALUE_CONFLICT}
 
 
@@ -389,9 +489,8 @@ def build_fault_diagnosis(
     ran_at = time.time() if now_s is None else float(now_s)
     rows = [dict(row) for row in evidence_rows if isinstance(row, Mapping)]
     infrastructure_rows = [row for row in rows if _is_infrastructure_row(row)]
-    non_infrastructure_rows = [row for row in rows if not _is_infrastructure_row(row)]
-    affected_rows = [row for row in non_infrastructure_rows if _is_affected_row(row)]
-    degraded_rows = [row for row in non_infrastructure_rows if _is_degraded_row(row)]
+    affected_rows = [row for row in rows if _is_affected_row(row)]
+    degraded_rows = [row for row in rows if _is_degraded_row(row)]
     affected_labels = [_row_label(row) for row in affected_rows if _row_label(row)]
     degraded_labels = [_row_label(row) for row in degraded_rows if _row_label(row)]
     affected_set = set(affected_labels)
@@ -488,36 +587,6 @@ def build_fault_diagnosis(
                     supporting=stale_or_conflicted,
                     conflicting=[],
                     checks=[CHECK_STALE, RECHECK_OBSERVATION],
-                )
-            )
-
-        infrastructure_missing = list(infrastructure.get(KEY_INFRA_MISSING, []))
-        infrastructure_conflict = list(infrastructure.get(KEY_INFRA_CONFLICT, []))
-        infrastructure_affected = infrastructure_missing + infrastructure_conflict
-        if infrastructure_affected and not affected_labels:
-            fault_class = (
-                FAULT_CLASS_CONTROLLER_SIDE
-                if any(label.lower() == "roborio" for label in infrastructure_affected) or len(infrastructure_affected) > 1
-                else FAULT_CLASS_SINGLE_DEVICE
-            )
-            summary = (
-                "Infrastructure device evidence is missing or conflicted."
-                if fault_class == FAULT_CLASS_SINGLE_DEVICE
-                else TEXT_CONTROLLER
-            )
-            checks = [CHECK_INFRA, RECHECK_OBSERVATION]
-            if fault_class == FAULT_CLASS_CONTROLLER_SIDE:
-                checks = [CHECK_CONTROLLER, RECHECK_OBSERVATION]
-            candidates.append(
-                _candidate(
-                    fault_class=fault_class,
-                    confidence=CONFIDENCE_MEDIUM,
-                    summary=summary,
-                    affected=infrastructure_affected,
-                    region="infrastructure CAN/power entry path",
-                    supporting=infrastructure_affected,
-                    conflicting=[],
-                    checks=checks,
                 )
             )
 
