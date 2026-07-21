@@ -1459,11 +1459,34 @@ public final class BringupUtil {
     return TEXT_ADDRESS_ADDRESS;
   }
 
+  private static final String WARNING_CLOSE_FAILED_PREFIX =
+      "Warning: failed to close device: ";
+
   /**
    * NAME
    *   closeIfPossible - Close a device if it implements AutoCloseable.
+   *
+   * RETURNS
+   *   True when the handle was closed successfully or did not need closing.
+   *   False when close() threw and ownership should be preserved.
    */
-  public static void closeIfPossible(Object device) {
+  public static boolean closeIfPossible(Object device) {
+    return closeIfPossible(device, WARNING_CLOSE_FAILED_PREFIX);
+  }
+
+  /**
+   * NAME
+   *   closeIfPossible - Close a device if it implements AutoCloseable with one warning prefix.
+   *
+   * PARAMETERS
+   *   device - Candidate vendor/app handle.
+   *   warningPrefix - Prefix used when close() throws.
+   *
+   * RETURNS
+   *   True when the handle was closed successfully or did not need closing.
+   *   False when close() threw and ownership should be preserved.
+   */
+  public static boolean closeIfPossible(Object device, String warningPrefix) {
     // CTRE Phoenix 6 WPI TalonFX implements AutoCloseable (wpiapi-java 26.1.1+),
     // so this will clean up Sendables and sim resources when present.
     // REV SparkMax implements AutoCloseable via SparkLowLevel in REVLib 2025.0.2+;
@@ -1471,10 +1494,13 @@ public final class BringupUtil {
     if (device instanceof AutoCloseable closeable) {
       try {
         closeable.close();
+        return true;
       } catch (Exception e) {
-        BringupPrinter.enqueue("Warning: failed to close device: " + e.getMessage());
+        BringupPrinter.enqueue(safeText(warningPrefix) + safeText(e.getMessage()));
+        return false;
       }
     }
+    return true;
   }
 
   /**

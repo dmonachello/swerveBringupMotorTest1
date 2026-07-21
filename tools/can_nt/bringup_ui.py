@@ -3559,7 +3559,7 @@ class BringupControlUI(tk.Tk):
     def _handle_tests_boundary_transition(self, previous_tab: str, current_tab: str) -> None:
         """
         NAME
-            _handle_tests_boundary_transition - Keep selected-test scope ownership coherent when crossing Tests and non-Tests.
+            _handle_tests_boundary_transition - Tear down non-singleton runtime scope state when crossing Tests and non-Tests.
         """
         previous_is_tests = previous_tab == TEST_LIBRARY_TAB_LABEL
         current_is_tests = current_tab == TEST_LIBRARY_TAB_LABEL
@@ -3571,9 +3571,9 @@ class BringupControlUI(tk.Tk):
             self._pending_tests_boundary_transition = (previous_tab, current_tab)
             return
         self._pending_tests_boundary_transition = None
+        self._deactivate_group_blocking()
         if previous_is_tests:
             self._group_owner_mode = GROUP_SOURCE_MANUAL
-            self._deactivate_selected_test_scope_blocking()
             return
         self._group_owner_mode = GROUP_SOURCE_SELECTED_TEST
         self._load_selected_test_into_active_group(force_replace=True)
@@ -3850,6 +3850,24 @@ class BringupControlUI(tk.Tk):
         if self._scope_context_kind() == GROUP_SOURCE_SELECTED_TEST:
             return self.__dict__.get("_controlled_lifecycle_active_known") is True
         return self._active_group_is_currently_active()
+
+    def _runtime_ui_actions_ready(self) -> bool:
+        """
+        NAME
+            _runtime_ui_actions_ready - Return whether top-bar runtime actions should be allowed to evaluate normally.
+
+        DESCRIPTION
+            Some REST sessions can temporarily lose the explicit handshake-ready
+            flag while still polling fresh runtime state successfully. When that
+            happens, disabling both scope buttons is misleading because the UI
+            still has a live robot state view and can safely continue using the
+            runtime-backed action gates.
+        """
+        if not self._tcp_connected:
+            return False
+        if bool(self.__dict__.get("_handshake_done", False)):
+            return True
+        return bool(self.__dict__.get("_runtime_state_seen", False))
 
     def _scope_activation_notice_text(self) -> str:
         """
@@ -12041,8 +12059,7 @@ class BringupControlUI(tk.Tk):
         self._refresh_selected_test_scope_status()
         runnable_state = self._runnable_scope_state(stale_state=self._state_stale)
         allow = (
-            self._tcp_connected
-            and self._handshake_done
+            self._runtime_ui_actions_ready()
             and not self._tracker.is_pending()
             and not self._state_stale
         )

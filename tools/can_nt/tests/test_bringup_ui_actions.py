@@ -1381,6 +1381,37 @@ class BringupUiActionMetadataTests(unittest.TestCase):
 
         self.assertTrue(ui._activate_scope_button.disabled)
 
+    def test_update_action_enabled_allows_manual_activate_when_runtime_state_is_live_without_handshake(self) -> None:
+        class _Tracker:
+            def is_pending(self) -> bool:
+                return False
+
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._tcp_connected = True
+        ui._handshake_done = False
+        ui._runtime_state_seen = True
+        ui._state_stale = False
+        ui._tracker = _Tracker()
+        ui._refresh_scope_context_label = lambda: None
+        ui._refresh_selected_test_scope_status = lambda: None
+        ui._action_buttons = []
+        ui._action_buttons_by_command = {}
+        ui._host_local_action_enabled = lambda _command: True
+        ui._selected_test_var = _StringVarStub("")
+        ui._test_selection_boxes = lambda: []
+        ui._activate_scope_button = _ButtonStub()
+        ui._deactivate_scope_button = _ButtonStub()
+        ui._tests_run_selected_button = _ButtonStub()
+        ui._reset_button = None
+        ui._current_right_tab_text = lambda: "Live Topology"
+        ui._selected_test_ready = lambda: False
+        ui._manual_active_group_is_empty = lambda: False
+        ui._controlled_lifecycle_active_known = False
+
+        ui._update_action_enabled()
+
+        self.assertFalse(ui._activate_scope_button.disabled)
+
     def test_on_right_notebook_changed_fits_evidence_topology_when_switching_tabs(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
         ui._last_right_tab_text = "Output"
@@ -2825,7 +2856,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertTrue(ui._test_output.deleted)
         self.assertEqual(["normal", "disabled"], ui._test_output.states)
 
-    def test_handle_tests_boundary_transition_into_tests_refreshes_selected_test_scope_only(self) -> None:
+    def test_handle_tests_boundary_transition_into_tests_deactivates_active_scope_then_refreshes_selected_test_scope(self) -> None:
         class _Tracker:
             def is_pending(self) -> bool:
                 return False
@@ -2834,15 +2865,16 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._tcp_connected = True
         ui._tracker = _Tracker()
         calls = []
+        ui._deactivate_group_blocking = lambda: calls.append(("deactivate-active", None)) or True
         ui._load_selected_test_into_active_group = lambda force_replace=False: calls.append(
             ("load", force_replace)
         )
 
         ui._handle_tests_boundary_transition("Live Topology", "Tests")
 
-        self.assertEqual([("load", True)], calls)
+        self.assertEqual([("deactivate-active", None), ("load", True)], calls)
 
-    def test_handle_tests_boundary_transition_leaving_tests_deactivates_selected_test_scope(self) -> None:
+    def test_handle_tests_boundary_transition_leaving_tests_deactivates_active_scope(self) -> None:
         class _Tracker:
             def is_pending(self) -> bool:
                 return False
@@ -2851,11 +2883,11 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._tcp_connected = True
         ui._tracker = _Tracker()
         calls = []
-        ui._deactivate_selected_test_scope_blocking = lambda: calls.append("deactivate-selected") or True
+        ui._deactivate_group_blocking = lambda: calls.append("deactivate-active") or True
 
         ui._handle_tests_boundary_transition("Tests", "Live Topology")
 
-        self.assertEqual(["deactivate-selected"], calls)
+        self.assertEqual(["deactivate-active"], calls)
 
     def test_handle_tests_boundary_transition_defers_while_command_pending(self) -> None:
         class _Tracker:

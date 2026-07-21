@@ -35,8 +35,14 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
   private static final String SNAPSHOT_NOTE_NOT_ADDED = "not added";
   private static final String SNAPSHOT_NOTE_CLOSED = "closed";
   private static final String SNAPSHOT_NOTE_READ_FAILED_PREFIX = "read failed: ";
+  private static final String ACTION_CLOSE = "close";
+  private static final String ACTION_RECREATE = "recreate";
   private static final String ACTION_SNAPSHOT = "snapshot";
   private static final String ACTION_SAMPLED_CURRENT = "sampledCurrent";
+  private static final String WARNING_CLOSE_FAILED_PREFIX =
+      "Warning: SparkMax NEO 550 CAN ";
+  private static final String WARNING_CLOSE_FAILED_DURING = " close failed during ";
+  private static final String WARNING_CLOSE_FAILED_SEPARATOR = ": ";
   public static final RegistrationHeader HEADER = new RegistrationHeader(
       "SparkMax NEO 550",
       "REV",
@@ -141,19 +147,17 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
     }
     initLimitInputs();
     if (device != null) {
-      try {
-        device.close();
-      } catch (Exception ignored) {
+      if (!releaseDeviceHandle(ACTION_RECREATE)) {
+        return;
       }
-      device = null;
     }
     if (!BringupUtil.claimDeviceInstance(this)) {
       return;
     }
     device = new SparkMax(canId, MotorType.kBrushless);
     closed = false;
-    device.pauseFollowerModeAsync();
-    device.configureAsync(
+    device.pauseFollowerMode();
+    device.configure(
         new SparkMaxConfig(),
         ResetMode.kResetSafeParameters,
         PersistMode.kNoPersistParameters);
@@ -171,15 +175,9 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
    */
   @Override
   public void close() {
-    if (device != null) {
-      try {
-        device.close();
-      } catch (Exception ignored) {
-      }
+    if (!releaseDeviceHandle(ACTION_CLOSE)) {
+      return;
     }
-    device = null;
-    closed = true;
-    BringupUtil.releaseDeviceInstance(this);
     BringupUtil.closeInputs(limitInputs);
   }
 
@@ -215,7 +213,9 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
    * duty - requested output in [-1, 1].
    *
    * SIDE EFFECTS
-   * Commands motor output via the vendor API.
+   * Commands motor output via the vendor API. Closed-handle failures do not
+   * auto-recreate the vendor object here because lifecycle ownership must
+   * remain centralized in explicit activation/instantiation paths.
    */
   @Override
   public void setDuty(double duty) {
@@ -224,10 +224,6 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
         device.set(applyLimit(duty));
       } catch (IllegalStateException ex) {
         handleClosed("set", ex);
-        ensureCreated();
-        if (device != null) {
-          device.set(applyLimit(duty));
-        }
       }
     }
   }
@@ -277,15 +273,29 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
   private void handleClosed(String action, IllegalStateException ex) {
     BringupPrinter.enqueue(
         "Warning: SparkMax NEO 550 CAN " + canId + " closed during " + action + "; recreating.");
-    if (device != null) {
-      try {
-        device.close();
-      } catch (Exception ignored) {
-      }
+    releaseDeviceHandle(action);
+  }
+
+  private boolean releaseDeviceHandle(String action) {
+    if (device == null) {
+      closed = true;
+      BringupUtil.releaseDeviceInstance(this);
+      return true;
+    }
+    String warningPrefix =
+        WARNING_CLOSE_FAILED_PREFIX
+            + canId
+            + WARNING_CLOSE_FAILED_DURING
+            + action
+            + WARNING_CLOSE_FAILED_SEPARATOR;
+    if (!BringupUtil.closeIfPossible(device, warningPrefix)) {
+      closed = false;
+      return false;
     }
     device = null;
     closed = true;
     BringupUtil.releaseDeviceInstance(this);
+    return true;
   }
 
   /**

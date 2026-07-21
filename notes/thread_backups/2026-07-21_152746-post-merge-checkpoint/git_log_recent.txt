@@ -1,0 +1,30 @@
+30fb274 (HEAD -> main) Add local thread backup artifacts
+b8811b6 Merge shared state and control contract refactor
+038123d (recovery/2026-07-18-dirty-tree) Complete shared state and control contract refactor
+4000e09 Remove topology default-profile fallback
+16aa886 Centralize shared topology scene state
+595c7b9 Introduce shared host UI context state
+116d7b3 Add July 18 recovery notes and workspace snapshot artifacts
+e4abff3 Update build metadata after recovery verification
+867d7d4 Refresh generated command and build metadata artifacts
+5e531ad Freeze shared evidence fault snapshots for passive diagnostics
+619489f Harden PDP reads and extend DSL signal loss semantics
+de8db26 Align scope terminology across host and robot command surfaces
+027728f Add Obsidian docs maintenance pipeline and generated MOCs
+1ca44d3 Centralize shared host UI profile, runnable, and active-group state
+361fb2e (origin/main, origin/HEAD) Checkpoint current CAN diagnostics and UI state before centralized control refactor
+11030e5 Update README to accurately reflect current codebase structure and capabilities
+85d12f9 (tag: can-fault-finder-checkpoint-2026-07-11) Stabilize CAN fault finder infrastructure evidence
+03e102c Integrate passive discovery evidence UI and harden topology workflow
+d1bfc83 (tag: passive-discovery-evidence-ui-2026-07-10, tag: passive-can-discovery-checkpoint-2026-07-09) Refresh build metadata for passive discovery checkpoint
+581ff9f Checkpoint passive discovery PoC library before integration
+b9c8be3 Merge branch 'remove_nt_2'
+edaffb4 (tag: passive-can-discovery-checkpoint-2026-07-08, origin/remove_nt_2, remove_nt_2) Add passive CAN discovery research and REV USB tooling
+1ca95e4 Complete NT removal phase 2 and sync host profile on connect
+ce394c1 (tag: safety-stale-hardening-2026-06-30, tag: remove-nt-2-checkpoint-2026-07-02) Harden manual duty shutdown and stale state handling
+145c4c2 Add CLI command sequence note
+08d55ef (origin/NT_Removal, NT_Removal) Update spark25 limit test config
+6d9c40d (tag: nt-removal-checkpoint-2026-06-30) Complete NT removal checkpoint stabilization
+769e2f2 (tag: bringup-readiness-checkpoint-2026-06-27) Tighten bringup readiness and shared group state
+f434968 (tag: ui-group-topology-checkpoint-2026-06-26) Checkpoint UI group behavior and topology sync fixes
+6156a80 (origin/feature/controlled-bringup-lifecycle) Preserve main history, keep controlled-bringup-lifecycle content
