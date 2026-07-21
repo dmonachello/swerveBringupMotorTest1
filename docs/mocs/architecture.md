@@ -23,8 +23,8 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/SPEC_PHASE_2_HARDENING_PASS.md|SPEC PHASE 2 HARDENING PASS]]
 - [[docs/SPEC_PHASE_2_JAVA_UI_COMMAND_REFACTOR.md|SPEC PHASE 2 JAVA UI COMMAND REFACTOR]]
 - [[docs/SPEC_STATUS_INDEX.md|SPEC STATUS INDEX]]
-- [[Host TCP Command Serialization Layer.md|Host TCP Command Serialization Layer]]
-- [[Test Plan Today - May 22, 2026.md|Test Plan Today - May 22, 2026]]
+- [[notes/journal/2026-07-18-centralized-control-refactor-recovery.md|2026-07-18-centralized-control-refactor-recovery]]
+- [[notes/recovery/2026-07-18_162335/untracked_copy/notes/journal/2026-07-18-centralized-control-refactor-recovery.md|2026-07-18-centralized-control-refactor-recovery]]
 
 ## Host
 
@@ -45,8 +45,8 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/SPEC_PHASE_2_JAVA_UI_COMMAND_REFACTOR.md|SPEC PHASE 2 JAVA UI COMMAND REFACTOR]]
 - [[docs/SPEC_STATUS_INDEX.md|SPEC STATUS INDEX]]
 - [[docs/TEST_PLAN_HOST_REFACTOR_MORNING_VALIDATION_2026_06_10.md|TEST PLAN HOST REFACTOR MORNING VALIDATION 2026 06 10]]
-- [[Host TCP Command Serialization Layer.md|Host TCP Command Serialization Layer]]
-- [[Test Plan Today - May 22, 2026.md|Test Plan Today - May 22, 2026]]
+- [[notes/journal/2026-07-18-centralized-control-refactor-recovery.md|2026-07-18-centralized-control-refactor-recovery]]
+- [[notes/recovery/2026-07-18_162335/untracked_copy/notes/journal/2026-07-18-centralized-control-refactor-recovery.md|2026-07-18-centralized-control-refactor-recovery]]
 
 ## Robot
 
@@ -68,8 +68,8 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/SPEC_PHASE_2_JAVA_UI_COMMAND_REFACTOR.md|SPEC PHASE 2 JAVA UI COMMAND REFACTOR]]
 - [[docs/SPEC_STATUS_INDEX.md|SPEC STATUS INDEX]]
 - [[docs/TEST_PLAN_HOST_REFACTOR_MORNING_VALIDATION_2026_06_10.md|TEST PLAN HOST REFACTOR MORNING VALIDATION 2026 06 10]]
-- [[Host TCP Command Serialization Layer.md|Host TCP Command Serialization Layer]]
-- [[Test Plan Today - May 22, 2026.md|Test Plan Today - May 22, 2026]]
+- [[notes/journal/2026-07-18-centralized-control-refactor-recovery.md|2026-07-18-centralized-control-refactor-recovery]]
+- [[notes/recovery/2026-07-18_162335/untracked_copy/notes/journal/2026-07-18-centralized-control-refactor-recovery.md|2026-07-18-centralized-control-refactor-recovery]]
 
 ## Refactor
 
@@ -91,8 +91,8 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/SPEC_PHASE_2_JAVA_UI_COMMAND_REFACTOR.md|SPEC PHASE 2 JAVA UI COMMAND REFACTOR]]
 - [[docs/SPEC_STATUS_INDEX.md|SPEC STATUS INDEX]]
 - [[docs/TEST_PLAN_HOST_REFACTOR_MORNING_VALIDATION_2026_06_10.md|TEST PLAN HOST REFACTOR MORNING VALIDATION 2026 06 10]]
-- [[Host TCP Command Serialization Layer.md|Host TCP Command Serialization Layer]]
-- [[Test Plan Today - May 22, 2026.md|Test Plan Today - May 22, 2026]]
+- [[notes/journal/2026-07-18-centralized-control-refactor-recovery.md|2026-07-18-centralized-control-refactor-recovery]]
+- [[notes/recovery/2026-07-18_162335/untracked_copy/notes/journal/2026-07-18-centralized-control-refactor-recovery.md|2026-07-18-centralized-control-refactor-recovery]]
 
 ## Related Topics
 

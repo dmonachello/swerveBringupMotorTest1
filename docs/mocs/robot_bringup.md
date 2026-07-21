@@ -25,7 +25,7 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/TEST_PROCEDURE_DSL_SELECTED_TEST_SCOPE_ACTIVATION.md|TEST PROCEDURE DSL SELECTED TEST SCOPE ACTIVATION]]
 - [[docs/WHITEPAPER_Bringup_DSL_Semantic_Model.md|WHITEPAPER Bringup DSL Semantic Model]]
 - [[feature spec - Generic Robot-Side Sampled Telemetry.md|feature spec - Generic Robot-Side Sampled Telemetry]]
-- [[Device FSM state table.md|Device FSM state table]]
+- [[notes/journal/2026-07-18-centralized-control-refactor-recovery.md|2026-07-18-centralized-control-refactor-recovery]]
 
 ## Runtime
 
@@ -48,7 +48,7 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/TEST_PROCEDURE_DSL_SELECTED_TEST_SCOPE_ACTIVATION.md|TEST PROCEDURE DSL SELECTED TEST SCOPE ACTIVATION]]
 - [[docs/WHITEPAPER_Bringup_DSL_Semantic_Model.md|WHITEPAPER Bringup DSL Semantic Model]]
 - [[feature spec - Generic Robot-Side Sampled Telemetry.md|feature spec - Generic Robot-Side Sampled Telemetry]]
-- [[Device FSM state table.md|Device FSM state table]]
+- [[notes/journal/2026-07-18-centralized-control-refactor-recovery.md|2026-07-18-centralized-control-refactor-recovery]]
 
 ## Activation
 
@@ -71,7 +71,7 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/TEST_PROCEDURE_DSL_SELECTED_TEST_SCOPE_ACTIVATION.md|TEST PROCEDURE DSL SELECTED TEST SCOPE ACTIVATION]]
 - [[docs/WHITEPAPER_Bringup_DSL_Semantic_Model.md|WHITEPAPER Bringup DSL Semantic Model]]
 - [[feature spec - Generic Robot-Side Sampled Telemetry.md|feature spec - Generic Robot-Side Sampled Telemetry]]
-- [[Device FSM state table.md|Device FSM state table]]
+- [[notes/journal/2026-07-18-centralized-control-refactor-recovery.md|2026-07-18-centralized-control-refactor-recovery]]
 
 ## Operator Workflow
 
@@ -94,7 +94,7 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/TEST_PROCEDURE_DSL_SELECTED_TEST_SCOPE_ACTIVATION.md|TEST PROCEDURE DSL SELECTED TEST SCOPE ACTIVATION]]
 - [[docs/WHITEPAPER_Bringup_DSL_Semantic_Model.md|WHITEPAPER Bringup DSL Semantic Model]]
 - [[feature spec - Generic Robot-Side Sampled Telemetry.md|feature spec - Generic Robot-Side Sampled Telemetry]]
-- [[Device FSM state table.md|Device FSM state table]]
+- [[notes/journal/2026-07-18-centralized-control-refactor-recovery.md|2026-07-18-centralized-control-refactor-recovery]]
 
 ## Related Topics
 

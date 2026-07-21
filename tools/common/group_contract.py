@@ -20,6 +20,7 @@ NOTES
     and UI interactions can both consume.
 """
 
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence
 
 from tools.common.profile_constants import KEY_DEVICE_TYPE, KEY_ENABLED, KEY_TYPE, TYPE_MOTOR, get_group_member_label
@@ -29,6 +30,40 @@ DEVICE_TYPE_MOTOR = "2"
 GROUP_KEY_NAME = "name"
 GROUP_KEY_MEMBERS = "members"
 GROUP_KEY_BINDINGS = "bindings"
+GROUP_RUNTIME_PRESENT_THRESHOLD = 0.5
+
+
+@dataclass(frozen=True)
+class GroupMemberState:
+    """
+    NAME
+        GroupMemberState - Shared resolved state for one group member.
+    """
+
+    label: str
+    enabled: bool
+    locked: bool
+    invalid: bool
+    scope_active: bool
+    runtime_present: bool
+    instantiated: bool
+    testable: bool
+
+
+@dataclass(frozen=True)
+class GroupState:
+    """
+    NAME
+        GroupState - Shared resolved state for one group and its member facts.
+    """
+
+    name: str
+    primary_label: str
+    members: List[GroupMemberState]
+    member_count: int
+    enabled_member_count: int
+    has_members: bool
+    all_enabled_members_present: bool
 
 
 def normalize_group_name(value: object) -> str:
@@ -119,6 +154,131 @@ def group_primary_label(group: object, *, enabled_only: bool) -> str:
     if not labels:
         return EMPTY_STRING
     return labels[0]
+
+
+def resolve_group_member_state(
+    *,
+    label: object,
+    enabled: bool,
+    locked: bool,
+    invalid: bool,
+    runtime_state_by_label: Dict[str, Dict[str, Any]],
+    scope_active: bool,
+    singleton_labels: Sequence[str] = (),
+) -> GroupMemberState:
+    """
+    NAME
+        resolve_group_member_state - Return shared resolved facts for one group member label.
+    """
+    clean_label = str(label or EMPTY_STRING).strip()
+    label_key = clean_label.lower()
+    runtime_device = runtime_state_by_label.get(label_key, {})
+    runtime_present = False
+    instantiated = False
+    testable = False
+    if isinstance(runtime_device, dict):
+        presence = runtime_device.get("presenceConfidence")
+        runtime_present = isinstance(presence, (int, float)) and float(presence) >= GROUP_RUNTIME_PRESENT_THRESHOLD
+        instantiated = bool(runtime_device.get("instantiated", False))
+        testable = bool(runtime_device.get("testable", False))
+        if not instantiated and label_key in {str(value).strip().lower() for value in singleton_labels}:
+            instantiated = testable
+    return GroupMemberState(
+        label=clean_label,
+        enabled=bool(enabled),
+        locked=bool(locked),
+        invalid=bool(invalid),
+        scope_active=bool(scope_active),
+        runtime_present=runtime_present,
+        instantiated=instantiated,
+        testable=testable,
+    )
+
+
+def resolve_group_state_from_member_map(
+    *,
+    name: object,
+    member_map: Dict[str, Dict[str, Any]],
+    runtime_state_by_label: Dict[str, Dict[str, Any]],
+    primary_label: object,
+    scope_active: bool,
+    singleton_labels: Sequence[str] = (),
+) -> GroupState:
+    """
+    NAME
+        resolve_group_state_from_member_map - Build shared resolved state from one normalized member map.
+    """
+    members: List[GroupMemberState] = []
+    for member_key, member in member_map.items():
+        if not isinstance(member, dict):
+            continue
+        member_label = group_member_label(member) or str(member_key or EMPTY_STRING).strip()
+        if not member_label:
+            continue
+        members.append(
+            resolve_group_member_state(
+                label=member_label,
+                enabled=group_member_enabled(member),
+                locked=False,
+                invalid=False,
+                runtime_state_by_label=runtime_state_by_label,
+                scope_active=scope_active,
+                singleton_labels=singleton_labels,
+            )
+        )
+    enabled_members = [member for member in members if member.enabled]
+    return GroupState(
+        name=str(name or EMPTY_STRING).strip(),
+        primary_label=str(primary_label or EMPTY_STRING).strip(),
+        members=members,
+        member_count=len(members),
+        enabled_member_count=len(enabled_members),
+        has_members=bool(members),
+        all_enabled_members_present=bool(enabled_members) and all(member.runtime_present for member in enabled_members),
+    )
+
+
+def resolve_group_state_from_rows(
+    *,
+    name: object,
+    rows: Sequence[object],
+    runtime_state_by_label: Dict[str, Dict[str, Any]],
+    primary_label: object,
+    scope_active: bool,
+    singleton_labels: Sequence[str] = (),
+) -> GroupState:
+    """
+    NAME
+        resolve_group_state_from_rows - Build shared resolved state from row-style member payloads.
+    """
+    members: List[GroupMemberState] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        member_label = str(row.get("label", EMPTY_STRING)).strip()
+        if not member_label:
+            continue
+        members.append(
+            resolve_group_member_state(
+                label=member_label,
+                enabled=bool(row.get(KEY_ENABLED, True)),
+                locked=bool(row.get("locked")) or bool(scope_active),
+                invalid=bool(row.get("invalid")),
+                runtime_state_by_label=runtime_state_by_label,
+                scope_active=scope_active,
+                singleton_labels=singleton_labels,
+            )
+        )
+    enabled_members = [member for member in members if member.enabled]
+    return GroupState(
+        name=str(name or EMPTY_STRING).strip(),
+        primary_label=str(primary_label or EMPTY_STRING).strip(),
+        members=members,
+        member_count=len(members),
+        enabled_member_count=len(enabled_members),
+        has_members=bool(members),
+        all_enabled_members_present=bool(enabled_members) and all(member.runtime_present for member in enabled_members),
+    )
 
 
 def merge_effective_groups(

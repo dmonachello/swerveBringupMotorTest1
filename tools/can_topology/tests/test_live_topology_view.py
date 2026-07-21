@@ -138,6 +138,8 @@ class LiveTopologyViewTests(unittest.TestCase):
         view._presence_overrides = {}
         view._overlay_lens = live_view_module.TOPOLOGY_LENS_RUNTIME
         view._evidence_state = {}
+        view._passive_detail_state = {}
+        view._evidence_detail_state = {}
         view._visibility_enabled = False
         view._visibility_state = {}
         view._visibility_sources = {}
@@ -166,6 +168,10 @@ class LiveTopologyViewTests(unittest.TestCase):
         view._detail_vars = {}
         view._group_inspector_name = ""
         view._group_inspector_targets = []
+        view._selection_inspector_mode = live_view_module.GROUP_INSPECTOR_MODE_DEVICE
+        view._group_inspector_frame = None
+        view._detail_device_frame = None
+        view._manual_test_observations = {}
         view._connection_filter_vars = {
             key: _BoolVarStub(True) for key in live_view_module.CONNECTION_FILTERS_ORDER
         }
@@ -176,6 +182,131 @@ class LiveTopologyViewTests(unittest.TestCase):
         view.update_idletasks = lambda: None
         view._redraw = lambda *_args, **_kwargs: None
         return view
+
+    def _attach_detail_vars(self, view: live_view_module.LiveTopologyView) -> None:
+        view._detail_vars = {
+            key: _StringVarStub("--")
+            for key in (
+                live_view_module.DETAIL_KEY_LABEL,
+                live_view_module.DETAIL_KEY_CAN_ID,
+                live_view_module.DETAIL_KEY_PRESENCE,
+                live_view_module.DETAIL_KEY_PRESENCE_STATUS,
+                live_view_module.DETAIL_KEY_PRESENCE_AGE,
+                live_view_module.DETAIL_KEY_PRESENCE_SOURCE,
+                live_view_module.DETAIL_KEY_FULL_PROBE_BUCKET,
+                live_view_module.DETAIL_KEY_FULL_PROBE_AGE,
+                live_view_module.DETAIL_KEY_FULL_PROBE_SCORE,
+                live_view_module.DETAIL_KEY_FULL_PROBE_STATUS,
+                live_view_module.DETAIL_KEY_FULL_PROBE_MESSAGE,
+                live_view_module.DETAIL_KEY_GROUP_MEMBER,
+                live_view_module.DETAIL_KEY_SCOPE_ACTIVE,
+                live_view_module.DETAIL_KEY_INSTANTIATED,
+                live_view_module.DETAIL_KEY_LIFECYCLE_STATE,
+                live_view_module.DETAIL_KEY_TESTABLE,
+                live_view_module.DETAIL_KEY_OVERRIDE_ACTIVE,
+                live_view_module.DETAIL_KEY_OVERRIDE_ORIGINATED,
+                live_view_module.DETAIL_KEY_OVERRIDE_FAILURE,
+                live_view_module.DETAIL_KEY_NOT_TESTABLE_REASON,
+                live_view_module.DETAIL_KEY_LAST_SEEN,
+                live_view_module.DETAIL_KEY_CURRENT_A,
+                live_view_module.DETAIL_KEY_CURRENT_AVG_A,
+                live_view_module.DETAIL_KEY_CURRENT_PEAK_A,
+                live_view_module.DETAIL_KEY_CURRENT_NONZERO,
+                live_view_module.DETAIL_KEY_CURRENT_SAMPLES,
+                live_view_module.DETAIL_KEY_CMD_DUTY,
+                live_view_module.DETAIL_KEY_APPLIED_DUTY,
+                live_view_module.DETAIL_KEY_VEL_RPM,
+                live_view_module.DETAIL_KEY_POSITION_ROT,
+                live_view_module.DETAIL_KEY_POSITION_DELTA_ROT,
+                live_view_module.DETAIL_KEY_TEMP_C,
+                live_view_module.DETAIL_KEY_SELECTED,
+            )
+        }
+
+    def test_visibility_lens_selection_details_use_passive_snapshot(self) -> None:
+        view = self._make_view()
+        self._attach_detail_vars(view)
+        view._selected_node = type("NodeStub", (), {"label": "roborio", "can_id": 0})()
+        view._runtime_state = {
+            "roborio": {
+                "presenceConfidence": 0.0,
+                "attachments": [
+                    {"type": "presenceCheck", "source": "localSnapshot", "status": "warning"},
+                ],
+                "lifecycleState": "in-scope-stale",
+                "instantiated": False,
+                "testable": False,
+            }
+        }
+        view.set_passive_detail_snapshot(
+            {
+                "roborio": {
+                    live_view_module.DETAIL_SNAPSHOT_PRESENCE: "0.78",
+                    live_view_module.DETAIL_SNAPSHOT_PRESENCE_STATUS: "medium",
+                    live_view_module.DETAIL_SNAPSHOT_PRESENCE_AGE: "0.0s ago",
+                    live_view_module.DETAIL_SNAPSHOT_PRESENCE_SOURCE: "passiveCan",
+                    live_view_module.DETAIL_SNAPSHOT_LAST_SEEN: "0.0s ago",
+                }
+            }
+        )
+
+        view.set_overlay_lens(live_view_module.TOPOLOGY_LENS_VISIBILITY)
+
+        self.assertEqual("0.78", view._detail_vars[live_view_module.DETAIL_KEY_PRESENCE].get())
+        self.assertEqual(
+            "medium",
+            view._detail_vars[live_view_module.DETAIL_KEY_PRESENCE_STATUS].get(),
+        )
+        self.assertEqual(
+            "passiveCan",
+            view._detail_vars[live_view_module.DETAIL_KEY_PRESENCE_SOURCE].get(),
+        )
+        self.assertEqual(
+            "in-scope-stale",
+            view._detail_vars[live_view_module.DETAIL_KEY_LIFECYCLE_STATE].get(),
+        )
+
+    def test_evidence_lens_selection_details_use_interpreted_snapshot(self) -> None:
+        view = self._make_view()
+        self._attach_detail_vars(view)
+        view._selected_node = type("NodeStub", (), {"label": "FALCON 9", "can_id": 9})()
+        view._runtime_state = {
+            "falcon 9": {
+                "presenceConfidence": 0.0,
+                "attachments": [
+                    {"type": "presenceCheck", "source": "localSnapshot", "status": "warning"},
+                ],
+                "lifecycleState": "defined",
+                "instantiated": False,
+                "testable": False,
+            }
+        }
+        view.set_evidence_detail_snapshot(
+            {
+                "falcon 9": {
+                    live_view_module.DETAIL_SNAPSHOT_PRESENCE: "1.00",
+                    live_view_module.DETAIL_SNAPSHOT_PRESENCE_STATUS: "present",
+                    live_view_module.DETAIL_SNAPSHOT_PRESENCE_AGE: "fresh",
+                    live_view_module.DETAIL_SNAPSHOT_PRESENCE_SOURCE: "interpretedEvidence",
+                }
+            }
+        )
+
+        view.set_overlay_lens(live_view_module.TOPOLOGY_LENS_EVIDENCE)
+
+        self.assertEqual("1.00", view._detail_vars[live_view_module.DETAIL_KEY_PRESENCE].get())
+        self.assertEqual(
+            "present",
+            view._detail_vars[live_view_module.DETAIL_KEY_PRESENCE_STATUS].get(),
+        )
+        self.assertEqual(
+            "interpretedEvidence",
+            view._detail_vars[live_view_module.DETAIL_KEY_PRESENCE_SOURCE].get(),
+        )
+        self.assertEqual(
+            "defined",
+            view._detail_vars[live_view_module.DETAIL_KEY_LIFECYCLE_STATE].get(),
+        )
 
     def test_filter_helpers_toggle_all_and_none(self) -> None:
         view = self._make_view()
@@ -257,6 +388,14 @@ class LiveTopologyViewTests(unittest.TestCase):
         view = self._make_view()
         view._runtime_state_seen = True
         view._controlled_lifecycle_active = True
+
+        self.assertFalse(view._active_group_members_editable())
+
+    def test_active_group_members_not_editable_during_transition_resync(self) -> None:
+        view = self._make_view()
+        view._runtime_state_seen = True
+        view._controlled_lifecycle_active = False
+        view._scope_transition_pending = True
 
         self.assertFalse(view._active_group_members_editable())
 
@@ -460,6 +599,24 @@ class LiveTopologyViewTests(unittest.TestCase):
             view._live_fill(node, 0),
         )
 
+    def test_visibility_lens_prefers_passive_none_over_broad_visibility_state(self) -> None:
+        view = self._make_view()
+        node = type("NodeStub", (), {"label": "falcon 9", "interface": "CAN", "category": "krakens"})()
+        view._visibility_state = {"falcon 9": live_view_module.VIS_STATE_ALL}
+        view._passive_detail_state = {
+            "falcon 9": {
+                live_view_module.DETAIL_SNAPSHOT_PRESENCE: "0.00",
+                live_view_module.DETAIL_SNAPSHOT_PRESENCE_STATUS: "none",
+                live_view_module.DETAIL_SNAPSHOT_PRESENCE_SOURCE: "passiveCan",
+            }
+        }
+        view.set_overlay_lens(live_view_module.TOPOLOGY_LENS_VISIBILITY)
+
+        self.assertEqual(
+            live_view_module.VIS_COLOR_NONE,
+            view._live_fill(node, 0),
+        )
+
     def test_runtime_notice_prefers_disabled_over_activation_blocker(self) -> None:
         view = self._make_view()
         notices = []
@@ -527,6 +684,18 @@ class LiveTopologyViewTests(unittest.TestCase):
 
         self.assertEqual(
             live_view_module.ACTIVE_GROUP_STATUS_LOCKED_TEXT,
+            view._active_group_status_text({"name": "active-group"}, {"falcon 9": {}}),
+        )
+
+    def test_active_group_status_reports_resync_during_transition_wait(self) -> None:
+        view = self._make_view()
+        view._runtime_state_seen = True
+        view._controlled_lifecycle_active = True
+        view._scope_transition_pending = True
+        view._runtime_state = {"falcon 9": {"presenceConfidence": 1.0}}
+
+        self.assertEqual(
+            live_view_module.ACTIVE_GROUP_STATUS_RESYNC_TEXT,
             view._active_group_status_text({"name": "active-group"}, {"falcon 9": {}}),
         )
 

@@ -96,6 +96,8 @@ public final class BridgeGroupManager {
     public final Map<String, MemberState> members;
     public final List<Binding> bindings;
     public final List<String> lastSkippedMembers;
+    public boolean bindingActive;
+    public double lastBindingOutput;
 
     public Group(String name) {
       this.name = name;
@@ -103,6 +105,8 @@ public final class BridgeGroupManager {
       this.members = new LinkedHashMap<>();
       this.bindings = new ArrayList<>();
       this.lastSkippedMembers = new ArrayList<>();
+      this.bindingActive = false;
+      this.lastBindingOutput = 0.0;
     }
   }
 
@@ -113,6 +117,9 @@ public final class BridgeGroupManager {
   public static final class SelectedState {
     public String device;
     public boolean enabled;
+    public String group;
+    public boolean groupEnabled;
+    public final List<String> groupMembers = new ArrayList<>();
   }
 
   /**
@@ -541,25 +548,39 @@ public final class BridgeGroupManager {
    */
   public void applyBindings(InputSnapshot input, BringupCore core, SelectedState selected) {
     if (input == null || core == null) {
+      clearBindingActivity();
       return;
     }
     if (core.isTestRunning()) {
+      clearBindingActivity();
       return;
     }
     for (Group group : groups.values()) {
       group.lastSkippedMembers.clear();
+      group.bindingActive = false;
+      group.lastBindingOutput = 0.0;
       if (!group.enabled) {
         continue;
       }
-      double output = computeGroupOutput(group, input);
-      if (Math.abs(output) < 1e-6) {
+      if (selected != null && selected.enabled && groupHasSelectedDevice(group, selected)) {
         continue;
+      }
+      if (selected != null
+          && selected.groupEnabled
+          && (sameKey(selected.group, group.name)
+              || groupHasManualOverrideMember(group, selected))) {
+        continue;
+      }
+      double output = computeGroupOutput(group, input);
+      if (Math.abs(output) < 1e-6 && group.bindings.isEmpty()) {
+        continue;
+      }
+      if (Math.abs(output) >= 1e-6) {
+        group.bindingActive = true;
+        group.lastBindingOutput = output;
       }
       for (MemberState member : group.members.values()) {
         if (!member.enabled) {
-          continue;
-        }
-        if (selected != null && selected.enabled && sameKey(selected.device, member.label)) {
           continue;
         }
         if (!core.setDutyByDeviceLabel(member.label, output)) {
@@ -580,6 +601,102 @@ public final class BridgeGroupManager {
       sum += value;
     }
     return clamp(sum, -1.0, 1.0);
+  }
+
+  private boolean groupHasManualOverrideMember(Group group, SelectedState selected) {
+    if (group == null || selected == null || selected.groupMembers.isEmpty()) {
+      return false;
+    }
+    for (MemberState member : group.members.values()) {
+      if (member == null || member.label == null || member.label.isBlank()) {
+        continue;
+      }
+      if (selected.groupMembers.contains(normalize(member.label))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private boolean groupHasSelectedDevice(Group group, SelectedState selected) {
+    if (group == null
+        || selected == null
+        || selected.device == null
+        || selected.device.isBlank()) {
+      return false;
+    }
+    for (MemberState member : group.members.values()) {
+      if (member == null || member.label == null || member.label.isBlank()) {
+        continue;
+      }
+      if (sameKey(selected.device, member.label)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * NAME
+   *   hasActiveBindingForDevice - Return whether a nonzero binding currently owns one device.
+   *
+   * PARAMETERS
+   *   device - Device label.
+   *
+   * RETURNS
+   *   True when any enabled runtime group with a nonzero current binding output contains the device.
+   */
+  public boolean hasActiveBindingForDevice(String device) {
+    String deviceKey = normalize(device);
+    if (deviceKey.isEmpty()) {
+      return false;
+    }
+    for (Group group : groups.values()) {
+      if (group == null || !group.bindingActive || !group.enabled) {
+        continue;
+      }
+      if (group.members.containsKey(deviceKey)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * NAME
+   *   hasActiveBindingForGroup - Return whether any member of one group is currently owned by a binding.
+   *
+   * PARAMETERS
+   *   groupName - Group name to inspect.
+   *
+   * RETURNS
+   *   True when any enabled member overlaps a nonzero active binding group.
+   */
+  public boolean hasActiveBindingForGroup(String groupName) {
+    Group group = getGroup(groupName);
+    if (group == null) {
+      return false;
+    }
+    for (MemberState member : group.members.values()) {
+      if (member == null || !member.enabled || member.label == null || member.label.isBlank()) {
+        continue;
+      }
+      if (hasActiveBindingForDevice(member.label)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private void clearBindingActivity() {
+    for (Group group : groups.values()) {
+      if (group == null) {
+        continue;
+      }
+      group.bindingActive = false;
+      group.lastBindingOutput = 0.0;
+      group.lastSkippedMembers.clear();
+    }
   }
 
   /**

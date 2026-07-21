@@ -34,6 +34,8 @@ from tools.can_nt.passive_discovery_integration_service import (
     DETAIL_SNAPSHOT_FULL_PROBE_MESSAGE,
     DETAIL_SNAPSHOT_FULL_PROBE_SCORE,
     DETAIL_SNAPSHOT_FULL_PROBE_STATUS,
+    DETAIL_SNAPSHOT_GROUP_MEMBER,
+    DETAIL_SNAPSHOT_INSTANTIATED,
     DETAIL_SNAPSHOT_LAST_SEEN,
     DETAIL_SNAPSHOT_LIFECYCLE_STATE,
     DETAIL_SNAPSHOT_NOT_TESTABLE_REASON,
@@ -46,6 +48,7 @@ from tools.can_nt.passive_discovery_integration_service import (
     DETAIL_SNAPSHOT_PRESENCE_AGE,
     DETAIL_SNAPSHOT_PRESENCE_SOURCE,
     DETAIL_SNAPSHOT_PRESENCE_STATUS,
+    DETAIL_SNAPSHOT_SCOPE_ACTIVE,
     DETAIL_SNAPSHOT_TEMP_C,
     DETAIL_SNAPSHOT_TESTABLE,
     DETAIL_SNAPSHOT_VEL_RPM,
@@ -123,6 +126,7 @@ from tools.common.group_contract import (
     group_primary_label,
     merge_effective_groups,
     normalize_group_name,
+    resolve_group_state_from_member_map,
 )
 from tools.common.motor_runtime_verdict import (
     infer_motor_runtime_verdict,
@@ -149,6 +153,7 @@ from tools.can_nt.host_ui_state_service import (
     ACTIVE_GROUP_STATUS_LOCKED_TEXT as SHARED_ACTIVE_GROUP_STATUS_LOCKED_TEXT,
     ACTIVE_GROUP_STATUS_NONE_TEXT as SHARED_ACTIVE_GROUP_STATUS_NONE_TEXT,
     ACTIVE_GROUP_STATUS_READY_TEXT as SHARED_ACTIVE_GROUP_STATUS_READY_TEXT,
+    ACTIVE_GROUP_STATUS_RESYNC_TEXT as SHARED_ACTIVE_GROUP_STATUS_RESYNC_TEXT,
     ACTIVE_GROUP_STATUS_WAITING_TEXT as SHARED_ACTIVE_GROUP_STATUS_WAITING_TEXT,
     ACTIVE_GROUP_SUMMARY_EMPTY_TEXT as SHARED_ACTIVE_GROUP_SUMMARY_EMPTY_TEXT,
     ActiveScopeMembershipState,
@@ -381,6 +386,7 @@ ACTIVE_GROUP_STATUS_WAITING_TEXT = SHARED_ACTIVE_GROUP_STATUS_WAITING_TEXT
 ACTIVE_GROUP_STATUS_EDITABLE_TEXT = SHARED_ACTIVE_GROUP_STATUS_EDITABLE_TEXT
 ACTIVE_GROUP_STATUS_LOCKED_TEXT = SHARED_ACTIVE_GROUP_STATUS_LOCKED_TEXT
 ACTIVE_GROUP_STATUS_READY_TEXT = SHARED_ACTIVE_GROUP_STATUS_READY_TEXT
+ACTIVE_GROUP_STATUS_RESYNC_TEXT = SHARED_ACTIVE_GROUP_STATUS_RESYNC_TEXT
 ACTIVE_GROUP_EMPTY_TEXT = SHARED_ACTIVE_GROUP_SUMMARY_EMPTY_TEXT
 ACTIVE_GROUP_NONE_TEXT = "(not present)"
 ACTIVE_GROUP_ELIGIBLE_EMPTY_TEXT = "(no eligible motors)"
@@ -459,6 +465,9 @@ DETAIL_KEY_FULL_PROBE_AGE = "full_probe_age"
 DETAIL_KEY_FULL_PROBE_SCORE = "full_probe_score"
 DETAIL_KEY_FULL_PROBE_STATUS = "full_probe_status"
 DETAIL_KEY_FULL_PROBE_MESSAGE = "full_probe_message"
+DETAIL_KEY_GROUP_MEMBER = "group_member"
+DETAIL_KEY_SCOPE_ACTIVE = "scope_active"
+DETAIL_KEY_INSTANTIATED = "instantiated"
 DETAIL_KEY_LIFECYCLE_STATE = "lifecycle_state"
 DETAIL_KEY_TESTABLE = "testable"
 DETAIL_KEY_OVERRIDE_ACTIVE = "override_active"
@@ -489,6 +498,9 @@ DETAIL_TITLE_FULL_PROBE_AGE = "Full Probe Age"
 DETAIL_TITLE_FULL_PROBE_SCORE = "Full Probe Score"
 DETAIL_TITLE_FULL_PROBE_STATUS = "Full Probe Status"
 DETAIL_TITLE_FULL_PROBE_MESSAGE = "Full Probe Message"
+DETAIL_TITLE_GROUP_MEMBER = "Group Member"
+DETAIL_TITLE_SCOPE_ACTIVE = "Scope Active"
+DETAIL_TITLE_INSTANTIATED = "Instantiated"
 DETAIL_TITLE_LIFECYCLE_STATE = "Scope State"
 DETAIL_TITLE_TESTABLE = "Testable"
 DETAIL_TITLE_OVERRIDE_ACTIVE = "Override Active"
@@ -1029,6 +1041,8 @@ class LiveTopologyView(ttk.Frame):
         self._visibility_state: Dict[str, str] = {}
         self._visibility_sources: Dict[str, bool] = {}
         self._evidence_state: Dict[str, str] = {}
+        self._passive_detail_state: Dict[str, Dict[str, str]] = {}
+        self._evidence_detail_state: Dict[str, Dict[str, str]] = {}
         self._visibility_fingerprint: Optional[Tuple[object, ...]] = None
         self._selected_label: Optional[str] = None
         self._selected_enabled: Optional[bool] = None
@@ -1054,6 +1068,7 @@ class LiveTopologyView(ttk.Frame):
         self._show_groups = True
         self._runtime_fingerprint: Optional[Tuple[object, ...]] = None
         self._runtime_state_seen = False
+        self._scope_transition_pending = False
         self._runtime_state_notice_text = EMPTY_STRING
         self._runtime_state_notice_level = "info"
         self._runtime_event_notice_text = EMPTY_STRING
@@ -1236,6 +1251,9 @@ class LiveTopologyView(ttk.Frame):
                 DETAIL_KEY_FULL_PROBE_SCORE: tk.StringVar(value="--"),
                 DETAIL_KEY_FULL_PROBE_STATUS: tk.StringVar(value="--"),
                 DETAIL_KEY_FULL_PROBE_MESSAGE: tk.StringVar(value="--"),
+                DETAIL_KEY_GROUP_MEMBER: tk.StringVar(value="--"),
+                DETAIL_KEY_SCOPE_ACTIVE: tk.StringVar(value="--"),
+                DETAIL_KEY_INSTANTIATED: tk.StringVar(value="--"),
                 DETAIL_KEY_LIFECYCLE_STATE: tk.StringVar(value="--"),
                 DETAIL_KEY_TESTABLE: tk.StringVar(value="--"),
                 DETAIL_KEY_OVERRIDE_ACTIVE: tk.StringVar(value="--"),
@@ -1268,6 +1286,9 @@ class LiveTopologyView(ttk.Frame):
                 (DETAIL_TITLE_FULL_PROBE_SCORE, DETAIL_KEY_FULL_PROBE_SCORE),
                 (DETAIL_TITLE_FULL_PROBE_STATUS, DETAIL_KEY_FULL_PROBE_STATUS),
                 (DETAIL_TITLE_FULL_PROBE_MESSAGE, DETAIL_KEY_FULL_PROBE_MESSAGE),
+                (DETAIL_TITLE_GROUP_MEMBER, DETAIL_KEY_GROUP_MEMBER),
+                (DETAIL_TITLE_SCOPE_ACTIVE, DETAIL_KEY_SCOPE_ACTIVE),
+                (DETAIL_TITLE_INSTANTIATED, DETAIL_KEY_INSTANTIATED),
                 (DETAIL_TITLE_LIFECYCLE_STATE, DETAIL_KEY_LIFECYCLE_STATE),
                 (DETAIL_TITLE_TESTABLE, DETAIL_KEY_TESTABLE),
                 (DETAIL_TITLE_OVERRIDE_ACTIVE, DETAIL_KEY_OVERRIDE_ACTIVE),
@@ -1622,6 +1643,7 @@ class LiveTopologyView(ttk.Frame):
             return
         self._overlay_lens = normalized
         self._visibility_enabled = normalized == TOPOLOGY_LENS_VISIBILITY
+        self._update_details()
         self._redraw()
 
     def get_overlay_lens(self) -> str:
@@ -1647,6 +1669,46 @@ class LiveTopologyView(ttk.Frame):
             return
         self._evidence_state = normalized
         self._redraw()
+
+    def set_passive_detail_snapshot(self, passive_detail_state: Optional[Dict[str, Dict[str, str]]]) -> None:
+        """
+        NAME
+            set_passive_detail_snapshot - Apply passive CAN detail snapshots for lens-aware inspector values.
+        """
+        normalized: Dict[str, Dict[str, str]] = {}
+        if isinstance(passive_detail_state, dict):
+            for label, snapshot in passive_detail_state.items():
+                clean_label = str(label).strip().lower()
+                if clean_label and isinstance(snapshot, dict):
+                    normalized[clean_label] = {
+                        str(key).strip(): str(value).strip()
+                        for key, value in snapshot.items()
+                        if str(key).strip()
+                    }
+        if normalized == self._passive_detail_state:
+            return
+        self._passive_detail_state = normalized
+        self._update_details()
+
+    def set_evidence_detail_snapshot(self, evidence_detail_state: Optional[Dict[str, Dict[str, str]]]) -> None:
+        """
+        NAME
+            set_evidence_detail_snapshot - Apply interpreted evidence detail snapshots for lens-aware inspector values.
+        """
+        normalized: Dict[str, Dict[str, str]] = {}
+        if isinstance(evidence_detail_state, dict):
+            for label, snapshot in evidence_detail_state.items():
+                clean_label = str(label).strip().lower()
+                if clean_label and isinstance(snapshot, dict):
+                    normalized[clean_label] = {
+                        str(key).strip(): str(value).strip()
+                        for key, value in snapshot.items()
+                        if str(key).strip()
+                    }
+        if normalized == self._evidence_detail_state:
+            return
+        self._evidence_detail_state = normalized
+        self._update_details()
 
     def get_selected_label(self) -> str:
         """
@@ -2095,6 +2157,7 @@ class LiveTopologyView(ttk.Frame):
         NAME
             apply_runnable_scope_state - Apply one shared runnable-scope state to the live-topology notice.
         """
+        self._scope_transition_pending = bool(getattr(state, "transition_pending", False))
         if should_clear_runtime_event_notice(self._runtime_event_notice_text, state):
             self.clear_runtime_notice()
         if state.level == "ready":
@@ -2160,6 +2223,11 @@ class LiveTopologyView(ttk.Frame):
         NAME
             _apply_runtime_notice_from_state - Derive a live-topology notice from runtime state.
         """
+        active_group = self._effective_group_by_name(ACTIVE_GROUP_NAME)
+        active_group_state = self._resolved_group_state(
+            active_group,
+            scope_active=bool(controlled_lifecycle_active is True or runtime_active is True),
+        )
         state = resolve_runnable_scope_state(
             scope_kind=RUNNABLE_SCOPE_KIND_MANUAL,
             local_selected_profile=self._profile_name,
@@ -2172,14 +2240,32 @@ class LiveTopologyView(ttk.Frame):
             robot_mode=robot_mode,
             manual_group_empty=False
             if controlled_lifecycle_active is True or runtime_active is True
-            else (
-                not bool(group_member_map(self._effective_group_by_name(ACTIVE_GROUP_NAME), enabled_only=False))
-                if self._effective_group_by_name(ACTIVE_GROUP_NAME) is not None
-                else False
-            ),
+            else (active_group is not None and not active_group_state.has_members),
             scope_active=controlled_lifecycle_active is True or runtime_active is True,
         )
         self.apply_runnable_scope_state(state)
+
+    def _resolved_group_state(
+        self,
+        group: Optional[Dict[str, object]],
+        *,
+        scope_active: bool,
+    ):
+        """
+        NAME
+            _resolved_group_state - Return shared resolved member facts for one effective group payload.
+        """
+        runtime_state_by_label = self._runtime_state if isinstance(self._runtime_state, dict) else {}
+        member_map = group_member_map(group, enabled_only=False)
+        primary_label = group_primary_label(group, enabled_only=False)
+        group_name = str(group.get("name", EMPTY_STRING)).strip() if isinstance(group, dict) else EMPTY_STRING
+        return resolve_group_state_from_member_map(
+            name=group_name,
+            member_map=member_map,
+            runtime_state_by_label=runtime_state_by_label,
+            primary_label=primary_label,
+            scope_active=scope_active,
+        )
 
     def _on_canvas_click(self, event: tk.Event) -> None:
         """
@@ -2446,67 +2532,53 @@ class LiveTopologyView(ttk.Frame):
         self._detail_vars[DETAIL_KEY_CAN_ID].set(str(node.can_id) if node.can_id >= 0 else "--")
         live = self._runtime_state.get(node.label.lower())
         manual_observation = self._manual_test_observations.get(node.label.strip().lower(), {})
-        if live:
-            detail_snapshot = build_runtime_device_detail_snapshot(
+        detail_snapshot = (
+            build_runtime_device_detail_snapshot(
                 live,
                 manual_observation=manual_observation,
                 now_s=time.time(),
             )
-            self._detail_vars[DETAIL_KEY_PRESENCE].set(detail_snapshot[DETAIL_SNAPSHOT_PRESENCE] or "--")
-            self._detail_vars[DETAIL_KEY_PRESENCE_STATUS].set(detail_snapshot[DETAIL_SNAPSHOT_PRESENCE_STATUS] or "--")
-            self._detail_vars[DETAIL_KEY_PRESENCE_AGE].set(detail_snapshot[DETAIL_SNAPSHOT_PRESENCE_AGE] or "--")
-            self._detail_vars[DETAIL_KEY_PRESENCE_SOURCE].set(detail_snapshot[DETAIL_SNAPSHOT_PRESENCE_SOURCE] or "--")
-            self._detail_vars[DETAIL_KEY_FULL_PROBE_BUCKET].set(detail_snapshot[DETAIL_SNAPSHOT_FULL_PROBE_BUCKET] or "--")
-            self._detail_vars[DETAIL_KEY_FULL_PROBE_AGE].set(detail_snapshot[DETAIL_SNAPSHOT_FULL_PROBE_AGE] or "--")
-            self._detail_vars[DETAIL_KEY_FULL_PROBE_SCORE].set(detail_snapshot[DETAIL_SNAPSHOT_FULL_PROBE_SCORE] or "--")
-            self._detail_vars[DETAIL_KEY_FULL_PROBE_STATUS].set(detail_snapshot[DETAIL_SNAPSHOT_FULL_PROBE_STATUS] or "--")
-            self._detail_vars[DETAIL_KEY_FULL_PROBE_MESSAGE].set(detail_snapshot[DETAIL_SNAPSHOT_FULL_PROBE_MESSAGE] or "--")
-            self._detail_vars[DETAIL_KEY_LIFECYCLE_STATE].set(detail_snapshot[DETAIL_SNAPSHOT_LIFECYCLE_STATE] or "--")
-            self._detail_vars[DETAIL_KEY_TESTABLE].set(detail_snapshot[DETAIL_SNAPSHOT_TESTABLE] or "--")
-            self._detail_vars[DETAIL_KEY_OVERRIDE_ACTIVE].set(detail_snapshot[DETAIL_SNAPSHOT_OVERRIDE_ACTIVE] or "--")
-            self._detail_vars[DETAIL_KEY_OVERRIDE_ORIGINATED].set(detail_snapshot[DETAIL_SNAPSHOT_OVERRIDE_ORIGINATED] or "--")
-            self._detail_vars[DETAIL_KEY_OVERRIDE_FAILURE].set(detail_snapshot[DETAIL_SNAPSHOT_OVERRIDE_FAILURE] or "--")
-            self._detail_vars[DETAIL_KEY_NOT_TESTABLE_REASON].set(detail_snapshot[DETAIL_SNAPSHOT_NOT_TESTABLE_REASON] or "--")
-            self._detail_vars[DETAIL_KEY_LAST_SEEN].set(detail_snapshot[DETAIL_SNAPSHOT_LAST_SEEN] or "--")
-            self._detail_vars[DETAIL_KEY_CURRENT_A].set(detail_snapshot[DETAIL_SNAPSHOT_CURRENT_A] or "--")
-            self._detail_vars[DETAIL_KEY_CURRENT_AVG_A].set(detail_snapshot[DETAIL_SNAPSHOT_CURRENT_AVG_A] or "--")
-            self._detail_vars[DETAIL_KEY_CURRENT_PEAK_A].set(detail_snapshot[DETAIL_SNAPSHOT_CURRENT_PEAK_A] or "--")
-            self._detail_vars[DETAIL_KEY_CURRENT_NONZERO].set(detail_snapshot[DETAIL_SNAPSHOT_CURRENT_NONZERO] or "--")
-            self._detail_vars[DETAIL_KEY_CURRENT_SAMPLES].set(detail_snapshot[DETAIL_SNAPSHOT_CURRENT_SAMPLES] or "--")
-            self._detail_vars[DETAIL_KEY_CMD_DUTY].set(detail_snapshot[DETAIL_SNAPSHOT_CMD_DUTY] or "--")
-            self._detail_vars[DETAIL_KEY_APPLIED_DUTY].set(detail_snapshot[DETAIL_SNAPSHOT_APPLIED_DUTY] or "--")
-            self._detail_vars[DETAIL_KEY_VEL_RPM].set(detail_snapshot[DETAIL_SNAPSHOT_VEL_RPM] or "--")
-            self._detail_vars[DETAIL_KEY_POSITION_ROT].set(detail_snapshot[DETAIL_SNAPSHOT_POSITION_ROT] or "--")
-            self._detail_vars[DETAIL_KEY_POSITION_DELTA_ROT].set(detail_snapshot[DETAIL_SNAPSHOT_POSITION_DELTA_ROT] or "--")
-            self._detail_vars[DETAIL_KEY_TEMP_C].set(detail_snapshot[DETAIL_SNAPSHOT_TEMP_C] or "--")
-        else:
-            self._detail_vars[DETAIL_KEY_PRESENCE].set("--")
-            self._detail_vars[DETAIL_KEY_PRESENCE_STATUS].set("--")
-            self._detail_vars[DETAIL_KEY_PRESENCE_AGE].set("--")
-            self._detail_vars[DETAIL_KEY_PRESENCE_SOURCE].set("--")
-            self._detail_vars[DETAIL_KEY_FULL_PROBE_BUCKET].set("--")
-            self._detail_vars[DETAIL_KEY_FULL_PROBE_AGE].set("--")
-            self._detail_vars[DETAIL_KEY_FULL_PROBE_SCORE].set("--")
-            self._detail_vars[DETAIL_KEY_FULL_PROBE_STATUS].set("--")
-            self._detail_vars[DETAIL_KEY_FULL_PROBE_MESSAGE].set("--")
-            self._detail_vars[DETAIL_KEY_LIFECYCLE_STATE].set("--")
-            self._detail_vars[DETAIL_KEY_TESTABLE].set("--")
-            self._detail_vars[DETAIL_KEY_OVERRIDE_ACTIVE].set("--")
-            self._detail_vars[DETAIL_KEY_OVERRIDE_ORIGINATED].set("--")
-            self._detail_vars[DETAIL_KEY_OVERRIDE_FAILURE].set("--")
-            self._detail_vars[DETAIL_KEY_NOT_TESTABLE_REASON].set("--")
-            self._detail_vars[DETAIL_KEY_LAST_SEEN].set("--")
-            self._detail_vars[DETAIL_KEY_CURRENT_A].set("--")
-            self._detail_vars[DETAIL_KEY_CURRENT_AVG_A].set("--")
-            self._detail_vars[DETAIL_KEY_CURRENT_PEAK_A].set("--")
-            self._detail_vars[DETAIL_KEY_CURRENT_NONZERO].set("--")
-            self._detail_vars[DETAIL_KEY_CURRENT_SAMPLES].set("--")
-            self._detail_vars[DETAIL_KEY_CMD_DUTY].set("--")
-            self._detail_vars[DETAIL_KEY_APPLIED_DUTY].set("--")
-            self._detail_vars[DETAIL_KEY_VEL_RPM].set("--")
-            self._detail_vars[DETAIL_KEY_POSITION_ROT].set("--")
-            self._detail_vars[DETAIL_KEY_POSITION_DELTA_ROT].set("--")
-            self._detail_vars[DETAIL_KEY_TEMP_C].set("--")
+            if live
+            else {}
+        )
+        if self._overlay_lens == TOPOLOGY_LENS_VISIBILITY:
+            passive_snapshot = self._passive_detail_state.get(node.label.lower(), {})
+            if isinstance(passive_snapshot, dict) and passive_snapshot:
+                detail_snapshot = {**detail_snapshot, **passive_snapshot}
+        elif self._overlay_lens == TOPOLOGY_LENS_EVIDENCE:
+            evidence_snapshot = self._evidence_detail_state.get(node.label.lower(), {})
+            if isinstance(evidence_snapshot, dict) and evidence_snapshot:
+                detail_snapshot = {**detail_snapshot, **evidence_snapshot}
+        self._detail_vars[DETAIL_KEY_PRESENCE].set(detail_snapshot.get(DETAIL_SNAPSHOT_PRESENCE, "--") or "--")
+        self._detail_vars[DETAIL_KEY_PRESENCE_STATUS].set(detail_snapshot.get(DETAIL_SNAPSHOT_PRESENCE_STATUS, "--") or "--")
+        self._detail_vars[DETAIL_KEY_PRESENCE_AGE].set(detail_snapshot.get(DETAIL_SNAPSHOT_PRESENCE_AGE, "--") or "--")
+        self._detail_vars[DETAIL_KEY_PRESENCE_SOURCE].set(detail_snapshot.get(DETAIL_SNAPSHOT_PRESENCE_SOURCE, "--") or "--")
+        self._detail_vars[DETAIL_KEY_FULL_PROBE_BUCKET].set(detail_snapshot.get(DETAIL_SNAPSHOT_FULL_PROBE_BUCKET, "--") or "--")
+        self._detail_vars[DETAIL_KEY_FULL_PROBE_AGE].set(detail_snapshot.get(DETAIL_SNAPSHOT_FULL_PROBE_AGE, "--") or "--")
+        self._detail_vars[DETAIL_KEY_FULL_PROBE_SCORE].set(detail_snapshot.get(DETAIL_SNAPSHOT_FULL_PROBE_SCORE, "--") or "--")
+        self._detail_vars[DETAIL_KEY_FULL_PROBE_STATUS].set(detail_snapshot.get(DETAIL_SNAPSHOT_FULL_PROBE_STATUS, "--") or "--")
+        self._detail_vars[DETAIL_KEY_FULL_PROBE_MESSAGE].set(detail_snapshot.get(DETAIL_SNAPSHOT_FULL_PROBE_MESSAGE, "--") or "--")
+        self._detail_vars[DETAIL_KEY_GROUP_MEMBER].set(detail_snapshot.get(DETAIL_SNAPSHOT_GROUP_MEMBER, "--") or "--")
+        self._detail_vars[DETAIL_KEY_SCOPE_ACTIVE].set(detail_snapshot.get(DETAIL_SNAPSHOT_SCOPE_ACTIVE, "--") or "--")
+        self._detail_vars[DETAIL_KEY_INSTANTIATED].set(detail_snapshot.get(DETAIL_SNAPSHOT_INSTANTIATED, "--") or "--")
+        self._detail_vars[DETAIL_KEY_LIFECYCLE_STATE].set(detail_snapshot.get(DETAIL_SNAPSHOT_LIFECYCLE_STATE, "--") or "--")
+        self._detail_vars[DETAIL_KEY_TESTABLE].set(detail_snapshot.get(DETAIL_SNAPSHOT_TESTABLE, "--") or "--")
+        self._detail_vars[DETAIL_KEY_OVERRIDE_ACTIVE].set(detail_snapshot.get(DETAIL_SNAPSHOT_OVERRIDE_ACTIVE, "--") or "--")
+        self._detail_vars[DETAIL_KEY_OVERRIDE_ORIGINATED].set(detail_snapshot.get(DETAIL_SNAPSHOT_OVERRIDE_ORIGINATED, "--") or "--")
+        self._detail_vars[DETAIL_KEY_OVERRIDE_FAILURE].set(detail_snapshot.get(DETAIL_SNAPSHOT_OVERRIDE_FAILURE, "--") or "--")
+        self._detail_vars[DETAIL_KEY_NOT_TESTABLE_REASON].set(detail_snapshot.get(DETAIL_SNAPSHOT_NOT_TESTABLE_REASON, "--") or "--")
+        self._detail_vars[DETAIL_KEY_LAST_SEEN].set(detail_snapshot.get(DETAIL_SNAPSHOT_LAST_SEEN, "--") or "--")
+        self._detail_vars[DETAIL_KEY_CURRENT_A].set(detail_snapshot.get(DETAIL_SNAPSHOT_CURRENT_A, "--") or "--")
+        self._detail_vars[DETAIL_KEY_CURRENT_AVG_A].set(detail_snapshot.get(DETAIL_SNAPSHOT_CURRENT_AVG_A, "--") or "--")
+        self._detail_vars[DETAIL_KEY_CURRENT_PEAK_A].set(detail_snapshot.get(DETAIL_SNAPSHOT_CURRENT_PEAK_A, "--") or "--")
+        self._detail_vars[DETAIL_KEY_CURRENT_NONZERO].set(detail_snapshot.get(DETAIL_SNAPSHOT_CURRENT_NONZERO, "--") or "--")
+        self._detail_vars[DETAIL_KEY_CURRENT_SAMPLES].set(detail_snapshot.get(DETAIL_SNAPSHOT_CURRENT_SAMPLES, "--") or "--")
+        self._detail_vars[DETAIL_KEY_CMD_DUTY].set(detail_snapshot.get(DETAIL_SNAPSHOT_CMD_DUTY, "--") or "--")
+        self._detail_vars[DETAIL_KEY_APPLIED_DUTY].set(detail_snapshot.get(DETAIL_SNAPSHOT_APPLIED_DUTY, "--") or "--")
+        self._detail_vars[DETAIL_KEY_VEL_RPM].set(detail_snapshot.get(DETAIL_SNAPSHOT_VEL_RPM, "--") or "--")
+        self._detail_vars[DETAIL_KEY_POSITION_ROT].set(detail_snapshot.get(DETAIL_SNAPSHOT_POSITION_ROT, "--") or "--")
+        self._detail_vars[DETAIL_KEY_POSITION_DELTA_ROT].set(detail_snapshot.get(DETAIL_SNAPSHOT_POSITION_DELTA_ROT, "--") or "--")
+        self._detail_vars[DETAIL_KEY_TEMP_C].set(detail_snapshot.get(DETAIL_SNAPSHOT_TEMP_C, "--") or "--")
         selected_text = "no"
         if self._selected_label:
             if node.label.strip().lower() == self._selected_label:
@@ -2592,8 +2664,13 @@ class LiveTopologyView(ttk.Frame):
         if summary_var is None or frame is None:
             return
         group = self._effective_group_by_name(self._group_inspector_name)
-        resolved_member_map = group_member_map(group, enabled_only=False)
-        primary_label = group_primary_label(group, enabled_only=False)
+        group_state = self._resolved_group_state(group, scope_active=False)
+        resolved_member_by_label = {
+            member.label.strip().lower(): member
+            for member in group_state.members
+            if member.label.strip()
+        }
+        primary_label = group_state.primary_label
         target_labels = list(self._group_inspector_targets)
         total_count = len(target_labels)
         enabled_count = 0
@@ -2609,8 +2686,9 @@ class LiveTopologyView(ttk.Frame):
         member_rows: List[Tuple[str, str]] = []
         for label in target_labels:
             label_key = label.strip().lower()
-            member = resolved_member_map.get(label_key, {})
-            enabled = bool(member.get("enabled", True))
+            member = resolved_member_by_label.get(label_key)
+            checked = member is not None
+            enabled = member.enabled if member is not None else True
             if enabled:
                 enabled_count += 1
             live = self._runtime_state.get(label_key, {})
@@ -2620,8 +2698,7 @@ class LiveTopologyView(ttk.Frame):
                 if isinstance(manual_observation, dict)
                 else EMPTY_STRING
             )
-            presence_value = live.get("presenceConfidence") if isinstance(live, dict) else None
-            present = isinstance(presence_value, (int, float)) and float(presence_value) > PRESENCE_MIN_CONF
+            present = member.runtime_present if member is not None else False
             if present:
                 present_count += 1
             probe = _runtime_active_probe_attachment(live) if isinstance(live, dict) else None
@@ -2684,7 +2761,11 @@ class LiveTopologyView(ttk.Frame):
             detail_parts = []
             if primary_label and label_key == primary_label.strip().lower():
                 detail_parts.append(GROUP_INSPECTOR_PRIMARY_MARKER)
-            detail_parts.append(ACTIVE_GROUP_MEMBER_ENABLED if enabled else ACTIVE_GROUP_MEMBER_DISABLED)
+            detail_parts.append(
+                ACTIVE_GROUP_MEMBER_ABSENT
+                if not checked
+                else (ACTIVE_GROUP_MEMBER_ENABLED if enabled else ACTIVE_GROUP_MEMBER_DISABLED)
+            )
             detail_parts.append(GROUP_INSPECTOR_ROW_PRESENT if present else GROUP_INSPECTOR_ROW_MISSING)
             detail_parts.append(
                 f"{GROUP_INSPECTOR_FULL_PROBE_BUCKET_PREFIX}{probe_bucket or '--'}/{probe_age}"
@@ -2842,6 +2923,7 @@ class LiveTopologyView(ttk.Frame):
             member_map=member_map,
             runtime_state_by_label=runtime_state_by_label,
             primary_label=primary_label,
+            transition_pending=bool(self.__dict__.get("_scope_transition_pending", False)),
         )
 
     def _active_scope_membership_state(
@@ -2863,6 +2945,7 @@ class LiveTopologyView(ttk.Frame):
             runtime_state_by_label=runtime_state_by_label,
             primary_label=primary_label,
             eligible_labels=self._active_scope_eligible_labels(),
+            transition_pending=bool(self.__dict__.get("_scope_transition_pending", False)),
         )
 
     def _set_active_group_status_text(self, text: str) -> None:
@@ -2949,6 +3032,18 @@ class LiveTopologyView(ttk.Frame):
         if frame is None:
             return
         membership_state = self._active_scope_membership_state(member_map, primary_label)
+        group_state = resolve_group_state_from_member_map(
+            name=ACTIVE_GROUP_NAME,
+            member_map=member_map,
+            runtime_state_by_label=self._runtime_state if isinstance(self._runtime_state, dict) else {},
+            primary_label=primary_label,
+            scope_active=bool(self._controlled_lifecycle_active),
+        )
+        member_state_by_label = {
+            member.label.strip().lower(): member
+            for member in group_state.members
+            if member.label.strip()
+        }
         eligible_labels = membership_state.eligible_labels
         expected_keys = {label.lower() for label in eligible_labels}
         stale_keys = [
@@ -2979,9 +3074,9 @@ class LiveTopologyView(ttk.Frame):
         try:
             for label in eligible_labels:
                 label_key = label.lower()
-                member = member_map.get(label_key, {})
-                checked = label_key in member_map
-                enabled = member.get("enabled")
+                member = member_state_by_label.get(label_key)
+                checked = label_key in member_state_by_label
+                enabled = member.enabled if member is not None else None
                 if not checked:
                     enabled_text = ACTIVE_GROUP_MEMBER_ABSENT
                 else:
@@ -2991,10 +3086,9 @@ class LiveTopologyView(ttk.Frame):
                         else ACTIVE_GROUP_MEMBER_DISABLED
                     )
                 live = self._runtime_state.get(label_key, {})
-                presence = live.get("presenceConfidence")
                 presence_text = (
-                    f"{float(presence):.2f}"
-                    if isinstance(presence, (int, float))
+                    f"{float(live.get('presenceConfidence')):.2f}"
+                    if isinstance(live, dict) and isinstance(live.get("presenceConfidence"), (int, float))
                     else "--"
                 )
                 probe = _runtime_active_probe_attachment(live)
@@ -3157,6 +3251,26 @@ class LiveTopologyView(ttk.Frame):
             if availability is True:
                 return VIS_COLOR_ALL
             return VIS_COLOR_UNKNOWN
+        passive_snapshot = self._passive_detail_state.get(node.label.lower(), {})
+        if isinstance(passive_snapshot, dict):
+            passive_source = str(
+                passive_snapshot.get(DETAIL_SNAPSHOT_PRESENCE_SOURCE, EMPTY_STRING)
+            ).strip().lower()
+            if passive_source == "passivecan":
+                passive_status = str(
+                    passive_snapshot.get(DETAIL_SNAPSHOT_PRESENCE_STATUS, EMPTY_STRING)
+                ).strip().lower()
+                if passive_status in {"high", "medium", "present", "observed", "ok"}:
+                    return VIS_COLOR_ALL
+                if passive_status in {"low", "limited", "stale"}:
+                    return VIS_COLOR_SOME
+                if passive_status in {"none", "uncertain", "missing", "absent"}:
+                    return VIS_COLOR_NONE
+                passive_presence = str(
+                    passive_snapshot.get(DETAIL_SNAPSHOT_PRESENCE, EMPTY_STRING)
+                ).strip()
+                if passive_presence == "0.00":
+                    return VIS_COLOR_NONE
         state = self._visibility_state.get(node.label.lower())
         if state == VIS_STATE_ALL:
             return VIS_COLOR_ALL

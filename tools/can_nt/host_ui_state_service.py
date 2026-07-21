@@ -22,6 +22,11 @@ DESCRIPTION
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
+from tools.common.group_contract import (
+    resolve_group_state_from_member_map,
+    resolve_group_state_from_rows,
+)
+
 PROFILE_NONE = "(none)"
 PROFILE_CONTEXT_SOURCE_BLANK = "blank"
 PROFILE_CONTEXT_SOURCE_LOCAL = "local"
@@ -43,6 +48,7 @@ RUNNABLE_PANEL_WAITING_HEADLINE = "WAITING FOR STATE"
 
 RUNNABLE_SCOPE_PANEL_READY_DETAIL = "manual/group controls available - ready to run"
 RUNNABLE_SCOPE_PANEL_WAITING_DETAIL = "waiting for robot runtime state"
+RUNNABLE_SCOPE_PANEL_RESYNC_DETAIL = "waiting for post-transition runtime resync"
 RUNNABLE_SCOPE_PANEL_DISCONNECTED_DETAIL = (
     "Robot connection unavailable. Power the robot and reconnect before running."
 )
@@ -105,10 +111,17 @@ TEST_SCOPE_STATUS_BLOCKED_NOT_TELEOP_DETAIL = (
 TEST_SCOPE_STATUS_INACTIVE_PREFIX = "selected test inactive - "
 TEST_ACTIVE_GROUP_STATUS_LOCKED = "locked"
 TEST_ACTIVE_GROUP_STATUS_INVALID = "invalid"
-TEST_ACTIVE_GROUP_STATUS_NOT_ACTIVATED = "not instantiated"
 TEST_ACTIVE_GROUP_STATUS_ENABLED = "enabled"
+TEST_ACTIVE_GROUP_STATUS_INSTANTIATED = "instantiated"
+TEST_ACTIVE_GROUP_STATUS_NOT_INSTANTIATED = "not instantiated"
+TEST_ACTIVE_GROUP_STATUS_SCOPE_ACTIVE = "scope active"
+TEST_ACTIVE_GROUP_STATUS_SCOPE_INACTIVE = "scope inactive"
+TEST_ACTIVE_GROUP_STATUS_NOT_ACTIVATED = TEST_ACTIVE_GROUP_STATUS_SCOPE_INACTIVE
+TEST_ACTIVE_GROUP_COLUMN_YES = "yes"
+TEST_ACTIVE_GROUP_COLUMN_NO = "no"
 TEST_ACTIVE_GROUP_SINGLETON_LABELS = {"controller0", "roborio", "pdp"}
 ACTIVE_GROUP_STATUS_WAITING_TEXT = "waiting for robot runtime state"
+ACTIVE_GROUP_STATUS_RESYNC_TEXT = "waiting for active-scope membership resync"
 ACTIVE_GROUP_STATUS_EMPTY_TEXT = "empty - add devices to activate"
 ACTIVE_GROUP_STATUS_READY_TEXT = "active and ready to run"
 ACTIVE_GROUP_STATUS_LOCKED_TEXT = "Status: locked by active scope session"
@@ -119,6 +132,13 @@ SCOPE_MEMBERSHIP_RUNTIME_STATE_CONTROLLED_ACTIVE = "controlled-active"
 MANUAL_DUTY_BLOCKED_CONTROLLED_SCOPE_TEXT = (
     "Manual motor control blocked: device is outside the active scope membership."
 )
+MANUAL_DUTY_BLOCKED_BINDING_ACTIVE_TEXT = (
+    "Manual motor control blocked: overlapping group binding is already active."
+)
+RUNTIME_GROUP_KEY_MEMBERS = "members"
+RUNTIME_GROUP_KEY_LABEL = "label"
+RUNTIME_GROUP_KEY_ENABLED = "enabled"
+RUNTIME_GROUP_KEY_BINDING_ACTIVE = "bindingActive"
 RUNTIME_FETCH_SOURCE_REST = "rest_runtime_state"
 RUNTIME_FETCH_BLOCK_NOT_CONNECTED = "Not connected: runtime state unavailable."
 RUNTIME_FETCH_BLOCK_HANDSHAKE = "Runtime state unavailable: waiting for UI session handshake."
@@ -179,6 +199,7 @@ class RunnableScopeState:
     deactivation_allowed: bool
     scope_active: bool
     runtime_state_seen: bool
+    transition_pending: bool
 
 
 @dataclass(frozen=True)
@@ -223,6 +244,7 @@ class ActiveGroupSummaryState:
     all_members_present: bool
     primary_label: str
     member_count: int
+    transition_pending: bool
 
 
 @dataclass(frozen=True)
@@ -240,6 +262,7 @@ class ActiveScopeMembershipState:
     primary_label: str
     member_count: int
     has_scope_definition: bool
+    transition_pending: bool
 
 
 @dataclass(frozen=True)
@@ -264,7 +287,16 @@ class ActiveGroupMemberRowState:
     label: str
     statuses: List[str]
     reason: str
+    enabled: bool
+    locked: bool
+    invalid: bool
     instantiated: bool
+    scope_active: bool
+    enabled_text: str
+    locked_text: str
+    instantiated_text: str
+    scope_active_text: str
+    note_text: str
     line: str
 
 
@@ -289,6 +321,43 @@ class ManualDutyScopeState:
 
     allowed: bool
     blocked_reason: str
+
+
+def resolve_manual_duty_binding_state(
+    *,
+    target_labels: List[object],
+    runtime_groups: List[Dict[str, Any]],
+) -> ManualDutyScopeState:
+    """
+    NAME
+        resolve_manual_duty_binding_state - Return whether manual duty is allowed against current runtime binding ownership.
+    """
+    normalized_targets = {
+        str(label or "").strip().lower()
+        for label in list(target_labels or [])
+        if str(label or "").strip()
+    }
+    if not normalized_targets:
+        return ManualDutyScopeState(
+            allowed=False,
+            blocked_reason=MANUAL_DUTY_BLOCKED_BINDING_ACTIVE_TEXT,
+        )
+    for group in list(runtime_groups or []):
+        if not isinstance(group, dict) or not bool(group.get(RUNTIME_GROUP_KEY_BINDING_ACTIVE, False)):
+            continue
+        members = group.get(RUNTIME_GROUP_KEY_MEMBERS, [])
+        if not isinstance(members, list):
+            continue
+        for member in members:
+            if not isinstance(member, dict) or not bool(member.get(RUNTIME_GROUP_KEY_ENABLED, True)):
+                continue
+            label = str(member.get(RUNTIME_GROUP_KEY_LABEL, "")).strip().lower()
+            if label and label in normalized_targets:
+                return ManualDutyScopeState(
+                    allowed=False,
+                    blocked_reason=MANUAL_DUTY_BLOCKED_BINDING_ACTIVE_TEXT,
+                )
+    return ManualDutyScopeState(allowed=True, blocked_reason="")
 
 
 def _normalize_profile_name(value: object) -> str:
@@ -429,6 +498,7 @@ def resolve_runnable_scope_state(
     robot_mode: object,
     manual_group_empty: bool,
     scope_active: bool,
+    transition_pending: bool = False,
 ) -> RunnableScopeState:
     """
     NAME
@@ -454,6 +524,7 @@ def resolve_runnable_scope_state(
             deactivation_allowed=False,
             scope_active=False,
             runtime_state_seen=runtime_state_seen,
+            transition_pending=False,
         )
     if not runtime_state_seen:
         return RunnableScopeState(
@@ -467,6 +538,21 @@ def resolve_runnable_scope_state(
             deactivation_allowed=False,
             scope_active=False,
             runtime_state_seen=False,
+            transition_pending=False,
+        )
+    if transition_pending:
+        return RunnableScopeState(
+            scope_kind=normalized_scope,
+            headline=RUNNABLE_PANEL_WAITING_HEADLINE,
+            detail=RUNNABLE_SCOPE_PANEL_RESYNC_DETAIL,
+            level=RUNNABLE_STATE_LEVEL_NEUTRAL,
+            blocked_reason=RUNNABLE_SCOPE_PANEL_RESYNC_DETAIL,
+            activation_notice=activation_notice,
+            activation_allowed=False,
+            deactivation_allowed=False,
+            scope_active=scope_active,
+            runtime_state_seen=True,
+            transition_pending=True,
         )
     if stale_state:
         return RunnableScopeState(
@@ -480,6 +566,7 @@ def resolve_runnable_scope_state(
             deactivation_allowed=False,
             scope_active=False,
             runtime_state_seen=True,
+            transition_pending=False,
         )
     if robot_estopped:
         return RunnableScopeState(
@@ -493,6 +580,7 @@ def resolve_runnable_scope_state(
             deactivation_allowed=False,
             scope_active=scope_active,
             runtime_state_seen=True,
+            transition_pending=False,
         )
     if not robot_enabled:
         return RunnableScopeState(
@@ -506,6 +594,7 @@ def resolve_runnable_scope_state(
             deactivation_allowed=scope_active,
             scope_active=scope_active,
             runtime_state_seen=True,
+            transition_pending=False,
         )
     mode = str(robot_mode or "").strip().lower()
     if mode and mode != "teleop":
@@ -525,6 +614,7 @@ def resolve_runnable_scope_state(
             deactivation_allowed=scope_active,
             scope_active=scope_active,
             runtime_state_seen=True,
+            transition_pending=False,
         )
     if normalized_scope == RUNNABLE_SCOPE_KIND_MANUAL and local_profile_required and local_selected == PROFILE_NONE:
         return RunnableScopeState(
@@ -538,6 +628,7 @@ def resolve_runnable_scope_state(
             deactivation_allowed=False,
             scope_active=False,
             runtime_state_seen=True,
+            transition_pending=False,
         )
     if normalized_scope == RUNNABLE_SCOPE_KIND_MANUAL and manual_group_empty:
         return RunnableScopeState(
@@ -551,6 +642,7 @@ def resolve_runnable_scope_state(
             deactivation_allowed=scope_active,
             scope_active=scope_active,
             runtime_state_seen=True,
+            transition_pending=False,
         )
     if not scope_active:
         return RunnableScopeState(
@@ -564,6 +656,7 @@ def resolve_runnable_scope_state(
             deactivation_allowed=False,
             scope_active=False,
             runtime_state_seen=True,
+            transition_pending=False,
         )
     return RunnableScopeState(
         scope_kind=normalized_scope,
@@ -576,6 +669,7 @@ def resolve_runnable_scope_state(
         deactivation_allowed=True,
         scope_active=True,
         runtime_state_seen=True,
+        transition_pending=False,
     )
 
 
@@ -827,40 +921,63 @@ def resolve_tests_active_group_member_rows(
     NAME
         resolve_tests_active_group_member_rows - Return shared Selected Test Devices row presentation state.
     """
+    group_state = resolve_group_state_from_rows(
+        name="selected-test-devices",
+        rows=rows,
+        runtime_state_by_label=runtime_state_by_label,
+        primary_label="",
+        scope_active=scope_active,
+        singleton_labels=tuple(TEST_ACTIVE_GROUP_SINGLETON_LABELS),
+    )
     result: List[ActiveGroupMemberRowState] = []
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        label = str(row.get("label", "")).strip()
-        if not label:
-            continue
-        statuses = [TEST_ACTIVE_GROUP_STATUS_ENABLED]
-        if bool(row.get("locked")) or scope_active:
+    row_reason_by_label = {
+        str(row.get("label", "")).strip(): str(row.get("reason", "")).strip()
+        for row in rows
+        if isinstance(row, dict) and str(row.get("label", "")).strip()
+    }
+    for member in group_state.members:
+        statuses = [TEST_ACTIVE_GROUP_STATUS_ENABLED] if member.enabled else []
+        if member.locked:
             statuses.append(TEST_ACTIVE_GROUP_STATUS_LOCKED)
-        if bool(row.get("invalid")):
+        if member.invalid:
             statuses.append(TEST_ACTIVE_GROUP_STATUS_INVALID)
-        runtime_device = runtime_state_by_label.get(label.lower(), {})
-        instantiated = False
-        if isinstance(runtime_device, dict):
-            if bool(runtime_device.get("instantiated", False)):
-                instantiated = True
-            elif label.lower() in TEST_ACTIVE_GROUP_SINGLETON_LABELS:
-                instantiated = bool(runtime_device.get("testable", False))
         statuses.append(
-            "instantiated"
-            if scope_active and instantiated
-            else TEST_ACTIVE_GROUP_STATUS_NOT_ACTIVATED
+            TEST_ACTIVE_GROUP_STATUS_INSTANTIATED
+            if member.instantiated
+            else TEST_ACTIVE_GROUP_STATUS_NOT_INSTANTIATED
         )
-        reason = str(row.get("reason", "")).strip()
-        line = f"{label} | " + " | ".join(statuses)
-        if reason:
-            line += f" | {reason}"
+        statuses.append(
+            TEST_ACTIVE_GROUP_STATUS_SCOPE_ACTIVE
+            if member.scope_active
+            else TEST_ACTIVE_GROUP_STATUS_SCOPE_INACTIVE
+        )
+        reason = row_reason_by_label.get(member.label, "")
+        note_text = reason or (TEST_ACTIVE_GROUP_STATUS_INVALID if member.invalid else "")
+        enabled_text = TEST_ACTIVE_GROUP_COLUMN_YES if member.enabled else TEST_ACTIVE_GROUP_COLUMN_NO
+        locked_text = TEST_ACTIVE_GROUP_COLUMN_YES if member.locked else TEST_ACTIVE_GROUP_COLUMN_NO
+        instantiated_text = TEST_ACTIVE_GROUP_COLUMN_YES if member.instantiated else TEST_ACTIVE_GROUP_COLUMN_NO
+        scope_active_text = TEST_ACTIVE_GROUP_COLUMN_YES if member.scope_active else TEST_ACTIVE_GROUP_COLUMN_NO
+        line = (
+            f"{member.label} | enabled={enabled_text} | locked={locked_text} | "
+            f"instantiated={instantiated_text} | scopeActive={scope_active_text}"
+        )
+        if note_text:
+            line += f" | {note_text}"
         result.append(
             ActiveGroupMemberRowState(
-                label=label,
+                label=member.label,
                 statuses=statuses,
                 reason=reason,
-                instantiated=instantiated,
+                enabled=member.enabled,
+                locked=member.locked,
+                invalid=member.invalid,
+                instantiated=member.instantiated,
+                scope_active=member.scope_active,
+                enabled_text=enabled_text,
+                locked_text=locked_text,
+                instantiated_text=instantiated_text,
+                scope_active_text=scope_active_text,
+                note_text=note_text,
                 line=line,
             )
         )
@@ -873,13 +990,22 @@ def resolve_active_group_summary_state(
     member_map: Dict[str, Dict[str, Any]],
     runtime_state_by_label: Dict[str, Dict[str, Any]],
     primary_label: object,
+    transition_pending: bool = False,
 ) -> ActiveGroupSummaryState:
     """
     NAME
         resolve_active_group_summary_state - Return shared active-group status and summary state.
     """
-    clean_primary = str(primary_label or "").strip()
-    member_count = len(member_map)
+    group_state = resolve_group_state_from_member_map(
+        name="active-group",
+        member_map=member_map,
+        runtime_state_by_label=runtime_state_by_label,
+        primary_label=primary_label,
+        scope_active=controlled_lifecycle_active,
+        singleton_labels=tuple(TEST_ACTIVE_GROUP_SINGLETON_LABELS),
+    )
+    clean_primary = group_state.primary_label
+    member_count = group_state.member_count
     if not runtime_state_seen:
         return ActiveGroupSummaryState(
             status_text=ACTIVE_GROUP_STATUS_WAITING_TEXT,
@@ -888,8 +1014,19 @@ def resolve_active_group_summary_state(
             all_members_present=False,
             primary_label=clean_primary,
             member_count=member_count,
+            transition_pending=False,
         )
-    if not member_map:
+    if transition_pending:
+        return ActiveGroupSummaryState(
+            status_text=ACTIVE_GROUP_STATUS_RESYNC_TEXT,
+            summary_text=f"Primary: {clean_primary}" if clean_primary else ACTIVE_GROUP_SUMMARY_EMPTY_TEXT,
+            editable=False,
+            all_members_present=False,
+            primary_label=clean_primary,
+            member_count=member_count,
+            transition_pending=True,
+        )
+    if not group_state.has_members:
         return ActiveGroupSummaryState(
             status_text=ACTIVE_GROUP_STATUS_EMPTY_TEXT,
             summary_text=ACTIVE_GROUP_SUMMARY_EMPTY_TEXT,
@@ -897,14 +1034,9 @@ def resolve_active_group_summary_state(
             all_members_present=False,
             primary_label=clean_primary,
             member_count=0,
+            transition_pending=False,
         )
-    all_members_present = True
-    for label_key in member_map.keys():
-        live = runtime_state_by_label.get(str(label_key).strip().lower(), {})
-        presence = live.get("presenceConfidence") if isinstance(live, dict) else None
-        if not isinstance(presence, (int, float)) or float(presence) < 0.5:
-            all_members_present = False
-            break
+    all_members_present = group_state.all_enabled_members_present
     if controlled_lifecycle_active:
         status_text = ACTIVE_GROUP_STATUS_READY_TEXT if all_members_present else ACTIVE_GROUP_STATUS_LOCKED_TEXT
         editable = False
@@ -918,6 +1050,7 @@ def resolve_active_group_summary_state(
         all_members_present=all_members_present,
         primary_label=clean_primary,
         member_count=member_count,
+        transition_pending=False,
     )
 
 
@@ -929,6 +1062,7 @@ def resolve_active_scope_membership_state(
     runtime_state_by_label: Dict[str, Dict[str, Any]],
     primary_label: object,
     eligible_labels: List[str],
+    transition_pending: bool = False,
 ) -> ActiveScopeMembershipState:
     """
     NAME
@@ -940,6 +1074,7 @@ def resolve_active_scope_membership_state(
         member_map=member_map,
         runtime_state_by_label=runtime_state_by_label,
         primary_label=primary_label,
+        transition_pending=transition_pending,
     )
     normalized_labels = sorted(
         {
@@ -958,6 +1093,7 @@ def resolve_active_scope_membership_state(
         primary_label=summary.primary_label,
         member_count=summary.member_count,
         has_scope_definition=bool(member_map),
+        transition_pending=summary.transition_pending,
     )
 
 

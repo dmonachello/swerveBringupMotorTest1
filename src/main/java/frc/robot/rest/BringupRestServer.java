@@ -9,6 +9,7 @@ import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
+import frc.robot.BuildInfo;
 import frc.robot.BringupPrinter;
 import frc.robot.commands.local.RobotLocalCommandRegistry;
 import java.io.IOException;
@@ -45,6 +46,8 @@ public final class BringupRestServer {
   private static final String CONTENT_TYPE_JSON = "application/json; charset=" + CHARSET_UTF8;
   private static final String METHOD_GET = "GET";
   private static final String METHOD_POST = "POST";
+  private static final String PATH_ROOT = "/";
+  private static final String PATH_API = "/api";
   private static final String PATH_HEALTH = "/health";
   private static final String PATH_SESSION = "/session";
   private static final String PATH_SESSION_CONNECT = "/session/connect";
@@ -85,6 +88,7 @@ public final class BringupRestServer {
   private static final String JSON_KEY_DROPPED = "dropped";
   private static final String JSON_KEY_STOP_REQUESTED = "stopRequested";
   private static final String JSON_KEY_CREATED_AT_MS = "createdAtMs";
+  private static final String JSON_KEY_BUILD = "build";
   private static final String JSON_KEY_UPDATED_AT_MS = "updatedAtMs";
   private static final String JSON_KEY_LAST_ACTIVITY_MS = "lastActivityMs";
   private static final String JSON_KEY_SERVER = "server";
@@ -92,12 +96,22 @@ public final class BringupRestServer {
   private static final String JSON_KEY_ACTIVE_COMMAND = "activeCommand";
   private static final String JSON_KEY_COMMANDS = "commands";
   private static final String JSON_KEY_CONFIG = "config";
+  private static final String JSON_KEY_DESCRIPTION = "description";
+  private static final String JSON_KEY_DOCUMENTATION = "documentation";
+  private static final String JSON_KEY_ENDPOINTS = "endpoints";
+  private static final String JSON_KEY_LINKS = "links";
+  private static final String JSON_KEY_METHOD = "method";
+  private static final String JSON_KEY_METHODS = "methods";
+  private static final String JSON_KEY_PATH = "path";
+  private static final String JSON_KEY_SERVICE = "service";
+  private static final String JSON_KEY_VERSION = "version";
   private static final String JSON_KEY_AFTER = "after";
   private static final String JSON_KEY_RESET = "reset";
   private static final String JSON_KEY_TIMESTAMP_MS = "timestampMs";
   private static final String JSON_KEY_RESULT = "result";
   private static final String JSON_KEY_OUTPUT_AVAILABLE = "outputAvailable";
   private static final String JSON_VALUE_SERVER = "bringupRest";
+  private static final String JSON_VALUE_SERVICE = "FRC Bringup REST Server";
   private static final String STATUS_ACCEPTED = "ACCEPTED";
   private static final String STATUS_RUNNING = "RUNNING";
   private static final String STATUS_FINISHED = "FINISHED";
@@ -159,6 +173,8 @@ public final class BringupRestServer {
   private static final int OUTPUT_BUFFER_MAX = 64;
   private static final String QUERY_PAIR_SEPARATOR = "&";
   private static final String QUERY_KEY_VALUE_SEPARATOR = "=";
+
+  private static final List<EndpointDefinition> ENDPOINT_DEFINITIONS = buildEndpointDefinitions();
 
   /**
    * NAME
@@ -229,22 +245,10 @@ public final class BringupRestServer {
     }
     HttpServer created = HttpServer.create(new InetSocketAddress(requestedPort), SERVER_BACKLOG);
     created.setExecutor(Executors.newFixedThreadPool(EXECUTOR_THREADS));
-    created.createContext(PATH_HEALTH, new RootHandler());
-    created.createContext(PATH_SESSION, new RootHandler());
-    created.createContext(PATH_SESSION_CONNECT, new RootHandler());
-    created.createContext(PATH_SESSION_DISCONNECT, new RootHandler());
-    created.createContext(PATH_SESSION_RESET, new RootHandler());
-    created.createContext(PATH_SESSION_PING, new RootHandler());
-    created.createContext(PATH_COMMANDS, new RootHandler());
-    created.createContext(PATH_COMMANDS_PREFIX, new RootHandler());
-    created.createContext(PATH_LOGS, new RootHandler());
-    created.createContext(PATH_MONITOR_ENABLE, new RootHandler());
-    created.createContext(PATH_MONITOR_DISABLE, new RootHandler());
-    created.createContext(PATH_PROTOCOL_MONITOR, new RootHandler());
-    created.createContext(PATH_RUNTIME_STATE, new RootHandler());
-    created.createContext(PATH_TESTS_STATE, new RootHandler());
-    created.createContext(PATH_CONFIG_CURRENT, new RootHandler());
-    created.createContext(PATH_INVENTORY_COMMANDS, new RootHandler());
+    RootHandler rootHandler = new RootHandler();
+    for (String path : registerableContextPaths()) {
+      created.createContext(path, rootHandler);
+    }
     created.start();
     server = created;
   }
@@ -304,6 +308,14 @@ public final class BringupRestServer {
       refreshActiveCommandLocked();
     }
     String path = exchange.getRequestURI().getPath();
+    if (PATH_ROOT.equals(path)) {
+      handleRoot(exchange);
+      return;
+    }
+    if (PATH_API.equals(path)) {
+      handleApi(exchange);
+      return;
+    }
     if (PATH_HEALTH.equals(path)) {
       handleHealth(exchange);
       return;
@@ -387,6 +399,72 @@ public final class BringupRestServer {
       body.addProperty(JSON_KEY_MONITOR_ENABLED, monitorEnabled);
       body.add(JSON_KEY_ACTIVE_COMMAND, activeCommand != null ? activeCommand.toStatusJson() : null);
     }
+    sendJson(exchange, HTTP_OK, body);
+  }
+
+  private void handleRoot(HttpExchange exchange) throws IOException {
+    if (!METHOD_GET.equals(exchange.getRequestMethod())) {
+      sendMethodNotAllowed(exchange);
+      return;
+    }
+    JsonObject body = baseEnvelope(true, MESSAGE_FINISHED);
+    body.addProperty(JSON_KEY_SERVICE, JSON_VALUE_SERVICE);
+    body.addProperty(JSON_KEY_SERVER, JSON_VALUE_SERVER);
+    body.addProperty(JSON_KEY_VERSION, BuildInfo.BUILD_REVISION);
+    body.addProperty(JSON_KEY_PORT, getBoundPort());
+    body.addProperty(JSON_KEY_DOCUMENTATION, PATH_API);
+    JsonObject links = new JsonObject();
+    links.addProperty("health", PATH_HEALTH);
+    links.addProperty("api", PATH_API);
+    links.addProperty("session", PATH_SESSION);
+    links.addProperty("runtimeState", PATH_RUNTIME_STATE);
+    links.addProperty("testsState", PATH_TESTS_STATE);
+    links.addProperty("commands", PATH_COMMANDS);
+    body.add(JSON_KEY_LINKS, links);
+    synchronized (stateLock) {
+      body.addProperty(JSON_KEY_CONNECTED, sessionOwnerClientId != null);
+      body.addProperty(JSON_KEY_OWNER_CLIENT_ID, sessionOwnerClientId);
+      body.addProperty(JSON_KEY_SESSION_ID, sessionId);
+      body.addProperty(JSON_KEY_MONITOR_ENABLED, monitorEnabled);
+      body.add(JSON_KEY_ACTIVE_COMMAND, activeCommand != null ? activeCommand.toStatusJson() : null);
+    }
+    JsonObject build = new JsonObject();
+    build.addProperty(BuildInfo.BUILD_LABEL_REVISION, BuildInfo.BUILD_REVISION);
+    build.addProperty(BuildInfo.BUILD_LABEL_WORKSPACE_REVISION, BuildInfo.BUILD_WORKSPACE_REVISION);
+    build.addProperty(BuildInfo.BUILD_LABEL_CODE_REVISION, BuildInfo.BUILD_CODE_REVISION);
+    build.addProperty(BuildInfo.BUILD_LABEL_SHA, BuildInfo.BUILD_GIT_SHA);
+    build.addProperty(BuildInfo.BUILD_LABEL_BRANCH, BuildInfo.BUILD_GIT_BRANCH);
+    build.addProperty(BuildInfo.BUILD_LABEL_DIRTY, BuildInfo.BUILD_GIT_DIRTY);
+    build.addProperty(BuildInfo.BUILD_LABEL_TIME, BuildInfo.BUILD_TIMESTAMP);
+    body.add(JSON_KEY_BUILD, build);
+    sendJson(exchange, HTTP_OK, body);
+  }
+
+  private void handleApi(HttpExchange exchange) throws IOException {
+    if (!METHOD_GET.equals(exchange.getRequestMethod())) {
+      sendMethodNotAllowed(exchange);
+      return;
+    }
+    JsonObject body = baseEnvelope(true, MESSAGE_FINISHED);
+    body.addProperty(JSON_KEY_SERVICE, JSON_VALUE_SERVICE);
+    body.addProperty(JSON_KEY_VERSION, BuildInfo.BUILD_REVISION);
+    JsonArray endpoints = new JsonArray();
+    for (EndpointDefinition endpoint : ENDPOINT_DEFINITIONS) {
+      JsonObject entry = new JsonObject();
+      entry.addProperty(JSON_KEY_PATH, endpoint.path);
+      if (endpoint.methods.size() == 1) {
+        entry.addProperty(JSON_KEY_METHOD, endpoint.methods.get(0));
+      } else {
+        JsonArray methods = new JsonArray();
+        for (String method : endpoint.methods) {
+          methods.add(method);
+        }
+        entry.add(JSON_KEY_METHODS, methods);
+      }
+      entry.addProperty(JSON_KEY_DESCRIPTION, endpoint.description);
+      endpoints.add(entry);
+    }
+    body.add(JSON_KEY_ENDPOINTS, endpoints);
     sendJson(exchange, HTTP_OK, body);
   }
 
@@ -1206,6 +1284,67 @@ public final class BringupRestServer {
       body.addProperty(JSON_KEY_DROPPED, outputDropped);
       body.addProperty(JSON_KEY_NEXT_SEQUENCE, nextOutputSequence);
       return body;
+    }
+  }
+
+  private static List<EndpointDefinition> buildEndpointDefinitions() {
+    List<EndpointDefinition> endpoints = new ArrayList<>();
+    endpoints.add(new EndpointDefinition(PATH_ROOT, "Service banner and key links.", METHOD_GET));
+    endpoints.add(new EndpointDefinition(PATH_API, "Endpoint inventory and short descriptions.", METHOD_GET));
+    endpoints.add(new EndpointDefinition(PATH_HEALTH, "Server health and session summary.", METHOD_GET));
+    endpoints.add(new EndpointDefinition(PATH_SESSION, "Current REST session snapshot.", METHOD_GET));
+    endpoints.add(new EndpointDefinition(PATH_SESSION_CONNECT, "Acquire the control session.", METHOD_POST));
+    endpoints.add(new EndpointDefinition(PATH_SESSION_DISCONNECT, "Release the control session.", METHOD_POST));
+    endpoints.add(new EndpointDefinition(PATH_SESSION_RESET, "Reset REST session and command state.", METHOD_POST));
+    endpoints.add(new EndpointDefinition(PATH_SESSION_PING, "Refresh control-session liveness.", METHOD_POST));
+    endpoints.add(new EndpointDefinition(PATH_COMMANDS, "Submit one robot/UI command.", METHOD_POST));
+    endpoints.add(new EndpointDefinition(PATH_COMMANDS_PREFIX + "{commandId}", "Read one submitted command status.", METHOD_GET));
+    endpoints.add(new EndpointDefinition(PATH_COMMANDS_PREFIX + "{commandId}" + PATH_OUTPUT_SUFFIX, "Drain output chunks for one command.", METHOD_GET));
+    endpoints.add(new EndpointDefinition(PATH_COMMANDS_PREFIX + "{commandId}" + PATH_STOP_SUFFIX, "Stop one active command.", METHOD_POST));
+    endpoints.add(new EndpointDefinition(PATH_LOGS, "Read bringup log lines after one sequence.", METHOD_GET));
+    endpoints.add(new EndpointDefinition(PATH_MONITOR_ENABLE, "Enable log/session monitor streaming state.", METHOD_POST));
+    endpoints.add(new EndpointDefinition(PATH_MONITOR_DISABLE, "Disable log/session monitor streaming state.", METHOD_POST));
+    endpoints.add(new EndpointDefinition(PATH_PROTOCOL_MONITOR, "Read protocol-monitor summary state.", METHOD_GET));
+    endpoints.add(new EndpointDefinition(PATH_RUNTIME_STATE, "Read shared robot runtime state JSON.", METHOD_GET));
+    endpoints.add(new EndpointDefinition(PATH_TESTS_STATE, "Read shared tests state JSON.", METHOD_GET));
+    endpoints.add(new EndpointDefinition(PATH_CONFIG_CURRENT, "Read current config payload for the owning client.", METHOD_GET));
+    endpoints.add(new EndpointDefinition(PATH_INVENTORY_COMMANDS, "Read robot local command inventory JSON.", METHOD_GET));
+    return endpoints;
+  }
+
+  private static List<String> registerableContextPaths() {
+    List<String> paths = new ArrayList<>();
+    for (EndpointDefinition endpoint : ENDPOINT_DEFINITIONS) {
+      if (endpoint == null || endpoint.path == null || endpoint.path.isBlank()) {
+        continue;
+      }
+      if (endpoint.path.indexOf('{') >= 0) {
+        continue;
+      }
+      paths.add(endpoint.path);
+    }
+    if (!paths.contains(PATH_COMMANDS_PREFIX)) {
+      paths.add(PATH_COMMANDS_PREFIX);
+    }
+    return paths;
+  }
+
+  private static final class EndpointDefinition {
+    private final String path;
+    private final List<String> methods;
+    private final String description;
+
+    private EndpointDefinition(String path, String description, String... methods) {
+      this.path = path;
+      this.description = description;
+      this.methods = new ArrayList<>();
+      if (methods != null) {
+        for (String method : methods) {
+          if (method != null && !method.isBlank()) {
+            this.methods.add(method);
+          }
+        }
+      }
     }
   }
 }

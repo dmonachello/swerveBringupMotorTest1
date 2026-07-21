@@ -11,7 +11,9 @@ from tools.can_nt.host_ui_state_service import (
     ACTIVE_GROUP_STATUS_EDITABLE_TEXT,
     ACTIVE_GROUP_STATUS_EMPTY_TEXT,
     ACTIVE_GROUP_STATUS_LOCKED_TEXT,
+    ACTIVE_GROUP_STATUS_RESYNC_TEXT,
     BLANK_REASON_LOCAL_PROFILE_REQUIRED,
+    MANUAL_DUTY_BLOCKED_BINDING_ACTIVE_TEXT,
     MANUAL_DUTY_BLOCKED_CONTROLLED_SCOPE_TEXT,
     PROFILE_CONTEXT_SOURCE_BLANK,
     PROFILE_CONTEXT_SOURCE_ROBOT_ACTIVE_RUNTIME,
@@ -25,12 +27,15 @@ from tools.can_nt.host_ui_state_service import (
     RUNNABLE_SCOPE_DETAIL_SELECT_PROFILE,
     RUNNABLE_SCOPE_KIND_MANUAL,
     RUNNABLE_SCOPE_KIND_SELECTED_TEST,
+    RUNNABLE_SCOPE_PANEL_RESYNC_DETAIL,
     RUNNABLE_SCOPE_PANEL_WAITING_DETAIL,
     resolve_active_scope_membership_state,
     resolve_diagnostic_profile_state,
+    resolve_manual_duty_binding_state,
     resolve_manual_duty_scope_state,
     resolve_runtime_state_fetch_state,
     resolve_runnable_scope_state,
+    resolve_tests_active_group_member_rows,
     resolve_topology_scene_state,
     resolve_ui_context_state,
     should_clear_runtime_event_notice,
@@ -134,6 +139,27 @@ class HostUiStateServiceTests(unittest.TestCase):
 
         self.assertEqual(RUNNABLE_PANEL_WAITING_HEADLINE, state.headline)
         self.assertEqual(RUNNABLE_SCOPE_PANEL_WAITING_DETAIL, state.detail)
+        self.assertFalse(state.activation_allowed)
+
+    def test_resolve_runnable_scope_state_waits_for_post_transition_resync(self) -> None:
+        state = resolve_runnable_scope_state(
+            scope_kind=RUNNABLE_SCOPE_KIND_MANUAL,
+            local_selected_profile="test_minimal_25_9",
+            local_profile_required=True,
+            tcp_connected=True,
+            runtime_state_seen=True,
+            stale_state=False,
+            robot_enabled=True,
+            robot_estopped=False,
+            robot_mode="teleop",
+            manual_group_empty=False,
+            scope_active=False,
+            transition_pending=True,
+        )
+
+        self.assertEqual(RUNNABLE_PANEL_WAITING_HEADLINE, state.headline)
+        self.assertEqual(RUNNABLE_SCOPE_PANEL_RESYNC_DETAIL, state.detail)
+        self.assertTrue(state.transition_pending)
         self.assertFalse(state.activation_allowed)
 
     def test_resolve_runnable_scope_state_blocks_manual_scope_without_profile(self) -> None:
@@ -261,6 +287,22 @@ class HostUiStateServiceTests(unittest.TestCase):
         self.assertFalse(state.editable)
         self.assertFalse(state.all_members_present)
 
+    def test_resolve_active_scope_membership_state_waits_for_transition_resync(self) -> None:
+        state = resolve_active_scope_membership_state(
+            runtime_state_seen=True,
+            controlled_lifecycle_active=True,
+            member_map={"falcon 9": {"label": "FALCON 9", "enabled": True}},
+            runtime_state_by_label={"falcon 9": {"presenceConfidence": 1.0}},
+            primary_label="FALCON 9",
+            eligible_labels=["FALCON 9"],
+            transition_pending=True,
+        )
+
+        self.assertEqual(ACTIVE_GROUP_STATUS_RESYNC_TEXT, state.status_text)
+        self.assertFalse(state.editable)
+        self.assertFalse(state.all_members_present)
+        self.assertTrue(state.transition_pending)
+
     def test_resolve_manual_duty_scope_state_requires_controlled_active_member_when_scope_active(self) -> None:
         allowed_state = resolve_manual_duty_scope_state(
             label="FALCON 9",
@@ -308,6 +350,40 @@ class HostUiStateServiceTests(unittest.TestCase):
 
         self.assertTrue(state.allowed)
         self.assertEqual("", state.blocked_reason)
+
+    def test_resolve_manual_duty_binding_state_blocks_when_runtime_group_binding_is_active(self) -> None:
+        state = resolve_manual_duty_binding_state(
+            target_labels=["FALCON 9"],
+            runtime_groups=[
+                {
+                    "name": "motors",
+                    "bindingActive": True,
+                    "members": [
+                        {"label": "FALCON 9", "enabled": True},
+                        {"label": "SPARKMAX/NEO 25", "enabled": True},
+                    ],
+                }
+            ],
+        )
+
+        self.assertFalse(state.allowed)
+        self.assertEqual(
+            MANUAL_DUTY_BLOCKED_BINDING_ACTIVE_TEXT,
+            state.blocked_reason,
+        )
+
+    def test_resolve_tests_active_group_member_rows_keeps_singleton_instantiated_when_scope_is_inactive(self) -> None:
+        rows = resolve_tests_active_group_member_rows(
+            rows=[{"label": "pdp", "enabled": True, "locked": True, "invalid": False}],
+            runtime_state_by_label={"pdp": {"instantiated": True, "testable": True}},
+            scope_active=False,
+        )
+
+        self.assertEqual(1, len(rows))
+        self.assertEqual("yes", rows[0].instantiated_text)
+        self.assertEqual("no", rows[0].scope_active_text)
+        self.assertIn("instantiated", rows[0].statuses)
+        self.assertIn("scope inactive", rows[0].statuses)
 
 
 if __name__ == "__main__":

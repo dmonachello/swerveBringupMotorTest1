@@ -53,6 +53,8 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
       "Manual duty blocked: device is outside the active scope membership.";
   private static final String MESSAGE_MANUAL_GROUP_DUTY_CONTROLLED_SCOPE =
       "Manual duty blocked: group contains device(s) outside the active scope membership.";
+  private static final String MESSAGE_MANUAL_DUTY_TEST_RUNNING =
+      "Manual duty blocked: active test running.";
   private static final String MESSAGE_ACTIVE_GROUP_LIFECYCLE_LOCKED =
       "Active group membership is locked while an active scope session is running. Deactivate scope first.";
   private static final String JSON_KEY_DEVICE = "device";
@@ -160,6 +162,8 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
     boolean isRobotEnabled();
 
     boolean isRobotEStopped();
+
+    boolean isTestRunning();
 
     boolean applyManualDeviceDuty(String deviceName, double duty);
 
@@ -392,6 +396,11 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
               : MESSAGE_MANUAL_DUTY_DISABLED;
           break;
         }
+        if (dependencies.isTestRunning()) {
+          result.ok = false;
+          result.message = MESSAGE_MANUAL_DUTY_TEST_RUNNING;
+          break;
+        }
         if (dependencies.isControlledLifecycleActive()
             && !dependencies.isControlledLifecycleDeviceActive(deviceName)) {
           result.ok = false;
@@ -441,6 +450,11 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
           result.message = dependencies.isRobotEStopped()
               ? MESSAGE_MANUAL_DUTY_DISABLED_ESTOP
               : MESSAGE_MANUAL_DUTY_DISABLED;
+          break;
+        }
+        if (dependencies.isTestRunning()) {
+          result.ok = false;
+          result.message = MESSAGE_MANUAL_DUTY_TEST_RUNNING;
           break;
         }
         if (dependencies.isControlledLifecycleActive()

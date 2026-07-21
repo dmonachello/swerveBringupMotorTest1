@@ -15,6 +15,7 @@ DESCRIPTION
 from dataclasses import dataclass, field
 from collections import deque
 import threading
+import math
 from typing import Deque, Dict, Iterable, List, Optional, Tuple
 
 from tools.can_nt.can_frc_defs import decode_frc_ext_id_full
@@ -62,6 +63,7 @@ from tools.can_nt.visibility_constants import (
     VIS_SCOPE_BOTH,
     VIS_SCOPE_EXPECTED,
     VIS_SCOPE_OBSERVED,
+    VIS_FLOAT_ONE,
     VIS_FLOAT_ZERO,
     VIS_INT_ONE,
     VIS_INT_ZERO,
@@ -142,6 +144,8 @@ class DeviceState:
 DISCOVERED_LABEL_PREFIX = "UNPROFILED_DEVICE_"
 DISCOVERED_LABEL_START = 1
 DISCOVERED_LABEL_STEP = 1
+RATE_DECAY_TIME_CONSTANT_MS = 3000.0
+RATE_DECAY_MIN_VALUE = 0.05
 
 
 def _device_key_from_ids(mfg: int, dtype: int, device_id: int) -> str:
@@ -427,8 +431,10 @@ class VisibilityProvider:
                     if elapsed_ms <= VIS_INT_ZERO:
                         continue
                     delta_count = max(VIS_INT_ZERO, metric.msg_count - tick_start_count)
-                    metric.frames_per_sec = float(delta_count) / (
-                        float(elapsed_ms) / VIS_MS_PER_SEC
+                    metric.frames_per_sec = _blend_rate(
+                        previous_rate=metric.frames_per_sec,
+                        delta_count=delta_count,
+                        elapsed_ms=elapsed_ms,
                     )
                     metric.last_tick_ms = now_ms
                     metric.last_tick_count = metric.msg_count
@@ -449,8 +455,10 @@ class VisibilityProvider:
                     if elapsed_ms <= VIS_INT_ZERO:
                         continue
                     delta_count = max(VIS_INT_ZERO, raw_state.msg_count - tick_start_count)
-                    raw_state.frames_per_sec = float(delta_count) / (
-                        float(elapsed_ms) / VIS_MS_PER_SEC
+                    raw_state.frames_per_sec = _blend_rate(
+                        previous_rate=raw_state.frames_per_sec,
+                        delta_count=delta_count,
+                        elapsed_ms=elapsed_ms,
                     )
                     raw_state.last_tick_ms = now_ms
                     raw_state.last_tick_count = raw_state.msg_count
@@ -703,3 +711,20 @@ class VisibilityProvider:
             VIS_KEY_VISIBLE_SOME: visible_some,
             VIS_KEY_VISIBLE_NONE: visible_none,
         }
+
+
+def _blend_rate(*, previous_rate: float, delta_count: int, elapsed_ms: int) -> float:
+    """
+    NAME
+        _blend_rate - Return one slowly decaying rolling frames-per-second estimate.
+    """
+    if elapsed_ms <= VIS_INT_ZERO:
+        return max(VIS_FLOAT_ZERO, float(previous_rate or VIS_FLOAT_ZERO))
+    instant_rate = float(delta_count) / (float(elapsed_ms) / VIS_MS_PER_SEC)
+    if float(previous_rate or VIS_FLOAT_ZERO) <= VIS_FLOAT_ZERO:
+        return instant_rate
+    decay_weight = math.exp(-float(elapsed_ms) / RATE_DECAY_TIME_CONSTANT_MS)
+    blended_rate = (float(previous_rate) * decay_weight) + (instant_rate * (VIS_FLOAT_ONE - decay_weight))
+    if blended_rate < RATE_DECAY_MIN_VALUE and delta_count <= VIS_INT_ZERO:
+        return VIS_FLOAT_ZERO
+    return blended_rate

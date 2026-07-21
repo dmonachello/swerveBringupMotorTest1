@@ -151,9 +151,23 @@ class VisibilityProviderTests(unittest.TestCase):
         self.assertGreater(source_metric[VIS_KEY_FRAMES_PER_SEC], 0.0)
         self.assertEqual(raw_id[VIS_KEY_MSG_COUNT], 2)
         self.assertGreater(raw_id[VIS_KEY_FRAMES_PER_SEC], 0.0)
+        first_rate = float(source_metric[VIS_KEY_FRAMES_PER_SEC])
+        first_raw_rate = float(raw_id[VIS_KEY_FRAMES_PER_SEC])
 
         provider.tick(TEST_NOW_MS + 1000)
         snapshot = provider.snapshot(VIS_SCOPE_BOTH, TEST_NOW_MS + 1000)
+        device = snapshot[VIS_KEY_DEVICES][0]
+        metrics = device[VIS_KEY_METRICS]
+        source_metric = metrics[TEST_SOURCE_ID]
+        raw_id = device[VIS_KEY_RAW_IDS][0]
+
+        self.assertGreater(source_metric[VIS_KEY_FRAMES_PER_SEC], 0.0)
+        self.assertLess(source_metric[VIS_KEY_FRAMES_PER_SEC], first_rate)
+        self.assertGreater(raw_id[VIS_KEY_FRAMES_PER_SEC], 0.0)
+        self.assertLess(raw_id[VIS_KEY_FRAMES_PER_SEC], first_raw_rate)
+
+        provider.tick(TEST_NOW_MS + 20000)
+        snapshot = provider.snapshot(VIS_SCOPE_BOTH, TEST_NOW_MS + 20000)
         device = snapshot[VIS_KEY_DEVICES][0]
         metrics = device[VIS_KEY_METRICS]
         source_metric = metrics[TEST_SOURCE_ID]

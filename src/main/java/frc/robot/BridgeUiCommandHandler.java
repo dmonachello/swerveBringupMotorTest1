@@ -22,6 +22,7 @@ import frc.robot.commands.local.RobotLocalHostUiValueProvider;
 import frc.robot.commands.local.RobotLocalNoopValueProvider;
 import frc.robot.commands.local.RobotLocalValueProvider;
 import frc.robot.diag.probe.ActiveDevicePresenceProbe;
+import frc.robot.diag.lifecycle.groups.ResolvedGroupStates;
 import frc.robot.diag.snapshots.SampledSignalsAttachment;
 import frc.robot.input.BindingsManager;
 import frc.robot.input.InputAliasResolver;
@@ -129,6 +130,18 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_CAN_BUS = "canBus";
   private static final String JSON_KEY_MEMBERS = "members";
   private static final String JSON_KEY_BINDINGS = "bindings";
+  private static final String JSON_KEY_BINDING_ACTIVE = "bindingActive";
+  private static final String JSON_KEY_LAST_BINDING_OUTPUT = "lastBindingOutput";
+  private static final String JSON_KEY_PRIMARY_LABEL = "primaryLabel";
+  private static final String JSON_KEY_MEMBER_COUNT = "memberCount";
+  private static final String JSON_KEY_ENABLED_MEMBER_COUNT = "enabledMemberCount";
+  private static final String JSON_KEY_HAS_MEMBERS = "hasMembers";
+  private static final String JSON_KEY_ALL_ENABLED_MEMBERS_PRESENT =
+      "allEnabledMembersPresent";
+  private static final String JSON_KEY_LOCKED = "locked";
+  private static final String JSON_KEY_INVALID = "invalid";
+  private static final String JSON_KEY_SCOPE_ACTIVE = "scopeActive";
+  private static final String JSON_KEY_RUNTIME_PRESENT = "runtimePresent";
   private static final String JSON_KEY_PRESENCE_CONFIDENCE = "presenceConfidence";
   private static final String JSON_KEY_ACTIVE = "active";
   private static final String JSON_KEY_REASON = "reason";
@@ -939,6 +952,11 @@ public class BridgeUiCommandHandler {
       }
 
       @Override
+      public boolean isTestRunning() {
+        return core() != null && core().isTestRunning();
+      }
+
+      @Override
       public boolean applyManualDeviceDuty(String deviceName, double duty) {
         return BridgeUiCommandHandler.this.applyManualDeviceDuty(deviceName, duty);
       }
@@ -1502,6 +1520,9 @@ public class BridgeUiCommandHandler {
   public void resetProfileRuntimeUiState() {
     bridgeSelected().device = TEXT_EMPTY;
     bridgeSelected().enabled = false;
+    bridgeSelected().group = TEXT_EMPTY;
+    bridgeSelected().groupEnabled = false;
+    bridgeSelected().groupMembers.clear();
     lastNeoSpeed = SPEED_ZERO;
     lastKrakenSpeed = SPEED_ZERO;
     activeGroupCursor = INDEX_START;
@@ -2752,6 +2773,9 @@ public class BridgeUiCommandHandler {
     if (!isManualDutyEligible(target)) {
       return false;
     }
+    if (bridgeGroups().hasActiveBindingForDevice(target)) {
+      return false;
+    }
     String previous = bridgeSelected().device != null ? bridgeSelected().device.trim() : TEXT_EMPTY;
     double clamped = Math.max(DUTY_MIN, Math.min(DUTY_MAX, duty));
     if (!previous.isBlank() && !previous.equals(target)) {
@@ -2761,6 +2785,9 @@ public class BridgeUiCommandHandler {
     if (!ok) {
       return false;
     }
+    bridgeSelected().group = TEXT_EMPTY;
+    bridgeSelected().groupEnabled = false;
+    bridgeSelected().groupMembers.clear();
     bridgeSelected().device = target;
     bridgeSelected().enabled = true;
     return true;
@@ -2788,6 +2815,9 @@ public class BridgeUiCommandHandler {
     }
     bridgeSelected().enabled = false;
     bridgeSelected().device = TEXT_EMPTY;
+    bridgeSelected().groupEnabled = false;
+    bridgeSelected().group = TEXT_EMPTY;
+    bridgeSelected().groupMembers.clear();
     return true;
   }
 
@@ -2810,10 +2840,16 @@ public class BridgeUiCommandHandler {
     if (group == null || !group.enabled) {
       return false;
     }
+    if (bridgeGroups().hasActiveBindingForGroup(groupName)) {
+      return false;
+    }
     double clamped = Math.max(DUTY_MIN, Math.min(DUTY_MAX, duty));
     boolean appliedAny = false;
     bridgeSelected().enabled = false;
     bridgeSelected().device = TEXT_EMPTY;
+    bridgeSelected().groupEnabled = false;
+    bridgeSelected().group = TEXT_EMPTY;
+    bridgeSelected().groupMembers.clear();
     for (BridgeGroupManager.MemberState member : group.members.values()) {
       if (member == null || !member.enabled || member.label == null || member.label.isBlank()) {
         continue;
@@ -2827,6 +2863,16 @@ public class BridgeUiCommandHandler {
       }
       if (core().setDutyByDeviceLabel(member.label, clamped)) {
         appliedAny = true;
+      }
+    }
+    if (appliedAny) {
+      bridgeSelected().group = group.name;
+      bridgeSelected().groupEnabled = true;
+      for (BridgeGroupManager.MemberState member : group.members.values()) {
+        if (member == null || member.label == null || member.label.isBlank()) {
+          continue;
+        }
+        bridgeSelected().groupMembers.add(member.label.trim().toLowerCase(java.util.Locale.ROOT));
       }
     }
     return appliedAny;
@@ -2862,6 +2908,9 @@ public class BridgeUiCommandHandler {
     }
     bridgeSelected().enabled = false;
     bridgeSelected().device = TEXT_EMPTY;
+    bridgeSelected().groupEnabled = false;
+    bridgeSelected().group = TEXT_EMPTY;
+    bridgeSelected().groupMembers.clear();
     return true;
   }
 
@@ -3082,12 +3131,13 @@ public class BridgeUiCommandHandler {
     StringBuilder sb = new StringBuilder(256);
     sb.append("Groups:\n");
     for (BridgeGroupManager.Group group : groups) {
+      ResolvedGroupStates.ResolvedGroupState resolved = resolveGroupState(group);
       sb.append("  ")
-          .append(group.name)
+          .append(resolved != null ? resolved.name : group.name)
           .append(" (")
           .append(group.enabled ? "enabled" : "disabled")
           .append(") members=")
-          .append(group.members.size())
+          .append(resolved != null ? resolved.memberCount : group.members.size())
           .append(" bindings=")
           .append(group.bindings.size())
           .append('\n');
@@ -3103,10 +3153,11 @@ public class BridgeUiCommandHandler {
     JsonObject root = new JsonObject();
     JsonArray array = new JsonArray();
     for (BridgeGroupManager.Group group : bridgeGroups().getGroups()) {
-      JsonObject g = new JsonObject();
-      g.addProperty("name", group.name);
-      g.addProperty("enabled", group.enabled);
-      g.addProperty("memberCount", group.members.size());
+      ResolvedGroupStates.ResolvedGroupState resolved = resolveGroupState(group);
+      JsonObject g = buildResolvedGroupJson(group, resolved);
+      if (g == null) {
+        continue;
+      }
       g.addProperty("bindingCount", group.bindings.size());
       array.add(g);
     }
@@ -3122,14 +3173,15 @@ public class BridgeUiCommandHandler {
     if (group == null) {
       return "Group: (not found)";
     }
+    ResolvedGroupStates.ResolvedGroupState resolved = resolveGroupState(group);
     StringBuilder sb = new StringBuilder(256);
-    sb.append("Group ").append(group.name)
+    sb.append("Group ").append(resolved != null ? resolved.name : group.name)
         .append(" (").append(group.enabled ? "enabled" : "disabled").append(")\n");
     sb.append("Members:\n");
-    if (group.members.isEmpty()) {
+    if (resolved == null || !resolved.hasMembers) {
       sb.append("  (none)\n");
     } else {
-      for (BridgeGroupManager.MemberState member : group.members.values()) {
+      for (ResolvedGroupStates.ResolvedGroupMemberState member : resolved.members) {
         sb.append("  ").append(member.label)
             .append(" [").append(member.enabled ? "enabled" : "disabled").append("]\n");
       }
@@ -3166,17 +3218,11 @@ public class BridgeUiCommandHandler {
     if (group == null) {
       return null;
     }
-    JsonObject g = new JsonObject();
-    g.addProperty("name", group.name);
-    g.addProperty("enabled", group.enabled);
-    JsonArray members = new JsonArray();
-    for (BridgeGroupManager.MemberState member : group.members.values()) {
-      JsonObject m = new JsonObject();
-      m.addProperty(JSON_KEY_LABEL, member.label);
-      m.addProperty("enabled", member.enabled);
-      members.add(m);
+    ResolvedGroupStates.ResolvedGroupState resolved = resolveGroupState(group);
+    JsonObject g = buildResolvedGroupJson(group, resolved);
+    if (g == null) {
+      return null;
     }
-    g.add("members", members);
     if (!group.lastSkippedMembers.isEmpty()) {
       JsonArray skipped = new JsonArray();
       for (String label : group.lastSkippedMembers) {
@@ -3198,8 +3244,57 @@ public class BridgeUiCommandHandler {
       }
       bindings.add(b);
     }
-    g.add("bindings", bindings);
+    g.add(JSON_KEY_BINDINGS, bindings);
+    g.addProperty(JSON_KEY_BINDING_ACTIVE, group.bindingActive);
+    g.addProperty(JSON_KEY_LAST_BINDING_OUTPUT, group.lastBindingOutput);
     return g;
+  }
+
+  private JsonObject buildResolvedGroupJson(
+      BridgeGroupManager.Group group,
+      ResolvedGroupStates.ResolvedGroupState resolved) {
+    if (group == null || resolved == null) {
+      return null;
+    }
+    JsonObject g = new JsonObject();
+    g.addProperty(JSON_KEY_NAME, resolved.name);
+    g.addProperty(JSON_KEY_ENABLED, group.enabled);
+    g.addProperty(JSON_KEY_PRIMARY_LABEL, resolved.primaryLabel);
+    g.addProperty(JSON_KEY_MEMBER_COUNT, resolved.memberCount);
+    g.addProperty(JSON_KEY_ENABLED_MEMBER_COUNT, resolved.enabledMemberCount);
+    g.addProperty(JSON_KEY_HAS_MEMBERS, resolved.hasMembers);
+    g.addProperty(
+        JSON_KEY_ALL_ENABLED_MEMBERS_PRESENT,
+        resolved.allEnabledMembersPresent);
+    JsonArray members = new JsonArray();
+    for (ResolvedGroupStates.ResolvedGroupMemberState member : resolved.members) {
+      JsonObject m = new JsonObject();
+      m.addProperty(JSON_KEY_LABEL, member.label);
+      m.addProperty(JSON_KEY_ENABLED, member.enabled);
+      m.addProperty(JSON_KEY_LOCKED, member.locked);
+      m.addProperty(JSON_KEY_INVALID, member.invalid);
+      m.addProperty(JSON_KEY_SCOPE_ACTIVE, member.scopeActive);
+      m.addProperty(JSON_KEY_RUNTIME_PRESENT, member.runtimePresent);
+      m.addProperty(JSON_KEY_INSTANTIATED, member.instantiated);
+      m.addProperty(JSON_KEY_TESTABLE, member.testable);
+      members.add(m);
+    }
+    g.add(JSON_KEY_MEMBERS, members);
+    return g;
+  }
+
+  private ResolvedGroupStates.ResolvedGroupState resolveGroupState(
+      BridgeGroupManager.Group group) {
+    var lifecycleRuntime = runtime.getControlledBringupLifecycleRuntime();
+    boolean locked =
+        lifecycleRuntime != null
+            && lifecycleRuntime.activationManager().lifecycleState()
+                == frc.robot.diag.lifecycle.activation.LifecycleState.ACTIVE;
+    return ResolvedGroupStates.resolve(
+        group,
+        label -> runtime.getDeviceLifecycle().viewForLabel(label),
+        label -> controlledLifecycleRuntimeStateForLabel(lifecycleRuntime, label),
+        locked);
   }
 
   /**

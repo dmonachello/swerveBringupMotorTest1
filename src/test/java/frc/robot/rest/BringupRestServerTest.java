@@ -30,9 +30,17 @@ public final class BringupRestServerTest {
   private static final String REQUEST_ID = "req1";
   private static final String COMMAND_SHOW_DEVICES = "showDevices";
   private static final String TEXT_DEVICES = "devices";
+  private static final String TEXT_ENDPOINTS = "endpoints";
   private static final String TEXT_CLIENT_ID = "clientId";
+  private static final String TEXT_DOCUMENTATION = "documentation";
+  private static final String TEXT_HEALTH = "health";
+  private static final String TEXT_LINKS = "links";
+  private static final String TEXT_METHOD = "method";
   private static final String TEXT_REQUEST_ID = "requestId";
   private static final String TEXT_NAME = "name";
+  private static final String TEXT_PATH = "path";
+  private static final String TEXT_RUNTIME_STATE = "/runtime/state";
+  private static final String TEXT_SERVICE = "service";
   private static final String TEXT_COMMAND_ID = "commandId";
   private static final String TEXT_STATUS = "status";
   private static final String TEXT_OUTPUT = "text";
@@ -190,6 +198,43 @@ public final class BringupRestServerTest {
   }
 
   @Test
+  public void restServerRootEndpointReturnsBannerAndLinks() throws Exception {
+    server = new BringupRestServer(0, new TestCallbacks());
+    server.start();
+    HttpClient client = HttpClient.newHttpClient();
+
+    HttpResponse<String> response =
+        client.send(get("/"), HttpResponse.BodyHandlers.ofString());
+
+    assertEquals(HTTP_OK, response.statusCode());
+    JsonObject json = GSON.fromJson(response.body(), JsonObject.class);
+    assertEquals("FRC Bringup REST Server", json.get(TEXT_SERVICE).getAsString());
+    assertEquals("/api", json.get(TEXT_DOCUMENTATION).getAsString());
+    JsonObject links = json.getAsJsonObject(TEXT_LINKS);
+    assertEquals("/health", links.get(TEXT_HEALTH).getAsString());
+    assertEquals(TEXT_RUNTIME_STATE, links.get("runtimeState").getAsString());
+  }
+
+  @Test
+  public void restServerApiEndpointReturnsEndpointInventory() throws Exception {
+    server = new BringupRestServer(0, new TestCallbacks());
+    server.start();
+    HttpClient client = HttpClient.newHttpClient();
+
+    HttpResponse<String> response =
+        client.send(get("/api"), HttpResponse.BodyHandlers.ofString());
+
+    assertEquals(HTTP_OK, response.statusCode());
+    JsonObject json = GSON.fromJson(response.body(), JsonObject.class);
+    JsonArray endpoints = json.getAsJsonArray(TEXT_ENDPOINTS);
+    assertTrue(endpoints.size() > 0);
+    assertTrue(arrayContainsEndpoint(endpoints, "/", "GET"));
+    assertTrue(arrayContainsEndpoint(endpoints, "/api", "GET"));
+    assertTrue(arrayContainsEndpoint(endpoints, TEXT_RUNTIME_STATE, "GET"));
+    assertTrue(arrayContainsEndpoint(endpoints, "/session/connect", "POST"));
+  }
+
+  @Test
   public void restServerLogsSessionConnectAcceptedAndRejectedAuditLines() throws Exception {
     server = new BringupRestServer(0, new TestCallbacks());
     server.start();
@@ -262,6 +307,22 @@ public final class BringupRestServerTest {
     assertEquals(HTTP_OK, outputResponse.statusCode());
     JsonObject outputJson = GSON.fromJson(outputResponse.body(), JsonObject.class);
     return outputJson.getAsJsonArray(TEXT_CHUNKS);
+  }
+
+  private boolean arrayContainsEndpoint(JsonArray endpoints, String path, String method) {
+    for (int i = 0; i < endpoints.size(); i++) {
+      JsonObject endpoint = endpoints.get(i).getAsJsonObject();
+      if (!endpoint.has(TEXT_PATH) || !path.equals(endpoint.get(TEXT_PATH).getAsString())) {
+        continue;
+      }
+      if (!endpoint.has(TEXT_METHOD)) {
+        continue;
+      }
+      if (method.equals(endpoint.get(TEXT_METHOD).getAsString())) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private static final class TestCallbacks implements BringupRestServer.RestCallbacks {

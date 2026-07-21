@@ -17,8 +17,16 @@ from typing import DefaultDict, Dict, Iterable, List, Set, Tuple
 from tools.passive_discovery_poc.constants import (
     CONSTANT_PAYLOAD_VARIATION_MAX,
     CTRE_MANUFACTURER,
+    CTRE_MOTOR_CONTROLLER_REFERENCE_API_INDEX_SECONDARY,
+    CTRE_MOTOR_CONTROLLER_REFERENCE_API_CLASS,
+    CTRE_MOTOR_CONTROLLER_REFERENCE_API_INDEX,
+    CTRE_MOTOR_PRIMARY_STATUS_API_CLASS,
+    CTRE_MOTOR_PRIMARY_STATUS_API_INDEX_FAST,
+    CTRE_MOTOR_PRIMARY_STATUS_API_INDEX_POSITION,
+    CTRE_MOTOR_SECONDARY_STATUS_FAMILIES,
     DEVICE_TYPE_BROADCAST,
     DEVICE_TYPE_MOTOR_CONTROLLER,
+    DEVICE_TYPE_ROBORIO,
     EXPECTED_STATUS_MISSING,
     EXPECTED_STATUS_OBSERVED,
     EXPECTED_STATUS_UNCERTAIN,
@@ -44,6 +52,9 @@ from tools.passive_discovery_poc.constants import (
     REV_COMMAND_INDEX_DUTY,
     REV_COMMAND_INDEX_VOLTAGE,
     REV_MANUFACTURER,
+    ROBORIO_MANUFACTURER,
+    ROBORIO_STATUS_API_CLASS,
+    ROBORIO_STATUS_API_INDEX_PRIMARY,
     ROLE_CONTROLLER_EMITTED_COMMAND,
     ROLE_DEVICE_EMITTED_HEARTBEAT_HOUSEKEEPING,
     ROLE_DEVICE_EMITTED_PRIMARY_STATUS,
@@ -159,6 +170,15 @@ def _classify_family_role(key: FamilyKey, metrics: FamilyMetrics) -> Tuple[str, 
         REV_COMMAND_INDEX_CURRENT,
     ):
         return (ROLE_CONTROLLER_EMITTED_COMMAND, PRESENCE_HIGH)
+    if (
+        key.manufacturer == ROBORIO_MANUFACTURER
+        and key.device_type == DEVICE_TYPE_ROBORIO
+        and key.api_class == ROBORIO_STATUS_API_CLASS
+        and key.api_index == ROBORIO_STATUS_API_INDEX_PRIMARY
+        and metrics.is_high_rate
+        and metrics.is_recurring
+    ):
+        return (ROLE_DEVICE_EMITTED_PRIMARY_STATUS, PRESENCE_HIGH)
     if key.manufacturer == REV_MANUFACTURER and key.device_type == DEVICE_TYPE_MOTOR_CONTROLLER:
         # The live REV USB relay path adds enough timing jitter that requiring
         # stable cadence here produces false negatives even when the family is
@@ -169,7 +189,34 @@ def _classify_family_role(key: FamilyKey, metrics: FamilyMetrics) -> Tuple[str, 
             return (ROLE_DEVICE_EMITTED_SECONDARY_STATUS, PRESENCE_MEDIUM)
         if key.api_class == 47 and key.api_index == 0 and metrics.is_heartbeat_rate and metrics.is_recurring:
             return (ROLE_DEVICE_EMITTED_HEARTBEAT_HOUSEKEEPING, PRESENCE_MEDIUM)
-    if key.device_type == DEVICE_TYPE_BROADCAST or key.device_id == 0:
+    if key.manufacturer == CTRE_MANUFACTURER and key.device_type == DEVICE_TYPE_MOTOR_CONTROLLER:
+        if (
+            key.api_class == CTRE_MOTOR_PRIMARY_STATUS_API_CLASS
+            and key.api_index in (CTRE_MOTOR_PRIMARY_STATUS_API_INDEX_FAST, CTRE_MOTOR_PRIMARY_STATUS_API_INDEX_POSITION)
+            and metrics.is_high_rate
+            and metrics.is_recurring
+        ):
+            return (ROLE_DEVICE_EMITTED_PRIMARY_STATUS, PRESENCE_HIGH)
+        if (
+            (key.api_class, key.api_index) in CTRE_MOTOR_SECONDARY_STATUS_FAMILIES
+            and metrics.is_secondary_rate
+            and metrics.is_recurring
+        ):
+            return (ROLE_DEVICE_EMITTED_SECONDARY_STATUS, PRESENCE_MEDIUM)
+        if (
+            key.api_class == CTRE_MOTOR_CONTROLLER_REFERENCE_API_CLASS
+            and key.api_index in (
+                CTRE_MOTOR_CONTROLLER_REFERENCE_API_INDEX,
+                CTRE_MOTOR_CONTROLLER_REFERENCE_API_INDEX_SECONDARY,
+            )
+            and metrics.is_recurring
+        ):
+            return (ROLE_UNKNOWN, PRESENCE_LOW)
+        return (ROLE_UNKNOWN, PRESENCE_LOW)
+    if (
+        key.device_type == DEVICE_TYPE_BROADCAST
+        or key.device_id == 0
+    ):
         return (ROLE_SHARED_BUS_CONTROL, PRESENCE_HIGH)
     if metrics.is_high_rate and metrics.is_stable_cadence:
         return (ROLE_DEVICE_EMITTED_PRIMARY_STATUS, PRESENCE_HIGH)

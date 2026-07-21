@@ -27,8 +27,12 @@ from tools.can_nt.passive_discovery_integration_service import (
     build_enrichment_run_snapshot,
     build_console_snapshot_from_entries,
     build_evidence_fault_snapshot,
+    build_interpreted_device_state,
     build_interpreted_evidence_row,
+    build_passive_device_detail_snapshot,
+    build_passive_visibility_deep_dive_text,
     build_manual_snapshot,
+    build_runtime_device_detail_snapshot,
     build_runtime_probe_snapshot,
     build_runtime_presence_catalog,
     build_live_passive_result,
@@ -40,7 +44,7 @@ from tools.can_nt.passive_discovery_integration_service import (
     normalize_evidence_engine_status,
 )
 from tools.can_nt.visibility_provider import SourceInfo, VisibilityProvider
-from tools.passive_discovery_poc.models import DeviceIdentity, DeviceRecord, FamilyKey, NormalizedFrame
+from tools.passive_discovery_poc.models import DeviceIdentity, DeviceRecord, FamilyKey, FamilyMetrics, FamilyRecord, NormalizedFrame, RunResult
 
 
 TEST_SOURCE_ID = "src0"
@@ -173,6 +177,79 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
         self.assertEqual("high", spark.presence_confidence)
         self.assertGreaterEqual(spark.presence_score, 90)
 
+    def test_build_live_passive_result_treats_roborio_periodic_status_as_presence_evidence(self) -> None:
+        provider = VisibilityProvider(timeout_ms=TEST_TIMEOUT_MS)
+        provider.set_sources(
+            [
+                SourceInfo(
+                    source_id=TEST_SOURCE_ID,
+                    label=TEST_SOURCE_LABEL,
+                    available=True,
+                    timeout_ms=TEST_TIMEOUT_MS,
+                )
+            ]
+        )
+        profile_devices = load_profile_device_catalog("test_minimal_25_9")
+        for index in range(25):
+            provider.ingest_frame(
+                TEST_SOURCE_ID,
+                arb_id=int("01011840", 16),
+                ts_ms=1000,
+                decoded_key="1:1:0",
+                label="roborio",
+                normalized_frame=NormalizedFrame(
+                    timestamp_s=0.006 + (0.020 * float(index)),
+                    can_id=int("01011840", 16),
+                    dlc=8,
+                    data_hex="8101184008000000",
+                    is_extended=True,
+                    is_rtr=False,
+                    manufacturer=1,
+                    device_type=1,
+                    api_class=6,
+                    api_index=1,
+                    device_id=0,
+                    observer_source=TEST_SOURCE_ID,
+                ),
+            )
+
+        result = build_live_passive_result(provider, profile_devices)
+        devices_by_identity = index_run_result_by_identity(result)
+        roborio = devices_by_identity[(1, 1, 0)]
+
+        self.assertEqual("observed", roborio.expected_status)
+        self.assertGreater(roborio.presence_score, 0)
+        self.assertTrue(roborio.evidence_family_keys)
+
+    def test_build_passive_device_detail_snapshot_uses_visibility_fallback_when_no_device_record_exists(self) -> None:
+        result = RunResult(
+            run_metadata={},
+            device_records=(),
+            family_records=(),
+            unknown_frames=(),
+            warnings=(),
+        )
+
+        snapshot = build_passive_device_detail_snapshot(
+            "FALCON 9",
+            passive_result=result,
+            visibility_device={
+                "metrics": {
+                    "observerA": {
+                        "lastSeenMs": 9800.0,
+                        "framesPerSec": 19.9,
+                    }
+                }
+            },
+            now_s=10.0,
+        )
+
+        self.assertEqual("0.00", snapshot["presence"])
+        self.assertEqual("none", snapshot["presenceStatus"])
+        self.assertEqual("0.2s ago", snapshot["presenceAge"])
+        self.assertEqual("passiveCan", snapshot["presenceSource"])
+        self.assertEqual("0.2s ago", snapshot["lastSeen"])
+
     def test_build_runtime_presence_catalog_normalizes_presence_attachment(self) -> None:
         profile_devices = load_profile_device_catalog("test_minimal_25_9")
         runtime_devices = {
@@ -250,6 +327,57 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
         )
         self.assertIn("bucket=absent", row["presenceText"])
 
+    def test_build_runtime_device_detail_snapshot_exposes_group_scope_and_instantiation(self) -> None:
+        snapshot = build_runtime_device_detail_snapshot(
+            {
+                "activeGroupLabel": "active-group",
+                "lifecycleState": "defined",
+                "instantiated": False,
+                "testable": False,
+            },
+            now_s=2.0,
+        )
+
+        self.assertEqual("yes", snapshot["groupMember"])
+        self.assertEqual("no", snapshot["scopeActive"])
+        self.assertEqual("no", snapshot["instantiated"])
+        self.assertEqual("defined", snapshot["lifecycleState"])
+
+    def test_build_interpreted_device_state_adapts_to_legacy_row_contract(self) -> None:
+        state = build_interpreted_device_state(
+            label=TEST_SPARK_LABEL,
+            presence_entry={
+                "bucket": "present",
+                "score": 1.0,
+                "source": "localSnapshot",
+                "updatedAtMs": 1500.0,
+                "message": "Runtime snapshot observed device present.",
+                "existence": "PRESENT",
+                "confidence": "HIGH",
+                "ageText": "0.5s ago",
+            },
+            passive_device=None,
+            visibility_device=None,
+            runtime_device=None,
+            console_entry=None,
+            system_console={},
+            manual_entry=None,
+            manual_observation=None,
+            manual_motion=None,
+            probe_pending=False,
+            last_probe_completed_at=0.0,
+            probe_run_count=0,
+            now_s=2.0,
+        )
+
+        row = state.to_row()
+
+        self.assertEqual(TEST_SPARK_LABEL, state.label)
+        self.assertEqual(TEST_SPARK_LABEL, row["label"])
+        self.assertEqual(state.existence, row["existence"])
+        self.assertEqual(state.presence_text, row["presenceText"])
+        self.assertEqual(state.source_scores, row["sourceScores"])
+
     def test_build_interpreted_evidence_row_uses_ctre_enrichment_for_corroboration(self) -> None:
         row = build_interpreted_evidence_row(
             label="FALCON 9",
@@ -267,7 +395,11 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
                         }
                     }
                 },
-                "metadata": {},
+                "metadata": {
+                    "ctreHttp": {"status": "ok", "summary": "baseUrl=http://172.22.11.2:1250 | devices=3"},
+                    "topology": {"status": "ok", "summary": "profile=test_minimal_25_9 | nodes=4 | edges=3"},
+                    "consoleLog": {"status": "empty", "summary": "records=0 | warnings=0"},
+                },
                 "ageText": "0.0s ago",
             },
             visibility_device=None,
@@ -292,6 +424,82 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
         self.assertIn("runStatus=Enrichment: ran 1.0s ago", row["enrichmentText"])
         self.assertIn("ctreHttp=present", row["enrichmentText"])
         self.assertIn("deviceContribution=ctreHttp", row["enrichmentText"])
+        self.assertIn(
+            "Host enrichment ran 1.0s ago; ctreHttp=ok; topology=ok; consoleLog=empty.",
+            row["notesText"],
+        )
+
+    def test_build_passive_visibility_deep_dive_text_separates_evidence_and_supporting_families(self) -> None:
+        primary_key = FamilyKey(5, 2, 25, 46, 0)
+        command_key = FamilyKey(5, 2, 25, 32, 1)
+        passive_result = RunResult(
+            run_metadata={},
+            device_records=(
+                DeviceRecord(
+                    identity=DeviceIdentity(5, 2, 25, "node.spark25", "rio"),
+                    expected_status="observed",
+                    manufacturer_name="REV",
+                    device_type_name="SPARK MAX",
+                    model_name="SPARK MAX",
+                    profile_label="SPARKMAX/NEO 25",
+                    presence_confidence="HIGH",
+                    presence_score=92,
+                    inventory_confidence="HIGH",
+                    inventory_score=90,
+                    health_confidence="MEDIUM",
+                    health_score=70,
+                    health="ok",
+                    evidence_sources=("passive_can", "bringup_profile"),
+                    evidence_family_keys=(primary_key, command_key),
+                    evidence_family_summaries=("api=46/0 primary_status 40.3Hz",),
+                    evidence_gaps=("No fresh heartbeat family.",),
+                    notes=(),
+                ),
+            ),
+            family_records=(
+                FamilyRecord(
+                    key=primary_key,
+                    metrics=FamilyMetrics(120, 40.3, 0.0248, 0.001, 1, 0, 1.0, 3.9, True, True, True, False, False, True),
+                    role="DEVICE_EMITTED_PRIMARY_STATUS",
+                    confidence="HIGH",
+                    model_hint="SPARK MAX",
+                    observed_can_ids=("0x02042C49",),
+                    sample_payloads=("0011",),
+                ),
+                FamilyRecord(
+                    key=command_key,
+                    metrics=FamilyMetrics(30, 10.0, 0.1, 0.01, 3, 10, 1.0, 3.9, True, False, False, False, False, False),
+                    role="CONTROLLER_EMITTED_COMMAND",
+                    confidence="HIGH",
+                    model_hint="SPARK MAX",
+                    observed_can_ids=("0x02042C50",),
+                    sample_payloads=("0022",),
+                ),
+            ),
+            unknown_frames=(),
+            warnings=(),
+        )
+
+        text = build_passive_visibility_deep_dive_text(
+            label="SPARKMAX/NEO 25",
+            passive_result=passive_result,
+            visibility_device={"metrics": {}},
+            visibility_identity_text="MATCHING",
+            visibility_last_seen_text="0.1s ago",
+            visibility_packet_count_text="150",
+            visibility_packet_rate_text="50.3/s",
+        )
+
+        self.assertIn("Shared Passive CAN Deep Dive", text)
+        self.assertIn("passiveScore=92/100", text)
+        self.assertIn("existencePackets=120", text)
+        self.assertIn("Evidence Families", text)
+        self.assertIn("role=DEVICE_EMITTED_PRIMARY_STATUS", text)
+        self.assertIn("countsForPresence=yes", text)
+        self.assertIn("Supporting / Reference Families", text)
+        self.assertIn("role=CONTROLLER_EMITTED_COMMAND", text)
+        self.assertIn("countsForPresence=no", text)
+        self.assertIn("No fresh heartbeat family.", text)
 
     def test_build_runtime_probe_snapshot_formats_cached_probe_attachment(self) -> None:
         runtime_device = {
@@ -1035,6 +1243,94 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
         self.assertEqual("failed", row["state"])
         self.assertIn(
             "Motor commanded with little current and no motion; possible electrical/output-path issue.",
+            row["notesText"],
+        )
+
+    def test_interpreted_row_demotes_local_snapshot_presence_when_manual_motion_and_passive_can_do_not_confirm_motor(self) -> None:
+        passive_device = DeviceRecord(
+            identity=DeviceIdentity(manufacturer=4, device_type=2, device_id=9),
+            expected_status="missing",
+            manufacturer_name="CTRE",
+            device_type_name="TalonFX",
+            model_name="falcon",
+            profile_label="FALCON 9",
+            presence_confidence="uncertain",
+            presence_score=25,
+            inventory_confidence="low",
+            inventory_score=25,
+            health_confidence="low",
+            health_score=25,
+            health="unknown",
+            evidence_sources=("passive_can",),
+            evidence_family_keys=(),
+            evidence_family_summaries=(),
+            evidence_gaps=(),
+            notes=(),
+        )
+
+        row = build_interpreted_evidence_row(
+            label="FALCON 9",
+            presence_entry={
+                "bucket": "present",
+                "score": 1.0,
+                "ageText": "0.0s ago",
+                "existence": "PRESENT",
+                "confidence": "HIGH",
+                "source": "localSnapshot",
+            },
+            passive_device=passive_device,
+            visibility_device={
+                "metrics": {
+                    "src0": {
+                        "lastSeenMs": 100000.0,
+                        "packets": 4300,
+                        "framesPerSec": 99.9,
+                    }
+                }
+            },
+            runtime_device={
+                "cmdDuty": 0.0,
+                "appliedDuty": 0.0,
+                "velRpm": 0.0,
+                "motorCurrentA": 0.0,
+                "positionRot": 0.0,
+                "attachments": [
+                    {
+                        "type": "presenceCheck",
+                        "bucket": "present",
+                        "score": 1.0,
+                        "source": "localSnapshot",
+                    }
+                ],
+            },
+            console_entry=None,
+            system_console={},
+            manual_entry=None,
+            manual_observation={
+                "autoResult": "no_rotation_detected",
+                "recordedAt": "18:51:30",
+                "recordedAtEpochSec": 90.0,
+                "cmdDuty": 0.24,
+                "appliedDuty": 0.0,
+                "velRpm": 0.0,
+                "positionRot": 0.0,
+                "positionDeltaRot": 0.0,
+                "motorCurrentA": 0.0,
+            },
+            manual_motion=None,
+            probe_pending=False,
+            last_probe_completed_at=0.0,
+            probe_run_count=0,
+            now_s=100.0,
+        )
+
+        self.assertEqual("CONFLICT", row["existence"])
+        self.assertEqual("FAILED", row["operability"])
+        self.assertEqual("LOW", row["confidence"])
+        self.assertEqual("failed", row["state"])
+        self.assertTrue(row["conflicted"])
+        self.assertIn(
+            "Runtime scope snapshot says present, but recent motion check and passive CAN did not confirm the motor as physically present.",
             row["notesText"],
         )
 
