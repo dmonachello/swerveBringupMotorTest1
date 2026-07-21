@@ -1,0 +1,4 @@
+version: 1
+display_name: Thread Backup
+short_description: Save a local recovery bundle for the current thread and repo state.
+default_prompt: Create a local backup bundle for the current working thread, including a restoration summary and a repo/git snapshot.

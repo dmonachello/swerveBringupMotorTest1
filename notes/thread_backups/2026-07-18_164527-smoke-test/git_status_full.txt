@@ -1,0 +1,6 @@
+On branch recovery/2026-07-18-dirty-tree
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	.codex/skills/thread-backup/
+
+nothing added to commit but untracked files present (use "git add" to track)
