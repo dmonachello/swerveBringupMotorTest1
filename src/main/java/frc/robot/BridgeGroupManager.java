@@ -18,6 +18,7 @@ import frc.robot.input.InputAliasResolver;
  */
 public final class BridgeGroupManager {
   private static final String EMPTY_STRING = "";
+  private static final String DUTY_WRITE_SOURCE_BINDING_PREFIX = "bridge-binding:";
   private static final int MAX_CONTROLLER_COUNT = 6;
   /**
    * NAME
@@ -572,6 +573,7 @@ public final class BridgeGroupManager {
         continue;
       }
       double output = computeGroupOutput(group, input);
+      String dutyWriteSource = bindingDutyWriteSource(group.name);
       if (Math.abs(output) < 1e-6 && group.bindings.isEmpty()) {
         continue;
       }
@@ -583,11 +585,20 @@ public final class BridgeGroupManager {
         if (!member.enabled) {
           continue;
         }
-        if (!core.setDutyByDeviceLabel(member.label, output)) {
+        if (!core.setDutyByDeviceLabel(member.label, output, dutyWriteSource)) {
           group.lastSkippedMembers.add(member.label);
         }
       }
     }
+  }
+
+  /**
+   * NAME
+   *   bindingDutyWriteSource - Build a stable source tag for binding-owned writes.
+   */
+  private String bindingDutyWriteSource(String groupName) {
+    String suffix = groupName != null ? groupName.trim() : EMPTY_STRING;
+    return DUTY_WRITE_SOURCE_BINDING_PREFIX + suffix;
   }
 
   /**

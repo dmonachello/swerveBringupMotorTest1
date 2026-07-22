@@ -16,6 +16,7 @@ from tools.can_nt.bringup_ui import (
     ACTIONS_BY_NAME,
     ACTION_SOURCE_ROBOT,
     ACTIVATION_MEMBERSHIP_MODE_DEFAULT,
+    ACTIVE_GROUP_WAITING_TEXT,
     ATTACHMENT_TYPE_ACTIVE_PRESENCE_PROBE,
     BringupControlUI,
     CMD_PRINT_CAN_DIAG,
@@ -30,6 +31,8 @@ from tools.can_nt.bringup_ui import (
     LIVE_LENS_OPTION_EVIDENCE,
     LIVE_LENS_OPTION_RUNTIME,
     LIVE_LENS_OPTION_VISIBILITY,
+    MANUAL_DUTY_BLOCKED_TRANSITION_TEXT,
+    MANUAL_DUTY_BLOCKED_WAITING_TEXT,
     MANUAL_DUTY_ARG_DUTY,
     MANUAL_GROUP_DUTY_CMD_SET,
     PROFILE_NONE,
@@ -2903,6 +2906,37 @@ class BringupUiActionMetadataTests(unittest.TestCase):
 
         self.assertEqual(("Live Topology", "Tests"), ui._pending_tests_boundary_transition)
 
+    def test_handle_tests_boundary_transition_into_tests_sets_selected_test_owner(self) -> None:
+        class _Tracker:
+            def is_pending(self) -> bool:
+                return False
+
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._tcp_connected = True
+        ui._tracker = _Tracker()
+        ui._group_owner_mode = "manual"
+        ui._deactivate_group_blocking = lambda: True
+        ui._load_selected_test_into_active_group = lambda force_replace=False: None
+
+        ui._handle_tests_boundary_transition("Live Topology", "Tests")
+
+        self.assertEqual("selected test", ui._group_owner_mode)
+
+    def test_handle_tests_boundary_transition_leaving_tests_restores_manual_owner(self) -> None:
+        class _Tracker:
+            def is_pending(self) -> bool:
+                return False
+
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._tcp_connected = True
+        ui._tracker = _Tracker()
+        ui._group_owner_mode = "selected test"
+        ui._deactivate_group_blocking = lambda: True
+
+        ui._handle_tests_boundary_transition("Tests", "Live Topology")
+
+        self.assertEqual("manual", ui._group_owner_mode)
+
     def test_on_test_source_key_release_rechecks_completion_every_time(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
         ui._refresh_test_source_line_numbers = lambda: None
@@ -3412,9 +3446,31 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertEqual([("motors", ["SPARKMAX/NEO 25", "FALCON 9"], 11, 22)], opened)
         self.assertEqual([], lines)
 
+    def test_live_node_right_click_blocks_before_first_runtime_state(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._tcp_connected = True
+        ui._runtime_state_seen = False
+        ui._state_stale = False
+        ui._robot_estopped_known = False
+        ui._robot_enabled_known = True
+        ui._tracker = type("TrackerStub", (), {"is_pending": staticmethod(lambda: False)})()
+        output_lines = []
+        ui._append_output = output_lines.append
+        ui._open_manual_duty_targets = lambda *_args: (_ for _ in ()).throw(
+            AssertionError("manual popup should stay blocked before first runtime state")
+        )
+
+        node = type("NodeStub", (), {"device_type": "2", "label": "FALCON 9"})()
+        event = type("EventStub", (), {"x_root": 11, "y_root": 22})()
+
+        ui._on_live_node_right_click(node, event)
+
+        self.assertEqual([MANUAL_DUTY_BLOCKED_WAITING_TEXT], output_lines)
+
     def test_open_manual_group_duty_targets_preserves_group_transport_for_static_groups(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
         ui._tcp_connected = True
+        ui._runtime_state_seen = True
         ui._state_stale = False
         ui._robot_estopped_known = False
         ui._robot_enabled_known = True
@@ -3449,6 +3505,34 @@ class BringupUiActionMetadataTests(unittest.TestCase):
             popup_calls,
         )
         self.assertEqual([("motors", ["SPARKMAX/NEO 25", "FALCON 9"])], live_view_calls)
+
+    def test_open_manual_group_duty_targets_blocks_during_scope_transition(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._tcp_connected = True
+        ui._runtime_state_seen = True
+        ui._state_stale = False
+        ui._robot_estopped_known = False
+        ui._robot_enabled_known = True
+        ui._controlled_lifecycle_active_known = False
+        ui._pending_controlled_lifecycle_expected = True
+        ui._pending_runtime_active_expected = None
+        ui._pending_scope_member_labels_expected = tuple()
+        ui._latest_runtime_state_payload = {"groups": []}
+        ui._latest_runtime_devices = {}
+        ui._tracker = type("TrackerStub", (), {"is_pending": staticmethod(lambda: False)})()
+        output_lines = []
+        ui._append_output = output_lines.append
+        ui._request_runtime_state_refresh = lambda: (_ for _ in ()).throw(
+            AssertionError("runtime refresh should not run while scope transition is pending")
+        )
+        ui._open_manual_duty_popup = lambda *_args: (_ for _ in ()).throw(
+            AssertionError("manual popup should stay blocked during scope transition")
+        )
+        ui._iter_live_views = lambda: []
+
+        ui._open_manual_group_duty_targets("motors", ["FALCON 9"], 11, 22)
+
+        self.assertEqual([MANUAL_DUTY_BLOCKED_TRANSITION_TEXT], output_lines)
 
     def test_open_manual_group_duty_targets_preserves_group_transport_for_active_group(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
@@ -4412,6 +4496,69 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertEqual(["Manual duty popup closed: test."], output_lines)
         self.assertEqual(["Manual duty popup closed: test."], printed)
 
+    def test_manual_duty_popup_block_confirmation_debounces_transient_disabled_state(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._manual_duty_block_reason = ""
+        ui._manual_duty_block_since = 0.0
+
+        self.assertFalse(
+            ui._should_confirm_manual_duty_popup_block(
+                "Manual motor control blocked: robot disabled.",
+                10.0,
+            )
+        )
+        self.assertFalse(
+            ui._should_confirm_manual_duty_popup_block(
+                "Manual motor control blocked: robot disabled.",
+                10.2,
+            )
+        )
+        self.assertTrue(
+            ui._should_confirm_manual_duty_popup_block(
+                "Manual motor control blocked: robot disabled.",
+                10.3,
+            )
+        )
+
+    def test_manual_duty_popup_block_confirmation_keeps_disconnect_immediate(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._manual_duty_block_reason = ""
+        ui._manual_duty_block_since = 0.0
+
+        self.assertTrue(
+            ui._should_confirm_manual_duty_popup_block(
+                "Manual motor control blocked: not connected.",
+                10.0,
+            )
+        )
+
+    def test_log_manual_duty_runtime_mismatch_reports_requested_vs_runtime_values(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._manual_duty_popup = object()
+        ui._manual_duty_last_sent_value = 0.4
+        ui._manual_duty_targets = ["FALCON 9"]
+        ui._latest_runtime_devices = {
+            "falcon 9": {
+                "label": "FALCON 9",
+                "cmdDuty": 0.0,
+                "appliedDuty": 0.0,
+                "velRpm": 0.0,
+                "motorCurrentA": 1.2,
+                "lifecycleState": "controlled-active",
+            }
+        }
+        ui._manual_duty_diag_signature_by_label = {}
+        output_lines: list[str] = []
+        ui._append_output = output_lines.append
+
+        ui._log_manual_duty_runtime_mismatch()
+
+        self.assertEqual(1, len(output_lines))
+        self.assertIn("Manual duty diag: FALCON 9", output_lines[0])
+        self.assertIn("requested=0.4", output_lines[0])
+        self.assertIn("cmd=0.0", output_lines[0])
+        self.assertIn("applied=0.0", output_lines[0])
+
     def test_flush_manual_duty_send_uses_group_command_for_static_multi_motor_group(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
         ui._manual_duty_pending_after = None
@@ -4427,7 +4574,8 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._robot_enabled_known = True
         ui._append_output = lambda _line: None
         ui._request_runtime_state_refresh = lambda: None
-        ui.after_idle = lambda callback: callback()
+        refresh_calls = []
+        ui.after_idle = lambda callback: refresh_calls.append(callback)
         ui._record_manual_motion_command = lambda _label, _duty: None
         ui._iter_live_views = lambda: []
         sent = []
@@ -4447,6 +4595,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
             ],
             sent,
         )
+        self.assertEqual([], refresh_calls)
 
     def test_apply_runtime_state_payload_tracks_controlled_lifecycle_active(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)

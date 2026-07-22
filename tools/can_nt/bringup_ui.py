@@ -175,8 +175,15 @@ from .host_ui_actions import (
 )
 from .host_ui_state_service import (
     MANUAL_DUTY_BLOCKED_CONTROLLED_SCOPE_TEXT as SHARED_MANUAL_DUTY_BLOCKED_CONTROLLED_SCOPE_TEXT,
+    MANUAL_DUTY_BLOCKED_DISABLED_TEXT as SHARED_MANUAL_DUTY_BLOCKED_DISABLED_TEXT,
+    MANUAL_DUTY_BLOCKED_ESTOP_TEXT as SHARED_MANUAL_DUTY_BLOCKED_ESTOP_TEXT,
+    MANUAL_DUTY_BLOCKED_NOT_CONNECTED_TEXT as SHARED_MANUAL_DUTY_BLOCKED_NOT_CONNECTED_TEXT,
+    MANUAL_DUTY_BLOCKED_STALE_TEXT as SHARED_MANUAL_DUTY_BLOCKED_STALE_TEXT,
+    MANUAL_DUTY_BLOCKED_TRANSITION_TEXT as SHARED_MANUAL_DUTY_BLOCKED_TRANSITION_TEXT,
+    MANUAL_DUTY_BLOCKED_WAITING_TEXT as SHARED_MANUAL_DUTY_BLOCKED_WAITING_TEXT,
     OUTPUT_NO_SELECTED_TEST as SHARED_OUTPUT_NO_SELECTED_TEST,
     PROFILE_NONE as SHARED_PROFILE_NONE,
+    RUNTIME_FETCH_BLOCK_BUSY,
     SELECTED_TEST_STATUS_BLOCKED_DISABLED as SHARED_SELECTED_TEST_STATUS_BLOCKED_DISABLED,
     SELECTED_TEST_STATUS_BLOCKED_ESTOP as SHARED_SELECTED_TEST_STATUS_BLOCKED_ESTOP,
     SELECTED_TEST_STATUS_BLOCKED_NOT_TELEOP as SHARED_SELECTED_TEST_STATUS_BLOCKED_NOT_TELEOP,
@@ -220,11 +227,13 @@ from .host_ui_state_service import (
     RuntimeStateFetchState,
     TopologySceneState,
     UiContextState,
+    resolve_manual_duty_access_state,
     resolve_manual_duty_scope_state,
     resolve_active_group_summary_state,
     resolve_manual_duty_binding_state,
     resolve_diagnostic_profile_state,
     resolve_runtime_state_fetch_state,
+    resolve_scope_control_state,
     resolve_scope_activation_notice,
     resolve_selected_test_runtime_block_reason,
     resolve_selected_test_panel_state,
@@ -608,20 +617,41 @@ MANUAL_DUTY_STATUS_FMT = "Manual motor duty active: {label} = {duty:.2f}"
 MANUAL_DUTY_STOPPED_FMT = "Manual motor duty cleared: {label}"
 MANUAL_DUTY_GROUP_STATUS_FMT = "Manual group duty active: {label} = {duty:.2f}"
 MANUAL_DUTY_GROUP_STOPPED_FMT = "Manual group duty cleared: {label}"
-MANUAL_DUTY_BLOCKED_TEXT = "Manual motor control blocked: not connected."
-MANUAL_DUTY_BLOCKED_STALE_TEXT = "Manual motor control blocked: robot state stale."
-MANUAL_DUTY_BLOCKED_ESTOP_TEXT = "Manual motor control blocked: robot estopped."
-MANUAL_DUTY_BLOCKED_DISABLED_TEXT = "Manual motor control blocked: robot disabled."
+MANUAL_DUTY_BLOCKED_TEXT = SHARED_MANUAL_DUTY_BLOCKED_NOT_CONNECTED_TEXT
+MANUAL_DUTY_BLOCKED_STALE_TEXT = SHARED_MANUAL_DUTY_BLOCKED_STALE_TEXT
+MANUAL_DUTY_BLOCKED_ESTOP_TEXT = SHARED_MANUAL_DUTY_BLOCKED_ESTOP_TEXT
+MANUAL_DUTY_BLOCKED_DISABLED_TEXT = SHARED_MANUAL_DUTY_BLOCKED_DISABLED_TEXT
+MANUAL_DUTY_BLOCKED_WAITING_TEXT = SHARED_MANUAL_DUTY_BLOCKED_WAITING_TEXT
+MANUAL_DUTY_BLOCKED_TRANSITION_TEXT = SHARED_MANUAL_DUTY_BLOCKED_TRANSITION_TEXT
 MANUAL_DUTY_BLOCKED_RUNTIME_TEXT = "Manual motor control blocked: runtime inactive."
 MANUAL_DUTY_BLOCKED_CONTROLLED_SCOPE_TEXT = SHARED_MANUAL_DUTY_BLOCKED_CONTROLLED_SCOPE_TEXT
 ACTIVE_GROUP_LOCKED_TEXT = (
     "Active group membership is locked while an active scope session is running. Deactivate scope first."
+)
+ACTIVE_GROUP_WAITING_TEXT = (
+    "Runtime state not loaded yet. Wait for refresh before editing active-group."
 )
 MANUAL_DUTY_BUSY_TEXT = "Manual motor control blocked: command in flight."
 MANUAL_DUTY_SCALE_ELEMENT_SLIDER = "slider"
 MANUAL_DUTY_NO_LABEL = ""
 MANUAL_DUTY_NO_TARGETS: List[str] = []
 MANUAL_DUTY_VALUE_FMT = "{value:.2f}"
+MANUAL_DUTY_BLOCK_REASON_NONE = ""
+MANUAL_DUTY_AUTO_CLOSE_CONFIRM_SEC = 0.25
+MANUAL_DUTY_DIAG_MISMATCH_THRESHOLD = 0.05
+MANUAL_DUTY_DIAG_ACTIVE_REQUEST_THRESHOLD = 0.10
+MANUAL_DUTY_DIAG_ZERO_APPLIED_THRESHOLD = 0.02
+MANUAL_DUTY_DIAG_FLOAT_PRECISION = 3
+MANUAL_DUTY_DIAG_LABEL_NONE = "n/a"
+MANUAL_DUTY_DIAG_FMT = (
+    "Manual duty diag: {label} requested={requested} cmd={cmd} applied={applied} "
+    "vel={vel} current={current} lifecycle={lifecycle}"
+)
+MANUAL_DUTY_DEBOUNCED_BLOCK_REASONS = {
+    MANUAL_DUTY_BLOCKED_STALE_TEXT,
+    MANUAL_DUTY_BLOCKED_ESTOP_TEXT,
+    MANUAL_DUTY_BLOCKED_DISABLED_TEXT,
+}
 TEST_NAME_EMPTY = ""
 VERSION_APP_NAME = APP_BRINGUP_UI_NAME
 VERSION_TITLE = VERSION_HEADER
@@ -2113,6 +2143,9 @@ class BringupControlUI(tk.Tk):
         self._manual_duty_last_sent_value: Optional[float] = None
         self._manual_duty_last_sent_at = 0.0
         self._manual_duty_pending_after: Optional[str] = None
+        self._manual_duty_block_reason = MANUAL_DUTY_BLOCK_REASON_NONE
+        self._manual_duty_block_since = 0.0
+        self._manual_duty_diag_signature_by_label: Dict[str, Tuple[object, ...]] = {}
         self._manual_motion_checks: Dict[str, Dict[str, Any]] = {}
         self._manual_test_observations: Dict[str, Dict[str, Any]] = {}
         self._profile_devices: Dict[str, Dict[str, Any]] = {}
@@ -3869,6 +3902,38 @@ class BringupControlUI(tk.Tk):
             return True
         return bool(self.__dict__.get("_runtime_state_seen", False))
 
+    def _selected_test_has_invalid_members(self) -> bool:
+        """
+        NAME
+            _selected_test_has_invalid_members - Return whether the current Selected Test Devices rows contain invalid members.
+        """
+        return any(
+            SHARED_TEST_ACTIVE_GROUP_STATUS_INVALID in state.statuses
+            for state in self._tests_active_group_member_row_states()
+        )
+
+    def _scope_control_state(self):
+        """
+        NAME
+            _scope_control_state - Return shared scope-control ownership gates for top-level host actions.
+        """
+        return resolve_scope_control_state(
+            scope_kind=self._runnable_scope_kind(),
+            runtime_ui_ready=self._runtime_ui_actions_ready(),
+            tracker_pending=self._tracker.is_pending(),
+            stale_state=bool(self.__dict__.get("_state_stale", False)),
+            runtime_state_seen=bool(self.__dict__.get("_runtime_state_seen", False)),
+            controlled_lifecycle_active=self.__dict__.get("_controlled_lifecycle_active_known") is True,
+            transition_pending=self._scope_transition_pending(),
+            runnable_scope_state=self._runnable_scope_state(
+                stale_state=bool(self.__dict__.get("_state_stale", False))
+            ),
+            selected_test_name=self._selected_test_name(),
+            selected_test_ready=self._selected_test_ready(),
+            selected_test_invalid=self._selected_test_has_invalid_members(),
+            selected_test_runtime_block_reason=self._test_runtime_block_reason(),
+        )
+
     def _scope_activation_notice_text(self) -> str:
         """
         NAME
@@ -4575,6 +4640,9 @@ class BringupControlUI(tk.Tk):
         self._manual_duty_last_sent_value = None
         self._manual_duty_last_sent_at = 0.0
         self._manual_duty_pending_after = None
+        self._manual_duty_block_reason = MANUAL_DUTY_BLOCK_REASON_NONE
+        self._manual_duty_block_since = 0.0
+        self._manual_duty_diag_signature_by_label = {}
         self._manual_duty_targets = []
         self._manual_duty_group_name = MANUAL_DUTY_NO_LABEL
         self._tracker.clear()
@@ -4636,6 +4704,8 @@ class BringupControlUI(tk.Tk):
         NAME
             _manual_duty_scope_block_message_for_targets - Return a lifecycle-scope block reason for manual duty targets.
         """
+        if self._scope_transition_pending():
+            return MANUAL_DUTY_BLOCKED_TRANSITION_TEXT
         if self._controlled_lifecycle_active_known is not True:
             return NT_VALUE_EMPTY
         for label in targets:
@@ -4676,17 +4746,30 @@ class BringupControlUI(tk.Tk):
         """
         if not self._is_manual_motor_node(node):
             return
-        blocked = self._manual_duty_block_message()
-        if blocked:
-            self._append_output(blocked)
-            return
-        if self._tracker.is_pending():
-            self._append_output(MANUAL_DUTY_BUSY_TEXT)
-            return
         label = str(getattr(node, DEVICE_KEY_LABEL, NT_VALUE_EMPTY)).strip()
         if not label:
             label = str(getattr(node, "label", NT_VALUE_EMPTY)).strip()
         if not label:
+            return
+        access_state = resolve_manual_duty_access_state(
+            tcp_connected=bool(self._tcp_connected),
+            runtime_state_seen=bool(self.__dict__.get("_runtime_state_seen", False)),
+            stale_state=bool(self.__dict__.get("_state_stale", False)),
+            robot_estopped=bool(self.__dict__.get("_robot_estopped_known", False)),
+            robot_enabled=bool(self.__dict__.get("_robot_enabled_known", True)),
+            tracker_pending=bool(self._tracker.is_pending()),
+            transition_pending=self._scope_transition_pending(),
+            target_labels=[label],
+            runtime_state_by_label=dict(self.__dict__.get("_latest_runtime_devices", {})),
+            controlled_lifecycle_active=self.__dict__.get("_controlled_lifecycle_active_known") is True,
+            runtime_groups=self._latest_runtime_state_payload_groups(),
+        )
+        if not access_state.allowed:
+            self._append_output(
+                MANUAL_DUTY_BUSY_TEXT
+                if access_state.blocked_reason == RUNTIME_FETCH_BLOCK_BUSY
+                else access_state.blocked_reason
+            )
             return
         self._open_manual_duty_targets(label, [label], int(event.x_root), int(event.y_root))
 
@@ -4726,8 +4809,9 @@ class BringupControlUI(tk.Tk):
         if self._tracker.is_pending():
             self._append_output(OUTPUT_BUSY)
             return
-        if not self.__dict__.get("_runtime_state_seen", False):
-            self._append_output("Runtime state not loaded yet. Wait for refresh before editing active-group.")
+        control_state = self._scope_control_state()
+        if not control_state.active_group_editable:
+            self._append_output(control_state.blocked_reason or ACTIVE_GROUP_WAITING_TEXT)
             self.after_idle(self._request_runtime_state_refresh)
             return
         command = CMD_GROUP_ADD_DEVICE if enabled else CMD_GROUP_REMOVE_DEVICE
@@ -4934,6 +5018,8 @@ class BringupControlUI(tk.Tk):
         self._manual_duty_last_sent_value = None
         self._manual_duty_last_sent_at = 0.0
         self._manual_duty_pending_after = None
+        self._clear_manual_duty_block_tracking()
+        self._clear_manual_duty_diag_tracking()
         scale.focus_set()
 
     def _emit_manual_duty_popup_reason(self, reason: str) -> None:
@@ -5007,6 +5093,8 @@ class BringupControlUI(tk.Tk):
         self._manual_duty_value_var.set(
             MANUAL_DUTY_VALUE_FMT.format(value=MANUAL_DUTY_DEFAULT)
         )
+        self._clear_manual_duty_block_tracking()
+        self._clear_manual_duty_diag_tracking()
         for live_view in self._iter_live_views():
             live_view.clear_group_run_inspector()
         if popup is not None:
@@ -5220,7 +5308,6 @@ class BringupControlUI(tk.Tk):
         if abs(duty) >= EVIDENCE_MOTION_CMD_THRESHOLD_DUTY:
             for target in self._manual_duty_targets:
                 self._record_manual_motion_command(target, duty)
-        self.after_idle(self._request_runtime_state_refresh)
         self._append_output(
             (
                 MANUAL_DUTY_STATUS_FMT
@@ -11373,11 +11460,14 @@ class BringupControlUI(tk.Tk):
                 self._pending_label.configure(text=f"Robot: {mode}")
         self._apply_live_runtime_notice_from_nt_state(enabled, estopped, stale_state)
         blocked = self._manual_duty_block_message()
-        if blocked and self._manual_duty_popup is not None:
-            self._dismiss_manual_duty_popup(
-                f"Manual duty popup closed: {blocked}",
-                stop_motor=True,
-            )
+        if self._manual_duty_popup is not None:
+            if blocked and self._should_confirm_manual_duty_popup_block(blocked, now):
+                self._dismiss_manual_duty_popup(
+                    f"Manual duty popup closed: {blocked}",
+                    stop_motor=True,
+                )
+            elif not blocked:
+                self._clear_manual_duty_block_tracking()
         if (
             self._tcp_connected
             and not stale_state
@@ -11450,6 +11540,136 @@ class BringupControlUI(tk.Tk):
         if self._manual_duty_popup is not None:
             return True
         return bool(self._manual_motion_checks)
+
+    def _clear_manual_duty_block_tracking(self) -> None:
+        """
+        NAME
+            _clear_manual_duty_block_tracking - Clear transient popup auto-close confirmation state.
+        """
+        self._manual_duty_block_reason = MANUAL_DUTY_BLOCK_REASON_NONE
+        self._manual_duty_block_since = 0.0
+
+    def _clear_manual_duty_diag_tracking(self) -> None:
+        """
+        NAME
+            _clear_manual_duty_diag_tracking - Clear last-emitted manual-duty runtime mismatch signatures.
+        """
+        self._manual_duty_diag_signature_by_label = {}
+
+    def _format_manual_duty_diag_value(self, value: object) -> str:
+        """
+        NAME
+            _format_manual_duty_diag_value - Format one manual-duty diagnostic value for compact logging.
+        """
+        if isinstance(value, (int, float)):
+            return str(round(float(value), MANUAL_DUTY_DIAG_FLOAT_PRECISION))
+        clean = str(value or "").strip()
+        return clean if clean else MANUAL_DUTY_DIAG_LABEL_NONE
+
+    def _log_manual_duty_runtime_mismatch(self) -> None:
+        """
+        NAME
+            _log_manual_duty_runtime_mismatch - Emit one diagnostic line when runtime duty diverges from the active popup request.
+        """
+        if self.__dict__.get("_manual_duty_popup") is None:
+            self._clear_manual_duty_diag_tracking()
+            return
+        requested = self.__dict__.get("_manual_duty_last_sent_value")
+        if not isinstance(requested, (int, float)):
+            self._clear_manual_duty_diag_tracking()
+            return
+        requested_value = float(requested)
+        if abs(requested_value) < MANUAL_DUTY_DIAG_ACTIVE_REQUEST_THRESHOLD:
+            self._clear_manual_duty_diag_tracking()
+            return
+        active_targets = [
+            str(target or "").strip().lower()
+            for target in list(self.__dict__.get("_manual_duty_targets", []) or [])
+            if str(target or "").strip()
+        ]
+        if not active_targets:
+            self._clear_manual_duty_diag_tracking()
+            return
+        current_signatures: Dict[str, Tuple[object, ...]] = {}
+        for target_key in active_targets:
+            runtime_device = self._latest_runtime_devices.get(target_key, {})
+            if not isinstance(runtime_device, dict):
+                continue
+            cmd_duty = _runtime_device_field(runtime_device, EVIDENCE_FIELD_CMD_DUTY)
+            applied_duty = _runtime_device_field(runtime_device, EVIDENCE_FIELD_APPLIED_DUTY)
+            velocity_rpm = _runtime_device_field(runtime_device, EVIDENCE_FIELD_VEL_RPM)
+            motor_current = _runtime_device_field(runtime_device, EVIDENCE_FIELD_MOTOR_CURRENT_A)
+            lifecycle_state = str(runtime_device.get("lifecycleState", "") or "").strip()
+            cmd_mismatch = (
+                isinstance(cmd_duty, (int, float))
+                and abs(float(cmd_duty) - requested_value) >= MANUAL_DUTY_DIAG_MISMATCH_THRESHOLD
+            )
+            applied_mismatch = (
+                isinstance(applied_duty, (int, float))
+                and abs(float(applied_duty) - requested_value) >= MANUAL_DUTY_DIAG_MISMATCH_THRESHOLD
+            )
+            applied_zero = (
+                isinstance(applied_duty, (int, float))
+                and abs(float(applied_duty)) <= MANUAL_DUTY_DIAG_ZERO_APPLIED_THRESHOLD
+            )
+            if not (cmd_mismatch or applied_mismatch or applied_zero):
+                continue
+            signature = (
+                round(requested_value, MANUAL_DUTY_DIAG_FLOAT_PRECISION),
+                round(float(cmd_duty), MANUAL_DUTY_DIAG_FLOAT_PRECISION)
+                if isinstance(cmd_duty, (int, float))
+                else MANUAL_DUTY_DIAG_LABEL_NONE,
+                round(float(applied_duty), MANUAL_DUTY_DIAG_FLOAT_PRECISION)
+                if isinstance(applied_duty, (int, float))
+                else MANUAL_DUTY_DIAG_LABEL_NONE,
+                round(float(velocity_rpm), MANUAL_DUTY_DIAG_FLOAT_PRECISION)
+                if isinstance(velocity_rpm, (int, float))
+                else MANUAL_DUTY_DIAG_LABEL_NONE,
+                round(float(motor_current), MANUAL_DUTY_DIAG_FLOAT_PRECISION)
+                if isinstance(motor_current, (int, float))
+                else MANUAL_DUTY_DIAG_LABEL_NONE,
+                lifecycle_state or MANUAL_DUTY_DIAG_LABEL_NONE,
+            )
+            current_signatures[target_key] = signature
+            if self._manual_duty_diag_signature_by_label.get(target_key) == signature:
+                continue
+            label = str(runtime_device.get("label", "") or "").strip() or target_key
+            self._append_output(
+                MANUAL_DUTY_DIAG_FMT.format(
+                    label=label,
+                    requested=self._format_manual_duty_diag_value(signature[0]),
+                    cmd=self._format_manual_duty_diag_value(signature[1]),
+                    applied=self._format_manual_duty_diag_value(signature[2]),
+                    vel=self._format_manual_duty_diag_value(signature[3]),
+                    current=self._format_manual_duty_diag_value(signature[4]),
+                    lifecycle=self._format_manual_duty_diag_value(signature[5]),
+                )
+            )
+        self._manual_duty_diag_signature_by_label = current_signatures
+
+    def _should_confirm_manual_duty_popup_block(self, blocked_reason: str, now: float) -> bool:
+        """
+        NAME
+            _should_confirm_manual_duty_popup_block - Return whether one poll-time block reason is stable enough to auto-close the popup.
+        """
+        reason = str(blocked_reason or MANUAL_DUTY_BLOCK_REASON_NONE).strip()
+        if not reason:
+            self._clear_manual_duty_block_tracking()
+            return False
+        if reason == MANUAL_DUTY_BLOCKED_TEXT or reason not in MANUAL_DUTY_DEBOUNCED_BLOCK_REASONS:
+            self._manual_duty_block_reason = reason
+            self._manual_duty_block_since = float(now)
+            return True
+        previous_reason = str(self.__dict__.get("_manual_duty_block_reason", MANUAL_DUTY_BLOCK_REASON_NONE) or "").strip()
+        previous_since = float(self.__dict__.get("_manual_duty_block_since", 0.0) or 0.0)
+        if reason != previous_reason:
+            self._manual_duty_block_reason = reason
+            self._manual_duty_block_since = float(now)
+            return False
+        if previous_since <= 0.0:
+            self._manual_duty_block_since = float(now)
+            return False
+        return (float(now) - previous_since) >= MANUAL_DUTY_AUTO_CLOSE_CONFIRM_SEC
 
     def _set_runtime_state_notice(self, text: str, level: str = "warn") -> None:
         """
@@ -11608,6 +11828,7 @@ class BringupControlUI(tk.Tk):
                     latest_runtime_devices[label.lower()] = device
         self._latest_runtime_devices = latest_runtime_devices
         self._merge_cached_active_probe_results_into_runtime_devices()
+        self._log_manual_duty_runtime_mismatch()
         now_sec = time.time()
         for label_key, device in latest_runtime_devices.items():
             motion_entry = self._manual_motion_checks.get(label_key)
@@ -11974,10 +12195,6 @@ class BringupControlUI(tk.Tk):
                 "groupreplacemembers",
                 "activateselectedtestdevices",
                 "deactivateselectedtestdevices",
-                "manualdevicedutyset",
-                "manualdevicedutyclear",
-                "manualgroupdutyset",
-                "manualgroupdutyclear",
                 "activepresenceprobe",
             }:
                 self.after_idle(self._request_runtime_state_refresh)
@@ -12057,7 +12274,7 @@ class BringupControlUI(tk.Tk):
         """
         self._refresh_scope_context_label()
         self._refresh_selected_test_scope_status()
-        runnable_state = self._runnable_scope_state(stale_state=self._state_stale)
+        scope_control_state = self._scope_control_state()
         allow = (
             self._runtime_ui_actions_ready()
             and not self._tracker.is_pending()
@@ -12081,45 +12298,18 @@ class BringupControlUI(tk.Tk):
             box.configure(state=state)
         activate_scope_button = getattr(self, "_activate_scope_button", None)
         if activate_scope_button is not None:
-            activate_allowed = allow
-            if activate_allowed and self._test_runtime_block_reason():
-                activate_allowed = False
-            if activate_allowed and self._scope_context_kind() != GROUP_SOURCE_SELECTED_TEST:
-                activate_allowed = runnable_state.activation_allowed
-            if (
-                activate_allowed
-                and self._scope_context_kind() == GROUP_SOURCE_SELECTED_TEST
-                and self._selected_test_name() == PROFILE_NONE
-            ):
-                activate_allowed = False
-            if activate_allowed and self._scope_context_kind() == GROUP_SOURCE_SELECTED_TEST:
-                activate_allowed = not any(
-                    SHARED_TEST_ACTIVE_GROUP_STATUS_INVALID in state.statuses
-                    for state in self._tests_active_group_member_row_states()
-                )
             activate_scope_button.state(
-                ["!disabled"] if activate_allowed else ["disabled"]
+                ["!disabled"] if scope_control_state.activate_allowed else ["disabled"]
             )
         deactivate_scope_button = getattr(self, "_deactivate_scope_button", None)
         if deactivate_scope_button is not None:
-            deactivate_allowed = (
-                allow
-                and not self._scope_transition_pending()
-                and self.__dict__.get("_controlled_lifecycle_active_known") is True
-            )
             deactivate_scope_button.state(
-                ["!disabled"] if deactivate_allowed else ["disabled"]
+                ["!disabled"] if scope_control_state.deactivate_allowed else ["disabled"]
             )
         run_selected_button = getattr(self, "_tests_run_selected_button", None)
         if run_selected_button is not None:
-            run_selected_allowed = (
-                allow
-                and not self._scope_transition_pending()
-                and not self._test_runtime_block_reason()
-                and self._selected_test_ready()
-            )
             run_selected_button.state(
-                ["!disabled"] if run_selected_allowed else ["disabled"]
+                ["!disabled"] if scope_control_state.run_selected_allowed else ["disabled"]
             )
         if self._reset_button is not None:
             self._reset_button.state(["!disabled"] if self._tcp_connected else ["disabled"])

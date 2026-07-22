@@ -1,0 +1,21 @@
+# Restoration Summary
+
+- Topic: post-merge reliability hardening for shared UI/context and lifecycle ownership.
+- Current state: `main` was pushed to `origin` with commit `4d5468a` and tag `reliability-hardening-2026-07-21`.
+- Recent fixes:
+- host UI top-bar action gating now accepts fresh runtime state even if handshake-ready is temporarily false.
+- REV lifecycle wrappers now only release ownership when close actually succeeds.
+- REV wrappers no longer auto-recreate themselves from `setDuty()` after closed-handle failures.
+- initial REV creation now uses synchronous follower pause and base configuration.
+- Tests tab boundary transitions now use active-scope deactivation so non-singleton runtime-owned devices are torn down cleanly when entering or leaving Tests.
+- Known product state: refactor is structurally much improved, but the system still needs a reliability hardening pass focused on deterministic transition/ownership behavior and thinner top-level host orchestration.
+- Most recent diagnostics:
+- first activation runtime dump showed `SPARKMAX/NEO 25` and `FALCON 9` as `controlled-active`, `instantiated=true`, and `testable=true` on first pass.
+- this ruled out the older activation failure theory and narrowed remaining flakiness to manual-command / ownership / transition timing paths rather than basic lifecycle activation.
+- Unresolved next work:
+- formalize runtime ownership contract across DSL tests, Live Topology, manual popups, and bindings.
+- harden transition behavior across Tests <-> Live Topology.
+- continue thinning `bringup_ui.py` and other top-level host orchestration paths.
+- add scenario regressions for first activation, first right-click, and ownership handoff.
+- Safest next step: start a new chat focused specifically on the reliability hardening pass, using this bundle plus the existing spec context under `docs/FEATURE_SPEC_SHARED_UI_CONTEXT_AND_CENTRALIZED_CONTROL.md`.
+- Hard limit: this bundle captures visible conversation-derived notes plus repo/git state only; it cannot restore hidden server-side chat history.

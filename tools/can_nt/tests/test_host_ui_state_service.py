@@ -13,6 +13,8 @@ from tools.can_nt.host_ui_state_service import (
     ACTIVE_GROUP_STATUS_LOCKED_TEXT,
     ACTIVE_GROUP_STATUS_RESYNC_TEXT,
     BLANK_REASON_LOCAL_PROFILE_REQUIRED,
+    MANUAL_DUTY_BLOCKED_TRANSITION_TEXT,
+    MANUAL_DUTY_BLOCKED_WAITING_TEXT,
     MANUAL_DUTY_BLOCKED_BINDING_ACTIVE_TEXT,
     MANUAL_DUTY_BLOCKED_CONTROLLED_SCOPE_TEXT,
     PROFILE_CONTEXT_SOURCE_BLANK,
@@ -29,11 +31,14 @@ from tools.can_nt.host_ui_state_service import (
     RUNNABLE_SCOPE_KIND_SELECTED_TEST,
     RUNNABLE_SCOPE_PANEL_RESYNC_DETAIL,
     RUNNABLE_SCOPE_PANEL_WAITING_DETAIL,
+    TEST_SCOPE_STATUS_NO_SELECTION_DETAIL,
+    resolve_manual_duty_access_state,
     resolve_active_scope_membership_state,
     resolve_diagnostic_profile_state,
     resolve_manual_duty_binding_state,
     resolve_manual_duty_scope_state,
     resolve_runtime_state_fetch_state,
+    resolve_scope_control_state,
     resolve_runnable_scope_state,
     resolve_tests_active_group_member_rows,
     resolve_topology_scene_state,
@@ -223,6 +228,110 @@ class HostUiStateServiceTests(unittest.TestCase):
         self.assertTrue(state.allowed)
         self.assertEqual("", state.blocked_reason)
         self.assertEqual(RUNTIME_FETCH_SOURCE_REST, state.fetch_source)
+
+    def test_resolve_scope_control_state_blocks_activation_during_transition(self) -> None:
+        runnable_state = resolve_runnable_scope_state(
+            scope_kind=RUNNABLE_SCOPE_KIND_MANUAL,
+            local_selected_profile="test_minimal_25_9",
+            local_profile_required=True,
+            tcp_connected=True,
+            runtime_state_seen=True,
+            stale_state=False,
+            robot_enabled=True,
+            robot_estopped=False,
+            robot_mode="teleop",
+            manual_group_empty=False,
+            scope_active=False,
+        )
+
+        state = resolve_scope_control_state(
+            scope_kind=RUNNABLE_SCOPE_KIND_MANUAL,
+            runtime_ui_ready=True,
+            tracker_pending=False,
+            stale_state=False,
+            runtime_state_seen=True,
+            controlled_lifecycle_active=False,
+            transition_pending=True,
+            runnable_scope_state=runnable_state,
+            selected_test_name=PROFILE_NONE,
+            selected_test_ready=False,
+            selected_test_invalid=False,
+            selected_test_runtime_block_reason="",
+        )
+
+        self.assertFalse(state.activate_allowed)
+        self.assertFalse(state.active_group_editable)
+        self.assertEqual(RUNNABLE_SCOPE_PANEL_RESYNC_DETAIL, state.blocked_reason)
+
+    def test_resolve_scope_control_state_requires_selected_test_before_tests_activation(self) -> None:
+        runnable_state = resolve_runnable_scope_state(
+            scope_kind=RUNNABLE_SCOPE_KIND_SELECTED_TEST,
+            local_selected_profile="test_minimal_25_9",
+            local_profile_required=True,
+            tcp_connected=True,
+            runtime_state_seen=True,
+            stale_state=False,
+            robot_enabled=True,
+            robot_estopped=False,
+            robot_mode="teleop",
+            manual_group_empty=False,
+            scope_active=False,
+        )
+
+        state = resolve_scope_control_state(
+            scope_kind=RUNNABLE_SCOPE_KIND_SELECTED_TEST,
+            runtime_ui_ready=True,
+            tracker_pending=False,
+            stale_state=False,
+            runtime_state_seen=True,
+            controlled_lifecycle_active=False,
+            transition_pending=False,
+            runnable_scope_state=runnable_state,
+            selected_test_name=PROFILE_NONE,
+            selected_test_ready=False,
+            selected_test_invalid=False,
+            selected_test_runtime_block_reason="",
+        )
+
+        self.assertFalse(state.activate_allowed)
+        self.assertFalse(state.run_selected_allowed)
+        self.assertEqual(TEST_SCOPE_STATUS_NO_SELECTION_DETAIL, state.blocked_reason)
+
+    def test_resolve_manual_duty_access_state_waits_for_runtime_state(self) -> None:
+        state = resolve_manual_duty_access_state(
+            tcp_connected=True,
+            runtime_state_seen=False,
+            stale_state=False,
+            robot_estopped=False,
+            robot_enabled=True,
+            tracker_pending=False,
+            transition_pending=False,
+            target_labels=["FALCON 9"],
+            runtime_state_by_label={},
+            controlled_lifecycle_active=False,
+            runtime_groups=[],
+        )
+
+        self.assertFalse(state.allowed)
+        self.assertEqual(MANUAL_DUTY_BLOCKED_WAITING_TEXT, state.blocked_reason)
+
+    def test_resolve_manual_duty_access_state_blocks_during_scope_transition(self) -> None:
+        state = resolve_manual_duty_access_state(
+            tcp_connected=True,
+            runtime_state_seen=True,
+            stale_state=False,
+            robot_estopped=False,
+            robot_enabled=True,
+            tracker_pending=False,
+            transition_pending=True,
+            target_labels=["FALCON 9"],
+            runtime_state_by_label={},
+            controlled_lifecycle_active=False,
+            runtime_groups=[],
+        )
+
+        self.assertFalse(state.allowed)
+        self.assertEqual(MANUAL_DUTY_BLOCKED_TRANSITION_TEXT, state.blocked_reason)
 
     def test_should_clear_runtime_event_notice_when_disabled_conflicts_with_ready_state(self) -> None:
         state = resolve_runnable_scope_state(

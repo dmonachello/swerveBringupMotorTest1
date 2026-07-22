@@ -89,6 +89,8 @@ public final class BringupCore {
   private static final String WARNING_DETAIL_OPEN = " (";
   private static final String WARNING_DETAIL_CLOSE = ").";
   private static final int DEVICE_KEY_INITIAL_BUILDER_CAPACITY = 96;
+  private static final String DUTY_WRITE_SOURCE_UNKNOWN =
+      ManualDutyWriteDiagnostics.SOURCE_UNSPECIFIED;
 
   private List<ManufacturerGroup> manufacturerGroups = ManufacturerRegistry.buildGroups();
   private Map<String, ManufacturerGroup> manufacturerByVendor =
@@ -129,6 +131,8 @@ public final class BringupCore {
   private final DeviceLifecycleRegistry deviceLifecycle;
   private final ActiveDevicePresenceProbe activePresenceProbe = new ActiveDevicePresenceProbe();
   private final Map<String, ActivePresenceProbeAttachment> latestActivePresenceByLabel = new HashMap<>();
+  private final ManualDutyWriteDiagnostics manualDutyWriteDiagnostics =
+      new ManualDutyWriteDiagnostics();
   /**
    * NAME
    *   BringupCore - Construct and initialize bringup state.
@@ -313,6 +317,26 @@ public final class BringupCore {
    *   True when a matching device is found and updated.
    */
   public boolean setDutyByDeviceLabel(String label, double duty) {
+    return setDutyByDeviceLabel(label, duty, DUTY_WRITE_SOURCE_UNKNOWN);
+  }
+
+  /**
+   * NAME
+   *   setDutyByDeviceLabel - Apply duty to a single device by label with source tracing.
+   *
+   * PARAMETERS
+   *   label - Device label from bringup_system.json.
+   *   duty - Requested output in [-1, 1].
+   *   source - Human-readable caller/source tag for diagnostics.
+   *
+   * RETURNS
+   *   True when a matching device is found and updated.
+   *
+   * SIDE EFFECTS
+   *   Emits additive overwrite diagnostics when a tracked manual request is
+   *   later replaced by a different writer.
+   */
+  public boolean setDutyByDeviceLabel(String label, double duty, String source) {
     if (!isLifecycleOperationAllowed(label)) {
       return false;
     }
@@ -322,6 +346,7 @@ public final class BringupCore {
     }
     try {
       device.setDuty(duty);
+      recordManualDutyWrite(label, duty, source);
       return true;
     } catch (RuntimeException ex) {
       String key = "setDuty:" + device.getCanId();
@@ -334,6 +359,30 @@ public final class BringupCore {
       logWarningThrottled(key, message);
       return false;
     }
+  }
+
+  /**
+   * NAME
+   *   watchManualDutyLabel - Track a label as manually owned for overwrite diagnostics.
+   *
+   * PARAMETERS
+   *   label - Runtime device label.
+   *   requestedDuty - Latest requested manual duty.
+   *   ownerSource - Human-readable manual owner/source tag.
+   */
+  public void watchManualDutyLabel(String label, double requestedDuty, String ownerSource) {
+    manualDutyWriteDiagnostics.watch(label, requestedDuty, ownerSource);
+  }
+
+  /**
+   * NAME
+   *   clearManualDutyWatch - Stop tracking one manual-duty label.
+   *
+   * PARAMETERS
+   *   label - Runtime device label.
+   */
+  public void clearManualDutyWatch(String label) {
+    manualDutyWriteDiagnostics.clear(label);
   }
 
   /**
@@ -545,6 +594,7 @@ public final class BringupCore {
    *   Stops tests, closes devices, and enqueues a reset report.
    */
   public void resetState(String reason) {
+    manualDutyWriteDiagnostics.clearAll();
     boolean skipGlobalStop = activeTest instanceof DslBringupTest;
     if (activeTest != null && activeTest.isRunning()) {
       String message =
@@ -3610,6 +3660,27 @@ public final class BringupCore {
 
   public DeviceLifecycleRegistry.DeviceLifecycleView lifecycleViewForLabel(String label) {
     return deviceLifecycle != null ? deviceLifecycle.viewForLabel(label) : null;
+  }
+
+  /**
+   * NAME
+   *   recordManualDutyWrite - Emit additive overwrite diagnostics for tracked manual requests.
+   *
+   * PARAMETERS
+   *   label - Runtime device label being written now.
+   *   duty - Duty being written now.
+   *   source - Human-readable caller/source tag.
+   *
+   * SIDE EFFECTS
+   *   Enqueues one concise diagnostic line when a foreign writer materially
+   *   differs from the tracked manual request for the same label.
+   */
+  private void recordManualDutyWrite(String label, double duty, String source) {
+    String message = manualDutyWriteDiagnostics.recordWrite(label, duty, source);
+    if (message == null || message.isBlank()) {
+      return;
+    }
+    BringupPrinter.enqueue(message);
   }
 
   /**

@@ -235,6 +235,14 @@ public class BridgeUiCommandHandler {
   private static final String CMD_MANUAL_DEVICE_DUTY_CLEAR = "manualDeviceDutyClear";
   private static final String CMD_MANUAL_GROUP_DUTY_SET = "manualGroupDutySet";
   private static final String CMD_MANUAL_GROUP_DUTY_CLEAR = "manualGroupDutyClear";
+  private static final String DUTY_WRITE_SOURCE_MANUAL_DEVICE = "manual-device";
+  private static final String DUTY_WRITE_SOURCE_MANUAL_DEVICE_CLEAR =
+      "manual-device-clear";
+  private static final String DUTY_WRITE_SOURCE_MANUAL_DEVICE_SWITCH_CLEAR =
+      "manual-device-switch-clear";
+  private static final String DUTY_WRITE_SOURCE_MANUAL_GROUP_PREFIX = "manual-group:";
+  private static final String DUTY_WRITE_SOURCE_MANUAL_GROUP_CLEAR_PREFIX =
+      "manual-group-clear:";
   private static final String GROUP_ACTIVE = "active-group";
   private static final String PROFILE_DEVICE_TYPE_MOTOR = "motor";
   private static final String TEXT_GROUP_SKIPPED_MEMBERS_HEADER = "Skipped unsupported members:\n";
@@ -1518,6 +1526,7 @@ public class BridgeUiCommandHandler {
    *   previous active profile.
    */
   public void resetProfileRuntimeUiState() {
+    clearSelectedManualDutyWatches();
     bridgeSelected().device = TEXT_EMPTY;
     bridgeSelected().enabled = false;
     bridgeSelected().group = TEXT_EMPTY;
@@ -1556,6 +1565,111 @@ public class BridgeUiCommandHandler {
    */
   public void submitControllerBindings(BindingsManager.BindingState bindingState) {
     controllerGateway.submitFromBindings(bindingState);
+  }
+
+  /**
+   * NAME
+   *   clearSelectedManualDutyWatches - Drop diagnostics watches for current manual selections.
+   *
+   * SIDE EFFECTS
+   *   Removes tracked manual-duty labels from the robot-side overwrite
+   *   diagnostics so future reports only cover the current popup session.
+   */
+  private void clearSelectedManualDutyWatches() {
+    if (core() == null) {
+      return;
+    }
+    if (bridgeSelected().device != null && !bridgeSelected().device.isBlank()) {
+      core().clearManualDutyWatch(bridgeSelected().device);
+    }
+    for (String label : bridgeSelected().groupMembers) {
+      if (label == null || label.isBlank()) {
+        continue;
+      }
+      core().clearManualDutyWatch(label);
+    }
+  }
+
+  /**
+   * NAME
+   *   manualGroupDutySource - Build a stable source tag for manual group applies.
+   */
+  private String manualGroupDutySource(String groupName) {
+    String suffix = groupName != null ? groupName.trim() : TEXT_EMPTY;
+    return DUTY_WRITE_SOURCE_MANUAL_GROUP_PREFIX + suffix;
+  }
+
+  /**
+   * NAME
+   *   manualGroupDutyClearSource - Build a stable source tag for manual group clears.
+   */
+  private String manualGroupDutyClearSource(String groupName) {
+    String suffix = groupName != null ? groupName.trim() : TEXT_EMPTY;
+    return DUTY_WRITE_SOURCE_MANUAL_GROUP_CLEAR_PREFIX + suffix;
+  }
+
+  /**
+   * NAME
+   *   stageManualDeviceSelection - Publish manual device ownership before output writes.
+   *
+   * PARAMETERS
+   *   selected - Shared selected-device state.
+   *   deviceLabel - Manual-duty target label.
+   *
+   * SIDE EFFECTS
+   *   Clears group ownership and marks the requested device as the active manual
+   *   owner. This lets the periodic binding loop see the manual owner
+   *   immediately even if a slider update races with the next 20 ms cycle.
+   */
+  static void stageManualDeviceSelection(
+      BridgeGroupManager.SelectedState selected,
+      String deviceLabel) {
+    if (selected == null) {
+      return;
+    }
+    selected.group = TEXT_EMPTY;
+    selected.groupEnabled = false;
+    selected.groupMembers.clear();
+    selected.device = deviceLabel != null ? deviceLabel.trim() : TEXT_EMPTY;
+    selected.enabled = selected.device != null && !selected.device.isBlank();
+  }
+
+  /**
+   * NAME
+   *   stageManualGroupSelection - Publish manual group ownership before output writes.
+   *
+   * PARAMETERS
+   *   selected - Shared selected-device state.
+   *   group - Manual-duty target group.
+   *
+   * SIDE EFFECTS
+   *   Clears device ownership and marks the requested group and its members as
+   *   the active manual owner before any duty writes occur. This closes the
+   *   transient gap where the binding loop could observe no manual owner and
+   *   write zero output during a slider update.
+   */
+  static void stageManualGroupSelection(
+      BridgeGroupManager.SelectedState selected,
+      BridgeGroupManager.Group group) {
+    if (selected == null) {
+      return;
+    }
+    selected.enabled = false;
+    selected.device = TEXT_EMPTY;
+    selected.group = TEXT_EMPTY;
+    selected.groupEnabled = false;
+    selected.groupMembers.clear();
+    if (group == null || group.name == null || group.name.isBlank()) {
+      return;
+    }
+    selected.group = group.name;
+    selected.groupEnabled = true;
+    for (BridgeGroupManager.MemberState member : group.members.values()) {
+      if (member == null || member.label == null || member.label.isBlank()) {
+        continue;
+      }
+      selected.groupMembers.add(member.label.trim().toLowerCase(java.util.Locale.ROOT));
+    }
   }
 
   /**
@@ -2778,18 +2892,17 @@ public class BridgeUiCommandHandler {
     }
     String previous = bridgeSelected().device != null ? bridgeSelected().device.trim() : TEXT_EMPTY;
     double clamped = Math.max(DUTY_MIN, Math.min(DUTY_MAX, duty));
+    stageManualDeviceSelection(bridgeSelected(), target);
     if (!previous.isBlank() && !previous.equals(target)) {
-      core().setDutyByDeviceLabel(previous, SPEED_ZERO);
+      core().clearManualDutyWatch(previous);
+      core().setDutyByDeviceLabel(previous, SPEED_ZERO, DUTY_WRITE_SOURCE_MANUAL_DEVICE_SWITCH_CLEAR);
     }
-    boolean ok = core().setDutyByDeviceLabel(target, clamped);
+    boolean ok = core().setDutyByDeviceLabel(target, clamped, DUTY_WRITE_SOURCE_MANUAL_DEVICE);
     if (!ok) {
+      stageManualDeviceSelection(bridgeSelected(), TEXT_EMPTY);
       return false;
     }
-    bridgeSelected().group = TEXT_EMPTY;
-    bridgeSelected().groupEnabled = false;
-    bridgeSelected().groupMembers.clear();
-    bridgeSelected().device = target;
-    bridgeSelected().enabled = true;
+    core().watchManualDutyLabel(target, clamped, DUTY_WRITE_SOURCE_MANUAL_DEVICE);
     return true;
   }
 
@@ -2811,7 +2924,8 @@ public class BridgeUiCommandHandler {
         ? deviceName.trim()
         : bridgeSelected().device != null ? bridgeSelected().device.trim() : TEXT_EMPTY;
     if (!target.isBlank()) {
-      core().setDutyByDeviceLabel(target, SPEED_ZERO);
+      core().clearManualDutyWatch(target);
+      core().setDutyByDeviceLabel(target, SPEED_ZERO, DUTY_WRITE_SOURCE_MANUAL_DEVICE_CLEAR);
     }
     bridgeSelected().enabled = false;
     bridgeSelected().device = TEXT_EMPTY;
@@ -2845,11 +2959,9 @@ public class BridgeUiCommandHandler {
     }
     double clamped = Math.max(DUTY_MIN, Math.min(DUTY_MAX, duty));
     boolean appliedAny = false;
-    bridgeSelected().enabled = false;
-    bridgeSelected().device = TEXT_EMPTY;
-    bridgeSelected().groupEnabled = false;
-    bridgeSelected().group = TEXT_EMPTY;
-    bridgeSelected().groupMembers.clear();
+    String source = manualGroupDutySource(groupName);
+    clearSelectedManualDutyWatches();
+    stageManualGroupSelection(bridgeSelected(), group);
     for (BridgeGroupManager.MemberState member : group.members.values()) {
       if (member == null || !member.enabled || member.label == null || member.label.isBlank()) {
         continue;
@@ -2861,19 +2973,13 @@ public class BridgeUiCommandHandler {
       if (!isManualDutyEligible(member.label)) {
         continue;
       }
-      if (core().setDutyByDeviceLabel(member.label, clamped)) {
+      if (core().setDutyByDeviceLabel(member.label, clamped, source)) {
         appliedAny = true;
+        core().watchManualDutyLabel(member.label, clamped, source);
       }
     }
-    if (appliedAny) {
-      bridgeSelected().group = group.name;
-      bridgeSelected().groupEnabled = true;
-      for (BridgeGroupManager.MemberState member : group.members.values()) {
-        if (member == null || member.label == null || member.label.isBlank()) {
-          continue;
-        }
-        bridgeSelected().groupMembers.add(member.label.trim().toLowerCase(java.util.Locale.ROOT));
-      }
+    if (!appliedAny) {
+      stageManualGroupSelection(bridgeSelected(), null);
     }
     return appliedAny;
   }
@@ -2896,6 +3002,7 @@ public class BridgeUiCommandHandler {
     if (group == null || !group.enabled) {
       return false;
     }
+    String clearSource = manualGroupDutyClearSource(groupName);
     for (BridgeGroupManager.MemberState member : group.members.values()) {
       if (member == null || !member.enabled || member.label == null || member.label.isBlank()) {
         continue;
@@ -2904,7 +3011,8 @@ public class BridgeUiCommandHandler {
       if (entry == null) {
         continue;
       }
-      core().setDutyByDeviceLabel(member.label, SPEED_ZERO);
+      core().clearManualDutyWatch(member.label);
+      core().setDutyByDeviceLabel(member.label, SPEED_ZERO, clearSource);
     }
     bridgeSelected().enabled = false;
     bridgeSelected().device = TEXT_EMPTY;

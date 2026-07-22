@@ -135,6 +135,19 @@ MANUAL_DUTY_BLOCKED_CONTROLLED_SCOPE_TEXT = (
 MANUAL_DUTY_BLOCKED_BINDING_ACTIVE_TEXT = (
     "Manual motor control blocked: overlapping group binding is already active."
 )
+MANUAL_DUTY_BLOCKED_NOT_CONNECTED_TEXT = "Manual motor control blocked: not connected."
+MANUAL_DUTY_BLOCKED_STALE_TEXT = "Manual motor control blocked: robot state stale."
+MANUAL_DUTY_BLOCKED_ESTOP_TEXT = "Manual motor control blocked: robot estopped."
+MANUAL_DUTY_BLOCKED_DISABLED_TEXT = "Manual motor control blocked: robot disabled."
+MANUAL_DUTY_BLOCKED_WAITING_TEXT = (
+    "Manual motor control blocked: waiting for robot runtime state."
+)
+MANUAL_DUTY_BLOCKED_TRANSITION_TEXT = (
+    "Manual motor control blocked: waiting for active-scope transition to finish."
+)
+SCOPE_CONTROL_BLOCKED_WAITING_TEXT = (
+    "Runtime state not loaded yet. Wait for refresh before editing active-group."
+)
 RUNTIME_GROUP_KEY_MEMBERS = "members"
 RUNTIME_GROUP_KEY_LABEL = "label"
 RUNTIME_GROUP_KEY_ENABLED = "enabled"
@@ -313,10 +326,37 @@ class RuntimeStateFetchState:
 
 
 @dataclass(frozen=True)
+class ScopeControlState:
+    """
+    NAME
+        ScopeControlState - Shared host-side activation and edit ownership gate.
+    """
+
+    scope_kind: str
+    activate_allowed: bool
+    deactivate_allowed: bool
+    run_selected_allowed: bool
+    active_group_editable: bool
+    blocked_reason: str
+    transition_pending: bool
+
+
+@dataclass(frozen=True)
 class ManualDutyScopeState:
     """
     NAME
         ManualDutyScopeState - Shared host-side manual-duty scope eligibility result.
+    """
+
+    allowed: bool
+    blocked_reason: str
+
+
+@dataclass(frozen=True)
+class ManualDutyAccessState:
+    """
+    NAME
+        ManualDutyAccessState - Shared host-side manual-duty access result.
     """
 
     allowed: bool
@@ -1138,6 +1178,80 @@ def resolve_runtime_state_fetch_state(
     )
 
 
+def resolve_scope_control_state(
+    *,
+    scope_kind: object,
+    runtime_ui_ready: bool,
+    tracker_pending: bool,
+    stale_state: bool,
+    runtime_state_seen: bool,
+    controlled_lifecycle_active: bool,
+    transition_pending: bool,
+    runnable_scope_state: RunnableScopeState,
+    selected_test_name: object,
+    selected_test_ready: bool,
+    selected_test_invalid: bool,
+    selected_test_runtime_block_reason: object,
+) -> ScopeControlState:
+    """
+    NAME
+        resolve_scope_control_state - Return shared scope-control ownership gates for host actions.
+    """
+    normalized_scope = _normalize_scope_kind(scope_kind)
+    base_allowed = bool(runtime_ui_ready) and not bool(tracker_pending) and not bool(stale_state)
+    runtime_block_reason = str(selected_test_runtime_block_reason or "").strip()
+    selected_test_selected = str(selected_test_name or "").strip() not in ("", PROFILE_NONE)
+    activate_allowed = False
+    deactivate_allowed = False
+    run_selected_allowed = False
+    active_group_editable = False
+    blocked_reason = ""
+    requires_runtime_state = normalized_scope == RUNNABLE_SCOPE_KIND_MANUAL
+    if requires_runtime_state and not runtime_state_seen:
+        blocked_reason = SCOPE_CONTROL_BLOCKED_WAITING_TEXT
+    elif transition_pending:
+        blocked_reason = RUNNABLE_SCOPE_PANEL_RESYNC_DETAIL
+    elif normalized_scope == RUNNABLE_SCOPE_KIND_SELECTED_TEST and not selected_test_selected:
+        blocked_reason = TEST_SCOPE_STATUS_NO_SELECTION_DETAIL
+    elif normalized_scope == RUNNABLE_SCOPE_KIND_SELECTED_TEST and selected_test_invalid:
+        blocked_reason = SELECTED_TEST_STATUS_REQUIRED_UNAVAILABLE
+    elif runtime_block_reason:
+        blocked_reason = runtime_block_reason
+    else:
+        blocked_reason = str(runnable_scope_state.blocked_reason or "").strip()
+    if base_allowed and not transition_pending and not runtime_block_reason:
+        if normalized_scope == RUNNABLE_SCOPE_KIND_SELECTED_TEST:
+            activate_allowed = selected_test_selected and not selected_test_invalid
+        elif runtime_state_seen and runnable_scope_state.activation_allowed:
+            activate_allowed = True
+    deactivate_allowed = (
+        base_allowed
+        and not transition_pending
+        and bool(controlled_lifecycle_active)
+    )
+    run_selected_allowed = (
+        base_allowed
+        and normalized_scope == RUNNABLE_SCOPE_KIND_SELECTED_TEST
+        and not transition_pending
+        and not runtime_block_reason
+        and bool(selected_test_ready)
+    )
+    active_group_editable = (
+        bool(runtime_state_seen)
+        and not bool(controlled_lifecycle_active)
+        and not bool(transition_pending)
+    )
+    return ScopeControlState(
+        scope_kind=normalized_scope,
+        activate_allowed=activate_allowed,
+        deactivate_allowed=deactivate_allowed,
+        run_selected_allowed=run_selected_allowed,
+        active_group_editable=active_group_editable,
+        blocked_reason=blocked_reason,
+        transition_pending=bool(transition_pending),
+    )
+
+
 def resolve_manual_duty_scope_state(
     *,
     label: object,
@@ -1171,3 +1285,52 @@ def resolve_manual_duty_scope_state(
         allowed=allowed,
         blocked_reason="" if allowed else MANUAL_DUTY_BLOCKED_CONTROLLED_SCOPE_TEXT,
     )
+
+
+def resolve_manual_duty_access_state(
+    *,
+    tcp_connected: bool,
+    runtime_state_seen: bool,
+    stale_state: bool,
+    robot_estopped: bool,
+    robot_enabled: bool,
+    tracker_pending: bool,
+    transition_pending: bool,
+    target_labels: List[object],
+    runtime_state_by_label: Dict[str, Dict[str, Any]],
+    controlled_lifecycle_active: bool,
+    runtime_groups: List[Dict[str, Any]],
+) -> ManualDutyAccessState:
+    """
+    NAME
+        resolve_manual_duty_access_state - Return shared manual-duty gating across popup entry points.
+    """
+    if not tcp_connected:
+        return ManualDutyAccessState(False, MANUAL_DUTY_BLOCKED_NOT_CONNECTED_TEXT)
+    if tracker_pending:
+        return ManualDutyAccessState(False, RUNTIME_FETCH_BLOCK_BUSY)
+    if not runtime_state_seen:
+        return ManualDutyAccessState(False, MANUAL_DUTY_BLOCKED_WAITING_TEXT)
+    if transition_pending:
+        return ManualDutyAccessState(False, MANUAL_DUTY_BLOCKED_TRANSITION_TEXT)
+    if stale_state:
+        return ManualDutyAccessState(False, MANUAL_DUTY_BLOCKED_STALE_TEXT)
+    if robot_estopped:
+        return ManualDutyAccessState(False, MANUAL_DUTY_BLOCKED_ESTOP_TEXT)
+    if not robot_enabled:
+        return ManualDutyAccessState(False, MANUAL_DUTY_BLOCKED_DISABLED_TEXT)
+    for label in list(target_labels or []):
+        scope_state = resolve_manual_duty_scope_state(
+            label=label,
+            runtime_state_by_label=runtime_state_by_label,
+            controlled_lifecycle_active=controlled_lifecycle_active,
+        )
+        if not scope_state.allowed:
+            return ManualDutyAccessState(False, scope_state.blocked_reason)
+    binding_state = resolve_manual_duty_binding_state(
+        target_labels=target_labels,
+        runtime_groups=runtime_groups,
+    )
+    if not binding_state.allowed:
+        return ManualDutyAccessState(False, binding_state.blocked_reason)
+    return ManualDutyAccessState(True, "")
