@@ -10,10 +10,10 @@ This guide is intentionally current-only. It does not preserve removed workflows
 
 Use these documents:
 
-- [TEST_PLAN_CURRENT_SYSTEM_2026_05_23.md](./TEST_PLAN_CURRENT_SYSTEM_2026_05_23.md)
 - [TEST_PLAN_TODAY.md](./TEST_PLAN_TODAY.md)
 - [TEST_PLAN_BINDINGS_FUNCTIONALITY.md](./TEST_PLAN_BINDINGS_FUNCTIONALITY.md)
 - [TESTING_WINDOWS_OFFLINE.md](./TESTING_WINDOWS_OFFLINE.md)
+- [TEST_PROCEDURE_FULL_ROBOT_FROM_SCRATCH_V3.md](./TEST_PROCEDURE_FULL_ROBOT_FROM_SCRATCH_V3.md)
 
 ## Terminology
 
@@ -73,6 +73,7 @@ These are not current and should not be used as primary test procedures:
 
 ## Current Recommendation
 
-If there is any conflict between older examples and the new current-system plan, follow:
+If there is any conflict between older examples and the current docs, follow:
 
-- [TEST_PLAN_CURRENT_SYSTEM_2026_05_23.md](./TEST_PLAN_CURRENT_SYSTEM_2026_05_23.md)
+- [TEST_PLAN_TODAY.md](./TEST_PLAN_TODAY.md)
+- [TEST_PROCEDURE_FULL_ROBOT_FROM_SCRATCH_V3.md](./TEST_PROCEDURE_FULL_ROBOT_FROM_SCRATCH_V3.md)

@@ -14,9 +14,9 @@ It does not define the entire robot test system or replace every robot-side test
 
 Use these documents for the current implementation:
 
-- [ROBOT_DIAGNOSTIC_TEST_DSL_SPEC_V0_3.md](./ROBOT_DIAGNOSTIC_TEST_DSL_SPEC_V0_3.md)
-- [USER_GUIDE_ROBOT_TEST_DSL.md](./USER_GUIDE_ROBOT_TEST_DSL.md)
-- [SPEC_DSL_DEVICE_SIGNAL_INTERFACE.md](./SPEC_DSL_DEVICE_SIGNAL_INTERFACE.md)
+- [ROBOT_DIAGNOSTIC_TEST_DSL_SPEC_V0_3.md](../ROBOT_DIAGNOSTIC_TEST_DSL_SPEC_V0_3.md)
+- [USER_GUIDE_ROBOT_TEST_DSL.md](../USER_GUIDE_ROBOT_TEST_DSL.md)
+- [SPEC_DSL_DEVICE_SIGNAL_INTERFACE.md](../SPEC_DSL_DEVICE_SIGNAL_INTERFACE.md)
 
 ## 2. Historical Scope
 

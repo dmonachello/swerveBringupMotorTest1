@@ -174,6 +174,9 @@ from .host_ui_actions import (
     HOST_UI_ACTIONS,
 )
 from .host_ui_state_service import (
+    ACTIVE_GROUP_EDIT_BLOCKED_LOCKED_TEXT as SHARED_ACTIVE_GROUP_EDIT_BLOCKED_LOCKED_TEXT,
+    HOST_ACTION_BLOCKED_BUSY_TEXT as SHARED_HOST_ACTION_BLOCKED_BUSY_TEXT,
+    HOST_ACTION_BLOCKED_NOT_CONNECTED_TEXT as SHARED_HOST_ACTION_BLOCKED_NOT_CONNECTED_TEXT,
     MANUAL_DUTY_BLOCKED_CONTROLLED_SCOPE_TEXT as SHARED_MANUAL_DUTY_BLOCKED_CONTROLLED_SCOPE_TEXT,
     MANUAL_DUTY_BLOCKED_DISABLED_TEXT as SHARED_MANUAL_DUTY_BLOCKED_DISABLED_TEXT,
     MANUAL_DUTY_BLOCKED_ESTOP_TEXT as SHARED_MANUAL_DUTY_BLOCKED_ESTOP_TEXT,
@@ -223,15 +226,19 @@ from .host_ui_state_service import (
     SelectedTestScopeState,
     SelectedTestPanelState,
     DiagnosticProfileState,
+    HostActionAccessState,
     RunnableScopeState,
     RuntimeStateFetchState,
     TopologySceneState,
     UiContextState,
+    resolve_active_group_edit_action_state,
     resolve_manual_duty_access_state,
+    resolve_manual_duty_action_state,
     resolve_manual_duty_scope_state,
     resolve_active_group_summary_state,
     resolve_manual_duty_binding_state,
     resolve_diagnostic_profile_state,
+    resolve_override_action_state,
     resolve_runtime_state_fetch_state,
     resolve_scope_control_state,
     resolve_scope_activation_notice,
@@ -243,6 +250,13 @@ from .host_ui_state_service import (
     resolve_runnable_scope_state,
     resolve_ui_context_state,
     should_clear_runtime_event_notice,
+)
+from .ui_theme import (
+    UI_THEME_DEFAULT,
+    UiThemePalette,
+    apply_ttk_theme,
+    get_ui_theme_palette,
+    list_ui_theme_names,
 )
 from .status import SS__NORMAL
 from tools.common.json_io import read_json, write_json
@@ -541,8 +555,8 @@ GROUP_SOURCE_SELECTED_TEST = "selected test"
 GROUP_SOURCE_LABEL_PREFIX = "Active Group Source: "
 GROUP_SOURCE_LABEL_MANUAL = GROUP_SOURCE_LABEL_PREFIX + GROUP_SOURCE_MANUAL
 GROUP_SOURCE_LABEL_SELECTED_TEST = GROUP_SOURCE_LABEL_PREFIX + GROUP_SOURCE_SELECTED_TEST
-OUTPUT_NOT_CONNECTED = "Not connected: command blocked."
-OUTPUT_BUSY = "Busy: wait for current command to finish."
+OUTPUT_NOT_CONNECTED = SHARED_HOST_ACTION_BLOCKED_NOT_CONNECTED_TEXT
+OUTPUT_BUSY = SHARED_HOST_ACTION_BLOCKED_BUSY_TEXT
 OUTPUT_NO_PROFILE = "No profile selected."
 OUTPUT_NO_SELECTED_TEST = SHARED_OUTPUT_NO_SELECTED_TEST
 OUTPUT_PUSH_CANCELLED = "Config push cancelled."
@@ -625,9 +639,7 @@ MANUAL_DUTY_BLOCKED_WAITING_TEXT = SHARED_MANUAL_DUTY_BLOCKED_WAITING_TEXT
 MANUAL_DUTY_BLOCKED_TRANSITION_TEXT = SHARED_MANUAL_DUTY_BLOCKED_TRANSITION_TEXT
 MANUAL_DUTY_BLOCKED_RUNTIME_TEXT = "Manual motor control blocked: runtime inactive."
 MANUAL_DUTY_BLOCKED_CONTROLLED_SCOPE_TEXT = SHARED_MANUAL_DUTY_BLOCKED_CONTROLLED_SCOPE_TEXT
-ACTIVE_GROUP_LOCKED_TEXT = (
-    "Active group membership is locked while an active scope session is running. Deactivate scope first."
-)
+ACTIVE_GROUP_LOCKED_TEXT = SHARED_ACTIVE_GROUP_EDIT_BLOCKED_LOCKED_TEXT
 ACTIVE_GROUP_WAITING_TEXT = (
     "Runtime state not loaded yet. Wait for refresh before editing active-group."
 )
@@ -669,6 +681,7 @@ UI_PREFS_KEY_VISIBLE = "visible"
 UI_PREFS_KEY_AUTO_SELECT_DEFAULT_PROFILE = "autoSelectDefaultProfileOnStartup"
 UI_PREFS_KEY_SHOW_VISIBILITY_TAB = "showVisibilityTab"
 UI_PREFS_KEY_SHOW_WALL_CLOCK = "showWallClock"
+UI_PREFS_KEY_THEME = "theme"
 
 # Constants (visibility UI).
 VIS_TAB_LABEL = "CAN Visibility"
@@ -1658,6 +1671,19 @@ def _load_ui_show_wall_clock_pref() -> bool:
     return bool(payload.get(UI_PREFS_KEY_SHOW_WALL_CLOCK, True))
 
 
+def _load_ui_theme_pref() -> str:
+    """
+    NAME
+        _load_ui_theme_pref - Return the configured UI theme identifier.
+    """
+
+    payload = _load_ui_prefs_payload()
+    theme_name = str(payload.get(UI_PREFS_KEY_THEME, UI_THEME_DEFAULT) or UI_THEME_DEFAULT)
+    if theme_name not in set(list_ui_theme_names()):
+        return UI_THEME_DEFAULT
+    return theme_name
+
+
 def _action_sections() -> List[Tuple[str, List[Tuple[str, Optional[str]]]]]:
     """
     NAME
@@ -2166,9 +2192,13 @@ class BringupControlUI(tk.Tk):
         self._ui_auto_select_default_profile = _load_ui_auto_select_default_pref()
         self._ui_show_visibility_tab = _load_ui_show_visibility_tab_pref()
         self._ui_show_wall_clock = _load_ui_show_wall_clock_pref()
+        self._ui_theme_name = _load_ui_theme_pref()
+        self._theme_palette = get_ui_theme_palette(self._ui_theme_name)
+        self._ttk_style = ttk.Style(self)
         self._ui_pref_vars: Dict[str, tk.BooleanVar] = {}
         self._build_menu()
         self._build_ui()
+        self._apply_ui_theme()
         self._apply_profile_selection(self._profile_box.get(), reload_views=True)
         self.after_idle(self._poll_nt)
         self.protocol("WM_DELETE_WINDOW", self._handle_close)
@@ -2193,6 +2223,18 @@ class BringupControlUI(tk.Tk):
         """
         menubar = tk.Menu(self)
         prefs_menu = tk.Menu(menubar, tearoff=False)
+        self._ui_theme_var = tk.StringVar(value=self._ui_theme_name)
+        theme_menu = tk.Menu(prefs_menu, tearoff=False)
+        for theme_name in list_ui_theme_names():
+            palette = get_ui_theme_palette(theme_name)
+            theme_menu.add_radiobutton(
+                label=palette.display_name,
+                value=theme_name,
+                variable=self._ui_theme_var,
+                command=self._set_ui_theme_pref,
+            )
+        prefs_menu.add_cascade(label="Theme", menu=theme_menu)
+        prefs_menu.add_separator()
         self._auto_select_default_profile_var = tk.BooleanVar(
             value=self._ui_auto_select_default_profile
         )
@@ -2236,6 +2278,10 @@ class BringupControlUI(tk.Tk):
         help_menu.add_command(label="About", command=self._show_about)
         menubar.add_cascade(label="Preferences", menu=prefs_menu)
         menubar.add_cascade(label="Help", menu=help_menu)
+        self._menubar = menubar
+        self._prefs_menu = prefs_menu
+        self._theme_menu = theme_menu
+        self._help_menu = help_menu
         self.config(menu=menubar)
 
     def _build_ui(self) -> None:
@@ -2322,10 +2368,18 @@ class BringupControlUI(tk.Tk):
             foreground="#374151",
         ).pack(side="left")
         self._wall_clock_frame = wall_clock_frame
-        self._pending_label = ttk.Label(header, text="", foreground="#b45309")
+        self._pending_label = ttk.Label(
+            header,
+            text="",
+            foreground=self._theme_palette.status_warn_fg,
+        )
         self._pending_label.pack(side="left", padx=(16, 4))
 
-        status = ttk.Label(header, text="NT Disconnected", foreground="#b32323")
+        status = ttk.Label(
+            header,
+            text="NT Disconnected",
+            foreground=self._theme_palette.status_error_fg,
+        )
         status.pack(side="right", padx=6)
         self._status_label = status
         self._apply_wall_clock_visibility()
@@ -2524,7 +2578,9 @@ class BringupControlUI(tk.Tk):
             on_override_action=self._on_live_override_action,
             on_left_click=self._on_live_view_left_click,
             manage_runtime_notice_internally=False,
+            theme_name=self._ui_theme_name,
         )
+        self._sync_live_view_action_states()
         self._live_view.set_show_groups(self._live_groups_var.get())
         self._apply_live_topology_lens()
         self._live_view.pack(fill="both", expand=True, padx=8, pady=(0, 8))
@@ -2972,7 +3028,9 @@ class BringupControlUI(tk.Tk):
             on_override_action=self._on_live_override_action,
             on_left_click=self._on_live_view_left_click,
             manage_runtime_notice_internally=False,
+            theme_name=self._ui_theme_name,
         )
+        self._sync_live_view_action_states()
         self._visibility_live_view.set_show_groups(self._live_groups_var.get())
         self._visibility_live_view.set_overlay_lens(TOPOLOGY_LENS_VISIBILITY)
         self._visibility_live_view.pack(fill="both", expand=True)
@@ -3129,7 +3187,9 @@ class BringupControlUI(tk.Tk):
                 self._evidence_engine_status,
             ),
             fit_on_load=True,
+            theme_name=self._ui_theme_name,
         )
+        self._sync_live_view_action_states()
         self._evidence_live_view.set_show_groups(self._live_groups_var.get())
         self._evidence_live_view.set_overlay_lens(TOPOLOGY_LENS_EVIDENCE)
         self._evidence_live_view.pack(fill=VIS_FILL_BOTH, expand=True)
@@ -3931,7 +3991,49 @@ class BringupControlUI(tk.Tk):
             selected_test_name=self._selected_test_name(),
             selected_test_ready=self._selected_test_ready(),
             selected_test_invalid=self._selected_test_has_invalid_members(),
+            selected_test_running=self._selected_test_running(),
             selected_test_runtime_block_reason=self._test_runtime_block_reason(),
+        )
+
+    def _manual_duty_action_state(self, targets: List[str]) -> HostActionAccessState:
+        """
+        NAME
+            _manual_duty_action_state - Return shared popup-entry policy for manual-duty actions.
+        """
+        return resolve_manual_duty_action_state(
+            tcp_connected=bool(self._tcp_connected),
+            runtime_state_seen=bool(self.__dict__.get("_runtime_state_seen", False)),
+            stale_state=bool(self.__dict__.get("_state_stale", False)),
+            robot_estopped=bool(self.__dict__.get("_robot_estopped_known", False)),
+            robot_enabled=bool(self.__dict__.get("_robot_enabled_known", True)),
+            tracker_pending=bool(self._tracker.is_pending()),
+            transition_pending=self._scope_transition_pending(),
+            target_labels=list(targets or []),
+            runtime_state_by_label=dict(self.__dict__.get("_latest_runtime_devices", {})),
+            controlled_lifecycle_active=self.__dict__.get("_controlled_lifecycle_active_known") is True,
+            runtime_groups=self._latest_runtime_state_payload_groups(),
+        )
+
+    def _active_group_edit_action_state(self) -> HostActionAccessState:
+        """
+        NAME
+            _active_group_edit_action_state - Return shared edit policy for active-group membership actions.
+        """
+        return resolve_active_group_edit_action_state(
+            tcp_connected=bool(self._tcp_connected),
+            tracker_pending=bool(self._tracker.is_pending()),
+            controlled_lifecycle_active=self.__dict__.get("_controlled_lifecycle_active_known") is True,
+            scope_control_state=self._scope_control_state(),
+        )
+
+    def _override_action_state(self) -> HostActionAccessState:
+        """
+        NAME
+            _override_action_state - Return shared entry policy for live override actions.
+        """
+        return resolve_override_action_state(
+            tcp_connected=bool(self._tcp_connected),
+            tracker_pending=bool(self._tracker.is_pending()),
         )
 
     def _scope_activation_notice_text(self) -> str:
@@ -4595,6 +4697,21 @@ class BringupControlUI(tk.Tk):
             views.append(evidence_live_view)
         return views
 
+    def _sync_live_view_action_states(self) -> None:
+        """
+        NAME
+            _sync_live_view_action_states - Push shared action-access states into all topology views.
+        """
+        if "_tracker" not in self.__dict__ or "_tcp_connected" not in self.__dict__:
+            return
+        active_group_state = self._active_group_edit_action_state()
+        override_state = self._override_action_state()
+        for live_view in self._iter_live_views():
+            if hasattr(live_view, "set_active_group_edit_action_state"):
+                live_view.set_active_group_edit_action_state(active_group_state)
+            if hasattr(live_view, "set_override_action_state"):
+                live_view.set_override_action_state(override_state)
+
     def _reset_ui_session_runtime_context(self) -> None:
         """
         NAME
@@ -4751,19 +4868,7 @@ class BringupControlUI(tk.Tk):
             label = str(getattr(node, "label", NT_VALUE_EMPTY)).strip()
         if not label:
             return
-        access_state = resolve_manual_duty_access_state(
-            tcp_connected=bool(self._tcp_connected),
-            runtime_state_seen=bool(self.__dict__.get("_runtime_state_seen", False)),
-            stale_state=bool(self.__dict__.get("_state_stale", False)),
-            robot_estopped=bool(self.__dict__.get("_robot_estopped_known", False)),
-            robot_enabled=bool(self.__dict__.get("_robot_enabled_known", True)),
-            tracker_pending=bool(self._tracker.is_pending()),
-            transition_pending=self._scope_transition_pending(),
-            target_labels=[label],
-            runtime_state_by_label=dict(self.__dict__.get("_latest_runtime_devices", {})),
-            controlled_lifecycle_active=self.__dict__.get("_controlled_lifecycle_active_known") is True,
-            runtime_groups=self._latest_runtime_state_payload_groups(),
-        )
+        access_state = self._manual_duty_action_state([label])
         if not access_state.allowed:
             self._append_output(
                 MANUAL_DUTY_BUSY_TEXT
@@ -4799,20 +4904,11 @@ class BringupControlUI(tk.Tk):
         clean_label = str(label or NT_VALUE_EMPTY).strip()
         if not clean_label:
             return
-        if self._controlled_lifecycle_active_known is True:
-            self._append_output(ACTIVE_GROUP_LOCKED_TEXT)
-            self.after_idle(self._request_runtime_state_refresh)
-            return
-        if not self._tcp_connected:
-            self._append_output(OUTPUT_NOT_CONNECTED)
-            return
-        if self._tracker.is_pending():
-            self._append_output(OUTPUT_BUSY)
-            return
-        control_state = self._scope_control_state()
-        if not control_state.active_group_editable:
-            self._append_output(control_state.blocked_reason or ACTIVE_GROUP_WAITING_TEXT)
-            self.after_idle(self._request_runtime_state_refresh)
+        action_state = self._active_group_edit_action_state()
+        if not action_state.allowed:
+            self._append_output(action_state.blocked_reason or ACTIVE_GROUP_WAITING_TEXT)
+            if action_state.refresh_when_blocked:
+                self.after_idle(self._request_runtime_state_refresh)
             return
         command = CMD_GROUP_ADD_DEVICE if enabled else CMD_GROUP_REMOVE_DEVICE
         args = {
@@ -4824,7 +4920,8 @@ class BringupControlUI(tk.Tk):
         )
         self._last_cmd = (command, args)
         if self._send_and_wait(command, args):
-            self.after_idle(self._request_runtime_state_refresh)
+            if action_state.refresh_after_action:
+                self.after_idle(self._request_runtime_state_refresh)
 
     def _on_live_override_action(self, label: str, action: str) -> None:
         """
@@ -4835,11 +4932,9 @@ class BringupControlUI(tk.Tk):
         clean_action = str(action or NT_VALUE_EMPTY).strip().lower()
         if not clean_label or clean_action not in ("instantiate", "clear"):
             return
-        if not self._tcp_connected:
-            self._append_output(OUTPUT_NOT_CONNECTED)
-            return
-        if self._tracker.is_pending():
-            self._append_output(OUTPUT_BUSY)
+        action_state = self._override_action_state()
+        if not action_state.allowed:
+            self._append_output(action_state.blocked_reason)
             return
         command = (
             DEVICE_OVERRIDE_CMD_INSTANTIATE
@@ -4851,29 +4946,24 @@ class BringupControlUI(tk.Tk):
         self._last_cmd = (command, args)
         seq = self._send_tcp_command(command, args)
         if seq is not None:
-            self.after_idle(self._request_runtime_state_refresh)
+            if action_state.refresh_after_action:
+                self.after_idle(self._request_runtime_state_refresh)
 
     def _open_manual_duty_targets(self, label: str, targets: List[str], x_root: int, y_root: int) -> None:
         """
         NAME
             _open_manual_duty_targets - Validate manual-duty preconditions then open the shared popup for one or more targets.
         """
-        blocked = self._manual_duty_block_message()
-        if blocked:
-            self._append_output(blocked)
+        action_state = self._manual_duty_action_state(targets)
+        if not action_state.allowed:
+            self._append_output(
+                MANUAL_DUTY_BUSY_TEXT
+                if action_state.blocked_reason == RUNTIME_FETCH_BLOCK_BUSY
+                else action_state.blocked_reason
+            )
             return
-        if self._tracker.is_pending():
-            self._append_output(MANUAL_DUTY_BUSY_TEXT)
-            return
-        scope_blocked = self._manual_duty_scope_block_message_for_targets(targets)
-        if scope_blocked:
-            self._append_output(scope_blocked)
-            return
-        binding_blocked = self._manual_duty_binding_block_message_for_targets(targets)
-        if binding_blocked:
-            self._append_output(binding_blocked)
-            return
-        self._request_runtime_state_refresh()
+        if action_state.refresh_before_action:
+            self._request_runtime_state_refresh()
         self._open_manual_duty_popup(label, targets, MANUAL_DUTY_NO_LABEL, x_root, y_root)
 
     def _open_manual_group_duty_targets(
@@ -4887,22 +4977,16 @@ class BringupControlUI(tk.Tk):
         NAME
             _open_manual_group_duty_targets - Validate group manual-duty preconditions then open the shared popup.
         """
-        blocked = self._manual_duty_block_message()
-        if blocked:
-            self._append_output(blocked)
+        action_state = self._manual_duty_action_state(targets)
+        if not action_state.allowed:
+            self._append_output(
+                MANUAL_DUTY_BUSY_TEXT
+                if action_state.blocked_reason == RUNTIME_FETCH_BLOCK_BUSY
+                else action_state.blocked_reason
+            )
             return
-        if self._tracker.is_pending():
-            self._append_output(MANUAL_DUTY_BUSY_TEXT)
-            return
-        scope_blocked = self._manual_duty_scope_block_message_for_targets(targets)
-        if scope_blocked:
-            self._append_output(scope_blocked)
-            return
-        binding_blocked = self._manual_duty_binding_block_message_for_targets(targets)
-        if binding_blocked:
-            self._append_output(binding_blocked)
-            return
-        self._request_runtime_state_refresh()
+        if action_state.refresh_before_action:
+            self._request_runtime_state_refresh()
         self._open_manual_duty_popup(
             group_name,
             targets,
@@ -7535,6 +7619,17 @@ class BringupControlUI(tk.Tk):
         self._save_ui_command_prefs()
         self._apply_wall_clock_visibility()
 
+    def _set_ui_theme_pref(self) -> None:
+        """
+        NAME
+            _set_ui_theme_pref - Persist the selected UI theme and apply it.
+        """
+
+        self._ui_theme_name = str(self._ui_theme_var.get() or UI_THEME_DEFAULT)
+        self._theme_palette = get_ui_theme_palette(self._ui_theme_name)
+        self._save_ui_command_prefs()
+        self._apply_ui_theme()
+
     def _apply_visibility_tab_pref(self) -> None:
         """
         NAME
@@ -7581,8 +7676,118 @@ class BringupControlUI(tk.Tk):
                 UI_PREFS_KEY_AUTO_SELECT_DEFAULT_PROFILE: self._ui_auto_select_default_profile,
                 UI_PREFS_KEY_SHOW_VISIBILITY_TAB: self._ui_show_visibility_tab,
                 UI_PREFS_KEY_SHOW_WALL_CLOCK: self._ui_show_wall_clock,
+                UI_PREFS_KEY_THEME: self._ui_theme_name,
             },
         )
+
+    def _current_theme_palette(self) -> UiThemePalette:
+        """
+        NAME
+            _current_theme_palette - Resolve the active palette with a test-safe fallback.
+        """
+
+        palette = self.__dict__.get("_theme_palette")
+        if isinstance(palette, UiThemePalette):
+            return palette
+        theme_name = str(self.__dict__.get("_ui_theme_name", UI_THEME_DEFAULT) or UI_THEME_DEFAULT)
+        palette = get_ui_theme_palette(theme_name)
+        self.__dict__["_theme_palette"] = palette
+        return palette
+
+    def _apply_ui_theme(self) -> None:
+        """
+        NAME
+            _apply_ui_theme - Apply the selected desktop theme to the Tk shell and subviews.
+        """
+
+        palette = self._current_theme_palette()
+        apply_ttk_theme(self, self._ttk_style, palette)
+        self._apply_theme_to_widget(self)
+        for menu_name in ("_menubar", "_prefs_menu", "_theme_menu", "_help_menu"):
+            menu = getattr(self, menu_name, None)
+            if menu is not None:
+                menu.configure(
+                    background=palette.panel_bg,
+                    foreground=palette.text_primary,
+                    activebackground=palette.selection_bg,
+                    activeforeground=palette.text_primary,
+                )
+        for view_name in ("_live_view", "_visibility_live_view", "_evidence_live_view"):
+            view = getattr(self, view_name, None)
+            if view is not None and hasattr(view, "set_theme"):
+                view.set_theme(self._ui_theme_name)
+        self._apply_output_scope_palette()
+        self._apply_header_status_palette()
+
+    def _apply_theme_to_widget(self, widget: tk.Widget) -> None:
+        """
+        NAME
+            _apply_theme_to_widget - Recursively apply theme colors to Tk-native widgets.
+        """
+
+        palette = self._current_theme_palette()
+        if isinstance(widget, tk.Text):
+            background = palette.text_widget_bg
+            foreground = palette.text_widget_fg
+            if widget is getattr(self, "_test_source_line_numbers", None):
+                background = palette.line_number_bg
+                foreground = palette.line_number_fg
+            widget.configure(
+                background=background,
+                foreground=foreground,
+                insertbackground=palette.text_widget_insert,
+                selectbackground=palette.selection_bg,
+                highlightbackground=palette.border,
+            )
+        elif isinstance(widget, tk.Canvas):
+            widget.configure(background=palette.canvas_bg, highlightbackground=palette.border)
+        elif isinstance(widget, tk.Label):
+            widget.configure(background=palette.panel_bg, foreground=palette.text_primary)
+        elif isinstance(widget, tk.Frame):
+            widget.configure(background=palette.panel_bg, highlightbackground=palette.border)
+        for child in widget.winfo_children():
+            if isinstance(child, tk.Widget):
+                self._apply_theme_to_widget(child)
+
+    def _apply_output_scope_palette(self) -> None:
+        """
+        NAME
+            _apply_output_scope_palette - Refresh the output status card colors for the active theme.
+        """
+
+        panel = getattr(self, "_output_scope_panel", None)
+        title_label = getattr(self, "_output_scope_title_label", None)
+        headline_label = getattr(self, "_output_scope_headline_label", None)
+        detail_label = getattr(self, "_output_scope_detail_label", None)
+        if panel is None or title_label is None or headline_label is None or detail_label is None:
+            return
+        palette = self._current_theme_palette()
+        background = palette.runnable_neutral_bg
+        foreground = palette.runnable_neutral_fg
+        panel.configure(bg=background, highlightbackground=palette.runnable_border)
+        title_label.configure(bg=background, fg=foreground)
+        headline_label.configure(bg=background, fg=foreground)
+        detail_label.configure(bg=background, fg=foreground)
+
+    def _apply_header_status_palette(self) -> None:
+        """
+        NAME
+            _apply_header_status_palette - Refresh header status labels for the active theme.
+        """
+
+        pending_label = getattr(self, "_pending_label", None)
+        status_label = getattr(self, "_status_label", None)
+        if pending_label is not None:
+            pending_label.configure(foreground=self._current_theme_palette().status_warn_fg)
+        if status_label is not None:
+            palette = self._current_theme_palette()
+            status_label.configure(
+                foreground=(
+                    palette.status_success_fg
+                    if self._tcp_connected
+                    else palette.status_error_fg
+                )
+            )
 
     def _render_action_buttons(self) -> None:
         """
@@ -9870,6 +10075,23 @@ class BringupControlUI(tk.Tk):
         """
         return self._selected_test_scope_state().ready
 
+    def _selected_test_running(self) -> bool:
+        """
+        NAME
+            _selected_test_running - Return whether the selected test currently has an active run in progress.
+        """
+        run_payload = self._latest_test_run_payload()
+        run_state = str(run_payload.get("state", "") or "").strip().lower()
+        if run_state == "running":
+            return True
+        table = self.__dict__.get("_tests_table")
+        if table is None:
+            return False
+        try:
+            return str(table.getEntry("runState").getString("") or "").strip().lower() == "running"
+        except Exception:
+            return False
+
     def _latest_test_run_payload(self) -> Dict[str, Any]:
         """
         NAME
@@ -10074,27 +10296,28 @@ class BringupControlUI(tk.Tk):
         headline_var = self.__dict__.get("_selected_test_scope_headline_var")
         if status_var is None:
             return
-        panel_bg = TEST_SCOPE_PANEL_NEUTRAL_BG
-        panel_fg = TEST_SCOPE_PANEL_NEUTRAL_FG
+        palette = self._current_theme_palette()
+        panel_bg = palette.runnable_neutral_bg
+        panel_fg = palette.runnable_neutral_fg
         state = self._selected_test_panel_state()
         if state.level == TEST_SCOPE_PANEL_NEUTRAL_LEVEL:
             status_var.set(state.detail)
             if headline_var is not None:
                 headline_var.set(state.headline)
-            panel_bg = TEST_SCOPE_PANEL_NEUTRAL_BG
-            panel_fg = TEST_SCOPE_PANEL_NEUTRAL_FG
+            panel_bg = palette.runnable_neutral_bg
+            panel_fg = palette.runnable_neutral_fg
         elif state.level == RUNNABLE_STATE_LEVEL_READY:
             status_var.set(state.detail)
             if headline_var is not None:
                 headline_var.set(state.headline)
-            panel_bg = TEST_SCOPE_PANEL_READY_BG
-            panel_fg = TEST_SCOPE_PANEL_READY_FG
+            panel_bg = palette.runnable_ready_bg
+            panel_fg = palette.runnable_ready_fg
         else:
             status_var.set(state.detail)
             if headline_var is not None:
                 headline_var.set(state.headline)
-            panel_bg = TEST_SCOPE_PANEL_INACTIVE_BG
-            panel_fg = TEST_SCOPE_PANEL_INACTIVE_FG
+            panel_bg = palette.runnable_inactive_bg
+            panel_fg = palette.runnable_inactive_fg
         self._apply_selected_test_scope_panel_colors(panel_bg, panel_fg)
 
     def _format_selected_test_scope_status_detail(self, inactive_reason: str) -> str:
@@ -10119,7 +10342,10 @@ class BringupControlUI(tk.Tk):
         """
         panel = self.__dict__.get("_selected_test_scope_panel")
         if panel is not None:
-            panel.configure(bg=background, highlightbackground=TEST_SCOPE_PANEL_BORDER)
+            panel.configure(
+                bg=background,
+                highlightbackground=self._current_theme_palette().runnable_border,
+            )
         for attr_name in (
             "_selected_test_scope_title_label",
             "_selected_test_scope_headline_label",
@@ -11447,7 +11673,11 @@ class BringupControlUI(tk.Tk):
         )
         self._status_label.configure(
             text=label,
-            foreground="#2f7a2f" if self._tcp_connected else "#b32323",
+            foreground=(
+                self._current_theme_palette().status_success_fg
+                if self._tcp_connected
+                else self._current_theme_palette().status_error_fg
+            ),
         )
         if nt_connected and not self._tracker.is_pending():
             if stale_state:
@@ -11752,45 +11982,46 @@ class BringupControlUI(tk.Tk):
         detail_var = self.__dict__.get(detail_var_attr)
         if panel is None or headline_var is None or detail_var is None:
             return
+        palette = self._current_theme_palette()
         state = self._runnable_scope_state(
             stale_state=bool(self.__dict__.get("_state_stale", False))
         )
         if self._runtime_state_notice_text:
             headline = TEST_SCOPE_PANEL_INACTIVE_HEADLINE
             if self._runtime_state_notice_level == "error":
-                bg = TEST_SCOPE_PANEL_ERROR_BG
-                fg = TEST_SCOPE_PANEL_ERROR_FG
+                bg = palette.runnable_error_bg
+                fg = palette.runnable_error_fg
             else:
-                bg = TEST_SCOPE_PANEL_INACTIVE_BG
-                fg = TEST_SCOPE_PANEL_INACTIVE_FG
+                bg = palette.runnable_inactive_bg
+                fg = palette.runnable_inactive_fg
             detail = self._runtime_state_notice_text
         elif self._runtime_event_notice_text:
             headline = TEST_SCOPE_PANEL_INACTIVE_HEADLINE
             if self._runtime_event_notice_level == "error":
-                bg = TEST_SCOPE_PANEL_ERROR_BG
-                fg = TEST_SCOPE_PANEL_ERROR_FG
+                bg = palette.runnable_error_bg
+                fg = palette.runnable_error_fg
             else:
-                bg = TEST_SCOPE_PANEL_INACTIVE_BG
-                fg = TEST_SCOPE_PANEL_INACTIVE_FG
+                bg = palette.runnable_inactive_bg
+                fg = palette.runnable_inactive_fg
             detail = self._runtime_event_notice_text
         else:
             headline = state.headline
             detail = state.detail
             if state.level == RUNNABLE_STATE_LEVEL_READY:
-                bg = TEST_SCOPE_PANEL_READY_BG
-                fg = TEST_SCOPE_PANEL_READY_FG
+                bg = palette.runnable_ready_bg
+                fg = palette.runnable_ready_fg
             elif state.level == RUNNABLE_STATE_LEVEL_ERROR:
-                bg = TEST_SCOPE_PANEL_ERROR_BG
-                fg = TEST_SCOPE_PANEL_ERROR_FG
+                bg = palette.runnable_error_bg
+                fg = palette.runnable_error_fg
             elif state.level == RUNNABLE_STATE_LEVEL_NEUTRAL:
-                bg = TEST_SCOPE_PANEL_NEUTRAL_BG
-                fg = TEST_SCOPE_PANEL_NEUTRAL_FG
+                bg = palette.runnable_neutral_bg
+                fg = palette.runnable_neutral_fg
             else:
-                bg = TEST_SCOPE_PANEL_INACTIVE_BG
-                fg = TEST_SCOPE_PANEL_INACTIVE_FG
+                bg = palette.runnable_inactive_bg
+                fg = palette.runnable_inactive_fg
         headline_var.set(headline)
         detail_var.set(detail)
-        panel.configure(bg=bg, highlightbackground=TEST_SCOPE_PANEL_BORDER)
+        panel.configure(bg=bg, highlightbackground=palette.runnable_border)
         for attr_name in (title_attr, headline_attr, detail_attr):
             label = self.__dict__.get(attr_name)
             if label is not None:
@@ -11974,6 +12205,7 @@ class BringupControlUI(tk.Tk):
                 live_view.clear_runtime_state_notice()
             else:
                 live_view.set_runtime_state_notice(state.detail, state.level)
+        self._sync_live_view_action_states()
 
     def _selected_profile_from_command_event(
         self,

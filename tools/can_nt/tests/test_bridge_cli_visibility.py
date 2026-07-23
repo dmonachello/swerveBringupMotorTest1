@@ -1137,6 +1137,37 @@ class BridgeCliVisibilityTests(unittest.TestCase):
         self.assertNotEqual(SS__NORMAL, result.code)
         self.assertEqual("local-profile", cli._groups_profile)
 
+    def test_group_mode_active_group_add_is_blocked_while_runtime_scope_is_active(self) -> None:
+        cli = self._build_cli(connected=True)
+        cli._modes.append(CliMode("group", "active"))
+        cli._local_device_exists = lambda _label: True  # type: ignore[method-assign]
+        cli._fetch_robot_runtime_payload = lambda print_events=False: {  # type: ignore[method-assign]
+            "controlledLifecycleActive": True,
+            KEY_ENABLED: True,
+            "estopped": False,
+            "mode": "teleop",
+        }
+
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            result = cli._group_command(["add", "device", "FALCON 9"])
+
+        self.assertNotEqual(SS__NORMAL, result.code)
+        self.assertIn("Deactivate scope first", output.getvalue())
+
+    def test_group_mode_active_group_add_is_blocked_until_runtime_state_is_loaded(self) -> None:
+        cli = self._build_cli(connected=True)
+        cli._modes.append(CliMode("group", "active"))
+        cli._local_device_exists = lambda _label: True  # type: ignore[method-assign]
+        cli._fetch_robot_runtime_payload = lambda print_events=False: None  # type: ignore[method-assign]
+
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            result = cli._group_command(["add", "device", "FALCON 9"])
+
+        self.assertNotEqual(SS__NORMAL, result.code)
+        self.assertIn("Runtime state not loaded yet", output.getvalue())
+
     def test_exec_profile_device_show_all_runs_in_exec_mode(self) -> None:
         cli = self._build_cli()
         cli._local_root_payload[KEY_DEVICES] = [  # type: ignore[index]

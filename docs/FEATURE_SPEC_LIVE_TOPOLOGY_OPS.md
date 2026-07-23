@@ -6,7 +6,7 @@ Purpose: Capture the initial plan to combine topology visualization with live op
 
 Summary
 Purpose: Describe the feature in one paragraph.
-Create a live "topology ops" surface that overlays real-time device state on the topology diagram and enables safe, targeted actions (select device, run tests, group actions). The feature builds on existing TCP UI commands and NetworkTables publishing and aims to deliver a high "wow factor" while preserving safety and clear ownership of config data.
+Create a live "topology ops" surface that overlays real-time device state on the topology diagram and enables safe, targeted actions (select device, run tests, group actions). The feature builds on existing REST/TCP bringup control/state paths plus host-side diagnostics models and aims to deliver a high "wow factor" while preserving safety and clear ownership of config data.
 
 Goals
 Purpose: Define the desired outcomes.
@@ -55,8 +55,8 @@ Purpose: Define guardrails to prevent unintended actions.
 
 Data Sources
 Purpose: Identify the live data sources to render overlays.
-- NetworkTables: presence and diagnostics (bringup/diag/...).
-- TCP UI runtime state: groups, selected-device, runtime status.
+- host-side visibility and evidence providers.
+- REST runtime state: groups, selected-device, runtime status.
 - Local config: label -> device identity mapping.
 
 Mapping/Identity
@@ -71,7 +71,7 @@ Phase 1: Live Overlay (Read-Only)
 - Live status overlays on topology nodes inside the Bringup Control UI.
 - No commands issued to robot.
 - Tooltips/side panel show telemetry and status.
-- Data source is TCP runtime-state only (NT remains for dashboards).
+- Data source is REST runtime-state plus host-side diagnostics models.
 - Offline test path uses a runtime-state JSON file (manual reload in UI).
 - Update cadence is configurable; default 2 Hz.
 - Routine UI polling should prefer a light snapshot path over a full diagnostic snapshot path.
@@ -99,7 +99,7 @@ Purpose: List prerequisites and shared components.
 - BridgeSession for TCP UI commands.
 - bridge_ops for command wrappers.
 - bringup_system.json for label mapping.
-- NetworkTables data for live overlays.
+- shared host-side visibility/evidence state for live overlays.
 
 Success Criteria
 Purpose: Define how to know Phase 1 is complete.

@@ -158,6 +158,7 @@ from tools.can_nt.host_ui_state_service import (
     ACTIVE_GROUP_SUMMARY_EMPTY_TEXT as SHARED_ACTIVE_GROUP_SUMMARY_EMPTY_TEXT,
     ActiveScopeMembershipState,
     ActiveGroupSummaryState,
+    HostActionAccessState,
     PROFILE_NONE as SHARED_PROFILE_NONE,
     RUNNABLE_PANEL_INACTIVE_HEADLINE as SHARED_RUNNABLE_PANEL_INACTIVE_HEADLINE,
     RUNNABLE_PANEL_READY_HEADLINE as SHARED_RUNNABLE_PANEL_READY_HEADLINE,
@@ -172,6 +173,11 @@ from tools.can_nt.host_ui_state_service import (
     resolve_runnable_scope_state,
     resolve_topology_scene_state,
     should_clear_runtime_event_notice,
+)
+from tools.can_nt.ui_theme import (
+    UI_THEME_DEFAULT,
+    UiThemePalette,
+    get_ui_theme_palette,
 )
 
 # Constants (presence confidence values and colors).
@@ -396,6 +402,15 @@ ACTIVE_GROUP_MEMBER_DISABLED = "disabled"
 ACTIVE_GROUP_MEMBER_ABSENT = "not in group"
 ACTIVE_GROUP_MEMBER_LOCKED = "locked"
 ACTIVE_GROUP_MEMBER_WAITING = "waiting for runtime"
+WIDGET_STATE_NORMAL = "normal"
+WIDGET_STATE_DISABLED = "disabled"
+ACTION_STATE_ALLOWED = HostActionAccessState(
+    allowed=True,
+    blocked_reason=EMPTY_STRING,
+    refresh_before_action=False,
+    refresh_after_action=False,
+    refresh_when_blocked=False,
+)
 ACTIVE_GROUP_PRIMARY_YES = "PRIMARY"
 ACTIVE_GROUP_SELECTED_YES = "selected"
 ACTIVE_GROUP_SELECTED_NO = "not selected"
@@ -1023,8 +1038,11 @@ class LiveTopologyView(ttk.Frame):
         manage_runtime_notice_internally: bool = True,
         title_text: str = TITLE_TEXT_DEFAULT,
         fit_on_load: bool = False,
+        theme_name: str = UI_THEME_DEFAULT,
     ) -> None:
         super().__init__(parent)
+        self._theme_name = str(theme_name or UI_THEME_DEFAULT)
+        self._theme_palette = get_ui_theme_palette(self._theme_name)
         self._profile_name = profile_name
         self._title_text = str(title_text or TITLE_TEXT_DEFAULT)
         self._show_selection_panel = bool(show_selection_panel)
@@ -1119,8 +1137,8 @@ class LiveTopologyView(ttk.Frame):
             notice_row.pack(fill="x", padx=8, pady=(8, 0))
             self._notice_panel = tk.Frame(
                 notice_row,
-                bg=RUNNABLE_PANEL_NEUTRAL_BG,
-                highlightbackground=RUNNABLE_PANEL_BORDER,
+                bg=self._theme_palette.runnable_neutral_bg,
+                highlightbackground=self._theme_palette.runnable_border,
                 highlightthickness=1,
                 bd=0,
                 padx=RUNNABLE_PANEL_PAD_X,
@@ -1130,8 +1148,8 @@ class LiveTopologyView(ttk.Frame):
             self._notice_title_label = tk.Label(
                 self._notice_panel,
                 text=RUNNABLE_PANEL_TITLE,
-                bg=RUNNABLE_PANEL_NEUTRAL_BG,
-                fg=RUNNABLE_PANEL_NEUTRAL_FG,
+                bg=self._theme_palette.runnable_neutral_bg,
+                fg=self._theme_palette.runnable_neutral_fg,
                 anchor="w",
                 font=RUNNABLE_PANEL_DETAIL_FONT,
             )
@@ -1139,8 +1157,8 @@ class LiveTopologyView(ttk.Frame):
             self._notice_headline_label = tk.Label(
                 self._notice_panel,
                 textvariable=self._runnable_scope_headline_var,
-                bg=RUNNABLE_PANEL_NEUTRAL_BG,
-                fg=RUNNABLE_PANEL_NEUTRAL_FG,
+                bg=self._theme_palette.runnable_neutral_bg,
+                fg=self._theme_palette.runnable_neutral_fg,
                 anchor="w",
                 justify="left",
                 font=RUNNABLE_PANEL_HEADLINE_FONT,
@@ -1149,8 +1167,8 @@ class LiveTopologyView(ttk.Frame):
             self._notice_detail_label = tk.Label(
                 self._notice_panel,
                 textvariable=self._runnable_scope_detail_var,
-                bg=RUNNABLE_PANEL_NEUTRAL_BG,
-                fg=RUNNABLE_PANEL_NEUTRAL_FG,
+                bg=self._theme_palette.runnable_neutral_bg,
+                fg=self._theme_palette.runnable_neutral_fg,
                 anchor="w",
                 justify="left",
                 wraplength=RUNNABLE_PANEL_WRAP,
@@ -1166,7 +1184,12 @@ class LiveTopologyView(ttk.Frame):
 
         canvas_frame = ttk.Frame(content_pane)
         content_pane.add(canvas_frame, weight=5)
-        self._canvas = tk.Canvas(canvas_frame, background="#ffffff", highlightthickness=1)
+        self._canvas = tk.Canvas(
+            canvas_frame,
+            background=self._theme_palette.canvas_bg,
+            highlightthickness=1,
+            highlightbackground=self._theme_palette.runnable_border,
+        )
         self._canvas.pack(side="left", fill="both", expand=True)
         y_scroll = ttk.Scrollbar(canvas_frame, orient="vertical", command=self._canvas.yview)
         y_scroll.pack(side="right", fill="y")
@@ -1190,6 +1213,10 @@ class LiveTopologyView(ttk.Frame):
         self._active_group_rows_canvas: Optional[tk.Canvas] = None
         self._active_group_member_vars: Dict[str, tk.BooleanVar] = {}
         self._active_group_member_update_in_progress = False
+        self._active_group_edit_action_state = ACTION_STATE_ALLOWED
+        self._override_action_state = ACTION_STATE_ALLOWED
+        self._override_instantiate_button: Optional[ttk.Button] = None
+        self._override_clear_button: Optional[ttk.Button] = None
         if self._show_selection_panel:
             details_container = ttk.Frame(content_pane, width=DETAILS_PANEL_INITIAL_WIDTH)
             content_pane.add(details_container, weight=2)
@@ -1317,16 +1344,21 @@ class LiveTopologyView(ttk.Frame):
             if self._on_override_action_cb is not None:
                 override_row = ttk.Frame(self._detail_device_frame)
                 override_row.grid(row=len(rows), column=0, columnspan=2, sticky="w", pady=(8, 0))
-                ttk.Button(
+                instantiate_button = ttk.Button(
                     override_row,
                     text="Override Instantiate",
                     command=lambda: self._invoke_override_action("instantiate"),
-                ).pack(side="left")
-                ttk.Button(
+                )
+                instantiate_button.pack(side="left")
+                self._override_instantiate_button = instantiate_button
+                clear_button = ttk.Button(
                     override_row,
                     text="Clear Override",
                     command=lambda: self._invoke_override_action("clear"),
-                ).pack(side="left", padx=(8, 0))
+                )
+                clear_button.pack(side="left", padx=(8, 0))
+                self._override_clear_button = clear_button
+                self._apply_override_action_button_state()
             active_group_frame = ttk.LabelFrame(
                 details_container,
                 text=ACTIVE_GROUP_FRAME_TEXT,
@@ -2136,6 +2168,22 @@ class LiveTopologyView(ttk.Frame):
         self._runtime_state_notice_level = level if level in {"info", "warn", "error"} else "warn"
         self._refresh_runtime_notice()
 
+    def set_theme(self, theme_name: str) -> None:
+        """
+        NAME
+            set_theme - Apply one shared desktop palette to this live topology surface.
+        """
+
+        self._theme_name = str(theme_name or UI_THEME_DEFAULT)
+        self._theme_palette = get_ui_theme_palette(self._theme_name)
+        canvas = getattr(self, "_canvas", None)
+        if canvas is not None:
+            canvas.configure(
+                background=self._theme_palette.canvas_bg,
+                highlightbackground=self._theme_palette.runnable_border,
+            )
+        self._refresh_runtime_notice()
+
     def clear_runtime_state_notice(self) -> None:
         """
         NAME
@@ -2165,6 +2213,44 @@ class LiveTopologyView(ttk.Frame):
             return
         self.set_runtime_state_notice(state.detail, state.level)
 
+    def set_active_group_edit_action_state(self, state: HostActionAccessState) -> None:
+        """
+        NAME
+            set_active_group_edit_action_state - Apply one shared active-group edit gate to the topology surface.
+        """
+        self._active_group_edit_action_state = (
+            state if isinstance(state, HostActionAccessState) else ACTION_STATE_ALLOWED
+        )
+        if getattr(self, "_active_group_rows_frame", None) is not None:
+            self._update_active_group_summary()
+
+    def set_override_action_state(self, state: HostActionAccessState) -> None:
+        """
+        NAME
+            set_override_action_state - Apply one shared override-action gate to the topology surface.
+        """
+        self._override_action_state = (
+            state if isinstance(state, HostActionAccessState) else ACTION_STATE_ALLOWED
+        )
+        self._apply_override_action_button_state()
+
+    def _apply_override_action_button_state(self) -> None:
+        """
+        NAME
+            _apply_override_action_button_state - Keep override buttons aligned with the shared action gate.
+        """
+        widget_state = (
+            WIDGET_STATE_NORMAL
+            if getattr(self, "_override_action_state", ACTION_STATE_ALLOWED).allowed
+            else WIDGET_STATE_DISABLED
+        )
+        for button in (
+            getattr(self, "_override_instantiate_button", None),
+            getattr(self, "_override_clear_button", None),
+        ):
+            if isinstance(button, ttk.Button):
+                button.configure(state=widget_state)
+
     def _refresh_runtime_notice(self) -> None:
         """
         NAME
@@ -2172,37 +2258,37 @@ class LiveTopologyView(ttk.Frame):
         """
         if not self.__dict__.get("_runtime_state_seen", False):
             headline = RUNNABLE_PANEL_WAITING_HEADLINE
-            bg = RUNNABLE_PANEL_NEUTRAL_BG
-            fg = RUNNABLE_PANEL_NEUTRAL_FG
+            bg = self._theme_palette.runnable_neutral_bg
+            fg = self._theme_palette.runnable_neutral_fg
             detail = RUNNABLE_PANEL_WAITING_DETAIL
         elif self._runtime_state_notice_text:
             headline = RUNNABLE_PANEL_INACTIVE_HEADLINE
             if self._runtime_state_notice_level == "error":
-                bg = RUNNABLE_PANEL_ERROR_BG
-                fg = RUNNABLE_PANEL_ERROR_FG
+                bg = self._theme_palette.runnable_error_bg
+                fg = self._theme_palette.runnable_error_fg
             else:
-                bg = RUNNABLE_PANEL_INACTIVE_BG
-                fg = RUNNABLE_PANEL_INACTIVE_FG
+                bg = self._theme_palette.runnable_inactive_bg
+                fg = self._theme_palette.runnable_inactive_fg
             detail = self._runtime_state_notice_text
         elif self._runtime_event_notice_text:
             headline = RUNNABLE_PANEL_INACTIVE_HEADLINE
             if self._runtime_event_notice_level == "error":
-                bg = RUNNABLE_PANEL_ERROR_BG
-                fg = RUNNABLE_PANEL_ERROR_FG
+                bg = self._theme_palette.runnable_error_bg
+                fg = self._theme_palette.runnable_error_fg
             else:
-                bg = RUNNABLE_PANEL_INACTIVE_BG
-                fg = RUNNABLE_PANEL_INACTIVE_FG
+                bg = self._theme_palette.runnable_inactive_bg
+                fg = self._theme_palette.runnable_inactive_fg
             detail = self._runtime_event_notice_text
         else:
             headline = RUNNABLE_PANEL_READY_HEADLINE
-            bg = RUNNABLE_PANEL_READY_BG
-            fg = RUNNABLE_PANEL_READY_FG
+            bg = self._theme_palette.runnable_ready_bg
+            fg = self._theme_palette.runnable_ready_fg
             detail = RUNNABLE_PANEL_READY_DETAIL
         self._runnable_scope_headline_var.set(headline)
         self._runnable_scope_detail_var.set(detail)
         if self._notice_panel is None:
             return
-        self._notice_panel.configure(bg=bg, highlightbackground=RUNNABLE_PANEL_BORDER)
+        self._notice_panel.configure(bg=bg, highlightbackground=self._theme_palette.runnable_border)
         for label in (
             self._notice_title_label,
             self._notice_headline_label,
@@ -2598,6 +2684,8 @@ class LiveTopologyView(ttk.Frame):
             _invoke_override_action - Forward one explicit override action for the selected device.
         """
         if self._on_override_action_cb is None or self._selected_node is None:
+            return
+        if not getattr(self, "_override_action_state", ACTION_STATE_ALLOWED).allowed:
             return
         label = str(getattr(self._selected_node, "label", EMPTY_STRING)).strip()
         if not label:
@@ -3120,7 +3208,12 @@ class LiveTopologyView(ttk.Frame):
                     if checked and label_key == primary_label.strip().lower()
                     else EMPTY_STRING
                 )
-                checkbox_state = "normal" if membership_state.editable else "disabled"
+                checkbox_state = (
+                    WIDGET_STATE_NORMAL
+                    if membership_state.editable
+                    and getattr(self, "_active_group_edit_action_state", ACTION_STATE_ALLOWED).allowed
+                    else WIDGET_STATE_DISABLED
+                )
                 detail_parts = []
                 if primary_text:
                     detail_parts.append(primary_text)
@@ -3193,7 +3286,7 @@ class LiveTopologyView(ttk.Frame):
         """
         if self._active_group_member_update_in_progress:
             return
-        if self._controlled_lifecycle_active:
+        if not getattr(self, "_active_group_edit_action_state", ACTION_STATE_ALLOWED).allowed:
             return
         callback = self._on_active_group_member_toggled_cb
         if not callable(callback):

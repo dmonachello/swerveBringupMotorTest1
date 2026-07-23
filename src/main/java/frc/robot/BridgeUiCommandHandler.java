@@ -4768,7 +4768,8 @@ public class BridgeUiCommandHandler {
    *   Toggles LiveWindow and Shuffleboard actuator widgets to reduce chatter.
    */
   public void applyDashboardUpdateState() {
-    // WPILib deprecated setNetworkTablesFlushEnabled; no-op in newer versions.
+    // Newer WPILib versions removed the old dashboard flush toggle, so only
+    // widget enable/disable behavior remains here.
     LiveWindow.setEnabled(dashboardUpdatesEnabled);
     if (dashboardUpdatesEnabled) {
       Shuffleboard.enableActuatorWidgets();

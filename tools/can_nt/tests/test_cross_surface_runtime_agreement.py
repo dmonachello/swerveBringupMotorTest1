@@ -71,6 +71,7 @@ class CrossSurfaceRuntimeAgreementTests(unittest.TestCase):
     def test_ui_group_popup_block_clears_when_runtime_binding_is_inactive(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
         ui._tcp_connected = True
+        ui._runtime_state_seen = True
         ui._state_stale = False
         ui._robot_estopped_known = False
         ui._robot_enabled_known = True

@@ -1,5 +1,11 @@
 # Test Plan: NT Removal Control-Plane Checkpoint 2026-06-28
 
+## Historical Note
+
+This test plan documents the June 28, 2026 REST control-plane migration checkpoint.
+
+It is retained as historical validation evidence, not as the primary current operator procedure.
+
 ## Purpose
 
 Provide an exact, operator-executable validation procedure for the current `NT_Removal` checkpoint.

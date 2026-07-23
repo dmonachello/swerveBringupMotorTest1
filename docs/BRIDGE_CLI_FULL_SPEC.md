@@ -65,7 +65,7 @@ Purpose: Ensure current behavior remains unchanged when CLI/groups are unused.
 
 - Existing GUI behavior remains unchanged.
 - Existing TCP command names and semantics remain unchanged.
-- Existing NetworkTables keys remain unchanged.
+- Supported CLI behavior does not depend on NetworkTables.
 - CLI is additive only.
 
 ## Architecture

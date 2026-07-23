@@ -154,6 +154,14 @@ from tools.can_nt.motor_diag_constants import (
 )
 from tools.can_nt.motor_diag_normalize import collect_profile_labels, normalize_runtime_state
 from tools.can_nt.motor_diag_rules import diagnose_motor
+from tools.can_nt.host_ui_state_service import (
+    RUNNABLE_SCOPE_KIND_MANUAL,
+    HostActionAccessState,
+    SCOPE_CONTROL_BLOCKED_WAITING_TEXT,
+    resolve_active_group_edit_action_state,
+    resolve_runnable_scope_state,
+    resolve_scope_control_state,
+)
 from tools.can_nt.status import (
     StatusResult,
     format_status_message,
@@ -1055,6 +1063,9 @@ KEY_PROFILE_INFO = "profile"
 KEY_SELECTED = "selected"
 KEY_ACTIVE_RUNTIME = "activeRuntime"
 KEY_RUNTIME_ACTIVE = "runtimeActive"
+KEY_CONTROLLED_LIFECYCLE_ACTIVE = "controlledLifecycleActive"
+KEY_ESTOPPED = "estopped"
+CLI_ACTIVE_GROUP_EDIT_SCOPE_KIND = RUNNABLE_SCOPE_KIND_MANUAL
 KEY_DIAGRAM = "diagram"
 KEY_DIAGRAM_PROFILES = "profiles"
 KEY_DIAGRAM_NODES = "nodes"
@@ -5776,6 +5787,86 @@ class BridgeCli:
             return self._remove_local_group_member(target_name, subject)
         return self._set_local_member_enabled(target_name, subject, action)
 
+    def _runtime_active_group_edit_action_state(self) -> HostActionAccessState:
+        """
+        NAME
+            _runtime_active_group_edit_action_state - Return the shared active-group edit gate for connected robot edits.
+        """
+        payload = self._fetch_robot_runtime_payload(print_events=False)
+        session_state = self._session.get_state_snapshot()
+        runtime_state_seen = isinstance(payload, dict)
+        controlled_lifecycle_active = (
+            bool(payload.get(KEY_CONTROLLED_LIFECYCLE_ACTIVE, False))
+            if isinstance(payload, dict)
+            else False
+        )
+        robot_enabled = (
+            bool(payload.get(KEY_ENABLED, False))
+            if isinstance(payload, dict)
+            else bool(session_state.get(NT_STATE_ENABLED, False))
+            if isinstance(session_state, dict)
+            else False
+        )
+        robot_estopped = (
+            bool(payload.get(KEY_ESTOPPED, False))
+            if isinstance(payload, dict)
+            else bool(session_state.get(NT_STATE_ESTOPPED, False))
+            if isinstance(session_state, dict)
+            else False
+        )
+        robot_mode = (
+            str(payload.get(KEY_MODE, EMPTY_STRING)).strip().lower()
+            if isinstance(payload, dict)
+            else EMPTY_STRING
+        )
+        runnable_scope_state = resolve_runnable_scope_state(
+            scope_kind=CLI_ACTIVE_GROUP_EDIT_SCOPE_KIND,
+            local_selected_profile=self._active_profile_name(),
+            local_profile_required=not bool(self._active_profile_name()),
+            tcp_connected=True,
+            runtime_state_seen=runtime_state_seen,
+            stale_state=False,
+            robot_enabled=robot_enabled,
+            robot_estopped=robot_estopped,
+            robot_mode=robot_mode,
+            manual_group_empty=False,
+            scope_active=controlled_lifecycle_active,
+        )
+        scope_control_state = resolve_scope_control_state(
+            scope_kind=CLI_ACTIVE_GROUP_EDIT_SCOPE_KIND,
+            runtime_ui_ready=True,
+            tracker_pending=self._tracker.is_pending(),
+            stale_state=False,
+            runtime_state_seen=runtime_state_seen,
+            controlled_lifecycle_active=controlled_lifecycle_active,
+            transition_pending=False,
+            runnable_scope_state=runnable_scope_state,
+            selected_test_name=EMPTY_STRING,
+            selected_test_ready=False,
+            selected_test_invalid=False,
+            selected_test_running=False,
+            selected_test_runtime_block_reason=EMPTY_STRING,
+        )
+        return resolve_active_group_edit_action_state(
+            tcp_connected=True,
+            tracker_pending=self._tracker.is_pending(),
+            controlled_lifecycle_active=controlled_lifecycle_active,
+            scope_control_state=scope_control_state,
+        )
+
+    def _guard_runtime_active_group_edit(self, group_name: str) -> Optional[StatusResult]:
+        """
+        NAME
+            _guard_runtime_active_group_edit - Block connected active-group edits when the shared ownership gate is closed.
+        """
+        if not self._session.is_connected() or not self._is_active_group(group_name):
+            return None
+        action_state = self._runtime_active_group_edit_action_state()
+        if action_state.allowed:
+            return None
+        print(str(action_state.blocked_reason or SCOPE_CONTROL_BLOCKED_WAITING_TEXT))
+        return StatusResult(code=SS__EXECUTOR__FAILED, message=action_state.blocked_reason)
+
     def _handle_member_assign_selector(
         self,
         target_name: str,
@@ -10089,6 +10180,9 @@ class BridgeCli:
                 return StatusResult(code=SS__NORMAL)
             return self._coerce_status(self._handle_show(tokens[1:]))
         if cmd == "add" and len(tokens) >= 3 and tokens[1].lower() == "device":
+            blocked = self._guard_runtime_active_group_edit(group)
+            if blocked is not None:
+                return blocked
             device_label = self._normalize_device_label_input(tokens[2])
             if not self._local_device_exists(device_label):
                 print("ERROR: Device not defined in local config. Use device <device> to create it.")
@@ -10103,12 +10197,18 @@ class BridgeCli:
                 return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
             return StatusResult(code=SS__NORMAL)
         if cmd == "no" and len(tokens) >= 3 and tokens[1].lower() == "device":
+            blocked = self._guard_runtime_active_group_edit(group)
+            if blocked is not None:
+                return blocked
             seq = group_remove_device(self._session, group, tokens[2])
             event = self._wait_for_seq(seq)
             if self._event_failed(event, "member remove"):
                 return StatusResult(code=SS__NETWORK__COMMAND_SEND_FAILED)
             return StatusResult(code=SS__NORMAL)
         if cmd == "member" and len(tokens) >= 3:
+            blocked = self._guard_runtime_active_group_edit(group)
+            if blocked is not None:
+                return blocked
             action = tokens[2].lower()
             if action == "enable":
                 seq = group_member_enable(self._session, group, tokens[1])

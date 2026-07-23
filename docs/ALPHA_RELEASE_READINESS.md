@@ -8,9 +8,10 @@ release of this repo (robot Java + PC Python tool).
 ## Scope
 
 - Robot-side: WPILib Java bringup harness (roboRIO).
-- PC-side: Windows-first Python CANable sniffer + NetworkTables publisher +
-  optional UI/CLI tooling.
-- Interfaces: NetworkTables under `bringup/diag/...` and the TCP command channel.
+- PC-side: Windows-first Python CANable sniffer + optional UI/CLI/topology
+  tooling.
+- Interfaces: REST/TCP for supported bringup control/state workflows and
+  host-local diagnostics models.
 
 ## Definition Of "Alpha"
 
@@ -36,7 +37,7 @@ Purpose: Concrete pass/fail gates for declaring alpha.
 
 1. Fresh clone on Windows can run the PC tool without code edits.
 1. Robot project builds and deploys via the normal GradleRIO workflow.
-1. NetworkTables key contract is explicitly documented and stable.
+1. Supported REST/TCP and host-local bringup contracts are explicitly documented and stable.
 1. Hardware profiles/tests are data-driven, validated, and syncable to deploy.
 1. Safety rules hold:
 
@@ -103,19 +104,13 @@ Purpose: Avoid fragile invocation patterns.
 - If shipping `.cmd` wrappers, ensure they do not embed user-specific paths and
   work with standard Python installs.
 
-### NetworkTables Contract
+### Historical NetworkTables Contract (Retired)
 
-Purpose: Treat NT paths as an API contract between Java and Python.
+Purpose: Record the retired contract so older docs are not mistaken for the current architecture.
 
-- Document every key published by the PC tool and read by Java:
-  - Path
-  - Type (string/double/bool/json-string)
-  - Ownership (writer side)
-  - Update cadence expectations
-  - Behavior when missing/stale
-- Include a reproducible inventory command in docs:
-
-  - PC side already supports `--list-keys` and `--dump-nt`.
+- Supported bringup control and diagnostics workflows no longer depend on NetworkTables.
+- Historical references should point readers to `docs/NT_CONTRACT.md`.
+- New alpha work must not reintroduce NT as an active bringup transport.
 
 ### Profiles And Deploy Sync
 

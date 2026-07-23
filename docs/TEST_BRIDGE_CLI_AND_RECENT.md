@@ -138,4 +138,4 @@ If a roboRIO is available:
 - run non-motion profile/test visibility checks
 - confirm no stop-latch or profile-selection regression
 
-Use [TEST_PLAN_CURRENT_SYSTEM_2026_05_23.md](./TEST_PLAN_CURRENT_SYSTEM_2026_05_23.md) for the full connected procedure.
+Use [TEST_PROCEDURE_FULL_ROBOT_FROM_SCRATCH_V3.md](./TEST_PROCEDURE_FULL_ROBOT_FROM_SCRATCH_V3.md) for the fuller connected procedure.

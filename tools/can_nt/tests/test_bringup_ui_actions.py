@@ -47,11 +47,13 @@ from tools.can_nt.bringup_ui import (
     TEST_SOURCE_COMPLETION_MODE_READ,
     TEST_SOURCE_COMPLETION_MODE_WRITE,
     _RestTableAdapter,
+    _load_ui_theme_pref,
     _load_tests_from_dsl_store,
     _action_sections,
     _format_runtime_probe_score,
     _merge_host_ui_actions,
 )
+from tools.can_nt.ui_theme import UI_THEME_DEFAULT, UI_THEME_FIELD_CONSOLE_DARK
 from tools.can_topology.live_topology_view import (
     TOPOLOGY_LENS_RUNTIME,
     TOPOLOGY_LENS_VISIBILITY,
@@ -3475,6 +3477,10 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._robot_estopped_known = False
         ui._robot_enabled_known = True
         ui._controlled_lifecycle_active_known = False
+        ui._latest_runtime_devices = {
+            "sparkmax/neo 25": {"label": "SPARKMAX/NEO 25", "testable": True},
+            "falcon 9": {"label": "FALCON 9", "testable": True},
+        }
         ui._latest_runtime_state_payload = {"groups": []}
         ui._tracker = type("TrackerStub", (), {"is_pending": staticmethod(lambda: False)})()
         ui._append_output = lambda _line: None
@@ -3537,10 +3543,14 @@ class BringupUiActionMetadataTests(unittest.TestCase):
     def test_open_manual_group_duty_targets_preserves_group_transport_for_active_group(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
         ui._tcp_connected = True
+        ui._runtime_state_seen = True
         ui._state_stale = False
         ui._robot_estopped_known = False
         ui._robot_enabled_known = True
         ui._controlled_lifecycle_active_known = False
+        ui._latest_runtime_devices = {
+            "falcon 9": {"label": "FALCON 9", "testable": True},
+        }
         ui._latest_runtime_state_payload = {"groups": []}
         ui._tracker = type("TrackerStub", (), {"is_pending": staticmethod(lambda: False)})()
         ui._append_output = lambda _line: None
@@ -3563,6 +3573,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
     def test_open_manual_group_duty_targets_blocks_when_overlapping_binding_is_active(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
         ui._tcp_connected = True
+        ui._runtime_state_seen = True
         ui._state_stale = False
         ui._robot_estopped_known = False
         ui._robot_enabled_known = True
@@ -3597,6 +3608,48 @@ class BringupUiActionMetadataTests(unittest.TestCase):
 
         self.assertEqual([], popup_calls)
         self.assertEqual([MANUAL_DUTY_BLOCKED_BINDING_ACTIVE_TEXT], lines)
+
+    def test_live_override_action_blocks_when_command_pending(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._tcp_connected = True
+        ui._tracker = type(
+            "TrackerStub",
+            (),
+            {"is_pending": staticmethod(lambda: True)},
+        )()
+        lines = []
+        ui._append_output = lines.append
+        ui._send_tcp_command = lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("override action should stay blocked while command is pending")
+        )
+
+        ui._on_live_override_action("FALCON 9", "instantiate")
+
+        self.assertEqual(["Busy: wait for current command to finish."], lines)
+
+    def test_live_override_action_refreshes_after_send(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._tcp_connected = True
+        ui._tracker = type(
+            "TrackerStub",
+            (),
+            {"is_pending": staticmethod(lambda: False)},
+        )()
+        lines = []
+        refresh_calls = []
+        sent = []
+        ui._append_output = lines.append
+        ui._request_runtime_state_refresh = lambda: refresh_calls.append("refresh")
+        ui.after_idle = lambda callback: callback()
+        ui._send_tcp_command = lambda command, args: sent.append((command, args)) or 42
+
+        ui._on_live_override_action("FALCON 9", "instantiate")
+
+        self.assertEqual(
+            [("deviceOverrideInstantiate", {"name": "FALCON 9"})],
+            sent,
+        )
+        self.assertEqual(["refresh"], refresh_calls)
 
     def test_reset_ui_session_runtime_context_stops_manual_duty_popup(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
@@ -4408,6 +4461,74 @@ class BringupUiActionMetadataTests(unittest.TestCase):
             ui._scope_activation_notice_text(),
         )
 
+    def test_update_action_enabled_keeps_selected_test_activate_enabled_while_scope_is_active(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._refresh_scope_context_label = lambda: None
+        ui._refresh_selected_test_scope_status = lambda: None
+        ui._tcp_connected = True
+        ui._handshake_done = True
+        ui._state_stale = False
+        ui._runtime_state_seen = True
+        ui._tracker = type("TrackerStub", (), {"is_pending": lambda _self: False})()
+        ui._action_buttons = []
+        ui._action_buttons_by_command = {}
+        ui._test_selection_boxes = lambda: []
+        ui._activate_scope_button = _ButtonStub()
+        ui._deactivate_scope_button = _ButtonStub()
+        ui._tests_run_selected_button = _ButtonStub()
+        ui._reset_button = _ButtonStub()
+        ui._test_runtime_block_reason = lambda: ""
+        ui._scope_context_kind = lambda: GROUP_SOURCE_SELECTED_TEST
+        ui._profile_box = _ProfileBoxStub("test_minimal_25_9", values=("test_minimal_25_9",))
+        ui._manual_active_group_is_empty = lambda: False
+        ui._selected_test_var = _StringVarStub("smoke_test")
+        ui._controlled_lifecycle_active_known = True
+        ui._host_local_action_enabled = lambda _command: True
+        ui._selected_test_ready = lambda: True
+        ui._selected_test_has_invalid_members = lambda: False
+        ui._selected_test_running = lambda: False
+        ui._scope_transition_pending = lambda: False
+        ui._runnable_scope_state = lambda stale_state: SimpleNamespace(blocked_reason="")
+
+        ui._update_action_enabled()
+
+        self.assertFalse(ui._activate_scope_button.disabled)
+        self.assertFalse(ui._deactivate_scope_button.disabled)
+
+    def test_update_action_enabled_blocks_selected_test_activate_and_deactivate_while_test_running(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._refresh_scope_context_label = lambda: None
+        ui._refresh_selected_test_scope_status = lambda: None
+        ui._tcp_connected = True
+        ui._handshake_done = True
+        ui._state_stale = False
+        ui._runtime_state_seen = True
+        ui._tracker = type("TrackerStub", (), {"is_pending": lambda _self: False})()
+        ui._action_buttons = []
+        ui._action_buttons_by_command = {}
+        ui._test_selection_boxes = lambda: []
+        ui._activate_scope_button = _ButtonStub()
+        ui._deactivate_scope_button = _ButtonStub()
+        ui._tests_run_selected_button = _ButtonStub()
+        ui._reset_button = _ButtonStub()
+        ui._test_runtime_block_reason = lambda: ""
+        ui._scope_context_kind = lambda: GROUP_SOURCE_SELECTED_TEST
+        ui._profile_box = _ProfileBoxStub("test_minimal_25_9", values=("test_minimal_25_9",))
+        ui._manual_active_group_is_empty = lambda: False
+        ui._selected_test_var = _StringVarStub("smoke_test")
+        ui._controlled_lifecycle_active_known = True
+        ui._host_local_action_enabled = lambda _command: True
+        ui._selected_test_ready = lambda: True
+        ui._selected_test_has_invalid_members = lambda: False
+        ui._selected_test_running = lambda: True
+        ui._scope_transition_pending = lambda: False
+        ui._runnable_scope_state = lambda stale_state: SimpleNamespace(blocked_reason="")
+
+        ui._update_action_enabled()
+
+        self.assertTrue(ui._activate_scope_button.disabled)
+        self.assertTrue(ui._deactivate_scope_button.disabled)
+
     def test_collect_console_snapshot_uses_console_monitor_entries(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
         ui._console_monitor = type(
@@ -5111,6 +5232,30 @@ class BringupUiActionMetadataTests(unittest.TestCase):
 
         self.assertIn("Push Config: FAILED", output_lines)
         self.assertIn("Robot rejected config push.", output_lines)
+
+    def test_load_ui_theme_pref_falls_back_to_default_for_invalid_name(self) -> None:
+        with patch(
+            "tools.can_nt.bringup_ui._load_ui_prefs_payload",
+            return_value={"theme": "invalid-theme"},
+        ):
+            self.assertEqual(UI_THEME_DEFAULT, _load_ui_theme_pref())
+
+    def test_save_ui_command_prefs_persists_theme_name(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._ui_command_prefs = {}
+        ui._ui_auto_select_default_profile = False
+        ui._ui_show_visibility_tab = True
+        ui._ui_show_wall_clock = True
+        ui._ui_theme_name = UI_THEME_FIELD_CONSOLE_DARK
+        captured = {}
+
+        def _capture_write(_path, payload) -> None:
+            captured.update(payload)
+
+        with patch("tools.can_nt.bringup_ui.write_json", side_effect=_capture_write):
+            ui._save_ui_command_prefs()
+
+        self.assertEqual(UI_THEME_FIELD_CONSOLE_DARK, captured["theme"])
 
 if __name__ == "__main__":
     unittest.main()

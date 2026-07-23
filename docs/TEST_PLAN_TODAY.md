@@ -4,10 +4,6 @@
 
 Provide the current operator-facing regression plan for this workspace.
 
-For the full current-system plan, use:
-
-- [TEST_PLAN_CURRENT_SYSTEM_2026_05_23.md](./TEST_PLAN_CURRENT_SYSTEM_2026_05_23.md)
-
 This file is the short daily entrypoint.
 
 ## Today’s Gate
@@ -53,6 +49,6 @@ Today’s plan specifically covers:
 
 Use the detailed procedures in:
 
-- [TEST_PLAN_CURRENT_SYSTEM_2026_05_23.md](./TEST_PLAN_CURRENT_SYSTEM_2026_05_23.md)
 - [TEST_PLAN_BINDINGS_FUNCTIONALITY.md](./TEST_PLAN_BINDINGS_FUNCTIONALITY.md)
 - [TESTING_WINDOWS_OFFLINE.md](./TESTING_WINDOWS_OFFLINE.md)
+- [TEST_PROCEDURE_FULL_ROBOT_FROM_SCRATCH_V3.md](./TEST_PROCEDURE_FULL_ROBOT_FROM_SCRATCH_V3.md)

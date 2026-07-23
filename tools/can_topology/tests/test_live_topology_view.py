@@ -3,6 +3,10 @@ from __future__ import annotations
 import unittest
 
 from tools.can_topology import live_topology_view as live_view_module
+from tools.can_nt.ui_theme import (
+    UI_THEME_FIELD_CONSOLE_DARK,
+    get_ui_theme_palette,
+)
 from tools.common import topology_draw
 
 
@@ -163,6 +167,10 @@ class LiveTopologyViewTests(unittest.TestCase):
         view._runtime_state_seen = False
         view._runtime_state_notice_text = ""
         view._runtime_event_notice_text = ""
+        view._theme_name = live_view_module.UI_THEME_DEFAULT
+        view._theme_palette = get_ui_theme_palette(view._theme_name)
+        view._active_group_edit_action_state = live_view_module.ACTION_STATE_ALLOWED
+        view._override_action_state = live_view_module.ACTION_STATE_ALLOWED
         view._active_group_summary_var = None
         view._active_group_status_var = None
         view._detail_vars = {}
@@ -182,6 +190,45 @@ class LiveTopologyViewTests(unittest.TestCase):
         view.update_idletasks = lambda: None
         view._redraw = lambda *_args, **_kwargs: None
         return view
+
+    def test_active_group_checkbox_toggle_uses_shared_action_gate(self) -> None:
+        view = self._make_view()
+        calls = []
+        view._on_active_group_member_toggled_cb = lambda label, enabled: calls.append((label, enabled))
+        view._active_group_member_update_in_progress = False
+        view._active_group_member_vars = {"falcon 9": _BoolVarStub(True)}
+        view.set_active_group_edit_action_state(
+            live_view_module.HostActionAccessState(
+                allowed=False,
+                blocked_reason="blocked",
+                refresh_before_action=False,
+                refresh_after_action=False,
+                refresh_when_blocked=False,
+            )
+        )
+
+        view._on_active_group_member_checkbox_toggled("FALCON 9")
+
+        self.assertEqual([], calls)
+
+    def test_override_action_uses_shared_action_gate(self) -> None:
+        view = self._make_view()
+        calls = []
+        view._selected_node = type("NodeStub", (), {"label": "FALCON 9", "can_id": 9})()
+        view._on_override_action_cb = lambda label, action: calls.append((label, action))
+        view.set_override_action_state(
+            live_view_module.HostActionAccessState(
+                allowed=False,
+                blocked_reason="blocked",
+                refresh_before_action=False,
+                refresh_after_action=False,
+                refresh_when_blocked=False,
+            )
+        )
+
+        view._invoke_override_action("instantiate")
+
+        self.assertEqual([], calls)
 
     def _attach_detail_vars(self, view: live_view_module.LiveTopologyView) -> None:
         view._detail_vars = {
@@ -485,6 +532,24 @@ class LiveTopologyViewTests(unittest.TestCase):
 
         self.assertEqual(
             live_view_module.RUNNABLE_PANEL_ERROR_BG,
+            view._notice_panel.bg,
+        )
+
+    def test_set_theme_updates_runtime_notice_palette(self) -> None:
+        view = self._make_view()
+        view._runtime_state_seen = True
+        view._runnable_scope_headline_var = _StringVarStub("")
+        view._runnable_scope_detail_var = _StringVarStub("")
+        view._notice_panel = _PanelStub()
+        view._notice_title_label = _LabelStub()
+        view._notice_headline_label = _LabelStub()
+        view._notice_detail_label = _LabelStub()
+
+        view.set_theme(UI_THEME_FIELD_CONSOLE_DARK)
+        view.set_runtime_state_notice("Blocked.", "warn")
+
+        self.assertEqual(
+            get_ui_theme_palette(UI_THEME_FIELD_CONSOLE_DARK).runnable_inactive_bg,
             view._notice_panel.bg,
         )
 

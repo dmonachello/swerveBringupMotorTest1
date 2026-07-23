@@ -1,8 +1,16 @@
+SPEC_STATUS: HISTORICAL
+
 # Remove NT Phase 2 Inventory
 
 ## Purpose
 
 Inventory the remaining NetworkTables usage after the first NT removal pass, classify each surface by ownership and risk, and define the safest removal order for branch `remove_nt_2`.
+
+## Historical Note
+
+This document is a branch-era inventory from the staged NT removal effort.
+
+It is retained for maintainer history, not as a description of the current supported bringup architecture.
 
 ## Current State
 

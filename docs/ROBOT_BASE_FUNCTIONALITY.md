@@ -106,7 +106,7 @@ Examples:
 - state
 - health
 - CAN diagnostics
-- NetworkTables diagnostics
+- host diagnostics / passive visibility diagnostics
 - inputs
 - bindings
 - tests info

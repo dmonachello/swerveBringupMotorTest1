@@ -17,7 +17,7 @@ The current bringup system already has useful CAN-health evidence, but that evid
 Today, the project has two important but insufficient sources for that question:
 
 - passive CAN visibility from the PC-side CANable observer
-- host-parsed console diagnostics published back to the robot through NetworkTables
+- host-parsed console diagnostics surfaced through explicit host-side diagnostics paths
 
 Those sources are valuable, but neither one alone is a strong defined-node existence test:
 
@@ -67,7 +67,7 @@ Purpose: infer bus/node visibility from the PC-side CANable listener.
 
 Current source:
 
-- host-side visibility provider and related `bringup/diag/dev/...` and `bringup/diag/can/...` publications
+- host-side visibility provider and related host diagnostics summaries
 
 Strengths:
 
@@ -86,8 +86,8 @@ Purpose: surface host-parsed roboRIO NetConsole evidence as structured diagnosti
 Current split:
 
 - host parses raw console output
-- host publishes structured console events to `bringup/diag/console/...`
-- robot consumes the structured NetworkTables diagnostics
+- host stores structured console evidence in explicit host-side diagnostics models
+- supported bringup workflows do not depend on NetworkTables transport for this source
 
 Strengths:
 

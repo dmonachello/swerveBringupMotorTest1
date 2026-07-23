@@ -35,3 +35,7 @@ Purpose: Add or modify hardware definitions safely.
 ## TCP UI and Protocol
 Purpose: Validate the UI command channel.
 - `TEST_TCP_UI.md`
+
+## Historical Docs
+Purpose: Keep superseded plans and intermediate design documents out of the current operator path while preserving maintainer history.
+- `docs/historical/README.md`

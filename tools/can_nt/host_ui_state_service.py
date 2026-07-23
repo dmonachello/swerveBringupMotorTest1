@@ -108,6 +108,12 @@ TEST_SCOPE_STATUS_BLOCKED_DISABLED_DETAIL = (
 TEST_SCOPE_STATUS_BLOCKED_NOT_TELEOP_DETAIL = (
     "This test cannot run because the robot is not in teleop. Switch to teleop before activating the group or running the test."
 )
+TEST_SCOPE_STATUS_RUNNING_DETAIL = (
+    "This test is currently running. Wait for the run to finish before activating or deactivating scope."
+)
+TEST_SCOPE_STATUS_RUNNING_DETAIL = (
+    "This test is currently running. Wait for the run to finish before activating or deactivating scope."
+)
 TEST_SCOPE_STATUS_INACTIVE_PREFIX = "selected test inactive - "
 TEST_ACTIVE_GROUP_STATUS_LOCKED = "locked"
 TEST_ACTIVE_GROUP_STATUS_INVALID = "invalid"
@@ -147,6 +153,11 @@ MANUAL_DUTY_BLOCKED_TRANSITION_TEXT = (
 )
 SCOPE_CONTROL_BLOCKED_WAITING_TEXT = (
     "Runtime state not loaded yet. Wait for refresh before editing active-group."
+)
+HOST_ACTION_BLOCKED_NOT_CONNECTED_TEXT = "Not connected: command blocked."
+HOST_ACTION_BLOCKED_BUSY_TEXT = "Busy: wait for current command to finish."
+ACTIVE_GROUP_EDIT_BLOCKED_LOCKED_TEXT = (
+    "Active group membership is locked while an active scope session is running. Deactivate scope first."
 )
 RUNTIME_GROUP_KEY_MEMBERS = "members"
 RUNTIME_GROUP_KEY_LABEL = "label"
@@ -361,6 +372,20 @@ class ManualDutyAccessState:
 
     allowed: bool
     blocked_reason: str
+
+
+@dataclass(frozen=True)
+class HostActionAccessState:
+    """
+    NAME
+        HostActionAccessState - Shared host-side action-access contract for surface entry points.
+    """
+
+    allowed: bool
+    blocked_reason: str
+    refresh_before_action: bool
+    refresh_after_action: bool
+    refresh_when_blocked: bool
 
 
 def resolve_manual_duty_binding_state(
@@ -1191,6 +1216,7 @@ def resolve_scope_control_state(
     selected_test_name: object,
     selected_test_ready: bool,
     selected_test_invalid: bool,
+    selected_test_running: bool,
     selected_test_runtime_block_reason: object,
 ) -> ScopeControlState:
     """
@@ -1213,20 +1239,21 @@ def resolve_scope_control_state(
         blocked_reason = RUNNABLE_SCOPE_PANEL_RESYNC_DETAIL
     elif normalized_scope == RUNNABLE_SCOPE_KIND_SELECTED_TEST and not selected_test_selected:
         blocked_reason = TEST_SCOPE_STATUS_NO_SELECTION_DETAIL
-    elif normalized_scope == RUNNABLE_SCOPE_KIND_SELECTED_TEST and selected_test_invalid:
-        blocked_reason = SELECTED_TEST_STATUS_REQUIRED_UNAVAILABLE
+    elif normalized_scope == RUNNABLE_SCOPE_KIND_SELECTED_TEST and selected_test_running:
+        blocked_reason = TEST_SCOPE_STATUS_RUNNING_DETAIL
     elif runtime_block_reason:
         blocked_reason = runtime_block_reason
     else:
         blocked_reason = str(runnable_scope_state.blocked_reason or "").strip()
-    if base_allowed and not transition_pending and not runtime_block_reason:
+    if base_allowed and not transition_pending and not runtime_block_reason and not selected_test_running:
         if normalized_scope == RUNNABLE_SCOPE_KIND_SELECTED_TEST:
-            activate_allowed = selected_test_selected and not selected_test_invalid
-        elif runtime_state_seen and runnable_scope_state.activation_allowed:
+            activate_allowed = selected_test_selected
+        elif runtime_state_seen:
             activate_allowed = True
     deactivate_allowed = (
         base_allowed
         and not transition_pending
+        and not bool(selected_test_running)
         and bool(controlled_lifecycle_active)
     )
     run_selected_allowed = (
@@ -1234,6 +1261,7 @@ def resolve_scope_control_state(
         and normalized_scope == RUNNABLE_SCOPE_KIND_SELECTED_TEST
         and not transition_pending
         and not runtime_block_reason
+        and not bool(selected_test_running)
         and bool(selected_test_ready)
     )
     active_group_editable = (
@@ -1334,3 +1362,129 @@ def resolve_manual_duty_access_state(
     if not binding_state.allowed:
         return ManualDutyAccessState(False, binding_state.blocked_reason)
     return ManualDutyAccessState(True, "")
+
+
+def resolve_manual_duty_action_state(
+    *,
+    tcp_connected: bool,
+    runtime_state_seen: bool,
+    stale_state: bool,
+    robot_estopped: bool,
+    robot_enabled: bool,
+    tracker_pending: bool,
+    transition_pending: bool,
+    target_labels: List[object],
+    runtime_state_by_label: Dict[str, Dict[str, Any]],
+    controlled_lifecycle_active: bool,
+    runtime_groups: List[Dict[str, Any]],
+) -> HostActionAccessState:
+    """
+    NAME
+        resolve_manual_duty_action_state - Return shared popup-entry policy for manual-duty actions.
+    """
+    access_state = resolve_manual_duty_access_state(
+        tcp_connected=tcp_connected,
+        runtime_state_seen=runtime_state_seen,
+        stale_state=stale_state,
+        robot_estopped=robot_estopped,
+        robot_enabled=robot_enabled,
+        tracker_pending=tracker_pending,
+        transition_pending=transition_pending,
+        target_labels=target_labels,
+        runtime_state_by_label=runtime_state_by_label,
+        controlled_lifecycle_active=controlled_lifecycle_active,
+        runtime_groups=runtime_groups,
+    )
+    return HostActionAccessState(
+        allowed=access_state.allowed,
+        blocked_reason=access_state.blocked_reason,
+        refresh_before_action=access_state.allowed,
+        refresh_after_action=False,
+        refresh_when_blocked=False,
+    )
+
+
+def resolve_active_group_edit_action_state(
+    *,
+    tcp_connected: bool,
+    tracker_pending: bool,
+    controlled_lifecycle_active: bool,
+    scope_control_state: ScopeControlState,
+) -> HostActionAccessState:
+    """
+    NAME
+        resolve_active_group_edit_action_state - Return shared edit-access policy for active-group membership actions.
+    """
+    if not tcp_connected:
+        return HostActionAccessState(
+            allowed=False,
+            blocked_reason=HOST_ACTION_BLOCKED_NOT_CONNECTED_TEXT,
+            refresh_before_action=False,
+            refresh_after_action=False,
+            refresh_when_blocked=False,
+        )
+    if tracker_pending:
+        return HostActionAccessState(
+            allowed=False,
+            blocked_reason=HOST_ACTION_BLOCKED_BUSY_TEXT,
+            refresh_before_action=False,
+            refresh_after_action=False,
+            refresh_when_blocked=False,
+        )
+    if controlled_lifecycle_active:
+        return HostActionAccessState(
+            allowed=False,
+            blocked_reason=ACTIVE_GROUP_EDIT_BLOCKED_LOCKED_TEXT,
+            refresh_before_action=False,
+            refresh_after_action=False,
+            refresh_when_blocked=True,
+        )
+    if not bool(scope_control_state.active_group_editable):
+        return HostActionAccessState(
+            allowed=False,
+            blocked_reason=str(scope_control_state.blocked_reason or SCOPE_CONTROL_BLOCKED_WAITING_TEXT).strip(),
+            refresh_before_action=False,
+            refresh_after_action=False,
+            refresh_when_blocked=True,
+        )
+    return HostActionAccessState(
+        allowed=True,
+        blocked_reason="",
+        refresh_before_action=False,
+        refresh_after_action=True,
+        refresh_when_blocked=False,
+    )
+
+
+def resolve_override_action_state(
+    *,
+    tcp_connected: bool,
+    tracker_pending: bool,
+) -> HostActionAccessState:
+    """
+    NAME
+        resolve_override_action_state - Return shared entry policy for explicit lifecycle override actions.
+    """
+    if not tcp_connected:
+        return HostActionAccessState(
+            allowed=False,
+            blocked_reason=HOST_ACTION_BLOCKED_NOT_CONNECTED_TEXT,
+            refresh_before_action=False,
+            refresh_after_action=False,
+            refresh_when_blocked=False,
+        )
+    if tracker_pending:
+        return HostActionAccessState(
+            allowed=False,
+            blocked_reason=HOST_ACTION_BLOCKED_BUSY_TEXT,
+            refresh_before_action=False,
+            refresh_after_action=False,
+            refresh_when_blocked=False,
+        )
+    return HostActionAccessState(
+        allowed=True,
+        blocked_reason="",
+        refresh_before_action=False,
+        refresh_after_action=True,
+        refresh_when_blocked=False,
+    )

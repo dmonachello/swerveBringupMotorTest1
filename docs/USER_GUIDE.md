@@ -202,11 +202,6 @@ Purpose: Contrast visualization-only tools with bringup workflows.
 - pynetworktables2js forwards NetworkTables key/value data over WebSocket for HTML/JavaScript dashboards. ?cite?turn3search3?
 - This system adds profile-driven planning, bringup actions, and passive CAN inventory/diffing in addition to visualization.
 
-### NetworkTables Inspection
-Purpose: Contrast low-level NT debugging with the current bringup architecture.
-- OutlineViewer is a utility for viewing, modifying, and adding NetworkTables values during debugging. ?cite?turn3search0?
-- This bringup system no longer depends on NetworkTables for supported control or diagnostics workflows.
-
 ### Path Planning Tools
 Purpose: Contrast motion planning tools with hardware bringup.
 - PathWeaver is the WPILib tool used to draw the paths for a robot to follow. ?cite?turn2search2?
