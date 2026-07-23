@@ -7,7 +7,7 @@
 This repository contains an integrated bringup and diagnostics system for FRC robots with two main components:
 
 - **Robot-side**: WPILib Java application (`RobotV2`) that actively runs motors, sensors, and tests on the roboRIO
-- **PC-side**: Python tools that passively observe CAN traffic and provide diagnostics via NetworkTables
+- **PC-side**: Python tools that passively observe CAN traffic and provide diagnostics
 
 The system is designed to make hardware issues obvious before wasting time on tuning or code bugs.
 
