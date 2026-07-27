@@ -3,7 +3,7 @@
 This repo is one system with two cooperating parts:
 
 - Robot-side WPILib Java bringup harness that actively runs motors/sensors on the roboRIO.
-- PC-side Python tool that passively listens to the robot CAN bus via CANable (slcan over COM port) and publishes diagnostics to NetworkTables for the robot code and dashboards.
+- PC-side Python tool that passively listens to the robot CAN bus via CANable (slcan over COM port) and feeds host-local and REST-driven diagnostics surfaces. Supported bringup workflows no longer depend on a NetworkTables bridge.
 - Shared docs/specs that define CLI behavior, layered architecture, operator workflows, and pit-side diagnosis direction.
 
 Real-time structure (20ms loop + scheduler)
@@ -22,9 +22,9 @@ Purpose: Explain why console output is throttled and how long reports are produc
 Hard rules
 
 - The Python side must be read-only on CAN. Never transmit CAN frames.
-- Keep a strict separation between local robot data (read directly on the roboRIO) and CAN-bus data coming from the PC tool via NetworkTables. Do not mix or conflate the two in logging, diagnostics, or APIs.
-- Do not assume how the Java code uses NetworkTables. Before changing any NT keys, first inventory current usage in Java and Python and produce a short report.
-- NetworkTables paths are an API contract. If any key path changes, update both sides in the same change and keep backward compatibility for at least one iteration.
+- Keep a strict separation between local robot data (read directly on the roboRIO) and CAN-bus data coming from the PC tool through supported REST-driven or host-local diagnostics flows. Do not mix or conflate the two in logging, diagnostics, or APIs.
+- NetworkTables is retired for supported bringup flows. If NT appears in current code, docs, or generated artifacts, treat it as historical, compatibility-only, or a regression unless explicitly justified.
+- Before changing any remaining NT references, inventory current Java/Python usage first and document whether the reference is active, compatibility-only, generated, or historical.
 - Windows is the primary host for the Python tool (Driver Station Windows PC). Avoid Linux-only assumptions (SocketCAN, can0, etc) unless explicitly requested.
 - Prefer small, reversible diffs. No sweeping refactors unless asked.
 - For behavior exposed through multiple surfaces (for example editor, live UI, CLI, reports), common code must own the full shared contract, not just helper primitives. If two surfaces are supposed to show or interpret the same topology/config state, they must share the same scene/model-building path or an explicitly documented compatibility adapter. Do not add or preserve independent render/composition pipelines for the same artifact unless the difference is intentional and documented.
@@ -92,18 +92,18 @@ Purpose: Keep multiple test passes clean while preserving prior results.
 - Leave `TESTING_RESULTS:` blocks in place; only `SID_COMMENT:` should be reused for the next pass.
 
 What to do first for any task that touches the Java-Python interface
-1) Inventory NetworkTables usage:
+1) Inventory remaining NetworkTables usage when applicable:
 
    - List every path written and read on the Java side.
-   - List every path published by the Python tool.
-   - Identify overlaps, mismatches, and dead keys.
+   - List every path published by the Python tool, if any compatibility publication still exists.
+   - Identify active uses, compatibility-only uses, stale docs, and dead keys.
    Do not edit code in this step.
 
-2) Propose the contract:
+2) Propose the contract or confirm retirement status:
 
-   - Which side owns which keys.
-   - Update cadence expectations (publish period).
-   - Behavior when the Python tool is absent (Java must fail soft).
+   - Which side owns which remaining keys, if any.
+   - Whether the path should stay compatibility-only or be removed.
+   - Behavior when host diagnostics are absent (Java must fail soft).
    Do not edit code in this step.
 
 3) Implement changes:
@@ -115,7 +115,7 @@ Definition of done
 
 - Java code still builds and deploys via the normal GradleRIO workflow for this repo.
 - Python tool still runs on Windows with CANable slcan COM port and FRC bitrate 1,000,000.
-- Python tool still publishes bringup/diag keys without breaking existing dashboards/prints.
+- Python tool still runs on Windows and does not reintroduce a required NetworkTables bridge for supported bringup workflows.
 - PCAP/PCAPNG output (if enabled) still opens in Wireshark.
 - Relevant CLI regression scripts pass, or any hardware/network dependency is explicitly called out.
 - If Java tests are run on Windows, `JAVA_HOME` must point at the JDK root (for example `C:\Users\Public\wpilib\2024\jdk`), not the `bin` directory.
@@ -223,15 +223,10 @@ Implementation constraints
 - Analysis code must work both live and for offline replay if we add replay later.
 - All reverse engineering outputs must tolerate unknown devices and unknown message types.
 
-NetworkTables publishing (additive)
+Historical NetworkTables publishing
 
-- Add new keys under bringup/diag/can/...
-  Suggested keys:
-
-  - can/apiInventory/json  (compact JSON string)
-  - can/topTalkers/json
-  - can/candidates/json (suspected command-like frames + fingerprints)
-- Do not change existing bringup/diag/dev/... keys.
+- The old `bringup/diag/...` NetworkTables contract is retired for supported workflows.
+- If a compatibility publisher is ever temporarily retained, document it explicitly and avoid expanding it with new required keys.
 
 CAN reverse engineering roadmap (new work)
 
@@ -275,8 +270,8 @@ Stage 4: Hypothesis decoders
 
 Stage 5: Publish insights
 
-- Publish the inventory and key findings to NetworkTables under bringup/diag/can/... without breaking existing keys.
-- Java consumption is optional and must fail soft if the publisher is absent.
+- Publish inventory and key findings through supported host-local or REST-driven surfaces unless a compatibility-only NT path is explicitly justified.
+- Java consumption must fail soft when host diagnostics are absent.
 
 Pit robot diagnosis direction
 

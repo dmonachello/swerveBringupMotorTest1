@@ -13,18 +13,18 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/SPEC_LAYERED_ARCHITECTURE_REFACTOR.md|SPEC LAYERED ARCHITECTURE REFACTOR]]
 - [[notes/research/vendor_diagnostics/2026-07-07_rev_usb_gateway_attack_plan.md|2026-07-07 rev usb gateway attack plan]]
 - [[tools/can_nt/README_CAN_NT.md|README CAN NT]]
+- [[AGENTS.md|AGENTS]]
 - [[TEST_TCP_UI.md|TEST TCP UI]]
 - [[docs/FEATURE_SPEC_BRINGUP_PORT_FROM_REST_COMMAND_CHANNEL_POC.md|FEATURE SPEC BRINGUP PORT FROM REST COMMAND CHANNEL POC]]
 - [[docs/FEATURE_SPEC_CAN_BUS_TROUBLESHOOTING_AUTOMATION.md|FEATURE SPEC CAN BUS TROUBLESHOOTING AUTOMATION]]
 - [[docs/HOST_SOFTWARE_ARCHITECTURE.md|HOST SOFTWARE ARCHITECTURE]]
 - [[docs/SPEC_REMOVE_NETWORKTABLES_COMPLETE.md|SPEC REMOVE NETWORKTABLES COMPLETE]]
 - [[docs/WORKFLOW_01_NEW_ROBOT_BRINGUP.md|WORKFLOW 01 NEW ROBOT BRINGUP]]
-- [[AGENTS.md|AGENTS]]
 - [[Host TCP Command Serialization Layer.md|Host TCP Command Serialization Layer]]
+- [[docs/ALPHA_RELEASE_READINESS.md|ALPHA RELEASE READINESS]]
 - [[docs/BRIDGE_CLI_DESIGN.md|BRIDGE CLI DESIGN]]
 - [[docs/BRIDGE_CLI_FULL_SPEC.md|BRIDGE CLI FULL SPEC]]
 - [[docs/CAN_BACKGROUND.md|CAN BACKGROUND]]
-- [[docs/FEATURE_CATALOG.md|FEATURE CATALOG]]
 
 ## Endpoints
 
@@ -35,6 +35,7 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/SPEC_LAYERED_ARCHITECTURE_REFACTOR.md|SPEC LAYERED ARCHITECTURE REFACTOR]]
 - [[notes/research/vendor_diagnostics/2026-07-07_rev_usb_gateway_attack_plan.md|2026-07-07 rev usb gateway attack plan]]
 - [[tools/can_nt/README_CAN_NT.md|README CAN NT]]
+- [[AGENTS.md|AGENTS]]
 - [[TEST_TCP_UI.md|TEST TCP UI]]
 - [[docs/FEATURE_SPEC_BRINGUP_PORT_FROM_REST_COMMAND_CHANNEL_POC.md|FEATURE SPEC BRINGUP PORT FROM REST COMMAND CHANNEL POC]]
 - [[docs/FEATURE_SPEC_CAN_BUS_TROUBLESHOOTING_AUTOMATION.md|FEATURE SPEC CAN BUS TROUBLESHOOTING AUTOMATION]]
@@ -42,11 +43,10 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/SPEC_REMOVE_NETWORKTABLES_COMPLETE.md|SPEC REMOVE NETWORKTABLES COMPLETE]]
 - [[docs/WORKFLOW_01_NEW_ROBOT_BRINGUP.md|WORKFLOW 01 NEW ROBOT BRINGUP]]
 - [[notes/research/dut-review.md|dut-review]]
-- [[AGENTS.md|AGENTS]]
 - [[Host TCP Command Serialization Layer.md|Host TCP Command Serialization Layer]]
+- [[docs/ALPHA_RELEASE_READINESS.md|ALPHA RELEASE READINESS]]
 - [[docs/BRIDGE_CLI_FULL_SPEC.md|BRIDGE CLI FULL SPEC]]
 - [[docs/CAN_BACKGROUND.md|CAN BACKGROUND]]
-- [[docs/FEATURE_CATALOG.md|FEATURE CATALOG]]
 
 ## Protocol
 
@@ -57,6 +57,7 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/SPEC_LAYERED_ARCHITECTURE_REFACTOR.md|SPEC LAYERED ARCHITECTURE REFACTOR]]
 - [[notes/research/vendor_diagnostics/2026-07-07_rev_usb_gateway_attack_plan.md|2026-07-07 rev usb gateway attack plan]]
 - [[tools/can_nt/README_CAN_NT.md|README CAN NT]]
+- [[AGENTS.md|AGENTS]]
 - [[TEST_TCP_UI.md|TEST TCP UI]]
 - [[docs/FEATURE_SPEC_BRINGUP_PORT_FROM_REST_COMMAND_CHANNEL_POC.md|FEATURE SPEC BRINGUP PORT FROM REST COMMAND CHANNEL POC]]
 - [[docs/FEATURE_SPEC_CAN_BUS_TROUBLESHOOTING_AUTOMATION.md|FEATURE SPEC CAN BUS TROUBLESHOOTING AUTOMATION]]
@@ -64,12 +65,11 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/SPEC_REMOVE_NETWORKTABLES_COMPLETE.md|SPEC REMOVE NETWORKTABLES COMPLETE]]
 - [[docs/WORKFLOW_01_NEW_ROBOT_BRINGUP.md|WORKFLOW 01 NEW ROBOT BRINGUP]]
 - [[notes/research/dut-review.md|dut-review]]
-- [[AGENTS.md|AGENTS]]
 - [[Host TCP Command Serialization Layer.md|Host TCP Command Serialization Layer]]
+- [[docs/ALPHA_RELEASE_READINESS.md|ALPHA RELEASE READINESS]]
 - [[docs/BRIDGE_CLI_DESIGN.md|BRIDGE CLI DESIGN]]
 - [[docs/BRIDGE_CLI_FULL_SPEC.md|BRIDGE CLI FULL SPEC]]
 - [[docs/CAN_BACKGROUND.md|CAN BACKGROUND]]
-- [[docs/FEATURE_CATALOG.md|FEATURE CATALOG]]
 
 ## Integration
 
@@ -80,6 +80,7 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/SPEC_LAYERED_ARCHITECTURE_REFACTOR.md|SPEC LAYERED ARCHITECTURE REFACTOR]]
 - [[notes/research/vendor_diagnostics/2026-07-07_rev_usb_gateway_attack_plan.md|2026-07-07 rev usb gateway attack plan]]
 - [[tools/can_nt/README_CAN_NT.md|README CAN NT]]
+- [[AGENTS.md|AGENTS]]
 - [[TEST_TCP_UI.md|TEST TCP UI]]
 - [[docs/FEATURE_SPEC_BRINGUP_PORT_FROM_REST_COMMAND_CHANNEL_POC.md|FEATURE SPEC BRINGUP PORT FROM REST COMMAND CHANNEL POC]]
 - [[docs/FEATURE_SPEC_CAN_BUS_TROUBLESHOOTING_AUTOMATION.md|FEATURE SPEC CAN BUS TROUBLESHOOTING AUTOMATION]]
@@ -87,10 +88,9 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/SPEC_REMOVE_NETWORKTABLES_COMPLETE.md|SPEC REMOVE NETWORKTABLES COMPLETE]]
 - [[docs/WORKFLOW_01_NEW_ROBOT_BRINGUP.md|WORKFLOW 01 NEW ROBOT BRINGUP]]
 - [[notes/research/dut-review.md|dut-review]]
-- [[AGENTS.md|AGENTS]]
 - [[Host TCP Command Serialization Layer.md|Host TCP Command Serialization Layer]]
+- [[docs/ALPHA_RELEASE_READINESS.md|ALPHA RELEASE READINESS]]
 - [[docs/BRIDGE_CLI_FULL_SPEC.md|BRIDGE CLI FULL SPEC]]
-- [[docs/FEATURE_CATALOG.md|FEATURE CATALOG]]
 
 ## Related Topics
 

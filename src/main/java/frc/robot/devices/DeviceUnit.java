@@ -205,11 +205,15 @@ public interface DeviceUnit extends HasRegistrationHeader {
    *
    * SIDE EFFECTS
    *   Invokes deactivate() before close() so motors and other active devices
-   *   do not retain a live command across lifecycle teardown.
+   *   do not retain a live command across lifecycle teardown. App-owned
+   *   singleton-backed devices are deactivated but not closed here so the
+   *   process-lifetime wrapper/service remains attached once first created.
    */
   default void shutdown() {
     deactivate();
-    close();
+    if (getLifecycleOwnership() == DeviceLifecycleOwnership.RUNTIME_OWNED_RECREATABLE) {
+      close();
+    }
   }
 
   // Optional test hook for non-motor devices (no-op by default).

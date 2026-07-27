@@ -951,10 +951,16 @@ public final class BringupRuntime {
    *   active profile.
    */
   public void resetAndInstantiateForProfile(String reason) {
+    PreservedActiveGroup preservedActiveGroup = preserveActiveGroup(bridgeGroups.getGroup(GROUP_ACTIVE));
     resetForProfile(reason);
+    synchronizeProfileBridgeRuntimeConfig();
+    restoreActiveGroup(bridgeGroups, preservedActiveGroup);
     if (core != null) {
-      core.reloadActiveProfileRuntime(reason);
+      core.addAllDevicesCommand();
     }
+    long nowMs = System.currentTimeMillis();
+    initializeDeviceLifecycle(nowMs);
+    refreshDeviceLifecycle(nowMs);
   }
 
   /**
@@ -1273,6 +1279,7 @@ public final class BringupRuntime {
     if (bridgeGroups == null || bridgeSelected == null) {
       return;
     }
+    PreservedActiveGroup preservedActiveGroup = preserveActiveGroup(bridgeGroups.getGroup(GROUP_ACTIVE));
     bridgeGroups.clear();
     bridgeSelected.device = TEXT_EMPTY;
     bridgeSelected.enabled = false;
@@ -1320,6 +1327,67 @@ public final class BringupRuntime {
     }
     if (bridgeGroups.getGroup(GROUP_ACTIVE) == null) {
       bridgeGroups.createGroup(GROUP_ACTIVE);
+    }
+    restoreActiveGroup(bridgeGroups, preservedActiveGroup);
+  }
+
+  static PreservedActiveGroup preserveActiveGroup(BridgeGroupManager.Group group) {
+    if (group == null) {
+      return PreservedActiveGroup.empty();
+    }
+    java.util.List<PreservedActiveMember> members = new java.util.ArrayList<>();
+    for (BridgeGroupManager.MemberState member : group.members.values()) {
+      if (member == null || member.label == null || member.label.isBlank()) {
+        continue;
+      }
+      members.add(new PreservedActiveMember(member.label, member.enabled));
+    }
+    return new PreservedActiveGroup(group.enabled, members);
+  }
+
+  static void restoreActiveGroup(
+      BridgeGroupManager bridgeGroups,
+      PreservedActiveGroup preservedActiveGroup) {
+    if (bridgeGroups == null || preservedActiveGroup == null || preservedActiveGroup.members.isEmpty()) {
+      return;
+    }
+    BridgeGroupManager.Group activeGroup = bridgeGroups.getGroup(GROUP_ACTIVE);
+    if (activeGroup == null || !activeGroup.members.isEmpty()) {
+      return;
+    }
+    bridgeGroups.setGroupEnabled(GROUP_ACTIVE, preservedActiveGroup.enabled);
+    for (PreservedActiveMember member : preservedActiveGroup.members) {
+      if (member == null || member.label == null || member.label.isBlank()) {
+        continue;
+      }
+      bridgeGroups.addMember(GROUP_ACTIVE, member.label, true);
+      if (!member.enabled) {
+        bridgeGroups.setMemberEnabled(GROUP_ACTIVE, member.label, false);
+      }
+    }
+  }
+
+  static final class PreservedActiveGroup {
+    final boolean enabled;
+    final java.util.List<PreservedActiveMember> members;
+
+    PreservedActiveGroup(boolean enabled, java.util.List<PreservedActiveMember> members) {
+      this.enabled = enabled;
+      this.members = members != null ? members : java.util.List.of();
+    }
+
+    static PreservedActiveGroup empty() {
+      return new PreservedActiveGroup(true, java.util.List.of());
+    }
+  }
+
+  static final class PreservedActiveMember {
+    final String label;
+    final boolean enabled;
+
+    PreservedActiveMember(String label, boolean enabled) {
+      this.label = label;
+      this.enabled = enabled;
     }
   }
 
@@ -1387,7 +1455,7 @@ public final class BringupRuntime {
         frc.robot.diag.lifecycle.runtime.DeviceRuntimeState controlledState =
             controlledLifecycleRuntimeStateForLabel(entry.label);
         String normalized = entry.label.trim().toLowerCase();
-        boolean instantiated = device != null && device.isCreated();
+        boolean instantiated = isLifecycleDeviceInstantiated(entry, device);
         instantiatedByLabel.put(normalized, instantiated);
         boolean shouldCapture =
             singletonSupport
@@ -1407,6 +1475,21 @@ public final class BringupRuntime {
       }
     }
     deviceLifecycle.refresh(entries, snapshotsByLabel, instantiatedByLabel, inScopeByLabel, nowMs);
+  }
+
+  static boolean isLifecycleDeviceInstantiated(
+      BringupUtil.DeviceEntry entry, frc.robot.devices.DeviceUnit device) {
+    if (device == null) {
+      return entry != null
+          && isLifecycleSingletonEntry(entry)
+          && BringupUtil.hasAppSingletonService(entry);
+    }
+    if (device.isCreated()) {
+      return true;
+    }
+    return device.getLifecycleOwnership()
+            == frc.robot.devices.DeviceLifecycleOwnership.APP_OWNED_SINGLETON_SERVICE
+        && BringupUtil.hasAppSingletonService(device);
   }
 
   private void ensureSingletonLifecycleDeviceCreated(String label, boolean shouldInstantiate) {
@@ -1655,14 +1738,27 @@ public final class BringupRuntime {
   }
 
   private void replaceCore() {
+    String selectedTestName =
+        core != null ? safeText(core.getSelectedBringupTestName()) : TEXT_EMPTY;
     core = new BringupCore(sampledTelemetry, deviceLifecycle);
     core.setRunTestBindingLabel(runTestBindingLabel);
+    restoreSelectedTestSelection(core, selectedTestName);
     if (diagnostics == null) {
       diagnostics = new DiagnosticsReporter(core, canHealth);
     } else {
       diagnostics.setCore(core);
     }
     initializeDeviceLifecycle(System.currentTimeMillis());
+  }
+
+  static void restoreSelectedTestSelection(BringupCore core, String selectedTestName) {
+    if (core == null) {
+      return;
+    }
+    String selectedName = selectedTestName != null ? selectedTestName.trim() : TEXT_EMPTY;
+    if (!selectedName.isBlank()) {
+      core.selectBringupTestByName(selectedName);
+    }
   }
 
   private JsonArray toJsonArray(List<String> labels) {

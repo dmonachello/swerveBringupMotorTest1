@@ -5,9 +5,17 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import frc.robot.CanBusHealth;
 import frc.robot.diag.lifecycle.activation.ActivationMembershipMode;
 import frc.robot.diag.lifecycle.runtime.DeviceRuntimeState;
+import frc.robot.devices.DeviceLifecycleOwnership;
+import frc.robot.devices.DeviceUnit;
+import frc.robot.diag.snapshots.DeviceSnapshot;
+import frc.robot.tests.BringupTest;
+import frc.robot.telemetry.SampledTelemetrySampler;
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -197,6 +205,55 @@ class BringupRuntimeLifecycleSelectionTest {
   }
 
   @Test
+  void synchronizeBridgeRuntimeConfigPreservesExistingManualActiveGroupMembers() {
+    BridgeGroupManager groups = new BridgeGroupManager();
+    groups.createGroup("active-group");
+    groups.addDevice("active-group", "FALCON 9", false);
+    groups.addDevice("active-group", "SPARKMAX/NEO 25", false);
+    groups.setMemberEnabled("active-group", "SPARKMAX/NEO 25", false);
+    BridgeGroupManager.SelectedState selected = new BridgeGroupManager.SelectedState();
+    BringupUtil.BridgeProfileRuntimeConfig config =
+        new BringupUtil.BridgeProfileRuntimeConfig(
+            List.of(
+                new BringupUtil.BridgeProfileGroupConfig(
+                    "motors",
+                    true,
+                    List.of(
+                        new BringupUtil.BridgeProfileMemberConfig("FALCON 9", true),
+                        new BringupUtil.BridgeProfileMemberConfig("SPARKMAX/NEO 25", true)),
+                    List.of())),
+            new BringupUtil.BridgeProfileSelectedDeviceConfig("FALCON 9", true));
+
+    BringupRuntime.synchronizeBridgeRuntimeConfig(groups, selected, config, List.of());
+
+    assertTrue(groups.hasDevice("active-group", "FALCON 9"));
+    assertTrue(groups.hasDevice("active-group", "SPARKMAX/NEO 25"));
+    assertFalse(
+        groups.getGroup("active-group").members.get("sparkmax/neo 25").enabled);
+  }
+
+  @Test
+  void restoreActiveGroupRestoresManualMembersAfterFullClearAndRecreate() {
+    BridgeGroupManager groups = new BridgeGroupManager();
+    groups.createGroup("active-group");
+    groups.addDevice("active-group", "FALCON 9", false);
+    groups.addDevice("active-group", "SPARKMAX/NEO 25", false);
+    groups.setMemberEnabled("active-group", "SPARKMAX/NEO 25", false);
+
+    BringupRuntime.PreservedActiveGroup preserved =
+        BringupRuntime.preserveActiveGroup(groups.getGroup("active-group"));
+
+    groups.clear();
+    groups.createGroup("active-group");
+    BringupRuntime.restoreActiveGroup(groups, preserved);
+
+    assertTrue(groups.hasDevice("active-group", "FALCON 9"));
+    assertTrue(groups.hasDevice("active-group", "SPARKMAX/NEO 25"));
+    assertFalse(
+        groups.getGroup("active-group").members.get("sparkmax/neo 25").enabled);
+  }
+
+  @Test
   void lifecycleSingletonEntryTreatsControllerAndInfrastructureAsPreservedSupport() {
     BringupUtil.DeviceEntry controller =
         new BringupUtil.DeviceEntry(
@@ -211,6 +268,22 @@ class BringupRuntimeLifecycleSelectionTest {
     assertTrue(BringupRuntime.isLifecycleSingletonEntry(controller));
     assertTrue(BringupRuntime.isLifecycleSingletonEntry(pdp));
     assertFalse(BringupRuntime.isLifecycleSingletonEntry(limitSwitch));
+  }
+
+  @Test
+  void lifecycleDeviceInstantiationUsesAppSingletonAllocationForSingletonBackedDevices() {
+    TestSingletonDevice device = new TestSingletonDevice(9025, "CTRE", "PDP", "pdp");
+    BringupUtil.DeviceEntry entry =
+        new BringupUtil.DeviceEntry(
+            9025, 4, 8, "CAN", "CTRE", "PDP", "pdp", null, null, null, null);
+
+    assertFalse(BringupRuntime.isLifecycleDeviceInstantiated(entry, device));
+    assertFalse(BringupRuntime.isLifecycleDeviceInstantiated(entry, null));
+
+    BringupUtil.markAppSingletonAllocated(device);
+
+    assertTrue(BringupRuntime.isLifecycleDeviceInstantiated(entry, device));
+    assertTrue(BringupRuntime.isLifecycleDeviceInstantiated(entry, null));
   }
 
   @Test
@@ -281,6 +354,38 @@ class BringupRuntimeLifecycleSelectionTest {
     assertFalse(BringupRuntime.isLifecycleViewEligibleForActivation(lifecycle));
   }
 
+  @Test
+  void restoreSelectedTestSelectionPreservesNamedTestAcrossCoreReplacement() throws Exception {
+    BringupCore core = new BringupCore(new SampledTelemetrySampler(), new DeviceLifecycleRegistry());
+    List<BringupTest> tests =
+        List.of(
+            fakeTest("test_minimal_25_9_spark25_leftY"),
+            fakeTest("falcon9_move_150_rotations"),
+            fakeTest("newTests_123"));
+
+    Field bringupTestsField = BringupCore.class.getDeclaredField("bringupTests");
+    bringupTestsField.setAccessible(true);
+    @SuppressWarnings("unchecked")
+    List<BringupTest> bringupTests = (List<BringupTest>) bringupTestsField.get(core);
+    bringupTests.clear();
+    bringupTests.addAll(tests);
+
+    Field selectableTestsField = BringupCore.class.getDeclaredField("selectableTests");
+    selectableTestsField.setAccessible(true);
+    @SuppressWarnings("unchecked")
+    List<BringupTest> selectableTests = (List<BringupTest>) selectableTestsField.get(core);
+    selectableTests.clear();
+
+    Method refreshSelectableTests =
+        BringupCore.class.getDeclaredMethod("refreshSelectableTests", String.class);
+    refreshSelectableTests.setAccessible(true);
+    refreshSelectableTests.invoke(core, "newTests_123");
+
+    BringupRuntime.restoreSelectedTestSelection(core, "newTests_123");
+
+    assertEquals("newTests_123", core.getSelectedBringupTestName());
+  }
+
   private static DeviceLifecycleRegistry.DeviceLifecycleView deviceLifecycleView(
       String label,
       String lifecycleState,
@@ -311,5 +416,113 @@ class BringupRuntimeLifecycleSelectionTest {
         "refresh",
         0L,
         notTestableReason);
+  }
+
+  private static BringupTest fakeTest(String name) {
+    return new BringupTest() {
+      @Override
+      public String getName() {
+        return name;
+      }
+
+      @Override
+      public boolean isEnabled() {
+        return true;
+      }
+
+      @Override
+      public boolean isRunning() {
+        return false;
+      }
+
+      @Override
+      public boolean isFinished() {
+        return false;
+      }
+
+      @Override
+      public frc.robot.tests.BringupTestResult getResult() {
+        return frc.robot.tests.BringupTestResult.PASS;
+      }
+
+      @Override
+      public String getStatus() {
+        return "";
+      }
+
+      @Override
+      public boolean start(frc.robot.tests.BringupTestContext context, double nowSec) {
+        return false;
+      }
+
+      @Override
+      public void update(frc.robot.tests.BringupTestContext context, double nowSec) {}
+
+      @Override
+      public void stop(frc.robot.tests.BringupTestContext context) {}
+
+      @Override
+      public List<String> getRequiredDeviceKeys() {
+        return List.of();
+      }
+    };
+  }
+
+  private static final class TestSingletonDevice implements DeviceUnit {
+    private final int canId;
+    private final String vendor;
+    private final String type;
+    private final String label;
+
+    private TestSingletonDevice(int canId, String vendor, String type, String label) {
+      this.canId = canId;
+      this.vendor = vendor;
+      this.type = type;
+      this.label = label;
+    }
+
+    @Override
+    public int getCanId() {
+      return canId;
+    }
+
+    @Override
+    public String getDeviceType() {
+      return type;
+    }
+
+    @Override
+    public String getLabel() {
+      return label;
+    }
+
+    @Override
+    public boolean isCreated() {
+      return false;
+    }
+
+    @Override
+    public void ensureCreated() {}
+
+    @Override
+    public void close() {}
+
+    @Override
+    public void clearFaults() {}
+
+    @Override
+    public DeviceSnapshot snapshot() {
+      return new DeviceSnapshot();
+    }
+
+    @Override
+    public DeviceLifecycleOwnership getLifecycleOwnership() {
+      return DeviceLifecycleOwnership.APP_OWNED_SINGLETON_SERVICE;
+    }
+
+    @Override
+    public frc.robot.registry.RegistrationHeader getHeader() {
+      return new frc.robot.registry.RegistrationHeader(label, vendor, type, "test", "test", "", "");
+    }
   }
 }

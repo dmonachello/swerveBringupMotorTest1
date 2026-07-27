@@ -86,8 +86,15 @@ public final class CtreTalonFxReader {
     ctre.velRpm = rotorVelocity.getValue().in(Units.RotationsPerSecond) * RPM_PER_RPS;
     ctre.positionRot = rotorPosition.getValue().in(Units.Rotations);
 
-    CtreReaderUtil.collectFaultFlags(device, ctre.faultFlags);
-    CtreReaderUtil.collectStickyFaultFlags(device, ctre.stickyFaultFlags);
+    if (CtreReaderUtil.shouldReadDetailedFaultFlags(
+        faultSignal.getStatus(),
+        stickySignal.getStatus())) {
+      CtreReaderUtil.collectFaultFlags(device, ctre.faultFlags);
+      CtreReaderUtil.collectStickyFaultFlags(device, ctre.stickyFaultFlags);
+    } else {
+      CtreReaderUtil.appendDetailedFlagReadSkipped(ctre.faultFlags);
+      CtreReaderUtil.appendDetailedFlagReadSkipped(ctre.stickyFaultFlags);
+    }
 
     snap.addAttachment(ctre);
     return snap;

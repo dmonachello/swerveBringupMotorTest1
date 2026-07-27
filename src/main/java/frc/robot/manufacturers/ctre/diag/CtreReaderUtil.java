@@ -1,6 +1,7 @@
 package frc.robot.manufacturers.ctre.diag;
 
 import com.ctre.phoenix6.BaseStatusSignal;
+import com.ctre.phoenix6.StatusCode;
 import com.ctre.phoenix6.StatusSignal;
 import com.ctre.phoenix6.hardware.TalonFX;
 import java.util.List;
@@ -16,7 +17,36 @@ import java.util.List;
  * Refreshes Phoenix status signals and maps active faults into string lists.
  */
 public final class CtreReaderUtil {
+  private static final String FLAG_READ_SKIPPED_STALE = "FLAG_READ_SKIPPED_STALE_PRIMARY_STATUS";
+
   private CtreReaderUtil() {}
+
+  /**
+   * NAME
+   * shouldReadDetailedFaultFlags
+   *
+   * SYNOPSIS
+   * Gate detailed CTRE per-flag reads on primary status freshness.
+   *
+   * DESCRIPTION
+   * The narrow-status fields are useful only when the primary Phoenix fault and
+   * sticky-fault status signals are fresh. When a device is unpowered or stale,
+   * aggressively expanding every individual fault/sticky-fault signal can drive
+   * extra native/JNI reads in a condition that should instead degrade cleanly to
+   * "device absent/unreachable".
+   *
+   * PARAMETERS
+   * faultStatus - status for the aggregate fault field.
+   * stickyStatus - status for the aggregate sticky-fault field.
+   *
+   * RETURNS
+   * true when it is safe to expand detailed per-flag reads.
+   */
+  public static boolean shouldReadDetailedFaultFlags(
+      StatusCode faultStatus,
+      StatusCode stickyStatus) {
+    return faultStatus == StatusCode.OK && stickyStatus == StatusCode.OK;
+  }
 
   /**
    * NAME
@@ -225,5 +255,19 @@ public final class CtreReaderUtil {
       return;
     }
     out.add(name);
+  }
+
+  /**
+   * NAME
+   * appendDetailedFlagReadSkipped
+   *
+   * SYNOPSIS
+   * Explain why detailed CTRE flag expansion was intentionally skipped.
+   */
+  public static void appendDetailedFlagReadSkipped(List<String> out) {
+    if (out == null) {
+      return;
+    }
+    out.add(FLAG_READ_SKIPPED_STALE);
   }
 }

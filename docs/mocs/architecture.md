@@ -9,6 +9,7 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[AGENTS.md|AGENTS]]
 - [[CHANGELOG.md|CHANGELOG]]
 - [[docs/FEATURE_SPEC_SHARED_UI_CONTEXT_AND_CENTRALIZED_CONTROL.md|FEATURE SPEC SHARED UI CONTEXT AND CENTRALIZED CONTROL]]
+- [[docs/FEATURE_SPEC_UI_ADAPTER_BOUNDARY_AND_TK_ISOLATION.md|FEATURE SPEC UI ADAPTER BOUNDARY AND TK ISOLATION]]
 - [[docs/SPEC_COMPONENT_MODEL_UNIFICATION.md|SPEC COMPONENT MODEL UNIFICATION]]
 - [[docs/SPEC_HOST_LAYERING_AND_SHARED_SERVICES_REFACTOR.md|SPEC HOST LAYERING AND SHARED SERVICES REFACTOR]]
 - [[docs/SPEC_LAYERED_ARCHITECTURE_REFACTOR.md|SPEC LAYERED ARCHITECTURE REFACTOR]]
@@ -24,13 +25,13 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/SPEC_PHASE_2_JAVA_UI_COMMAND_REFACTOR.md|SPEC PHASE 2 JAVA UI COMMAND REFACTOR]]
 - [[docs/SPEC_STATUS_INDEX.md|SPEC STATUS INDEX]]
 - [[notes/journal/2026-07-18-centralized-control-refactor-recovery.md|2026-07-18-centralized-control-refactor-recovery]]
-- [[notes/recovery/2026-07-18_162335/untracked_copy/notes/journal/2026-07-18-centralized-control-refactor-recovery.md|2026-07-18-centralized-control-refactor-recovery]]
 
 ## Host
 
 - [[AGENTS.md|AGENTS]]
 - [[CHANGELOG.md|CHANGELOG]]
 - [[docs/FEATURE_SPEC_SHARED_UI_CONTEXT_AND_CENTRALIZED_CONTROL.md|FEATURE SPEC SHARED UI CONTEXT AND CENTRALIZED CONTROL]]
+- [[docs/FEATURE_SPEC_UI_ADAPTER_BOUNDARY_AND_TK_ISOLATION.md|FEATURE SPEC UI ADAPTER BOUNDARY AND TK ISOLATION]]
 - [[docs/SPEC_COMPONENT_MODEL_UNIFICATION.md|SPEC COMPONENT MODEL UNIFICATION]]
 - [[docs/SPEC_HOST_LAYERING_AND_SHARED_SERVICES_REFACTOR.md|SPEC HOST LAYERING AND SHARED SERVICES REFACTOR]]
 - [[docs/SPEC_LAYERED_ARCHITECTURE_REFACTOR.md|SPEC LAYERED ARCHITECTURE REFACTOR]]
@@ -46,13 +47,13 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/SPEC_STATUS_INDEX.md|SPEC STATUS INDEX]]
 - [[docs/historical/TEST_PLAN_HOST_REFACTOR_MORNING_VALIDATION_2026_06_10.md|TEST PLAN HOST REFACTOR MORNING VALIDATION 2026 06 10]]
 - [[notes/journal/2026-07-18-centralized-control-refactor-recovery.md|2026-07-18-centralized-control-refactor-recovery]]
-- [[notes/recovery/2026-07-18_162335/untracked_copy/notes/journal/2026-07-18-centralized-control-refactor-recovery.md|2026-07-18-centralized-control-refactor-recovery]]
 
 ## Robot
 
 - [[AGENTS.md|AGENTS]]
 - [[CHANGELOG.md|CHANGELOG]]
 - [[docs/FEATURE_SPEC_SHARED_UI_CONTEXT_AND_CENTRALIZED_CONTROL.md|FEATURE SPEC SHARED UI CONTEXT AND CENTRALIZED CONTROL]]
+- [[docs/FEATURE_SPEC_UI_ADAPTER_BOUNDARY_AND_TK_ISOLATION.md|FEATURE SPEC UI ADAPTER BOUNDARY AND TK ISOLATION]]
 - [[docs/SPEC_COMPONENT_MODEL_UNIFICATION.md|SPEC COMPONENT MODEL UNIFICATION]]
 - [[docs/SPEC_HOST_LAYERING_AND_SHARED_SERVICES_REFACTOR.md|SPEC HOST LAYERING AND SHARED SERVICES REFACTOR]]
 - [[docs/SPEC_LAYERED_ARCHITECTURE_REFACTOR.md|SPEC LAYERED ARCHITECTURE REFACTOR]]
@@ -69,13 +70,13 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/SPEC_STATUS_INDEX.md|SPEC STATUS INDEX]]
 - [[docs/historical/TEST_PLAN_HOST_REFACTOR_MORNING_VALIDATION_2026_06_10.md|TEST PLAN HOST REFACTOR MORNING VALIDATION 2026 06 10]]
 - [[notes/journal/2026-07-18-centralized-control-refactor-recovery.md|2026-07-18-centralized-control-refactor-recovery]]
-- [[notes/recovery/2026-07-18_162335/untracked_copy/notes/journal/2026-07-18-centralized-control-refactor-recovery.md|2026-07-18-centralized-control-refactor-recovery]]
 
 ## Refactor
 
 - [[AGENTS.md|AGENTS]]
 - [[CHANGELOG.md|CHANGELOG]]
 - [[docs/FEATURE_SPEC_SHARED_UI_CONTEXT_AND_CENTRALIZED_CONTROL.md|FEATURE SPEC SHARED UI CONTEXT AND CENTRALIZED CONTROL]]
+- [[docs/FEATURE_SPEC_UI_ADAPTER_BOUNDARY_AND_TK_ISOLATION.md|FEATURE SPEC UI ADAPTER BOUNDARY AND TK ISOLATION]]
 - [[docs/SPEC_COMPONENT_MODEL_UNIFICATION.md|SPEC COMPONENT MODEL UNIFICATION]]
 - [[docs/SPEC_HOST_LAYERING_AND_SHARED_SERVICES_REFACTOR.md|SPEC HOST LAYERING AND SHARED SERVICES REFACTOR]]
 - [[docs/SPEC_LAYERED_ARCHITECTURE_REFACTOR.md|SPEC LAYERED ARCHITECTURE REFACTOR]]
@@ -92,7 +93,6 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/SPEC_STATUS_INDEX.md|SPEC STATUS INDEX]]
 - [[docs/historical/TEST_PLAN_HOST_REFACTOR_MORNING_VALIDATION_2026_06_10.md|TEST PLAN HOST REFACTOR MORNING VALIDATION 2026 06 10]]
 - [[notes/journal/2026-07-18-centralized-control-refactor-recovery.md|2026-07-18-centralized-control-refactor-recovery]]
-- [[notes/recovery/2026-07-18_162335/untracked_copy/notes/journal/2026-07-18-centralized-control-refactor-recovery.md|2026-07-18-centralized-control-refactor-recovery]]
 
 ## Related Topics
 

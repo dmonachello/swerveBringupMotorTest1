@@ -113,6 +113,7 @@ public final class BringupCore {
   private final List<BringupTest> selectableTests = new ArrayList<>();
   private int nextBringupTestIndex = 0;
   private int selectedTestIndex = -1;
+  private String selectedTestNameHint = "";
   private String runTestBindingLabel = "(unbound)";
   private BringupTest activeTest = null;
   private boolean runAllActive = false;
@@ -595,6 +596,7 @@ public final class BringupCore {
    */
   public void resetState(String reason) {
     manualDutyWriteDiagnostics.clearAll();
+    String preferredSelectedTestName = selectedBringupTestPreferenceName();
     boolean skipGlobalStop = activeTest instanceof DslBringupTest;
     if (activeTest != null && activeTest.isRunning()) {
       String message =
@@ -607,7 +609,7 @@ public final class BringupCore {
     activeTest = null;
     activeTestRunId = TEST_RUN_ID_NONE;
     activeTestStartSec = TEST_START_SEC_NONE;
-    refreshSelectableTests();
+    refreshSelectableTests(preferredSelectedTestName);
     if (!skipGlobalStop) {
       for (ManufacturerGroup group : manufacturerGroups) {
         group.stopAll();
@@ -644,6 +646,7 @@ public final class BringupCore {
    *   Stops tests, commands motor outputs to zero, and emits a safety message.
    */
   public void safetyStop(String reason) {
+    String preferredSelectedTestName = selectedBringupTestPreferenceName();
     boolean skipGlobalStop = activeTest instanceof DslBringupTest;
     if (activeTest != null && activeTest.isRunning()) {
       String label = reason != null && !reason.isBlank() ? reason : "safetyStop";
@@ -657,7 +660,7 @@ public final class BringupCore {
     activeTest = null;
     activeTestRunId = TEST_RUN_ID_NONE;
     activeTestStartSec = TEST_START_SEC_NONE;
-    refreshSelectableTests();
+    refreshSelectableTests(preferredSelectedTestName);
     if (!skipGlobalStop) {
       for (ManufacturerGroup group : manufacturerGroups) {
         group.stopAll();
@@ -731,6 +734,7 @@ public final class BringupCore {
     }
     selectedTestIndex = nextIndex;
     BringupTest test = bringupTests.get(selectedTestIndex);
+    selectedTestNameHint = selectedBringupTestName(test);
     BringupPrinter.enqueue("Selected test: " + test.getName());
   }
 
@@ -751,6 +755,7 @@ public final class BringupCore {
     }
     selectedTestIndex = nextIndex;
     BringupTest test = bringupTests.get(selectedTestIndex);
+    selectedTestNameHint = selectedBringupTestName(test);
     BringupPrinter.enqueue("Selected test: " + test.getName());
   }
 
@@ -784,6 +789,7 @@ public final class BringupCore {
       String raw = test.getName();
       if (target.equalsIgnoreCase(display) || target.equalsIgnoreCase(raw)) {
         selectedTestIndex = i;
+        selectedTestNameHint = selectedBringupTestName(test);
         BringupPrinter.enqueue("Selected test: " + test.getName());
         return true;
       }
@@ -1042,13 +1048,31 @@ public final class BringupCore {
    *   refreshSelectableTests - Rebuild the selectable test list.
    */
   private void refreshSelectableTests() {
+    refreshSelectableTests(selectedBringupTestPreferenceName());
+  }
+
+  /**
+   * NAME
+   *   refreshSelectableTests - Rebuild the selectable test list while preserving one selection.
+   *
+   * PARAMETERS
+   *   preferredSelectedName - Previously selected test name to preserve when present.
+   */
+  private void refreshSelectableTests(String preferredSelectedName) {
     selectableTests.clear();
     for (BringupTest test : bringupTests) {
       if (test != null) {
         selectableTests.add(test);
       }
     }
-    selectedTestIndex = selectableTests.isEmpty() ? -1 : 0;
+    int previousSelectedIndex = selectedTestIndex;
+    String preferred = preferredSelectedName != null && !preferredSelectedName.isBlank()
+        ? preferredSelectedName
+        : selectedTestNameHint;
+    selectedTestIndex = resolveSelectedTestIndex(selectableTests, preferred, previousSelectedIndex);
+    if (selectedTestIndex >= 0 && selectedTestIndex < selectableTests.size()) {
+      selectedTestNameHint = selectedBringupTestName(selectableTests.get(selectedTestIndex));
+    }
   }
 
   /**
@@ -1068,6 +1092,7 @@ public final class BringupCore {
     if (loadedProfileGeneration == activeGeneration) {
       return;
     }
+    String preferredSelectedTestName = selectedBringupTestPreferenceName();
     Set<String> createdLabels = collectCreatedDeviceLabels();
     if (activeTest != null && activeTest.isRunning()) {
       activeTest.stop(testContext);
@@ -1100,8 +1125,44 @@ public final class BringupCore {
     bringupTests.clear();
     bringupTests.addAll(BringupTestRegistry.loadTests());
     loadedProfileGeneration = activeGeneration;
-    refreshSelectableTests();
+    refreshSelectableTests(preferredSelectedTestName);
     refreshTestDevices();
+  }
+
+  static int resolveSelectedTestIndex(
+      List<BringupTest> selectableTests,
+      String preferredSelectedName) {
+    return resolveSelectedTestIndex(selectableTests, preferredSelectedName, -1);
+  }
+
+  static int resolveSelectedTestIndex(
+      List<BringupTest> selectableTests,
+      String preferredSelectedName,
+      int fallbackSelectedIndex) {
+    if (selectableTests == null || selectableTests.isEmpty()) {
+      return -1;
+    }
+    String preferred = preferredSelectedName != null ? preferredSelectedName.trim() : "";
+    if (!preferred.isBlank()) {
+      for (int index = 0; index < selectableTests.size(); index++) {
+        BringupTest test = selectableTests.get(index);
+        if (test == null) {
+          continue;
+        }
+        String rawName = test.getName() != null ? test.getName().trim() : "";
+        String displayName = test.getDisplayName() != null ? test.getDisplayName().trim() : "";
+        if (preferred.equalsIgnoreCase(rawName) || preferred.equalsIgnoreCase(displayName)) {
+          return index;
+        }
+      }
+    }
+    if (fallbackSelectedIndex >= 0 && fallbackSelectedIndex < selectableTests.size()) {
+      BringupTest fallbackTest = selectableTests.get(fallbackSelectedIndex);
+      if (fallbackTest != null && fallbackTest.isEnabled()) {
+        return fallbackSelectedIndex;
+      }
+    }
+    return 0;
   }
 
   private Set<String> collectCreatedDeviceLabels() {
@@ -1214,6 +1275,25 @@ public final class BringupCore {
     }
     String display = test.getDisplayName();
     return display != null ? display : "";
+  }
+
+  private String selectedBringupTestPreferenceName() {
+    if (selectedTestNameHint != null && !selectedTestNameHint.isBlank()) {
+      return selectedTestNameHint;
+    }
+    return getSelectedBringupTestName();
+  }
+
+  private static String selectedBringupTestName(BringupTest test) {
+    if (test == null) {
+      return "";
+    }
+    String rawName = test.getName();
+    if (rawName != null && !rawName.isBlank()) {
+      return rawName.trim();
+    }
+    String displayName = test.getDisplayName();
+    return displayName != null ? displayName.trim() : "";
   }
 
   /**

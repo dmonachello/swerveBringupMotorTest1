@@ -51,8 +51,6 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
       "Manual duty blocked: robot disabled (E-Stop).";
   private static final String MESSAGE_MANUAL_DUTY_CONTROLLED_SCOPE =
       "Manual duty blocked: device is outside the active scope membership.";
-  private static final String MESSAGE_MANUAL_GROUP_DUTY_CONTROLLED_SCOPE =
-      "Manual duty blocked: group contains device(s) outside the active scope membership.";
   private static final String MESSAGE_MANUAL_DUTY_TEST_RUNNING =
       "Manual duty blocked: active test running.";
   private static final String MESSAGE_ACTIVE_GROUP_LIFECYCLE_LOCKED =
@@ -457,12 +455,6 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
           result.message = MESSAGE_MANUAL_DUTY_TEST_RUNNING;
           break;
         }
-        if (dependencies.isControlledLifecycleActive()
-            && groupContainsOutsideControlledScopeMember(groupName, bridgeGroups)) {
-          result.ok = false;
-          result.message = MESSAGE_MANUAL_GROUP_DUTY_CONTROLLED_SCOPE;
-          break;
-        }
         boolean ok = dependencies.applyManualGroupDuty(groupName, duty);
         if (!ok) {
           result.ok = false;
@@ -557,7 +549,7 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
       result.message = "groupAddDevice requires args.group and args.device.";
       return;
     }
-    if (bridgeGroups.getGroup(groupName) == null) {
+    if (!ensureEditableGroupExists(groupName, bridgeGroups)) {
       result.ok = false;
       result.message = "Group not found: " + groupName;
       return;
@@ -683,12 +675,12 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
       result.message = "groupReplaceMembers requires args.group.";
       return;
     }
-    BridgeGroupManager.Group group = bridgeGroups.getGroup(groupName);
-    if (group == null) {
+    if (!ensureEditableGroupExists(groupName, bridgeGroups)) {
       result.ok = false;
       result.message = "Group not found: " + groupName;
       return;
     }
+    BridgeGroupManager.Group group = bridgeGroups.getGroup(groupName);
     if (isActiveGroupLocked(groupName)) {
       result.ok = false;
       result.message = MESSAGE_ACTIVE_GROUP_LIFECYCLE_LOCKED;
@@ -871,23 +863,19 @@ final class BridgeUiGroupCommands implements BridgeUiCommandDispatcher.CommandFa
     return dependencies.isControlledLifecycleActive() && GROUP_ACTIVE.equals(groupName);
   }
 
-  private boolean groupContainsOutsideControlledScopeMember(
+  private boolean ensureEditableGroupExists(
       String groupName,
       BridgeGroupManager bridgeGroups) {
-    BridgeGroupManager.Group group = bridgeGroups.getGroup(groupName);
-    if (group == null) {
+    if (bridgeGroups == null || groupName == null || groupName.isBlank()) {
       return false;
     }
-    for (BridgeGroupManager.MemberState member : group.members.values()) {
-      if (member == null || !member.enabled || member.label == null || member.label.isBlank()) {
-        continue;
-      }
-      if (!dependencies.isControlledLifecycleDeviceActive(member.label)) {
-        return true;
-      }
+    if (bridgeGroups.getGroup(groupName) != null) {
+      return true;
     }
-    return false;
+    if (!GROUP_ACTIVE.equals(groupName)) {
+      return false;
+    }
+    return bridgeGroups.createGroup(groupName) || bridgeGroups.getGroup(groupName) != null;
   }
-
 }
 

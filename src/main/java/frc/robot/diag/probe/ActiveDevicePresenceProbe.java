@@ -27,6 +27,7 @@ import frc.robot.manufacturers.rev.diag.RevReaderUtil;
 import frc.robot.manufacturers.rev.util.PdhStatusReader;
 import frc.robot.status.generated.StatusCatalogGenerated;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -72,6 +73,7 @@ public final class ActiveDevicePresenceProbe {
   private static final String TEXT_STATUS_NOT_OK = "One or more Phoenix status reads were not OK.";
   private static final String TEXT_STATUS_FORCE_ABSENT = "Phoenix status was stale or transmit failed.";
   private static final String TEXT_PD_WEAK = "Power-distribution API evidence was too weak for a confident absence call.";
+  private static final String TEXT_PD_ABSENT = "Power-distribution API evidence indicates the device is absent or disconnected.";
   private static final String TEXT_EXCEPTION_PREFIX = "Probe exception: ";
   private static final String TEXT_FIELD_SEPARATOR = " | ";
   private static final String TEXT_EVIDENCE_PREFIX = "  ";
@@ -129,6 +131,7 @@ public final class ActiveDevicePresenceProbe {
   private static final double MAX_VALID_DUTY = 1.05;
   private static final double MIN_MEANINGFUL_CURRENT_A = 0.05;
   private static final double MIN_MEANINGFUL_POWER_TEMP_C = 1.0;
+  private static final int MIN_VALID_POWER_CHANNEL_COUNT = 1;
   private static final int EXPECTED_RESET_BITS = 0;
   private static final String TEXT_SESSION_HEADER = "=== Full Device State Probe ===";
   private static final String TEXT_DURATION_MS = "durationMs";
@@ -144,6 +147,7 @@ public final class ActiveDevicePresenceProbe {
   private static final String TEXT_STAGE_EVALUATE = "evaluate";
   private static final String TEXT_STAGE_SNAPSHOT = "snapshot";
   private static final String TEXT_MS_SUFFIX = " ms";
+  private static final String LABEL_KEY_EMPTY = "";
 
   /**
    * NAME
@@ -166,14 +170,15 @@ public final class ActiveDevicePresenceProbe {
     List<ProbeDeviceResult> results = new ArrayList<>();
     int unsupportedCount = 0;
     int canCount = 0;
-    for (BringupUtil.DeviceEntry entry : BringupUtil.getActiveDevicesSorted()) {
+    for (BringupUtil.DeviceEntry entry : probeCandidateEntries(core)) {
       if (!isCanEntry(entry)) {
         continue;
       }
       canCount++;
       DeviceUnit device = core.findDeviceByLabel(entry.label);
       ProbeTarget target = resolveTarget(entry, device);
-      if (!core.isLifecycleSnapshotAllowed(entry.label)) {
+      if (!core.isLifecycleSnapshotAllowed(entry.label)
+          && !isSupplementalProbeTarget(target.model)) {
         results.add(snapshotNotAllowed(target));
         continue;
       }
@@ -199,12 +204,90 @@ public final class ActiveDevicePresenceProbe {
     return session;
   }
 
-  private boolean isCanEntry(BringupUtil.DeviceEntry entry) {
+  static List<BringupUtil.DeviceEntry> mergeProbeEntries(
+      List<BringupUtil.DeviceEntry> activeEntries,
+      List<BringupUtil.DeviceEntry> profileEntries,
+      Map<String, String> supplementalModelsByLabel) {
+    LinkedHashMap<String, BringupUtil.DeviceEntry> byLabel = new LinkedHashMap<>();
+    addProbeEntries(byLabel, activeEntries);
+    if (profileEntries != null && supplementalModelsByLabel != null) {
+      for (BringupUtil.DeviceEntry entry : profileEntries) {
+        if (entry == null || !isCanEntryStatic(entry)) {
+          continue;
+        }
+        String normalizedLabel = normalizeLabel(entry.label);
+        if (normalizedLabel.isBlank() || byLabel.containsKey(normalizedLabel)) {
+          continue;
+        }
+        String model = supplementalModelsByLabel.get(normalizedLabel);
+        if (isSupplementalProbeTarget(model)) {
+          byLabel.put(normalizedLabel, entry);
+        }
+      }
+    }
+    return new ArrayList<>(byLabel.values());
+  }
+
+  static boolean isSupplementalProbeTarget(String model) {
+    String normalized = model != null ? model.trim().toUpperCase(Locale.ROOT) : LABEL_KEY_EMPTY;
+    return MODEL_PDP.equals(normalized) || MODEL_PDH.equals(normalized);
+  }
+
+  private static boolean isCanEntryStatic(BringupUtil.DeviceEntry entry) {
     if (entry == null) {
       return false;
     }
     String iface = entry.deviceInterface;
     return iface != null && DEVICE_INTERFACE_CAN.equalsIgnoreCase(iface.trim());
+  }
+
+  private static String normalizeLabel(String label) {
+    return label != null ? label.trim().toLowerCase(Locale.ROOT) : LABEL_KEY_EMPTY;
+  }
+
+  private static void addProbeEntries(
+      Map<String, BringupUtil.DeviceEntry> byLabel,
+      List<BringupUtil.DeviceEntry> entries) {
+    if (byLabel == null || entries == null) {
+      return;
+    }
+    for (BringupUtil.DeviceEntry entry : entries) {
+      if (entry == null || !isCanEntryStatic(entry)) {
+        continue;
+      }
+      String normalizedLabel = normalizeLabel(entry.label);
+      if (!normalizedLabel.isBlank()) {
+        byLabel.putIfAbsent(normalizedLabel, entry);
+      }
+    }
+  }
+
+  private List<BringupUtil.DeviceEntry> probeCandidateEntries(BringupCore core) {
+    List<BringupUtil.DeviceEntry> activeEntries = BringupUtil.getActiveDevicesSorted();
+    if (core == null) {
+      return activeEntries;
+    }
+    String selectedProfile = BringupUtil.getSelectedCanProfile();
+    List<BringupUtil.DeviceEntry> profileEntries =
+        selectedProfile == null || selectedProfile.isBlank()
+            ? Collections.emptyList()
+            : BringupUtil.getProfileDevicesSorted(selectedProfile);
+    Map<String, String> supplementalModelsByLabel = new LinkedHashMap<>();
+    for (BringupUtil.DeviceEntry entry : profileEntries) {
+      if (entry == null || entry.label == null || entry.label.isBlank()) {
+        continue;
+      }
+      DeviceUnit device = core.findDeviceByLabel(entry.label);
+      ProbeTarget target = resolveTarget(entry, device);
+      if (isSupplementalProbeTarget(target.model)) {
+        supplementalModelsByLabel.put(normalizeLabel(entry.label), target.model);
+      }
+    }
+    return mergeProbeEntries(activeEntries, profileEntries, supplementalModelsByLabel);
+  }
+
+  private boolean isCanEntry(BringupUtil.DeviceEntry entry) {
+    return isCanEntryStatic(entry);
   }
 
   private ProbeTarget resolveTarget(BringupUtil.DeviceEntry entry, DeviceUnit device) {
@@ -354,8 +437,15 @@ public final class ActiveDevicePresenceProbe {
       long stickyFaultsRaw = stickyFaultField.getValue();
       List<String> activeFaultNames = new ArrayList<>();
       List<String> stickyFaultNames = new ArrayList<>();
-      CtreReaderUtil.collectFaultFlags(talon, activeFaultNames);
-      CtreReaderUtil.collectStickyFaultFlags(talon, stickyFaultNames);
+      if (CtreReaderUtil.shouldReadDetailedFaultFlags(
+          faultField.getStatus(),
+          stickyFaultField.getStatus())) {
+        CtreReaderUtil.collectFaultFlags(talon, activeFaultNames);
+        CtreReaderUtil.collectStickyFaultFlags(talon, stickyFaultNames);
+      } else {
+        CtreReaderUtil.appendDetailedFlagReadSkipped(activeFaultNames);
+        CtreReaderUtil.appendDetailedFlagReadSkipped(stickyFaultNames);
+      }
       if (allOk && faultsRaw == 0L) {
         acc.pass(CODE_NO_ACTIVE_FAULTS, "No active Phoenix fault bits.", TALON_NO_ACTIVE_FAULTS, "0");
       } else {
@@ -578,16 +668,16 @@ public final class ActiveDevicePresenceProbe {
       scorePowerStatus(acc, status.voltage, status.totalCurrent, status.temperature,
           status.switchableEnabled, status.brownout || status.canWarning || status.hardwareFault,
           status.stickyBrownout || status.stickyCanWarning || status.stickyCanBusOff || status.stickyHasReset);
-      if (!hasStrongPowerPresenceEvidence(status.voltage, status.temperature, status.totalCurrent, status.channelCurrentA)) {
+      boolean strongPresenceEvidence = hasStrongPowerPresenceEvidence(
+          status.voltage, status.temperature, status.totalCurrent, status.channelCurrentA);
+      if (shouldForceAbsentForPowerProbe(strongPresenceEvidence, acc.score())) {
         acc.warn(
             CODE_POWER_FRESHNESS_GATE,
             "PDP freshness gate failed; default-like telemetry is not strong presence evidence.",
             0,
             formatPowerEvidenceObserved(status.voltage, status.temperature, status.totalCurrent, status.channelCurrentA),
             StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK);
-        acc.forceBucket(BUCKET_UNKNOWN, StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK, TEXT_PD_WEAK);
-      } else if (acc.score() < PRESENT_THRESHOLD) {
-        acc.forceBucket(BUCKET_UNKNOWN, StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK, TEXT_PD_WEAK);
+        acc.forceBucket(BUCKET_ABSENT, StatusCatalogGenerated.SS__DEVICE__ABSENT, TEXT_PD_ABSENT);
       }
       acc.recordStageDuration(TEXT_STAGE_EVALUATE, nanosToMs(System.nanoTime() - stageStartNs));
       acc.setTotalDurationMs(nanosToMs(System.nanoTime() - deviceStartNs));
@@ -595,7 +685,7 @@ public final class ActiveDevicePresenceProbe {
     } catch (Exception ex) {
       acc.warn(CODE_EXCEPTION_THROWN, TEXT_EXCEPTION_PREFIX + ex.getClass().getSimpleName(), 0,
           safeExceptionMessage(ex), StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK);
-      acc.forceBucket(BUCKET_UNKNOWN, StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK, TEXT_PD_WEAK);
+      acc.forceBucket(BUCKET_ABSENT, StatusCatalogGenerated.SS__DEVICE__ABSENT, TEXT_PD_ABSENT);
       acc.setTotalDurationMs(nanosToMs(System.nanoTime() - deviceStartNs));
       return acc.finish();
     }
@@ -630,16 +720,16 @@ public final class ActiveDevicePresenceProbe {
       scorePowerStatus(acc, status.voltage, status.totalCurrent, status.temperature,
           status.switchableEnabled, status.brownout || status.canWarning || status.hardwareFault,
           status.stickyBrownout || status.stickyCanWarning || status.stickyCanBusOff || status.stickyHasReset);
-      if (!hasStrongPowerPresenceEvidence(status.voltage, status.temperature, status.totalCurrent, status.channelCurrentA)) {
+      boolean strongPresenceEvidence = hasStrongPowerPresenceEvidence(
+          status.voltage, status.temperature, status.totalCurrent, status.channelCurrentA);
+      if (shouldForceAbsentForPowerProbe(strongPresenceEvidence, acc.score())) {
         acc.warn(
             CODE_POWER_FRESHNESS_GATE,
             "PDH freshness gate failed; default-like telemetry is not strong presence evidence.",
             0,
             formatPowerEvidenceObserved(status.voltage, status.temperature, status.totalCurrent, status.channelCurrentA),
             StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK);
-        acc.forceBucket(BUCKET_UNKNOWN, StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK, TEXT_PD_WEAK);
-      } else if (acc.score() < PRESENT_THRESHOLD) {
-        acc.forceBucket(BUCKET_UNKNOWN, StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK, TEXT_PD_WEAK);
+        acc.forceBucket(BUCKET_ABSENT, StatusCatalogGenerated.SS__DEVICE__ABSENT, TEXT_PD_ABSENT);
       }
       acc.recordStageDuration(TEXT_STAGE_EVALUATE, nanosToMs(System.nanoTime() - stageStartNs));
       acc.setTotalDurationMs(nanosToMs(System.nanoTime() - deviceStartNs));
@@ -647,7 +737,7 @@ public final class ActiveDevicePresenceProbe {
     } catch (Exception ex) {
       acc.warn(CODE_EXCEPTION_THROWN, TEXT_EXCEPTION_PREFIX + ex.getClass().getSimpleName(), 0,
           safeExceptionMessage(ex), StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK);
-      acc.forceBucket(BUCKET_UNKNOWN, StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK, TEXT_PD_WEAK);
+      acc.forceBucket(BUCKET_ABSENT, StatusCatalogGenerated.SS__DEVICE__ABSENT, TEXT_PD_ABSENT);
       acc.setTotalDurationMs(nanosToMs(System.nanoTime() - deviceStartNs));
       return acc.finish();
     }
@@ -700,7 +790,7 @@ public final class ActiveDevicePresenceProbe {
     }
   }
 
-  private boolean hasStrongPowerPresenceEvidence(
+  static boolean hasStrongPowerPresenceEvidence(
       double voltage,
       double temperature,
       double totalCurrent,
@@ -708,21 +798,25 @@ public final class ActiveDevicePresenceProbe {
     if (!isReasonableBusVoltage(voltage)) {
       return false;
     }
-    if (!isFiniteInRange(temperature, MIN_MEANINGFUL_POWER_TEMP_C, MAX_VALID_TEMP_C)) {
+    if (!isFiniteInRange(temperature, 0.0, MAX_VALID_TEMP_C)) {
       return false;
     }
-    if (isFiniteInRange(totalCurrent, MIN_MEANINGFUL_CURRENT_A, MAX_VALID_CURRENT_A)) {
-      return true;
+    if (!isFiniteInRange(totalCurrent, 0.0, MAX_VALID_CURRENT_A)) {
+      return false;
     }
-    if (channelCurrents == null) {
+    if (channelCurrents == null || channelCurrents.length < MIN_VALID_POWER_CHANNEL_COUNT) {
       return false;
     }
     for (double current : channelCurrents) {
-      if (isFiniteInRange(current, MIN_MEANINGFUL_CURRENT_A, MAX_VALID_CURRENT_A)) {
-        return true;
+      if (!isFiniteInRange(current, 0.0, MAX_VALID_CURRENT_A)) {
+        return false;
       }
     }
-    return false;
+    return true;
+  }
+
+  static boolean shouldForceAbsentForPowerProbe(boolean strongPresenceEvidence, int score) {
+    return !strongPresenceEvidence;
   }
 
   private String formatPowerEvidenceObserved(
@@ -771,11 +865,11 @@ public final class ActiveDevicePresenceProbe {
     return code == StatusCode.OK;
   }
 
-  private boolean isReasonableBusVoltage(double value) {
+  private static boolean isReasonableBusVoltage(double value) {
     return isFiniteInRange(value, MIN_VALID_BUS_VOLTAGE, MAX_VALID_BUS_VOLTAGE);
   }
 
-  private boolean isFiniteInRange(double value, double min, double max) {
+  private static boolean isFiniteInRange(double value, double min, double max) {
     return Double.isFinite(value) && value >= min && value <= max;
   }
 

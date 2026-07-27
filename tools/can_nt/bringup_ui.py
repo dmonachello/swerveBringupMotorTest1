@@ -146,6 +146,8 @@ from .bridge_ops import (
     lifecycle_activate,
     lifecycle_deactivate_active,
     push_config,
+    runtime_activate,
+    runtime_deactivate,
     send_command,
     show_lifecycle_state,
     select_test_by_name,
@@ -279,6 +281,7 @@ from tools.common.group_contract import (
     group_member_map,
     resolve_group_motor_targets,
 )
+from tools.common.topology_render import shape_kind_for_category
 from tools.common.robot_test_dsl import (
     compile_source,
     copy_external_library_test_into_root_payload,
@@ -547,6 +550,8 @@ BUTTON_ACTIVATE_GROUP = "Activate Group"
 BUTTON_DEACTIVATE_GROUP = "Deactivate Group"
 BUTTON_PUSH_CONFIG = "Push Config"
 BUTTON_DOWNLOAD_CONFIG = "Download Current Config"
+BUTTON_RUNTIME_ACTIVATE = "Runtime Activate"
+BUTTON_RUNTIME_DEACTIVATE = "Runtime Deactivate"
 BUTTON_SHOW_RUNTIME_STATE = "Show Runtime State"
 BUTTON_SHOW_LIFECYCLE_STATE = "Show Scope State"
 CMD_PRINT_CAN_DIAG = "printCANdiag"
@@ -745,7 +750,9 @@ CAN_FAULT_FINDER_TAB_LABEL = "CAN Fault Finder"
 CAN_FAULT_FINDER_TITLE = "CAN Fault Finder"
 CAN_FAULT_FINDER_RUN_BUTTON = "Run CAN Break Check"
 CAN_FAULT_FINDER_STATUS_NOT_RUN = "Not run yet."
-CAN_FAULT_FINDER_STATUS_FMT = "Last run: {age} ago | candidates={count}"
+CAN_FAULT_FINDER_STATUS_RUNNING = "Running CAN Break Check..."
+CAN_FAULT_FINDER_STATUS_FMT = "Last run: {age} ago at {clock} | run #{run_count} | candidates={count}"
+CAN_FAULT_FINDER_TEXT_RUN_STAMP_FMT = "Diagnosis frozen from run #{run_count} at {clock}\n\n{body}"
 CAN_FAULT_FINDER_TEXT_NOT_RUN = (
     "Run CAN Break Check to freeze the current evidence window and rank CAN fault candidates."
 )
@@ -1117,7 +1124,7 @@ ACTIVATION_MEMBERSHIP_MODE_VALUES = (
     ACTIVATION_MEMBERSHIP_MODE_STRICT,
     ACTIVATION_MEMBERSHIP_MODE_FORCE,
 )
-ACTIVATION_MEMBERSHIP_MODE_DEFAULT = ACTIVATION_MEMBERSHIP_MODE_PARTIAL
+ACTIVATION_MEMBERSHIP_MODE_DEFAULT = ACTIVATION_MEMBERSHIP_MODE_FORCE
 ACTIVATION_MEMBERSHIP_LABEL = "Activation Mode"
 ACTION_KIND_REMOTE_COMMAND = "remoteCommand"
 ACTION_SOURCE_ROBOT = "robot"
@@ -2040,6 +2047,7 @@ class BringupControlUI(tk.Tk):
         self._fault_finder_status_var = tk.StringVar(value=CAN_FAULT_FINDER_STATUS_NOT_RUN)
         self._fault_finder_text: Optional[tk.Text] = None
         self._fault_finder_last_run_at = 0.0
+        self._fault_finder_run_count = 0
         self._fault_finder_result: Dict[str, Any] = {}
         self._evidence_panel: Optional[ttk.Frame] = None
         self._evidence_live_view: Optional[LiveTopologyView] = None
@@ -2083,6 +2091,8 @@ class BringupControlUI(tk.Tk):
         self._evidence_last_probe_complete_seq: Optional[int] = None
         self._evidence_probe_results_by_label: Dict[str, Dict[str, Any]] = {}
         self._last_selected_test = None
+        self._last_ui_selected_test_intent = ""
+        self._last_robot_selected_test_name = ""
         self._last_sent_seq: Optional[int] = None
         self._nt_connected = False
         self._timeout_sec = 1.5
@@ -2318,18 +2328,16 @@ class BringupControlUI(tk.Tk):
             header, text=BUTTON_DOWNLOAD_CONFIG, command=self._download_current_config_from_ui
         ).pack(side="left", padx=(6, 0))
         ttk.Button(
+            header, text=BUTTON_RUNTIME_ACTIVATE, command=self._runtime_activate_from_ui
+        ).pack(side="left", padx=(6, 0))
+        ttk.Button(
+            header, text=BUTTON_RUNTIME_DEACTIVATE, command=self._runtime_deactivate_from_ui
+        ).pack(side="left", padx=(6, 0))
+        ttk.Button(
             header, text=BUTTON_SHOW_RUNTIME_STATE, command=self._show_runtime_state_from_ui
         ).pack(side="left", padx=(6, 0))
-        activate_scope_button = ttk.Button(
-            header, text=BUTTON_ACTIVATE_GROUP, command=self._activate_scope_from_ui
-        )
-        activate_scope_button.pack(side="left", padx=(10, 0))
-        self._activate_scope_button = activate_scope_button
-        deactivate_scope_button = ttk.Button(
-            header, text=BUTTON_DEACTIVATE_GROUP, command=self._deactivate_scope_from_ui
-        )
-        deactivate_scope_button.pack(side="left", padx=(6, 0))
-        self._deactivate_scope_button = deactivate_scope_button
+        self._activate_scope_button = None
+        self._deactivate_scope_button = None
         self._activation_membership_mode_var = tk.StringVar(
             value=ACTIVATION_MEMBERSHIP_MODE_DEFAULT
         )
@@ -3604,6 +3612,7 @@ class BringupControlUI(tk.Tk):
         selected_name = str(name or "").strip()
         if not selected_name or selected_name == PROFILE_NONE:
             return
+        self._last_ui_selected_test_intent = selected_name
         tests_tab_active = self._current_right_tab_text() == TEST_LIBRARY_TAB_LABEL
         if not tests_tab_active:
             self._selected_test_var.set(selected_name)
@@ -3652,7 +3661,7 @@ class BringupControlUI(tk.Tk):
     def _handle_tests_boundary_transition(self, previous_tab: str, current_tab: str) -> None:
         """
         NAME
-            _handle_tests_boundary_transition - Tear down non-singleton runtime scope state when crossing Tests and non-Tests.
+            _handle_tests_boundary_transition - Switch Tests/manual ownership without tearing down the shared active-group scope.
         """
         previous_is_tests = previous_tab == TEST_LIBRARY_TAB_LABEL
         current_is_tests = current_tab == TEST_LIBRARY_TAB_LABEL
@@ -3664,7 +3673,6 @@ class BringupControlUI(tk.Tk):
             self._pending_tests_boundary_transition = (previous_tab, current_tab)
             return
         self._pending_tests_boundary_transition = None
-        self._deactivate_group_blocking()
         if previous_is_tests:
             self._group_owner_mode = GROUP_SOURCE_MANUAL
             return
@@ -3821,7 +3829,7 @@ class BringupControlUI(tk.Tk):
                 {
                     "label": clean_label,
                     "enabled": True,
-                    "locked": key in TEST_ACTIVE_GROUP_SINGLETON_LABELS or clean_label in ("lmtSw0",),
+                    "locked": False,
                     "invalid": invalid,
                     "reason": "missing resource/device - " + clean_label if invalid else "",
                 }
@@ -3844,6 +3852,12 @@ class BringupControlUI(tk.Tk):
         tests_by_name = getattr(store, "tests_by_name", {})
         entry = tests_by_name.get(clean_name) if isinstance(tests_by_name, dict) else None
         normalized = getattr(entry, "normalized", None)
+        current_source_name = str(self.__dict__.get("_selected_test_source_name", "") or "").strip()
+        if normalized is None and current_source_name == clean_name:
+            try:
+                normalized = compile_source(clean_name, self._current_test_source_text())
+            except Exception:
+                normalized = None
         if normalized is None and clean_name in list_external_library_test_names():
             try:
                 normalized = compile_source(clean_name, read_external_library_test_source(clean_name))
@@ -3883,7 +3897,7 @@ class BringupControlUI(tk.Tk):
     def _load_selected_test_into_active_group(self, force_replace: bool = False) -> None:
         """
         NAME
-            _load_selected_test_into_active_group - Refresh the Tests-tab selected-test scope display model.
+            _load_selected_test_into_active_group - Replace robot active-group membership with the selected test devices.
         """
         rows = self._selected_test_required_rows()
         membership_key = self._tests_active_group_membership_key_for_rows(rows)
@@ -3895,6 +3909,11 @@ class BringupControlUI(tk.Tk):
         self._tests_active_group_rows = rows
         self._tests_active_group_membership_key = membership_key
         self._tests_active_group_loaded_to_robot = None
+        if self._tcp_connected and not self._tracker.is_pending():
+            replace_ok = self._replace_active_group_members(rows)
+            self._tests_active_group_loaded_to_robot = bool(replace_ok)
+            if replace_ok:
+                self.after_idle(self._request_runtime_state_refresh)
         self._refresh_tests_active_group_panel()
 
     def _restore_manual_active_group_members(self) -> None:
@@ -4339,6 +4358,27 @@ class BringupControlUI(tk.Tk):
                 )
                 for label_key in expected_labels
             ):
+                self._pending_scope_member_labels_expected = tuple()
+        current_scope_labels = tuple(
+            sorted(
+                {
+                    str(label or NT_VALUE_EMPTY).strip().lower()
+                    for label in self._current_scope_expected_member_labels()
+                    if str(label or NT_VALUE_EMPTY).strip()
+                }
+            )
+        )
+        if current_scope_labels:
+            latest_runtime_devices = self.__dict__.get("_latest_runtime_devices", {})
+            current_scope_confirmed = isinstance(latest_runtime_devices, dict) and all(
+                self._runtime_device_confirms_scope_member(
+                    latest_runtime_devices.get(label_key)
+                )
+                for label_key in current_scope_labels
+            )
+            if current_scope_confirmed and self._scope_is_currently_active():
+                self._pending_runtime_active_expected = None
+                self._pending_controlled_lifecycle_expected = None
                 self._pending_scope_member_labels_expected = tuple()
         if (
             self.__dict__.get("_pending_runtime_active_expected") is None
@@ -4854,7 +4894,10 @@ class BringupControlUI(tk.Tk):
         if node is None:
             return False
         device_type = str(getattr(node, "device_type", NT_VALUE_EMPTY)).strip()
-        return device_type == DEVICE_TYPE_MOTOR
+        if device_type == DEVICE_TYPE_MOTOR:
+            return True
+        category = str(getattr(node, "category", NT_VALUE_EMPTY)).strip()
+        return shape_kind_for_category(category) == "motor"
 
     def _on_live_node_right_click(self, node: object, event: tk.Event) -> None:
         """
@@ -4886,7 +4929,10 @@ class BringupControlUI(tk.Tk):
         group_name = str(group.get("name", NT_VALUE_EMPTY)).strip()
         if not group_name:
             return
-        group_payload = group.get(GROUP_KEY_GROUP)
+        if group_name.strip().lower() == GROUP_ACTIVE_NAME:
+            group_payload = self._runtime_active_group_payload()
+        else:
+            group_payload = group.get(GROUP_KEY_GROUP)
         if not isinstance(group_payload, dict):
             self._append_output(f"Group payload not available for {group_name}.")
             return
@@ -4977,6 +5023,11 @@ class BringupControlUI(tk.Tk):
         NAME
             _open_manual_group_duty_targets - Validate group manual-duty preconditions then open the shared popup.
         """
+        filtered_targets = [
+            target for target in list(targets or []) if self._is_manual_duty_target_allowed(target)
+        ]
+        if filtered_targets:
+            targets = filtered_targets
         action_state = self._manual_duty_action_state(targets)
         if not action_state.allowed:
             self._append_output(
@@ -5131,9 +5182,10 @@ class BringupControlUI(tk.Tk):
         if reason:
             return
         if self._manual_duty_popup is expected_popup:
-            self._emit_manual_duty_popup_reason(
-                "Manual duty popup closed: popup destroyed unexpectedly."
-            )
+            unexpected_reason = "Manual duty popup closed: popup destroyed unexpectedly."
+            self._manual_duty_popup_close_reason = unexpected_reason
+            self._emit_manual_duty_popup_reason(unexpected_reason)
+            self._close_manual_duty_popup(stop_motor=True)
 
     def _on_manual_duty_scale_button_down(self, event: tk.Event) -> Optional[str]:
         """
@@ -6229,6 +6281,7 @@ class BringupControlUI(tk.Tk):
             _run_can_fault_check - Freeze current evidence and rank CAN fault candidates.
         """
         now_s = time.time()
+        self._fault_finder_status_var.set(CAN_FAULT_FINDER_STATUS_RUNNING)
         try:
             profile_devices = self.__dict__.get("_profile_devices", {})
             if (
@@ -6251,15 +6304,27 @@ class BringupControlUI(tk.Tk):
             self._set_fault_finder_text(CAN_FAULT_FINDER_TEXT_ERROR_FMT.format(error=exc))
             return
         self._fault_finder_last_run_at = float(snapshot.get(FAULT_SNAPSHOT_KEY_RAN_AT, now_s) or now_s)
+        run_count = int(self.__dict__.get("_fault_finder_run_count", 0) or 0) + 1
+        self._fault_finder_run_count = run_count
         self._fault_finder_result = dict(snapshot.get(FAULT_SNAPSHOT_KEY_RESULT, {}))
         candidate_count = int(snapshot.get(FAULT_SNAPSHOT_KEY_CANDIDATE_COUNT, 0) or 0)
+        clock_text = timestamp_hms()
         self._fault_finder_status_var.set(
             CAN_FAULT_FINDER_STATUS_FMT.format(
                 age=_format_age_seconds(0.0),
+                clock=clock_text,
+                run_count=run_count,
                 count=candidate_count,
             )
         )
-        self._set_fault_finder_text(str(snapshot.get(FAULT_SNAPSHOT_KEY_RENDERED_TEXT, TEXT_EMPTY)))
+        rendered_text = str(snapshot.get(FAULT_SNAPSHOT_KEY_RENDERED_TEXT, TEXT_EMPTY))
+        self._set_fault_finder_text(
+            CAN_FAULT_FINDER_TEXT_RUN_STAMP_FMT.format(
+                run_count=run_count,
+                clock=clock_text,
+                body=rendered_text or TEXT_EMPTY,
+            )
+        )
 
     def _evidence_profile_generation(self) -> str:
         """
@@ -8164,6 +8229,14 @@ class BringupControlUI(tk.Tk):
             "  This updates robot config and selects the currently chosen profile.",
             "  It does not activate runtime by default.",
             "",
+            "Runtime Activate:",
+            "  Instantiates the selected profile through the shared robot runtime.",
+            "  Use this when non-Test surfaces need live runtime-owned device handles",
+            "  such as PDP/PDH probing or full runtime-state inspection.",
+            "",
+            "Runtime Deactivate:",
+            "  Releases the active runtime profile and instantiated runtime devices.",
+            "",
             "Download Current Config:",
             "  Fetches the robot's current bringup_system.json over REST and saves it locally.",
             "  Use this to re-anchor the host UI to the robot's current config.",
@@ -8288,9 +8361,34 @@ class BringupControlUI(tk.Tk):
             for label, entry in test_profile_devices.items()
             if isinstance(label, str) and label.strip() and isinstance(entry, dict)
         }
+        authoritative_selected = self._selected_test_name()
+        if authoritative_selected == PROFILE_NONE:
+            authoritative_selected = str(
+                getattr(self, "_last_ui_selected_test_intent", "") or ""
+            ).strip()
+        if not authoritative_selected:
+            authoritative_selected = str(
+                getattr(self, "_last_selected_test", "") or ""
+            ).strip()
+        if not authoritative_selected:
+            authoritative_selected = str(
+                getattr(self, "_last_robot_selected_test_name", "") or ""
+            ).strip()
         current_global = self._selected_test_library_global_name()
         current_config = self._selected_test_library_config_name()
         current_profile = self._selected_test_library_profile_name()
+        if authoritative_selected in profile_names:
+            current_profile = authoritative_selected
+            current_config = ""
+            current_global = ""
+        elif authoritative_selected in config_names:
+            current_config = authoritative_selected
+            current_profile = ""
+            current_global = ""
+        elif authoritative_selected in global_names:
+            current_global = authoritative_selected
+            current_profile = ""
+            current_config = ""
         self._replace_test_library_list(
             self._test_library_global_list,
             [
@@ -11162,7 +11260,15 @@ class BringupControlUI(tk.Tk):
         if not profile_name:
             self._append_output(OUTPUT_NO_PROFILE)
             return
-        args = {KEY_NAME: profile_name}
+        if self._scope_context_kind() == GROUP_SOURCE_SELECTED_TEST:
+            self._load_selected_test_into_active_group(force_replace=True)
+            if self.__dict__.get("_tests_active_group_loaded_to_robot") is False:
+                self._append_output(TEST_SCOPE_STATUS_REQUIRED_UNAVAILABLE_DETAIL)
+                return
+        args = {
+            KEY_NAME: profile_name,
+            "membershipMode": self._selected_activation_membership_mode(),
+        }
         self._append_output(
             f"{timestamp_hms()} {OUTPUT_RUNTIME_ACTIVATE_FMT.format(profile=profile_name)}"
         )
@@ -11172,7 +11278,11 @@ class BringupControlUI(tk.Tk):
             self._tracker,
             "runtimeActivate",
             args,
-            sender=lambda session, _command_name, _command_args: runtime_activate(session, profile_name),
+            sender=lambda session, _command_name, command_args: runtime_activate(
+                session,
+                profile_name,
+                membership_mode=str(command_args.get("membershipMode", "")),
+            ),
             now=time.time(),
         )
         if seq is not None:
@@ -11631,7 +11741,20 @@ class BringupControlUI(tk.Tk):
             self._sync_test_dropdown_values(test_names)
             if not selected_name:
                 selected_name = self._resolve_selected_from_rows()
-            if selected_name:
+            current_ui_selected = str(self._selected_test_var.get() or "").strip()
+            last_ui_intent = str(
+                getattr(self, "_last_ui_selected_test_intent", "") or ""
+            ).strip()
+            robot_selected_changed = selected_name != str(
+                getattr(self, "_last_robot_selected_test_name", "") or ""
+            )
+            ui_selection_drifted_from_robot = bool(
+                selected_name
+                and current_ui_selected != selected_name
+                and current_ui_selected != last_ui_intent
+            )
+            self._last_robot_selected_test_name = selected_name
+            if selected_name and (robot_selected_changed or ui_selection_drifted_from_robot):
                 self._sync_test_selection(selected_name)
             active_name = self._tests_table.getEntry("activeName").getString("")
             active_status = self._tests_table.getEntry("activeStatus").getString("")
@@ -12034,7 +12157,6 @@ class BringupControlUI(tk.Tk):
         """
         self._latest_runtime_state_payload = dict(payload or {})
         self._runtime_state_seen = True
-        self._maybe_complete_scope_transition_wait(payload)
         latest_runtime_devices: Dict[str, Dict[str, Any]] = {}
         runtime_active = payload.get("runtimeActive")
         if isinstance(runtime_active, bool):
@@ -12058,6 +12180,7 @@ class BringupControlUI(tk.Tk):
                 if label:
                     latest_runtime_devices[label.lower()] = device
         self._latest_runtime_devices = latest_runtime_devices
+        self._maybe_complete_scope_transition_wait(payload)
         self._merge_cached_active_probe_results_into_runtime_devices()
         self._log_manual_duty_runtime_mismatch()
         now_sec = time.time()
@@ -12184,6 +12307,7 @@ class BringupControlUI(tk.Tk):
             robot_mode=str(self.__dict__.get("_robot_mode_known", "") or "").strip().lower(),
             manual_group_empty=self._manual_active_group_is_empty(),
             scope_active=self._scope_is_currently_active(),
+            transition_pending=self._scope_transition_pending(),
         )
         if should_clear_runtime_event_notice(
             self.__dict__.get("_runtime_event_notice_text", NT_VALUE_EMPTY),
@@ -12668,8 +12792,18 @@ class BringupControlUI(tk.Tk):
             values = [PROFILE_NONE]
         self._known_test_names = values
         if not current_selection:
-            self._selected_test_var.set(values[0])
-            self._last_selected_test = values[0]
+            preferred = str(
+                getattr(self, "_last_ui_selected_test_intent", "") or ""
+            ).strip()
+            if not preferred:
+                preferred = str(getattr(self, "_last_selected_test", "") or "").strip()
+            if not preferred:
+                preferred = str(
+                    getattr(self, "_last_robot_selected_test_name", "") or ""
+                ).strip()
+            selected_value = preferred if preferred in values else values[0]
+            self._selected_test_var.set(selected_value)
+            self._last_selected_test = selected_value
 
     def _sync_test_selection(self, name: str) -> None:
         """

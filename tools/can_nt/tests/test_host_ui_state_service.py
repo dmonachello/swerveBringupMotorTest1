@@ -342,6 +342,31 @@ class HostUiStateServiceTests(unittest.TestCase):
         self.assertFalse(state.allowed)
         self.assertEqual(MANUAL_DUTY_BLOCKED_TRANSITION_TEXT, state.blocked_reason)
 
+    def test_resolve_manual_duty_access_state_allows_confirmed_target_even_when_busy_and_stale(self) -> None:
+        state = resolve_manual_duty_access_state(
+            tcp_connected=True,
+            runtime_state_seen=True,
+            stale_state=True,
+            robot_estopped=False,
+            robot_enabled=True,
+            tracker_pending=True,
+            transition_pending=False,
+            target_labels=["SPARKMAX/NEO 25"],
+            runtime_state_by_label={
+                "sparkmax/neo 25": {
+                    "label": "SPARKMAX/NEO 25",
+                    "lifecycleState": "controlled-active",
+                    "instantiated": True,
+                    "testable": True,
+                }
+            },
+            controlled_lifecycle_active=True,
+            runtime_groups=[],
+        )
+
+        self.assertTrue(state.allowed)
+        self.assertEqual("", state.blocked_reason)
+
     def test_resolve_manual_duty_action_state_requests_runtime_refresh_before_open(self) -> None:
         state = resolve_manual_duty_action_state(
             tcp_connected=True,
@@ -643,7 +668,7 @@ class HostUiStateServiceTests(unittest.TestCase):
         self.assertTrue(state.allowed)
         self.assertEqual("", state.blocked_reason)
 
-    def test_resolve_manual_duty_binding_state_blocks_when_runtime_group_binding_is_active(self) -> None:
+    def test_resolve_manual_duty_binding_state_allows_targets_when_runtime_group_binding_is_active(self) -> None:
         state = resolve_manual_duty_binding_state(
             target_labels=["FALCON 9"],
             runtime_groups=[
@@ -658,22 +683,21 @@ class HostUiStateServiceTests(unittest.TestCase):
             ],
         )
 
-        self.assertFalse(state.allowed)
-        self.assertEqual(
-            MANUAL_DUTY_BLOCKED_BINDING_ACTIVE_TEXT,
-            state.blocked_reason,
-        )
+        self.assertTrue(state.allowed)
+        self.assertEqual("", state.blocked_reason)
 
     def test_resolve_tests_active_group_member_rows_keeps_singleton_instantiated_when_scope_is_inactive(self) -> None:
         rows = resolve_tests_active_group_member_rows(
-            rows=[{"label": "pdp", "enabled": True, "locked": True, "invalid": False}],
+            rows=[{"label": "pdp", "enabled": True, "locked": False, "invalid": False}],
             runtime_state_by_label={"pdp": {"instantiated": True, "testable": True}},
             scope_active=False,
         )
 
         self.assertEqual(1, len(rows))
+        self.assertEqual("yes", rows[0].locked_text)
         self.assertEqual("yes", rows[0].instantiated_text)
         self.assertEqual("no", rows[0].scope_active_text)
+        self.assertIn("locked", rows[0].statuses)
         self.assertIn("instantiated", rows[0].statuses)
         self.assertIn("scope inactive", rows[0].statuses)
 

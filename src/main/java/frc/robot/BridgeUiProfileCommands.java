@@ -2,6 +2,10 @@ package frc.robot;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import frc.robot.diag.lifecycle.activation.ActivationMembershipMode;
+import frc.robot.diag.lifecycle.activation.ActivationMode;
+import frc.robot.diag.lifecycle.activation.ActivationResult;
+import frc.robot.diag.lifecycle.activation.DeactivateResult;
 import java.util.List;
 import java.util.Set;
 
@@ -20,6 +24,7 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
   private static final String CMD_PROFILES_APPLY = "profilesApply";
   private static final String CMD_SHOW_PROFILES = "showProfiles";
   private static final String CMD_SHOW_PROFILE = "showProfile";
+  private static final String ARG_MEMBERSHIP_MODE = "membershipMode";
 
   private static final String ARG_NAME = "name";
   private static final String ARG_JSON = "json";
@@ -49,6 +54,8 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
   private static final String TEXT_RUNTIME_DEACTIVATE_OK = "Runtime deactivated.";
   private static final String TEXT_RUNTIME_ACTIVATE_BLOCKED_DISABLED =
       "Runtime activate blocked: robot not in enabled teleop. Enable teleop, then activate runtime.";
+  private static final String TEXT_RUNTIME_SCOPE_ACTIVATE_FAILED_PREFIX =
+      "Runtime activated, but active-group activation failed: ";
   private static final String TEXT_PROFILES_RELOAD_OK = "Profiles reloaded.";
   private static final String TEXT_PROFILES_RELOAD_FAILED = "Profiles reload failed: %s";
   private static final String MESSAGE_PROFILE_NOT_FOUND = "Profile not found.";
@@ -81,6 +88,8 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
 
     void selectCanProfile(String profileName);
 
+    boolean isSameSelectedProfile(String profileName);
+
     void prepareActivationForSelectedProfile();
 
     void activateSelectedProfile();
@@ -94,6 +103,11 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
     boolean isRuntimeActivationAllowed();
 
     boolean isControlledLifecycleActive();
+
+    ActivationResult activateRuntimeActiveGroup(
+        ActivationMode mode, ActivationMembershipMode membershipMode);
+
+    DeactivateResult deactivateRuntimeActiveGroup();
 
     String getActiveCanProfileLabel();
 
@@ -217,7 +231,10 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
     }
     String profileName = dependencies.parseUiArgString(args, ARG_NAME);
     if (profileName != null && !profileName.isBlank()) {
-      dependencies.selectCanProfile(profileName.trim());
+      String requestedProfile = profileName.trim();
+      if (!dependencies.isSameSelectedProfile(requestedProfile)) {
+        dependencies.selectCanProfile(requestedProfile);
+      }
     }
     if (TEXT_NONE.equals(dependencies.getSelectedCanProfileLabel())) {
       result.ok = false;
@@ -225,10 +242,29 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
       result.outText = result.message;
       return;
     }
+    ActivationMembershipMode membershipMode = ActivationMembershipMode.STRICT;
+    if (requireEnabledTeleop) {
+      membershipMode = parseMembershipMode(args, result);
+      if (membershipMode == null) {
+        return;
+      }
+    }
     dependencies.prepareActivationForSelectedProfile();
     dependencies.activateSelectedProfile();
     if (dependencies.isRuntimeDeclaredActive()) {
       dependencies.runProfileActivateAction();
+      if (requireEnabledTeleop) {
+        ActivationResult activation =
+            dependencies.activateRuntimeActiveGroup(ActivationMode.READ_ONLY, membershipMode);
+        if (!activation.success()) {
+          result.ok = false;
+          result.message =
+              TEXT_RUNTIME_SCOPE_ACTIVATE_FAILED_PREFIX
+                  + selectActivationErrorMessage(activation.errorCode(), activation.errorMessage());
+          result.outText = result.message;
+          return;
+        }
+      }
       result.message = String.format(TEXT_PROFILE_ACTIVATE_OK, dependencies.getActiveCanProfileLabel());
       result.outText = result.message;
       return;
@@ -252,10 +288,44 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
   }
 
   private void executeRuntimeDeactivate(BridgeUiCommandResult result) {
+    DeactivateResult lifecycleDeactivation = dependencies.deactivateRuntimeActiveGroup();
+    if (!lifecycleDeactivation.success()) {
+      result.ok = false;
+      result.message = selectActivationErrorMessage(
+          lifecycleDeactivation.errorCode(), lifecycleDeactivation.errorMessage());
+      result.outText = result.message;
+      return;
+    }
     dependencies.deactivateActiveProfile();
     dependencies.runProfileDeactivateAction();
     result.message = TEXT_RUNTIME_DEACTIVATE_OK;
     result.outText = result.message;
+  }
+
+  private ActivationMembershipMode parseMembershipMode(
+      JsonObject args, BridgeUiCommandResult result) {
+    String rawMode = dependencies.parseUiArgString(args, ARG_MEMBERSHIP_MODE);
+    if (rawMode == null || rawMode.isBlank()) {
+      return ActivationMembershipMode.STRICT;
+    }
+    try {
+      return ActivationMembershipMode.valueOf(rawMode.trim().toUpperCase());
+    } catch (IllegalArgumentException ex) {
+      result.ok = false;
+      result.message = "Invalid lifecycle membership mode: " + rawMode;
+      result.outText = result.message;
+      return null;
+    }
+  }
+
+  private String selectActivationErrorMessage(String errorCode, String errorMessage) {
+    if (errorMessage != null && !errorMessage.isBlank()) {
+      return errorMessage;
+    }
+    if (errorCode != null && !errorCode.isBlank()) {
+      return errorCode;
+    }
+    return TEXT_PROFILE_ACTIVATE_FAIL;
   }
 
   private void executeShowProfiles(JsonObject args, BridgeUiCommandResult result) {

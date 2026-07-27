@@ -135,6 +135,7 @@ class LiveTopologyViewTests(unittest.TestCase):
         view._fit_pending = False
         view._manage_runtime_notice_internally = True
         view._nodes = []
+        view._profile_device_labels = []
         view._diagram_meta = {}
         view._bridge_groups = []
         view._runtime_groups = []
@@ -210,6 +211,23 @@ class LiveTopologyViewTests(unittest.TestCase):
         view._on_active_group_member_checkbox_toggled("FALCON 9")
 
         self.assertEqual([], calls)
+
+    def test_active_group_checkbox_toggle_ignores_instantiated_singleton(self) -> None:
+        view = self._make_view()
+        calls = []
+        view._on_active_group_member_toggled_cb = lambda label, enabled: calls.append((label, enabled))
+        view._active_group_member_update_in_progress = False
+        variable = _BoolVarStub(False)
+        view._active_group_member_vars = {"pdp": variable}
+        view.set_active_group_edit_action_state(live_view_module.ACTION_STATE_ALLOWED)
+        view._runtime_state = {"pdp": {"instantiated": True}}
+        view._bridge_groups = []
+        view._runtime_groups = [{"name": "active-group", "members": [{"label": "pdp", "enabled": True}]}]
+
+        view._on_active_group_member_checkbox_toggled("pdp")
+
+        self.assertEqual([], calls)
+        self.assertTrue(variable.get())
 
     def test_override_action_uses_shared_action_gate(self) -> None:
         view = self._make_view()
@@ -453,6 +471,81 @@ class LiveTopologyViewTests(unittest.TestCase):
 
         self.assertTrue(view._active_group_members_editable())
 
+    def test_active_scope_eligible_labels_use_full_profile_device_list(self) -> None:
+        view = self._make_view()
+        view._profile_device_labels = [
+            "SPARKMAX/NEO 25",
+            "FALCON 9",
+            "controller0",
+            "pdp",
+            "roborio",
+            "lmtSw0",
+        ]
+        view._nodes = [
+            live_view_module.LiveNode(
+                key=1,
+                category="falcons",
+                label="FALCON 9",
+                can_id=9,
+                bus_index=0,
+                row=0,
+                x=0.0,
+                device_type="2",
+            ),
+        ]
+
+        self.assertEqual(
+            [
+                "controller0",
+                "FALCON 9",
+                "lmtSw0",
+                "pdp",
+                "roborio",
+                "SPARKMAX/NEO 25",
+            ],
+            view._active_scope_eligible_labels(),
+        )
+
+    def test_active_scope_eligible_labels_fallback_to_nodes_when_profile_list_missing(self) -> None:
+        view = self._make_view()
+        view._profile_device_labels = []
+        view._nodes = [
+            live_view_module.LiveNode(
+                key=1,
+                category="falcons",
+                label="FALCON 9",
+                can_id=9,
+                bus_index=0,
+                row=0,
+                x=0.0,
+                device_type="2",
+            ),
+            live_view_module.LiveNode(
+                key=2,
+                category="pdp",
+                label="pdp",
+                can_id=20,
+                bus_index=0,
+                row=0,
+                x=1.0,
+                device_type="8",
+            ),
+        ]
+
+        self.assertEqual(["FALCON 9", "pdp"], view._active_scope_eligible_labels())
+
+    def test_resolved_active_group_state_locks_instantiated_singleton_members(self) -> None:
+        group_state = live_view_module.resolve_group_state_from_member_map(
+            name="active-group",
+            member_map={"pdp": {"label": "pdp", "enabled": True}},
+            runtime_state_by_label={"pdp": {"instantiated": False, "lifecycleState": "controlled-instantiated"}},
+            primary_label="pdp",
+            scope_active=False,
+            singleton_labels=live_view_module.ACTIVE_GROUP_SINGLETON_LABELS,
+        )
+
+        self.assertTrue(group_state.members[0].locked)
+
     def test_runtime_notice_requires_activation_before_manual_run(self) -> None:
         view = self._make_view()
         notices = []
@@ -462,7 +555,7 @@ class LiveTopologyViewTests(unittest.TestCase):
         view._apply_runtime_notice_from_state(False, False, True, False, "teleop")
 
         self.assertEqual(
-            [("Activate Group first.", "warn")],
+            [("Press Runtime Activate.", "warn")],
             notices,
         )
 

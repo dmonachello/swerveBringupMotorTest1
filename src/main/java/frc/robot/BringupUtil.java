@@ -269,6 +269,7 @@ public final class BringupUtil {
   private static final Map<DeviceInstanceKey, Object> DEVICE_INSTANCE_REGISTRY = new LinkedHashMap<>();
   private static final Map<DeviceInstanceKey, Object> APP_SINGLETON_SERVICE_REGISTRY =
       new LinkedHashMap<>();
+  private static final Object APP_SINGLETON_MARKER = new Object();
   private static long activeProfileGeneration = PROFILE_CONFIG_GENERATION_INITIAL;
 
   // Currently active profile name.
@@ -1059,6 +1060,108 @@ public final class BringupUtil {
           String.format(MESSAGE_APP_SINGLETON_TYPE_MISMATCH, safeText(vendor), safeText(type), id));
     }
     return serviceClass.cast(existing);
+  }
+
+  /**
+   * NAME
+   *   peekAppSingletonService - Return an already-allocated app singleton without creating it.
+   *
+   * PARAMETERS
+   *   device - Device wrapper requesting the singleton-backed service.
+   *   serviceClass - Expected singleton implementation type.
+   *
+   * RETURNS
+   *   Existing singleton service instance, or null when none has been allocated yet.
+   *
+   * ERRORS
+   *   Throws IllegalStateException if the stored singleton type does not match
+   *   the requested type for the same vendor/type/id key.
+   */
+  public static synchronized <T> T peekAppSingletonService(
+      DeviceUnit device,
+      Class<T> serviceClass) {
+    if (device == null || serviceClass == null) {
+      return null;
+    }
+    RegistrationHeader header = device.getHeader();
+    String vendor = header != null ? header.vendor() : "";
+    String type = header != null ? header.deviceType() : device.getDeviceType();
+    int id = device.getCanId();
+    DeviceInstanceKey key = new DeviceInstanceKey(vendor, type, id);
+    Object existing = APP_SINGLETON_SERVICE_REGISTRY.get(key);
+    if (existing == null) {
+      return null;
+    }
+    if (!serviceClass.isInstance(existing)) {
+      throw new IllegalStateException(
+          String.format(MESSAGE_APP_SINGLETON_TYPE_MISMATCH, safeText(vendor), safeText(type), id));
+    }
+    return serviceClass.cast(existing);
+  }
+
+  /**
+   * NAME
+   *   hasAppSingletonService - Report whether one app-owned singleton has been allocated.
+   *
+   * PARAMETERS
+   *   device - Device wrapper identity to query.
+   *
+   * RETURNS
+   *   True when one app-owned singleton allocation exists for the wrapper key.
+   */
+  public static synchronized boolean hasAppSingletonService(DeviceUnit device) {
+    if (device == null) {
+      return false;
+    }
+    RegistrationHeader header = device.getHeader();
+    String vendor = header != null ? header.vendor() : "";
+    String type = header != null ? header.deviceType() : device.getDeviceType();
+    int id = device.getCanId();
+    DeviceInstanceKey key = new DeviceInstanceKey(vendor, type, id);
+    return APP_SINGLETON_SERVICE_REGISTRY.containsKey(key);
+  }
+
+  /**
+   * NAME
+   *   hasAppSingletonService - Report whether one app-owned singleton has been allocated.
+   *
+   * PARAMETERS
+   *   deviceEntry - Profile/device-entry identity to query.
+   *
+   * RETURNS
+   *   True when one app-owned singleton allocation exists for the vendor/type/id key.
+   */
+  public static synchronized boolean hasAppSingletonService(DeviceEntry deviceEntry) {
+    if (deviceEntry == null) {
+      return false;
+    }
+    String vendor = deviceEntry.vendor != null ? deviceEntry.vendor : "";
+    String type = deviceEntry.type != null ? deviceEntry.type : "";
+    DeviceInstanceKey key = new DeviceInstanceKey(vendor, type, deviceEntry.id);
+    return APP_SINGLETON_SERVICE_REGISTRY.containsKey(key);
+  }
+
+  /**
+   * NAME
+   *   markAppSingletonAllocated - Record one app-owned singleton allocation marker.
+   *
+   * PARAMETERS
+   *   device - Device wrapper identity to mark allocated.
+   *
+   * SIDE EFFECTS
+   *   Persists a process-lifetime marker used by lightweight virtual singleton
+   *   wrappers that do not own a richer vendor service object.
+   */
+  public static synchronized void markAppSingletonAllocated(DeviceUnit device) {
+    if (device == null) {
+      return;
+    }
+    RegistrationHeader header = device.getHeader();
+    String vendor = header != null ? header.vendor() : "";
+    String type = header != null ? header.deviceType() : device.getDeviceType();
+    int id = device.getCanId();
+    DeviceInstanceKey key = new DeviceInstanceKey(vendor, type, id);
+    APP_SINGLETON_SERVICE_REGISTRY.putIfAbsent(key, APP_SINGLETON_MARKER);
   }
 
   /**

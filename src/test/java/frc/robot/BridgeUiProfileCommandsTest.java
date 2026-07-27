@@ -74,6 +74,7 @@ class BridgeUiProfileCommandsTest {
     ProfileDeps deps = new ProfileDeps();
     deps.profileActive = true;
     deps.runtimeActivationAllowed = true;
+    deps.runtimeScopeActivationSuccess = true;
     deps.activeRuntimeProfile = "beta";
     deps.nextName = "beta";
     BridgeUiProfileCommands commands = new BridgeUiProfileCommands(deps);
@@ -94,7 +95,70 @@ class BridgeUiProfileCommandsTest {
 
     assertTrue(result.ok);
     assertTrue(deps.activateActionRan);
+    assertTrue(deps.runtimeScopeActivateCalled);
     assertTrue(result.message.startsWith("Profile activated:"));
+  }
+
+  @Test
+  void runtimeActivateSameSelectedProfileDoesNotReselectAndClearRuntimeState() {
+    ProfileDeps deps = new ProfileDeps();
+    deps.profileActive = true;
+    deps.runtimeActivationAllowed = true;
+    deps.runtimeScopeActivationSuccess = true;
+    deps.activeRuntimeProfile = "beta";
+    deps.selectedProfileLabel = "beta";
+    deps.activeProfileLabel = "beta";
+    deps.nextName = "beta";
+    BridgeUiProfileCommands commands = new BridgeUiProfileCommands(deps);
+    BridgeUiIngressPolicy.Ingress ingress = new BridgeUiIngressPolicy.Ingress(
+        CMD_RUNTIME_ACTIVATE,
+        new JsonObject(),
+        "clientA",
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        false);
+
+    BridgeUiCommandResult result = commands.execute(ingress, 0.0, false);
+
+    assertTrue(result.ok);
+    assertFalse(deps.selectCanProfileCalled);
+    assertTrue(deps.runtimeScopeActivateCalled);
+  }
+
+  @Test
+  void runtimeActivateDifferentProfileReselectsBeforeActivation() {
+    ProfileDeps deps = new ProfileDeps();
+    deps.profileActive = true;
+    deps.runtimeActivationAllowed = true;
+    deps.runtimeScopeActivationSuccess = true;
+    deps.activeRuntimeProfile = "beta";
+    deps.selectedProfileLabel = "alpha";
+    deps.activeProfileLabel = "beta";
+    deps.nextName = "beta";
+    BridgeUiProfileCommands commands = new BridgeUiProfileCommands(deps);
+    BridgeUiIngressPolicy.Ingress ingress = new BridgeUiIngressPolicy.Ingress(
+        CMD_RUNTIME_ACTIVATE,
+        new JsonObject(),
+        "clientA",
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        false);
+
+    BridgeUiCommandResult result = commands.execute(ingress, 0.0, false);
+
+    assertTrue(result.ok);
+    assertTrue(deps.selectCanProfileCalled);
+    assertEquals("beta", deps.lastSelectedProfileName);
   }
 
   @Test
@@ -150,6 +214,7 @@ class BridgeUiProfileCommandsTest {
   @Test
   void runtimeDeactivateRunsDeactivateAction() {
     ProfileDeps deps = new ProfileDeps();
+    deps.runtimeScopeDeactivateSuccess = true;
     BridgeUiProfileCommands commands = new BridgeUiProfileCommands(deps);
     BridgeUiIngressPolicy.Ingress ingress = new BridgeUiIngressPolicy.Ingress(
         CMD_RUNTIME_DEACTIVATE,
@@ -167,6 +232,7 @@ class BridgeUiProfileCommandsTest {
     BridgeUiCommandResult result = commands.execute(ingress, 0.0, false);
 
     assertTrue(result.ok);
+    assertTrue(deps.runtimeScopeDeactivateCalled);
     assertTrue(deps.deactivateCalled);
     assertTrue(deps.deactivateActionRan);
     assertEquals("Runtime deactivated.", result.message);
@@ -342,18 +408,37 @@ class BridgeUiProfileCommandsTest {
     private boolean activateActionRan;
     private boolean deactivateActionRan;
     private boolean deactivateCalled;
+    private boolean selectCanProfileCalled;
     private boolean controlledLifecycleActive;
+    private boolean runtimeScopeActivateCalled;
+    private boolean runtimeScopeDeactivateCalled;
+    private boolean runtimeScopeActivationSuccess;
+    private boolean runtimeScopeDeactivateSuccess;
+    private String nextMembershipMode;
     private String activeRuntimeProfile = "";
     private String selectedProfileLabel = "alpha";
     private String activeProfileLabel = "alpha";
+    private String lastSelectedProfileName = "";
 
     @Override
     public String parseUiArgString(JsonObject args, String key) {
+      if ("membershipMode".equals(key)) {
+        return nextMembershipMode;
+      }
       return nextName;
     }
 
     @Override
-    public void selectCanProfile(String profileName) {}
+    public void selectCanProfile(String profileName) {
+      selectCanProfileCalled = true;
+      lastSelectedProfileName = profileName;
+      selectedProfileLabel = profileName;
+    }
+
+    @Override
+    public boolean isSameSelectedProfile(String profileName) {
+      return profileName != null && profileName.equals(selectedProfileLabel);
+    }
 
     @Override
     public void prepareActivationForSelectedProfile() {}
@@ -384,6 +469,39 @@ class BridgeUiProfileCommandsTest {
     @Override
     public boolean isControlledLifecycleActive() {
       return controlledLifecycleActive;
+    }
+
+    @Override
+    public frc.robot.diag.lifecycle.activation.ActivationResult activateRuntimeActiveGroup(
+        frc.robot.diag.lifecycle.activation.ActivationMode mode,
+        frc.robot.diag.lifecycle.activation.ActivationMembershipMode membershipMode) {
+      runtimeScopeActivateCalled = true;
+      return new frc.robot.diag.lifecycle.activation.ActivationResult(
+          runtimeScopeActivationSuccess,
+          "active-group",
+          "",
+          mode,
+          membershipMode,
+          List.of(),
+          List.of(),
+          List.of(),
+          List.of(),
+          frc.robot.diag.lifecycle.activation.LifecycleState.ACTIVE,
+          runtimeScopeActivationSuccess ? "" : "scope_failed",
+          runtimeScopeActivationSuccess ? "" : "scope_failed");
+    }
+
+    @Override
+    public frc.robot.diag.lifecycle.activation.DeactivateResult deactivateRuntimeActiveGroup() {
+      runtimeScopeDeactivateCalled = true;
+      return new frc.robot.diag.lifecycle.activation.DeactivateResult(
+          runtimeScopeDeactivateSuccess,
+          "active-group",
+          "",
+          List.of(),
+          frc.robot.diag.lifecycle.activation.LifecycleState.INACTIVE,
+          runtimeScopeDeactivateSuccess ? "" : "scope_failed",
+          runtimeScopeDeactivateSuccess ? "" : "scope_failed");
     }
 
     @Override

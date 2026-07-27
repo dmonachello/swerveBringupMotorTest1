@@ -355,7 +355,11 @@ def select_profile(session: BridgeSession, profile_name: str) -> Optional[int]:
     return _send(session, "selectProfile", {KEY_NAME: profile_name})
 
 
-def runtime_activate(session: BridgeSession, profile_name: str = "") -> Optional[int]:
+def runtime_activate(
+    session: BridgeSession,
+    profile_name: str = "",
+    membership_mode: str = "",
+) -> Optional[int]:
     """
     NAME
         runtime_activate - Activate the selected or named runtime profile on the robot.
@@ -363,6 +367,8 @@ def runtime_activate(session: BridgeSession, profile_name: str = "") -> Optional
     args: Dict[str, Any] = {}
     if isinstance(profile_name, str) and profile_name.strip():
         args[KEY_NAME] = profile_name.strip()
+    if isinstance(membership_mode, str) and membership_mode.strip():
+        args["membershipMode"] = membership_mode.strip()
     return _send(session, "runtimeActivate", args)
 
 

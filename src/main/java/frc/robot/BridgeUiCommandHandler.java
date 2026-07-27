@@ -584,6 +584,14 @@ public class BridgeUiCommandHandler {
           }
 
           @Override
+          public boolean isSameSelectedProfile(String profileName) {
+            String requested = profileName != null ? profileName.trim() : TEXT_EMPTY;
+            String selected = BringupUtil.getSelectedCanProfileLabel();
+            String current = selected != null ? selected.trim() : TEXT_EMPTY;
+            return !requested.isBlank() && requested.equals(current);
+          }
+
+          @Override
           public void prepareActivationForSelectedProfile() {
             BringupUtil.prepareActivationForSelectedProfile();
           }
@@ -619,6 +627,21 @@ public class BridgeUiCommandHandler {
             return lifecycleRuntime != null
                 && lifecycleRuntime.activationManager().lifecycleState()
                     == frc.robot.diag.lifecycle.activation.LifecycleState.ACTIVE;
+          }
+
+          @Override
+          public frc.robot.diag.lifecycle.activation.ActivationResult activateRuntimeActiveGroup(
+              frc.robot.diag.lifecycle.activation.ActivationMode mode,
+              frc.robot.diag.lifecycle.activation.ActivationMembershipMode membershipMode) {
+            return runtime.activateControlledBringupLifecycle(
+                GROUP_ACTIVE,
+                mode,
+                membershipMode);
+          }
+
+          @Override
+          public frc.robot.diag.lifecycle.activation.DeactivateResult deactivateRuntimeActiveGroup() {
+            return runtime.deactivateActiveControlledBringupLifecycle();
           }
 
           @Override
@@ -2259,13 +2282,7 @@ public class BridgeUiCommandHandler {
     runtime.refreshDeviceLifecycle(System.currentTimeMillis());
     DeviceLifecycleRegistry.DeviceLifecycleView lifecycle =
         runtime.getDeviceLifecycle().viewForLabel(label);
-    if (lifecycle == null) {
-      return false;
-    }
-    if (runtime.isRuntimeReady()) {
-      return lifecycle.testable;
-    }
-    return true;
+    return lifecycle != null;
   }
 
   /**
@@ -2887,9 +2904,6 @@ public class BridgeUiCommandHandler {
     if (!isManualDutyEligible(target)) {
       return false;
     }
-    if (bridgeGroups().hasActiveBindingForDevice(target)) {
-      return false;
-    }
     String previous = bridgeSelected().device != null ? bridgeSelected().device.trim() : TEXT_EMPTY;
     double clamped = Math.max(DUTY_MIN, Math.min(DUTY_MAX, duty));
     stageManualDeviceSelection(bridgeSelected(), target);
@@ -2952,9 +2966,6 @@ public class BridgeUiCommandHandler {
     }
     BridgeGroupManager.Group group = bridgeGroups().getGroup(groupName);
     if (group == null || !group.enabled) {
-      return false;
-    }
-    if (bridgeGroups().hasActiveBindingForGroup(groupName)) {
       return false;
     }
     double clamped = Math.max(DUTY_MIN, Math.min(DUTY_MAX, duty));

@@ -46,8 +46,6 @@ class BridgeUiGroupCommandsTest {
   private static final String MSG_DEVICE_NOT_FOUND_PREFIX = "Device not found: ";
   private static final String MSG_MANUAL_DUTY_SCOPE_BLOCKED =
       "Manual duty blocked: device is outside the active scope membership.";
-  private static final String MSG_MANUAL_GROUP_DUTY_SCOPE_BLOCKED =
-      "Manual duty blocked: group contains device(s) outside the active scope membership.";
   private static final String MSG_MANUAL_DUTY_TEST_RUNNING =
       "Manual duty blocked: active test running.";
   private static final String MSG_ACTIVE_GROUP_LOCKED =
@@ -388,12 +386,14 @@ class BridgeUiGroupCommandsTest {
   }
 
   @Test
-  void manualGroupDutySetBlocksGroupOutsideControlledLifecycleScope() {
+  void manualGroupDutySetAllowsInScopeSubsetWhenGroupContainsOutsideControlledLifecycleMember() {
     TestDeps deps = new TestDeps();
     deps.controlledLifecycleActive = true;
     deps.bridgeGroups.createGroup(GROUP_MOTORS);
     deps.bridgeGroups.addDevice(GROUP_MOTORS, DEVICE_MOTOR_1, false);
     deps.controlledLifecycleDeviceActiveByLabel.put(DEVICE_MOTOR_1, false);
+    deps.bridgeGroups.addDevice(GROUP_MOTORS, "motor2", false);
+    deps.controlledLifecycleDeviceActiveByLabel.put("motor2", true);
     deps.deviceByLabel.put(
         DEVICE_MOTOR_1,
         new BringupUtil.DeviceEntry(
@@ -408,6 +408,20 @@ class BridgeUiGroupCommandsTest {
             null,
             null,
             null));
+    deps.deviceByLabel.put(
+        "motor2",
+        new BringupUtil.DeviceEntry(
+            DUTY_TEST_ID + 1,
+            DUTY_TEST_MFG,
+            DUTY_TEST_DEVICE_TYPE,
+            "CAN",
+            DUTY_TEST_VENDOR,
+            DUTY_TEST_TYPE,
+            "motor2",
+            DUTY_TEST_MOTOR,
+            null,
+            null,
+            null));
     BridgeUiGroupCommands commands = new BridgeUiGroupCommands(deps);
     JsonObject args = new JsonObject();
     args.addProperty("group", GROUP_MOTORS);
@@ -416,8 +430,9 @@ class BridgeUiGroupCommandsTest {
     BridgeUiCommandResult result =
         commands.execute(ingress(CMD_MANUAL_GROUP_DUTY_SET, args), 0.0, true);
 
-    assertFalse(result.ok);
-    assertEquals(MSG_MANUAL_GROUP_DUTY_SCOPE_BLOCKED, result.message);
+    assertTrue(result.ok);
+    assertEquals(GROUP_MOTORS, deps.lastManualGroupName);
+    assertEquals(DUTY_HALF, deps.lastManualGroupDuty);
   }
 
   @Test
@@ -558,6 +573,36 @@ class BridgeUiGroupCommandsTest {
   }
 
   @Test
+  void groupAddDeviceCreatesMissingActiveGroupOnFirstManualEdit() {
+    TestDeps deps = new TestDeps();
+    deps.deviceByLabel.put(
+        DEVICE_MOTOR_1,
+        new BringupUtil.DeviceEntry(
+            DUTY_TEST_ID,
+            DUTY_TEST_MFG,
+            DUTY_TEST_DEVICE_TYPE,
+            "CAN",
+            DUTY_TEST_VENDOR,
+            DUTY_TEST_TYPE,
+            DEVICE_MOTOR_1,
+            DUTY_TEST_MOTOR,
+            null,
+            null,
+            null));
+    BridgeUiGroupCommands commands = new BridgeUiGroupCommands(deps);
+    JsonObject args = new JsonObject();
+    args.addProperty(KEY_GROUP, GROUP_ACTIVE);
+    args.addProperty(KEY_DEVICE, DEVICE_MOTOR_1);
+
+    BridgeUiCommandResult result =
+        commands.execute(ingress(CMD_GROUP_ADD_DEVICE, args), 0.0, false);
+
+    assertTrue(result.ok);
+    assertNotNull(deps.bridgeGroups.getGroup(GROUP_ACTIVE));
+    assertTrue(deps.bridgeGroups.hasDevice(GROUP_ACTIVE, DEVICE_MOTOR_1));
+  }
+
+  @Test
   void groupRemoveDeviceRemovesOnlyTargetGroupMembership() {
     TestDeps deps = new TestDeps();
     deps.bridgeGroups.createGroup(GROUP_MOTORS);
@@ -640,6 +685,40 @@ class BridgeUiGroupCommandsTest {
     assertTrue(result.ok);
     assertFalse(deps.bridgeGroups.hasDevice(GROUP_ACTIVE, DEVICE_MOTOR_1));
     assertTrue(deps.bridgeGroups.hasDevice(GROUP_ACTIVE, "lmtSw0"));
+  }
+
+  @Test
+  void groupReplaceMembersCreatesMissingActiveGroupOnFirstManualEdit() {
+    TestDeps deps = new TestDeps();
+    deps.deviceByLabel.put(
+        DEVICE_MOTOR_1,
+        new BringupUtil.DeviceEntry(
+            DUTY_TEST_ID,
+            DUTY_TEST_MFG,
+            DUTY_TEST_DEVICE_TYPE,
+            "CAN",
+            DUTY_TEST_VENDOR,
+            DUTY_TEST_TYPE,
+            DEVICE_MOTOR_1,
+            DUTY_TEST_MOTOR,
+            null,
+            null,
+            null));
+    BridgeUiGroupCommands commands = new BridgeUiGroupCommands(deps);
+    JsonObject args = new JsonObject();
+    args.addProperty(KEY_GROUP, GROUP_ACTIVE);
+    JsonArray members = new JsonArray();
+    JsonObject member = new JsonObject();
+    member.addProperty("label", DEVICE_MOTOR_1);
+    members.add(member);
+    args.add("members", members);
+
+    BridgeUiCommandResult result =
+        commands.execute(ingress(CMD_GROUP_REPLACE_MEMBERS, args), 0.0, false);
+
+    assertTrue(result.ok);
+    assertNotNull(deps.bridgeGroups.getGroup(GROUP_ACTIVE));
+    assertTrue(deps.bridgeGroups.hasDevice(GROUP_ACTIVE, DEVICE_MOTOR_1));
   }
 
   @Test

@@ -9,7 +9,6 @@ import unittest
 
 from tools.can_nt.bringup_ui import BringupControlUI
 from tools.can_nt.host_ui_state_service import (
-    MANUAL_DUTY_BLOCKED_BINDING_ACTIVE_TEXT,
     resolve_active_group_summary_state,
     resolve_manual_duty_binding_state,
 )
@@ -47,7 +46,7 @@ class CrossSurfaceRuntimeAgreementTests(unittest.TestCase):
 
         self.assertEqual(shared.status_text, status_text)
 
-    def test_binding_ownership_shared_gate_matches_ui_group_popup_block(self) -> None:
+    def test_binding_ownership_shared_gate_allows_manual_duty(self) -> None:
         runtime_groups = [
             {
                 "name": "motors",
@@ -64,8 +63,8 @@ class CrossSurfaceRuntimeAgreementTests(unittest.TestCase):
 
         ui_reason = ui._manual_duty_binding_block_message_for_targets(["FALCON 9"])
 
-        self.assertFalse(shared.allowed)
-        self.assertEqual(MANUAL_DUTY_BLOCKED_BINDING_ACTIVE_TEXT, shared.blocked_reason)
+        self.assertTrue(shared.allowed)
+        self.assertEqual("", shared.blocked_reason)
         self.assertEqual(shared.blocked_reason, ui_reason)
 
     def test_ui_group_popup_block_clears_when_runtime_binding_is_inactive(self) -> None:

@@ -325,8 +325,8 @@ File:
 - `BridgeUiOutputFacade.java`
 
 Responsibilities:
-- Publish ACK fields to the UI NetworkTable.
-- Publish OUT fields to the UI NetworkTable.
+- Historical note: older revisions published ACK/OUT fields through a UI NetworkTable.
+- Supported bringup command handling now uses the REST/TCP path rather than a required UI NetworkTable bridge.
 - Publish protocol monitor fields to the UI TCP monitor table.
 - Publish lightweight state metadata like last ACK timestamp and session metadata.
 
@@ -335,9 +335,9 @@ Important design choice:
 - This keeps the UI contract centralized and easier to audit.
 
 ### Java Command Flow
-Purpose: show the operational path for NT and TCP command ingress.
+Purpose: show the operational path for historical NT ingress and the supported TCP ingress.
 
-#### NetworkTables path
+#### NetworkTables path (historical / retired)
 ```text
 NT cmd entries
   -> BridgeUiCommandHandler.handleUiCommands()

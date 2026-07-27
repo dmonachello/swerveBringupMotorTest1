@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.Map;
 import frc.robot.telemetry.SampledTelemetrySampler;
 import org.junit.jupiter.api.Test;
 
@@ -143,5 +144,29 @@ class BridgeGroupManagerTest {
 
     assertFalse(groups.hasActiveBindingForDevice(DEVICE_LABEL));
     assertFalse(groups.hasActiveBindingForGroup(GROUP_NAME));
+  }
+
+  @Test
+  void snapshotHelpersAreStableAfterUnderlyingGroupMutation() {
+    BridgeGroupManager groups = new BridgeGroupManager();
+    groups.createGroup(GROUP_NAME);
+    groups.addDevice(GROUP_NAME, DEVICE_LABEL, false);
+    groups.addDevice(GROUP_NAME, "SPARKMAX/NEO 25", false);
+    groups.addBinding(GROUP_NAME, INPUT_RIGHT_Y, BridgeGroupManager.BindingKind.ANALOG, 0.0);
+
+    BridgeGroupManager.Group group = groups.getGroup(GROUP_NAME);
+    assertTrue(group != null);
+    var groupSnapshot = BridgeGroupManager.snapshotGroups(Map.of("motors", group));
+    var memberSnapshot = BridgeGroupManager.snapshotMembers(group);
+    var bindingSnapshot = BridgeGroupManager.snapshotBindings(group);
+
+    groups.removeDevice(GROUP_NAME, "SPARKMAX/NEO 25");
+    groups.clearBindings(GROUP_NAME);
+
+    assertEquals(1, groupSnapshot.size());
+    assertEquals(2, memberSnapshot.size());
+    assertEquals(1, bindingSnapshot.size());
+    assertEquals(1, group.members.size());
+    assertTrue(group.bindings.isEmpty());
   }
 }

@@ -430,58 +430,28 @@ public class RobotV2 extends TimedRobot {
    *   to the legacy default group only when the profile defines no groups.
    */
   private void syncRuntimeBridgeConfig() {
-    bridgeGroups().clear();
-    bridgeSelected().device = TEXT_EMPTY;
-    bridgeSelected().enabled = false;
-    bridgeSelected().group = TEXT_EMPTY;
-    bridgeSelected().groupEnabled = false;
-    bridgeSelected().groupMembers.clear();
-    BringupUtil.BridgeProfileRuntimeConfig config =
-        BringupUtil.getProfileBridgeConfig(BringupUtil.getActiveCanProfile());
-    boolean loadedGroups = false;
-    for (BringupUtil.BridgeProfileGroupConfig group : config.groups) {
-      if (group == null || group.name == null || group.name.isBlank()) {
-        continue;
-      }
-      bridgeGroups().createGroup(group.name);
-      for (BringupUtil.BridgeProfileMemberConfig member : group.members) {
-        if (member == null || member.label == null || member.label.isBlank()) {
-          continue;
-        }
-        bridgeGroups().addMember(group.name, member.label, true);
-        if (!member.enabled) {
-          bridgeGroups().setMemberEnabled(group.name, member.label, false);
-        }
-      }
-      for (BringupUtil.BridgeProfileBindingConfig binding : group.bindings) {
-        if (binding == null || binding.input == null || binding.kind == null) {
-          continue;
-        }
-        BridgeGroupManager.BindingKind kind = BridgeGroupManager.BindingKind.parse(binding.kind);
-        if (kind == null) {
-          continue;
-        }
-        double value = binding.hasValue ? binding.value : BINDING_VALUE_ANALOG;
-        bridgeGroups().addBinding(group.name, binding.input, kind, value);
-      }
-      if (!group.enabled) {
-        bridgeGroups().setGroupEnabled(group.name, false);
-      }
-      loadedGroups = true;
+    synchronizeRuntimeBridgeConfig(
+        bridgeGroups(),
+        bridgeSelected(),
+        BringupUtil.getProfileBridgeConfig(BringupUtil.getActiveCanProfile()),
+        BringupUtil.getActiveDevices());
+  }
+
+  static void synchronizeRuntimeBridgeConfig(
+      BridgeGroupManager bridgeGroups,
+      BridgeGroupManager.SelectedState bridgeSelected,
+      BringupUtil.BridgeProfileRuntimeConfig config,
+      List<BringupUtil.DeviceEntry> fallbackDevices) {
+    BringupRuntime.synchronizeBridgeRuntimeConfig(
+        bridgeGroups,
+        bridgeSelected,
+        config,
+        fallbackDevices);
+    if (bridgeSelected != null) {
+      bridgeSelected.group = TEXT_EMPTY;
+      bridgeSelected.groupEnabled = false;
+      bridgeSelected.groupMembers.clear();
     }
-    if (config.selectedDevice != null
-        && config.selectedDevice.device != null
-        && !config.selectedDevice.device.isBlank()) {
-      bridgeSelected().device = config.selectedDevice.device;
-      bridgeSelected().enabled = config.selectedDevice.enabled;
-      bridgeSelected().group = TEXT_EMPTY;
-      bridgeSelected().groupEnabled = false;
-      bridgeSelected().groupMembers.clear();
-    }
-    if (!loadedGroups) {
-      syncDefaultGroup();
-    }
-    ensureActiveGroupDefined();
   }
 
   /**
@@ -517,8 +487,6 @@ public class RobotV2 extends TimedRobot {
       uiHandler.printProfileInfo();
     }
     refreshInputAliases();
-    syncRuntimeBridgeConfig();
-    ensureActiveGroupDefined();
   }
 
   /**

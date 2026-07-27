@@ -9,6 +9,8 @@ import unittest
 
 from tools.can_nt.passive_discovery_integration_service import (
     ATTACHMENT_TYPE_ACTIVE_PRESENCE_PROBE,
+    EVIDENCE_CONFIDENCE_HIGH,
+    EVIDENCE_STATUS_OK,
     ENGINE_LABEL_NEW,
     FAULT_SNAPSHOT_KEY_CANDIDATE_COUNT,
     FAULT_SNAPSHOT_KEY_RAN_AT,
@@ -276,6 +278,50 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
         self.assertEqual("HIGH", spark["confidence"])
         self.assertEqual("localSnapshot", spark["source"])
         self.assertEqual("0.5s ago", spark["ageText"])
+
+    def test_build_interpreted_device_state_promotes_healthy_roborio_to_ok(self) -> None:
+        state = build_interpreted_device_state(
+            label="roborio",
+            presence_entry={
+                "bucket": "absent",
+                "score": 0.0,
+                "source": "runtimeState",
+                "updatedAtMs": 10_000.0,
+                "message": "Runtime snapshot did not observe device present.",
+                "existence": "ABSENT",
+                "confidence": "LOW",
+                "ageText": "0.0s ago",
+            },
+            passive_device=None,
+            enrichment_snapshot=None,
+            visibility_device=None,
+            runtime_device={
+                "label": "roborio",
+                "lastSeenMs": 10_000.0,
+                "instantiated": True,
+                "lifecycleState": "instantiated",
+                "busV": 12.4,
+                "totalCurrentA": 2.0,
+                "tempC": 34.0,
+                "attachments": [{"type": "presenceCheck"}],
+            },
+            console_entry=None,
+            system_console={},
+            manual_entry=None,
+            manual_observation=None,
+            manual_motion=None,
+            probe_pending=False,
+            last_probe_completed_at=0.0,
+            probe_run_count=0,
+            now_s=10.0,
+        )
+
+        self.assertEqual("PRESENT", state.existence)
+        self.assertEqual(EVIDENCE_STATUS_OK, state.operability)
+        self.assertEqual("ok", state.state)
+        self.assertEqual(EVIDENCE_CONFIDENCE_HIGH, state.confidence)
+        self.assertEqual("present", state.source_scores["runtime"]["state"])
+        self.assertGreaterEqual(int(state.source_scores["runtime"]["score"]), 90)
 
     def test_build_enrichment_run_snapshot_collects_topology_and_marks_missing_live_sources(self) -> None:
         profile_devices = load_profile_device_catalog("test_minimal_25_9")
@@ -978,8 +1024,8 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
         )
 
         self.assertEqual("PRESENT", row["existence"])
-        self.assertEqual("degraded", row["state"])
-        self.assertEqual("MEDIUM", row["confidence"])
+        self.assertEqual("ok", row["state"])
+        self.assertEqual("HIGH", row["confidence"])
         self.assertIn("singleton runtime telemetry is present", row["notesText"])
         self.assertEqual("infrastructure_device", row["deviceType"])
         self.assertEqual("present", row["presenceState"])
@@ -1017,8 +1063,8 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
         )
 
         self.assertEqual("PRESENT", row["existence"])
-        self.assertEqual("degraded", row["state"])
-        self.assertEqual("MEDIUM", row["confidence"])
+        self.assertEqual("ok", row["state"])
+        self.assertEqual("HIGH", row["confidence"])
         self.assertEqual("present", row["presenceState"])
         self.assertEqual("present", row["sourceScores"]["runtime"]["state"])
 
@@ -1110,6 +1156,61 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
             row["notesText"],
         )
 
+    def test_interpreted_row_does_not_let_runtime_singleton_mask_fresh_pdp_timeout(self) -> None:
+        row = build_interpreted_evidence_row(
+            label="pdp",
+            presence_entry={
+                "bucket": "absent",
+                "score": 0.0,
+                "ageText": "1.0s ago",
+                "existence": "ABSENT",
+                "confidence": "MEDIUM",
+            },
+            passive_device=None,
+            visibility_device=None,
+            runtime_device={
+                "instantiated": True,
+                "lifecycleState": "instantiated-present",
+                "busV": 12.4,
+                "totalCurrentA": 1.2,
+                "lastSeenMs": 39000,
+            },
+            console_entry={
+                "summary": "HAL: CAN Receive has Timed Out",
+                "hasError": True,
+                "hasWarn": False,
+                "totalCount": 3,
+                "freshness": "fresh",
+                "records": [
+                    {
+                        "scope": "device",
+                        "faultFamily": "ctre_timeout",
+                        "freshness": "fresh",
+                        "totalCount": 3,
+                    }
+                ],
+                "events": [
+                    "HAL: CAN Receive has Timed Out",
+                ],
+            },
+            system_console={},
+            manual_entry=None,
+            manual_observation=None,
+            manual_motion=None,
+            probe_pending=False,
+            last_probe_completed_at=20.0,
+            probe_run_count=1,
+            now_s=40.0,
+        )
+
+        self.assertEqual("ABSENT", row["existence"])
+        self.assertEqual("FAILED", row["operability"])
+        self.assertEqual("failed", row["state"])
+        self.assertIn(
+            "Fresh singleton runtime telemetry alone is being treated as robot-local evidence and is not enough to override direct CAN-loss evidence.",
+            row["notesText"],
+        )
+
     def test_interpreted_row_keeps_infrastructure_unknown_when_passive_profile_row_is_missing_without_packets(self) -> None:
         passive_device = DeviceRecord(
             identity=DeviceIdentity(manufacturer=1, device_type=1, device_id=0),
@@ -1158,6 +1259,61 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
         self.assertEqual("UNKNOWN", row["existence"])
         self.assertEqual("unknown", row["state"])
         self.assertEqual("LOW", row["confidence"])
+
+    def test_interpreted_row_marks_pdp_missing_when_passive_can_says_missing_even_if_runtime_singleton_is_fresh(self) -> None:
+        passive_device = DeviceRecord(
+            identity=DeviceIdentity(manufacturer=4, device_type=8, device_id=20),
+            expected_status="missing",
+            manufacturer_name="CTRE",
+            device_type_name="PDP",
+            model_name="pdp",
+            profile_label="pdp",
+            presence_confidence="none",
+            presence_score=0,
+            inventory_confidence="low",
+            inventory_score=0,
+            health_confidence="low",
+            health_score=0,
+            health="unknown",
+            evidence_sources=(),
+            evidence_family_keys=(),
+            evidence_family_summaries=(),
+            evidence_gaps=(),
+            notes=(),
+        )
+
+        row = build_interpreted_evidence_row(
+            label="pdp",
+            presence_entry={
+                "bucket": "absent",
+                "score": 0.0,
+                "ageText": "1.0s ago",
+                "existence": "ABSENT",
+                "confidence": "MEDIUM",
+            },
+            passive_device=passive_device,
+            visibility_device=None,
+            runtime_device={
+                "instantiated": True,
+                "lifecycleState": "instantiated-present",
+                "busV": 12.4,
+                "totalCurrentA": 1.2,
+                "lastSeenMs": 39000,
+            },
+            console_entry=None,
+            system_console={},
+            manual_entry=None,
+            manual_observation=None,
+            manual_motion=None,
+            probe_pending=False,
+            last_probe_completed_at=20.0,
+            probe_run_count=1,
+            now_s=40.0,
+        )
+
+        self.assertEqual("ABSENT", row["existence"])
+        self.assertEqual("FAILED", row["operability"])
+        self.assertEqual("failed", row["state"])
 
     def test_build_evidence_fault_snapshot_freezes_rows_and_rendered_result(self) -> None:
         snapshot = build_evidence_fault_snapshot(

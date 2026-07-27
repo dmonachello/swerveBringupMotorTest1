@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 
 class PdpStatusReaderTest {
   private static final long INITIAL_TIME_NS = 0L;
-  private static final long RETRY_AFTER_COOLDOWN_NS = 1_100_000_000L;
+  private static final long RETRY_AFTER_COOLDOWN_NS = 30_100_000_000L;
   private static final int ZERO_FAULTS = 0;
   private static final int MODULE_ID = 20;
   private static final int ZERO_CHANNELS = 0;

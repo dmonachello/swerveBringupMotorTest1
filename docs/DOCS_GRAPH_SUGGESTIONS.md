@@ -54,11 +54,11 @@ Purpose: non-destructive suggestions for future in-page linking and navigation u
 ### AI Diagnosis Using `bringup_report.json`
 
 - [[docs/MIGRATION_DEVICE_INTERFACE.md|MIGRATION DEVICE INTERFACE]]
+- [[docs/TEST_PROCEDURE_FULL_ROBOT_FROM_SCRATCH_V3.md|TEST PROCEDURE FULL ROBOT FROM SCRATCH V3]]
 - [[docs/CORRECTED_STEP_BY_STEP_CLI_BRINGUP.md|CORRECTED STEP BY STEP CLI BRINGUP]]
 - [[docs/FEATURE_SPEC_BRINGUP_PORT_FROM_REST_COMMAND_CHANNEL_POC.md|FEATURE SPEC BRINGUP PORT FROM REST COMMAND CHANNEL POC]]
 - [[docs/FEATURE_SPEC_BRINGUP_REST_PORT_IMPLEMENTATION_PLAN.md|FEATURE SPEC BRINGUP REST PORT IMPLEMENTATION PLAN]]
 - [[docs/FEATURE_SPEC_PIT_ROBOT_DIAGNOSIS_FIRST_PASS.md|FEATURE SPEC PIT ROBOT DIAGNOSIS FIRST PASS]]
-- [[docs/FEATURE_SPEC_TEST_AUTHORING.md|FEATURE SPEC TEST AUTHORING]]
 
 ### Alpha Release Readiness
 
@@ -107,12 +107,12 @@ Purpose: non-destructive suggestions for future in-page linking and navigation u
 
 ### Bringup Label Link Map
 
+- [[docs/TEST_PROCEDURE_FULL_ROBOT_FROM_SCRATCH_V3.md|TEST PROCEDURE FULL ROBOT FROM SCRATCH V3]]
 - [[docs/AI_DIAGNOSIS.md|AI DIAGNOSIS]]
 - [[docs/CORRECTED_STEP_BY_STEP_CLI_BRINGUP.md|CORRECTED STEP BY STEP CLI BRINGUP]]
 - [[docs/FEATURE_SPEC_BRINGUP_PORT_FROM_REST_COMMAND_CHANNEL_POC.md|FEATURE SPEC BRINGUP PORT FROM REST COMMAND CHANNEL POC]]
 - [[docs/FEATURE_SPEC_BRINGUP_REST_PORT_IMPLEMENTATION_PLAN.md|FEATURE SPEC BRINGUP REST PORT IMPLEMENTATION PLAN]]
 - [[docs/FEATURE_SPEC_TOPOLOGY_LINK_ROUTING.md|FEATURE SPEC TOPOLOGY LINK ROUTING]]
-- [[docs/MIGRATION_DEVICE_INTERFACE.md|MIGRATION DEVICE INTERFACE]]
 
 ### Bringup System Schema Diagram
 
@@ -121,7 +121,7 @@ Purpose: non-destructive suggestions for future in-page linking and navigation u
 - [[docs/TESTING.md|TESTING]]
 - [[AGENTS.md|AGENTS]]
 - [[README.md|README]]
-- [[docs/historical/TEST_PLAN_CURRENT_SYSTEM_2026_05_23.md|TEST PLAN CURRENT SYSTEM 2026 05 23]]
+- [[docs/TEST_PROCEDURE_FULL_ROBOT_FROM_SCRATCH_V3.md|TEST PROCEDURE FULL ROBOT FROM SCRATCH V3]]
 
 ### Bringup System ER Diagram
 
@@ -130,7 +130,7 @@ Purpose: non-destructive suggestions for future in-page linking and navigation u
 - [[docs/TESTING.md|TESTING]]
 - [[AGENTS.md|AGENTS]]
 - [[README.md|README]]
-- [[docs/historical/TEST_PLAN_CURRENT_SYSTEM_2026_05_23.md|TEST PLAN CURRENT SYSTEM 2026 05 23]]
+- [[docs/TEST_PROCEDURE_FULL_ROBOT_FROM_SCRATCH_V3.md|TEST PROCEDURE FULL ROBOT FROM SCRATCH V3]]
 
 ### CAN Bus DIagnostic Feature Specification
 
@@ -139,7 +139,7 @@ Purpose: non-destructive suggestions for future in-page linking and navigation u
 - [[Feature Spec - CAN Bus Debug Final Push.md|Feature Spec - CAN Bus Debug Final Push]]
 - [[docs/CAN_BACKGROUND.md|CAN BACKGROUND]]
 - [[docs/CLI_Spec.md|CLI Spec]]
-- [[docs/FEATURE_SPEC_CAN_DEVICE_EVIDENCE_SOURCE_CONTRACTS.md|FEATURE SPEC CAN DEVICE EVIDENCE SOURCE CONTRACTS]]
+- [[docs/FEATURE_SPEC_CAN_BREAK_CHECK_PHASE1.md|FEATURE SPEC CAN BREAK CHECK PHASE1]]
 
 ### CAN Bus Background (FRC)
 
@@ -148,7 +148,7 @@ Purpose: non-destructive suggestions for future in-page linking and navigation u
 - [[docs/FEATURE_SPEC_CAN_BUS_TROUBLESHOOTING_AUTOMATION.md|FEATURE SPEC CAN BUS TROUBLESHOOTING AUTOMATION]]
 - [[Feature Spec - CAN Bus Debug Final Push.md|Feature Spec - CAN Bus Debug Final Push]]
 - [[notes/research/can_evidence/run_notes/2026-06-03_profile_test_minimal_25_9_roborio_isolated_from_can_bus.md|2026-06-03 profile test minimal 25 9 roborio isolated from can bus]]
-- [[docs/FEATURE_SPEC_CAN_DEVICE_EVIDENCE_SOURCE_CONTRACTS.md|FEATURE SPEC CAN DEVICE EVIDENCE SOURCE CONTRACTS]]
+- [[docs/FEATURE_SPEC_CAN_BREAK_CHECK_PHASE1.md|FEATURE SPEC CAN BREAK CHECK PHASE1]]
 
 ### CLI Functional Areas User Guide
 
@@ -260,6 +260,10 @@ Purpose: non-destructive suggestions for future in-page linking and navigation u
 
 - Feature Spec: Bridge UI + CLI Test Authoring (No Direct JSON Editing) -> docs/FEATURE_SPEC_TEST_AUTHORING.md
 
+### Feature Spec: CAN Break Check Phase 1
+
+- OPERATOR SURFACES -> docs/OPERATOR_SURFACES.md
+
 ### Feature Spec: CAN Bus Debug Final Push
 
 - Feature Spec Passive CAN Device Discovery -> docs/FEATURE_SPEC_PASSIVE_CAN_DEVICE_DISCOVERY.md
@@ -284,7 +288,3 @@ Purpose: non-destructive suggestions for future in-page linking and navigation u
 ### Feature Spec: CLI Wizards for Student Operators
 
 - Feature Spec: Bridge UI + CLI Test Authoring (No Direct JSON Editing) -> docs/FEATURE_SPEC_TEST_AUTHORING.md
-
-### Feature Spec: Config Recovery & Damage Prevention
-
-- Feature Spec: Config Recovery & Damage Prevention -> docs/FEATURE_SPEC_CONFIG_RECOVERY.md

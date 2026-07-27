@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from tools.common.group_contract import (
+    ACTIVE_GROUP_SINGLETON_LABELS,
     resolve_group_state_from_member_map,
     resolve_group_state_from_rows,
 )
@@ -52,11 +53,11 @@ RUNNABLE_SCOPE_PANEL_RESYNC_DETAIL = "waiting for post-transition runtime resync
 RUNNABLE_SCOPE_PANEL_DISCONNECTED_DETAIL = (
     "Robot connection unavailable. Power the robot and reconnect before running."
 )
-RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_ACTIVATED = "Activate Group first."
-RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_ACTIVATED = "Activate scope first."
-RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_TELEOP = "Switch to teleop, then Activate Group."
-RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_TELEOP = "Switch to teleop, then Activate Scope."
-RUNNABLE_SCOPE_DETAIL_MANUAL_EMPTY = "Active group is empty. Add devices before Activate Group."
+RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_ACTIVATED = "Press Runtime Activate."
+RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_ACTIVATED = "Press Runtime Activate."
+RUNNABLE_SCOPE_DETAIL_MANUAL_NOT_TELEOP = "Switch to teleop, then press Runtime Activate."
+RUNNABLE_SCOPE_DETAIL_SELECTED_TEST_NOT_TELEOP = "Switch to teleop, then press Runtime Activate."
+RUNNABLE_SCOPE_DETAIL_MANUAL_EMPTY = "Active group is empty. Add devices before Runtime Activate."
 RUNNABLE_SCOPE_DETAIL_SELECT_PROFILE = (
     "Select a profile before using manual/group controls."
 )
@@ -66,7 +67,7 @@ RUNNABLE_SCOPE_DETAIL_DISABLED = "Robot disabled. Enable teleop to run motors."
 RUNTIME_EVENT_NOTICE_TOKEN_DISABLED = "robot disabled"
 RUNTIME_EVENT_NOTICE_TOKEN_ESTOP = "e-stop"
 RUNTIME_EVENT_NOTICE_TOKEN_RUNTIME_INACTIVE = "runtime inactive"
-RUNTIME_EVENT_NOTICE_TOKEN_ACTIVATE_GROUP = "activate group first"
+RUNTIME_EVENT_NOTICE_TOKEN_ACTIVATE_GROUP = "press runtime activate"
 RUNTIME_EVENT_NOTICE_TOKEN_ACTIVATE_SCOPE = "activate scope first"
 RUNTIME_EVENT_NOTICE_TOKEN_GROUP_EMPTY = "active group is empty"
 RUNTIME_EVENT_NOTICE_TOKEN_SELECT_PROFILE = "select a profile"
@@ -88,10 +89,10 @@ TEST_SCOPE_STATUS_NO_SELECTION_DETAIL = (
     "Select a test from one of the library lists to show the devices that test uses."
 )
 TEST_SCOPE_STATUS_LOADED_NOT_ACTIVATED_DETAIL = (
-    "This test requires the devices shown in Selected Test Devices. Press Activate Group, then run the test."
+    "This test requires the devices shown in Selected Test Devices. Press Runtime Activate, then run the test."
 )
 TEST_SCOPE_STATUS_MANUAL_RESTORED_DETAIL = (
-    "The remembered manual active-group was restored after leaving Tests. Press Activate Group before running manual actions."
+    "The remembered manual active-group was restored after leaving Tests. Press Runtime Activate before running manual actions."
 )
 TEST_SCOPE_STATUS_MISSING_DEVICE_PREFIX = (
     "This test cannot run because a required profile device is missing: "
@@ -100,13 +101,13 @@ TEST_SCOPE_STATUS_REQUIRED_UNAVAILABLE_DETAIL = (
     "This test cannot run because one or more required devices are not available."
 )
 TEST_SCOPE_STATUS_BLOCKED_ESTOP_DETAIL = (
-    "This test cannot run because the robot is E-stopped. Clear the E-stop before activating the group or running the test."
+    "This test cannot run because the robot is E-stopped. Clear the E-stop before pressing Runtime Activate or running the test."
 )
 TEST_SCOPE_STATUS_BLOCKED_DISABLED_DETAIL = (
-    "This test cannot run because the robot is disabled. Enable teleop before activating the group or running the test."
+    "This test cannot run because the robot is disabled. Enable teleop before pressing Runtime Activate or running the test."
 )
 TEST_SCOPE_STATUS_BLOCKED_NOT_TELEOP_DETAIL = (
-    "This test cannot run because the robot is not in teleop. Switch to teleop before activating the group or running the test."
+    "This test cannot run because the robot is not in teleop. Switch to teleop before pressing Runtime Activate or running the test."
 )
 TEST_SCOPE_STATUS_RUNNING_DETAIL = (
     "This test is currently running. Wait for the run to finish before activating or deactivating scope."
@@ -125,7 +126,7 @@ TEST_ACTIVE_GROUP_STATUS_SCOPE_INACTIVE = "scope inactive"
 TEST_ACTIVE_GROUP_STATUS_NOT_ACTIVATED = TEST_ACTIVE_GROUP_STATUS_SCOPE_INACTIVE
 TEST_ACTIVE_GROUP_COLUMN_YES = "yes"
 TEST_ACTIVE_GROUP_COLUMN_NO = "no"
-TEST_ACTIVE_GROUP_SINGLETON_LABELS = {"controller0", "roborio", "pdp"}
+TEST_ACTIVE_GROUP_SINGLETON_LABELS = set(ACTIVE_GROUP_SINGLETON_LABELS)
 ACTIVE_GROUP_STATUS_WAITING_TEXT = "waiting for robot runtime state"
 ACTIVE_GROUP_STATUS_RESYNC_TEXT = "waiting for active-scope membership resync"
 ACTIVE_GROUP_STATUS_EMPTY_TEXT = "empty - add devices to activate"
@@ -395,7 +396,7 @@ def resolve_manual_duty_binding_state(
 ) -> ManualDutyScopeState:
     """
     NAME
-        resolve_manual_duty_binding_state - Return whether manual duty is allowed against current runtime binding ownership.
+        resolve_manual_duty_binding_state - Return whether manual duty should be blocked by group binding ownership.
     """
     normalized_targets = {
         str(label or "").strip().lower()
@@ -407,21 +408,6 @@ def resolve_manual_duty_binding_state(
             allowed=False,
             blocked_reason=MANUAL_DUTY_BLOCKED_BINDING_ACTIVE_TEXT,
         )
-    for group in list(runtime_groups or []):
-        if not isinstance(group, dict) or not bool(group.get(RUNTIME_GROUP_KEY_BINDING_ACTIVE, False)):
-            continue
-        members = group.get(RUNTIME_GROUP_KEY_MEMBERS, [])
-        if not isinstance(members, list):
-            continue
-        for member in members:
-            if not isinstance(member, dict) or not bool(member.get(RUNTIME_GROUP_KEY_ENABLED, True)):
-                continue
-            label = str(member.get(RUNTIME_GROUP_KEY_LABEL, "")).strip().lower()
-            if label and label in normalized_targets:
-                return ManualDutyScopeState(
-                    allowed=False,
-                    blocked_reason=MANUAL_DUTY_BLOCKED_BINDING_ACTIVE_TEXT,
-                )
     return ManualDutyScopeState(allowed=True, blocked_reason="")
 
 
@@ -1257,7 +1243,8 @@ def resolve_scope_control_state(
         and bool(controlled_lifecycle_active)
     )
     run_selected_allowed = (
-        base_allowed
+        bool(runtime_ui_ready)
+        and not bool(tracker_pending)
         and normalized_scope == RUNNABLE_SCOPE_KIND_SELECTED_TEST
         and not transition_pending
         and not runtime_block_reason
@@ -1315,6 +1302,38 @@ def resolve_manual_duty_scope_state(
     )
 
 
+def _runtime_device_confirms_manual_duty_ready(runtime_device: object) -> bool:
+    """
+    NAME
+        _runtime_device_confirms_manual_duty_ready - Return whether one runtime payload already proves manual-duty readiness.
+    """
+    if not isinstance(runtime_device, dict):
+        return False
+    lifecycle_state = str(runtime_device.get("lifecycleState", "")).strip().lower()
+    if lifecycle_state == SCOPE_MEMBERSHIP_RUNTIME_STATE_CONTROLLED_ACTIVE:
+        return True
+    if bool(runtime_device.get("testable", False)):
+        return True
+    return bool(runtime_device.get("instantiated", False))
+
+
+def _all_targets_confirm_manual_duty_ready(
+    target_labels: List[object],
+    runtime_state_by_label: Dict[str, Dict[str, Any]],
+) -> bool:
+    """
+    NAME
+        _all_targets_confirm_manual_duty_ready - Return whether all requested targets already confirm ready state.
+    """
+    clean_targets = [str(label or "").strip().lower() for label in list(target_labels or []) if str(label or "").strip()]
+    if not clean_targets:
+        return False
+    return all(
+        _runtime_device_confirms_manual_duty_ready(runtime_state_by_label.get(label_key))
+        for label_key in clean_targets
+    )
+
+
 def resolve_manual_duty_access_state(
     *,
     tcp_connected: bool,
@@ -1335,13 +1354,17 @@ def resolve_manual_duty_access_state(
     """
     if not tcp_connected:
         return ManualDutyAccessState(False, MANUAL_DUTY_BLOCKED_NOT_CONNECTED_TEXT)
-    if tracker_pending:
-        return ManualDutyAccessState(False, RUNTIME_FETCH_BLOCK_BUSY)
     if not runtime_state_seen:
         return ManualDutyAccessState(False, MANUAL_DUTY_BLOCKED_WAITING_TEXT)
     if transition_pending:
         return ManualDutyAccessState(False, MANUAL_DUTY_BLOCKED_TRANSITION_TEXT)
-    if stale_state:
+    targets_confirmed_ready = _all_targets_confirm_manual_duty_ready(
+        target_labels,
+        runtime_state_by_label,
+    )
+    if tracker_pending and not targets_confirmed_ready:
+        return ManualDutyAccessState(False, RUNTIME_FETCH_BLOCK_BUSY)
+    if stale_state and not targets_confirmed_ready:
         return ManualDutyAccessState(False, MANUAL_DUTY_BLOCKED_STALE_TEXT)
     if robot_estopped:
         return ManualDutyAccessState(False, MANUAL_DUTY_BLOCKED_ESTOP_TEXT)

@@ -556,7 +556,7 @@ public final class BridgeGroupManager {
       clearBindingActivity();
       return;
     }
-    for (Group group : groups.values()) {
+    for (Group group : snapshotGroups(groups)) {
       group.lastSkippedMembers.clear();
       group.bindingActive = false;
       group.lastBindingOutput = 0.0;
@@ -581,7 +581,7 @@ public final class BridgeGroupManager {
         group.bindingActive = true;
         group.lastBindingOutput = output;
       }
-      for (MemberState member : group.members.values()) {
+      for (MemberState member : snapshotMembers(group)) {
         if (!member.enabled) {
           continue;
         }
@@ -607,11 +607,23 @@ public final class BridgeGroupManager {
    */
   private double computeGroupOutput(Group group, InputSnapshot input) {
     double sum = 0.0;
-    for (Binding binding : group.bindings) {
+    for (Binding binding : snapshotBindings(group)) {
       double value = computeBindingOutput(binding, input, group.name);
       sum += value;
     }
     return clamp(sum, -1.0, 1.0);
+  }
+
+  static List<Group> snapshotGroups(Map<String, Group> groupsByKey) {
+    return groupsByKey == null ? List.of() : new ArrayList<>(groupsByKey.values());
+  }
+
+  static List<MemberState> snapshotMembers(Group group) {
+    return group == null ? List.of() : new ArrayList<>(group.members.values());
+  }
+
+  static List<Binding> snapshotBindings(Group group) {
+    return group == null ? List.of() : new ArrayList<>(group.bindings);
   }
 
   private boolean groupHasManualOverrideMember(Group group, SelectedState selected) {

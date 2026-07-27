@@ -77,17 +77,20 @@ public final class CtrePdpDevice implements DeviceUnit {
    *   Active PdpStatusReader instance, or null when the runtime has not attached it.
    */
   public PdpStatusReader getActiveReaderForProbe() {
+    if (reader == null) {
+      reader = BringupUtil.peekAppSingletonService(this, PdpStatusReader.class);
+    }
     return reader;
   }
 
   @Override
   public boolean isCreated() {
-    return reader != null;
+    return getActiveReaderForProbe() != null;
   }
 
   @Override
   public void ensureCreated() {
-    if (reader != null) {
+    if (getActiveReaderForProbe() != null) {
       return;
     }
     reader = BringupUtil.acquireAppSingletonService(this, PdpStatusReader.class, () -> new PdpStatusReader(canId));
@@ -95,26 +98,28 @@ public final class CtrePdpDevice implements DeviceUnit {
 
   @Override
   public void close() {
-    reader = null;
+    reader = getActiveReaderForProbe();
   }
 
   @Override
   public void clearFaults() {
-    if (reader != null) {
-      reader.clearStickyFaults();
+    PdpStatusReader activeReader = getActiveReaderForProbe();
+    if (activeReader != null) {
+      activeReader.clearStickyFaults();
     }
   }
 
   @Override
   public DeviceSnapshot snapshot() {
     DeviceSnapshot snap = baseSnapshot();
-    if (reader == null) {
+    PdpStatusReader activeReader = getActiveReaderForProbe();
+    if (activeReader == null) {
       snap.present = false;
       snap.note = NOTE_NOT_ADDED;
       return snap;
     }
     try {
-      PdpStatusAttachment status = reader.snapshot();
+      PdpStatusAttachment status = activeReader.snapshot();
       snap.present = true;
       snap.addAttachment(status);
     } catch (RuntimeException ex) {

@@ -1,5 +1,6 @@
 package frc.robot.devices.ni;
 
+import frc.robot.BringupUtil;
 import frc.robot.devices.DeviceLifecycleOwnership;
 import frc.robot.devices.DeviceUnit;
 import frc.robot.diag.snapshots.DeviceSnapshot;
@@ -66,17 +67,18 @@ public final class RoboRioDevice implements DeviceUnit {
 
   @Override
   public boolean isCreated() {
-    return created;
+    return created || BringupUtil.hasAppSingletonService(this);
   }
 
   @Override
   public void ensureCreated() {
+    BringupUtil.markAppSingletonAllocated(this);
     created = true;
   }
 
   @Override
   public void close() {
-    created = false;
+    created = isCreated();
   }
 
   @Override
@@ -89,7 +91,7 @@ public final class RoboRioDevice implements DeviceUnit {
     snap.deviceType = DEVICE_TYPE;
     snap.canId = canId;
     snap.label = label;
-    snap.present = created;
+    snap.present = isCreated();
     snap.note = NOTE_VIRTUAL;
     return snap;
   }

@@ -120,6 +120,7 @@ from tools.common.topology_draw import (
     render_topology_canvas_common,
 )
 from tools.common.group_contract import (
+    ACTIVE_GROUP_SINGLETON_LABELS,
     find_group_by_name,
     group_member_labels,
     group_member_map,
@@ -127,6 +128,7 @@ from tools.common.group_contract import (
     merge_effective_groups,
     normalize_group_name,
     resolve_group_state_from_member_map,
+    runtime_device_instantiated,
 )
 from tools.common.motor_runtime_verdict import (
     infer_motor_runtime_verdict,
@@ -386,6 +388,9 @@ FIT_RETRY_DELAY_MS = 25
 SELECTION_FRAME_TEXT = "Selection"
 ACTIVE_GROUP_NAME = "active-group"
 ACTIVE_GROUP_FRAME_TEXT = "Active Group"
+DETAILS_SPLIT_PANE_HEIGHT = 640
+DETAILS_SPLIT_SELECTION_WEIGHT = 3
+DETAILS_SPLIT_ACTIVE_GROUP_WEIGHT = 2
 ACTIVE_GROUP_STATUS_NONE_TEXT = SHARED_ACTIVE_GROUP_STATUS_NONE_TEXT
 ACTIVE_GROUP_STATUS_EMPTY_TEXT = SHARED_ACTIVE_GROUP_STATUS_EMPTY_TEXT
 ACTIVE_GROUP_STATUS_WAITING_TEXT = SHARED_ACTIVE_GROUP_STATUS_WAITING_TEXT
@@ -395,7 +400,7 @@ ACTIVE_GROUP_STATUS_READY_TEXT = SHARED_ACTIVE_GROUP_STATUS_READY_TEXT
 ACTIVE_GROUP_STATUS_RESYNC_TEXT = SHARED_ACTIVE_GROUP_STATUS_RESYNC_TEXT
 ACTIVE_GROUP_EMPTY_TEXT = SHARED_ACTIVE_GROUP_SUMMARY_EMPTY_TEXT
 ACTIVE_GROUP_NONE_TEXT = "(not present)"
-ACTIVE_GROUP_ELIGIBLE_EMPTY_TEXT = "(no eligible motors)"
+ACTIVE_GROUP_ELIGIBLE_EMPTY_TEXT = "(no eligible devices)"
 ACTIVE_GROUP_RULES_TEXT = "Rules: Active Add appends next created motor in profile order. Active Next rotates the primary member."
 ACTIVE_GROUP_MEMBER_ENABLED = "enabled"
 ACTIVE_GROUP_MEMBER_DISABLED = "disabled"
@@ -414,7 +419,6 @@ ACTION_STATE_ALLOWED = HostActionAccessState(
 ACTIVE_GROUP_PRIMARY_YES = "PRIMARY"
 ACTIVE_GROUP_SELECTED_YES = "selected"
 ACTIVE_GROUP_SELECTED_NO = "not selected"
-ACTIVE_GROUP_ELIGIBLE_DEVICE_TYPE = "2"
 ACTIVE_GROUP_PRESENT_PREFIX = "presence="
 ACTIVE_GROUP_FULL_PROBE_PREFIX = "fullProbe="
 ACTIVE_GROUP_VEL_RPM_PREFIX = "vel="
@@ -1217,11 +1221,14 @@ class LiveTopologyView(ttk.Frame):
         self._override_action_state = ACTION_STATE_ALLOWED
         self._override_instantiate_button: Optional[ttk.Button] = None
         self._override_clear_button: Optional[ttk.Button] = None
+        self._details_split_pane: Optional[ttk.Panedwindow] = None
         if self._show_selection_panel:
             details_container = ttk.Frame(content_pane, width=DETAILS_PANEL_INITIAL_WIDTH)
             content_pane.add(details_container, weight=2)
-            details = ttk.LabelFrame(details_container, text=SELECTION_FRAME_TEXT, padding=8)
-            details.pack(side="top", fill="x")
+            details_split_pane = ttk.Panedwindow(details_container, orient=tk.VERTICAL)
+            details_split_pane.pack(fill="both", expand=True)
+            self._details_split_pane = details_split_pane
+            details = ttk.LabelFrame(details_split_pane, text=SELECTION_FRAME_TEXT, padding=8)
             details.configure(height=SELECTION_FRAME_HEIGHT)
             details.pack_propagate(False)
             selection_rows_container = ttk.Frame(details)
@@ -1360,11 +1367,10 @@ class LiveTopologyView(ttk.Frame):
                 self._override_clear_button = clear_button
                 self._apply_override_action_button_state()
             active_group_frame = ttk.LabelFrame(
-                details_container,
+                details_split_pane,
                 text=ACTIVE_GROUP_FRAME_TEXT,
                 padding=8,
             )
-            active_group_frame.pack(side="top", fill="both", expand=True, pady=(8, 0))
             self._active_group_status_var = tk.StringVar(value=ACTIVE_GROUP_STATUS_WAITING_TEXT)
             ttk.Label(
                 active_group_frame,
@@ -1408,6 +1414,15 @@ class LiveTopologyView(ttk.Frame):
                 justify="left",
                 anchor="nw",
             ).pack(fill="x", pady=(8, 0))
+            details_split_pane.add(
+                details,
+                weight=DETAILS_SPLIT_SELECTION_WEIGHT,
+            )
+            details_split_pane.add(
+                active_group_frame,
+                weight=DETAILS_SPLIT_ACTIVE_GROUP_WEIGHT,
+            )
+            details_split_pane.configure(height=DETAILS_SPLIT_PANE_HEIGHT)
 
         self.reload_profile(profile_name)
 
@@ -1471,6 +1486,11 @@ class LiveTopologyView(ttk.Frame):
             return
         self._profile_name = profile_name
         self._status_label.configure(text=f"Profile: {self._profile_name}")
+        self._profile_device_labels = [
+            str(label_entry).strip()
+            for label_entry in raw_profile.get(KEY_PROFILE_DEVICES, [])
+            if isinstance(label_entry, str) and str(label_entry).strip()
+        ]
 
         diagram = payload.get("diagram") if isinstance(payload.get("diagram"), dict) else {}
         diagram_profiles = diagram.get("profiles") if isinstance(diagram.get("profiles"), dict) else {}
@@ -1540,6 +1560,7 @@ class LiveTopologyView(ttk.Frame):
         """
         self._status_label.configure(text=status_text)
         self._nodes = []
+        self._profile_device_labels = []
         self._diagram_meta = {}
         self._bridge_groups = []
         self._use_diagram_layout = False
@@ -3074,23 +3095,32 @@ class LiveTopologyView(ttk.Frame):
         """
         labels: List[str] = []
         seen = set()
-        for node in self._nodes:
-            label = str(getattr(node, "label", EMPTY_STRING)).strip()
-            device_type = str(getattr(node, "device_type", EMPTY_STRING)).strip()
-            if not label or device_type != ACTIVE_GROUP_ELIGIBLE_DEVICE_TYPE:
+        for label_entry in getattr(self, "_profile_device_labels", []):
+            label = str(label_entry or EMPTY_STRING).strip()
+            if not label:
                 continue
             key = label.lower()
             if key in seen:
                 continue
             seen.add(key)
             labels.append(label)
+        if not labels:
+            for node in self._nodes:
+                label = str(getattr(node, "label", EMPTY_STRING)).strip()
+                if not label:
+                    continue
+                key = label.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                labels.append(label)
         labels.sort(key=lambda item: item.lower())
         return labels
 
     def _eligible_active_group_labels(self) -> List[str]:
         """
         NAME
-            _eligible_active_group_labels - Return eligible motor labels for the active-group management panel.
+            _eligible_active_group_labels - Return eligible profile-device labels for the active-group management panel.
         """
         return self._active_scope_membership_state({}, EMPTY_STRING).eligible_labels
 
@@ -3126,6 +3156,7 @@ class LiveTopologyView(ttk.Frame):
             runtime_state_by_label=self._runtime_state if isinstance(self._runtime_state, dict) else {},
             primary_label=primary_label,
             scope_active=bool(self._controlled_lifecycle_active),
+            singleton_labels=ACTIVE_GROUP_SINGLETON_LABELS,
         )
         member_state_by_label = {
             member.label.strip().lower(): member
@@ -3165,6 +3196,10 @@ class LiveTopologyView(ttk.Frame):
                 member = member_state_by_label.get(label_key)
                 checked = label_key in member_state_by_label
                 enabled = member.enabled if member is not None else None
+                live = self._runtime_state.get(label_key, {})
+                row_locked = bool(member.locked) if member is not None else False
+                if not row_locked and label_key in ACTIVE_GROUP_SINGLETON_LABELS:
+                    row_locked = runtime_device_instantiated(live)
                 if not checked:
                     enabled_text = ACTIVE_GROUP_MEMBER_ABSENT
                 else:
@@ -3173,7 +3208,6 @@ class LiveTopologyView(ttk.Frame):
                         if enabled is not False
                         else ACTIVE_GROUP_MEMBER_DISABLED
                     )
-                live = self._runtime_state.get(label_key, {})
                 presence_text = (
                     f"{float(live.get('presenceConfidence')):.2f}"
                     if isinstance(live, dict) and isinstance(live.get("presenceConfidence"), (int, float))
@@ -3211,6 +3245,7 @@ class LiveTopologyView(ttk.Frame):
                 checkbox_state = (
                     WIDGET_STATE_NORMAL
                     if membership_state.editable
+                    and not row_locked
                     and getattr(self, "_active_group_edit_action_state", ACTION_STATE_ALLOWED).allowed
                     else WIDGET_STATE_DISABLED
                 )
@@ -3219,7 +3254,7 @@ class LiveTopologyView(ttk.Frame):
                     detail_parts.append(primary_text)
                 if not self.__dict__.get("_runtime_state_seen", False):
                     detail_parts.append(ACTIVE_GROUP_MEMBER_WAITING)
-                elif self._controlled_lifecycle_active:
+                elif self._controlled_lifecycle_active or row_locked:
                     detail_parts.append(ACTIVE_GROUP_MEMBER_LOCKED)
                 detail_parts.append(enabled_text)
                 detail_parts.append(f"{ACTIVE_GROUP_PRESENT_PREFIX}{presence_text}")
@@ -3291,11 +3326,19 @@ class LiveTopologyView(ttk.Frame):
         callback = self._on_active_group_member_toggled_cb
         if not callable(callback):
             return
-        key = str(label or EMPTY_STRING).strip().lower()
+        clean_label = str(label or EMPTY_STRING).strip()
+        key = clean_label.lower()
         variable = self._active_group_member_vars.get(key)
         if variable is None:
             return
-        callback(str(label).strip(), bool(variable.get()))
+        if key in ACTIVE_GROUP_SINGLETON_LABELS:
+            live = self._runtime_state.get(key, {})
+            if runtime_device_instantiated(live):
+                active_group = self._effective_group_by_name(ACTIVE_GROUP_NAME) or {}
+                current_member_map = group_member_map(active_group, enabled_only=False)
+                variable.set(key in current_member_map)
+                return
+        callback(clean_label, bool(variable.get()))
 
     def _live_fill(self, node: LiveNode, now_ms: int) -> Optional[str]:
         if self._overlay_lens == TOPOLOGY_LENS_EVIDENCE:

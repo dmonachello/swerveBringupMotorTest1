@@ -210,7 +210,7 @@ CONSOLE_FAULT_FAMILY_BUS_OFF = "bus_off"
 CONSOLE_FAULT_FAMILY_TX_FULL = "tx_full"
 CONSOLE_FAULT_FAMILY_ERROR_SPIKE = "error_spike"
 CONSOLE_FAULT_FAMILY_HIGH_UTIL = "high_util"
-CONSOLE_FAULT_FAMILY_LOOP_OVERRUN = "loop_overrun"
+CONSOLE_FAULT_FAMILY_RUNTIME_HEALTH = "runtime_health"
 CONSOLE_FAULT_FAMILY_CONTROLLER_SIDE = "controller_side_comm_loss"
 CONSOLE_FAULT_FAMILY_UNKNOWN_DEVICE = "unknown_device_fault"
 CONSOLE_FAULT_FAMILY_UNKNOWN_SYSTEM = "unknown_system_fault"
@@ -482,6 +482,7 @@ EVIDENCE_NOTE_INFRA_PASSIVE_LIMITED = "Infrastructure device observed by passive
 EVIDENCE_NOTE_CONSOLE_DEVICE_TIMEOUT = "Device-targeted stale/timeout console evidence present."
 EVIDENCE_NOTE_CONSOLE_DEVICE_TIMEOUT_CONFLICT = "Fresh targeted console fault evidence conflicts with weak/stale positive presence evidence."
 EVIDENCE_NOTE_INFRA_CONSOLE_MISSING = "Fresh device-targeted console timeout evidence with no fresh positive corroboration is being treated as missing infrastructure presence."
+EVIDENCE_NOTE_INFRA_RUNTIME_LOCAL_ONLY = "Fresh singleton runtime telemetry alone is being treated as robot-local evidence and is not enough to override direct CAN-loss evidence."
 EVIDENCE_NOTE_NONE = "No major source conflict."
 EVIDENCE_NOTE_RUNTIME_SNAPSHOT_UNCONFIRMED_MOTION = "Runtime scope snapshot says present, but recent motion check and passive CAN did not confirm the motor as physically present."
 ENRICHMENT_SOURCE_CTRE = "ctreHttp"
@@ -558,6 +559,7 @@ DETAIL_SNAPSHOT_APPLIED_DUTY = "appliedDuty"
 DETAIL_SNAPSHOT_VEL_RPM = "velRpm"
 DETAIL_SNAPSHOT_POSITION_ROT = "positionRot"
 INFRASTRUCTURE_DEVICE_LABELS = {"roborio", "pdp", "pdh"}
+INFRASTRUCTURE_CAN_PATH_SINGLETON_LABELS = {"pdp", "pdh"}
 DEVICE_CLASS_MOTION = "motion_device"
 DEVICE_CLASS_INFRASTRUCTURE = "infrastructure_device"
 DEVICE_CLASS_UNPROFILED = "unprofiled_device"
@@ -1472,7 +1474,7 @@ def _console_fault_family_from_event_type(event_type: str, scope: str) -> str:
     if event_name == CONSOLE_EVENT_ERROR_SPIKE:
         return CONSOLE_FAULT_FAMILY_ERROR_SPIKE
     if event_name == CONSOLE_EVENT_LOOP_OVERRUN:
-        return CONSOLE_FAULT_FAMILY_LOOP_OVERRUN
+        return CONSOLE_FAULT_FAMILY_RUNTIME_HEALTH
     if event_name in {CONSOLE_EVENT_HAL_TIMEOUT, CONSOLE_EVENT_BUS_FAULT}:
         return CONSOLE_FAULT_FAMILY_CONTROLLER_SIDE
     if scope == CONSOLE_STATS_SCOPE_DEVICE:
@@ -1943,6 +1945,7 @@ def build_interpreted_device_state(
         passive_device=passive_device,
     )
     is_infrastructure_device = device_type == DEVICE_CLASS_INFRASTRUCTURE
+    requires_can_visible_infrastructure_presence = _requires_can_visible_infrastructure_presence(label)
     runtime_infrastructure_present = (
         is_infrastructure_device and _runtime_infrastructure_signal_present(runtime_device, now_s=now_s)
     )
@@ -1957,6 +1960,11 @@ def build_interpreted_device_state(
         and passive_confidence in (EVIDENCE_CONFIDENCE_HIGH, EVIDENCE_CONFIDENCE_MEDIUM)
         and passive_expected_status != "missing"
         and bool(passive_family_summaries)
+    )
+    passive_infrastructure_missing = bool(
+        is_infrastructure_device
+        and passive_device is not None
+        and passive_expected_status == "missing"
     )
     if isinstance(presence_entry, Mapping):
         presence_existence = str(presence_entry.get(PRESENCE_KEY_EXISTENCE, EVIDENCE_STATUS_UNKNOWN)).strip() or EVIDENCE_STATUS_UNKNOWN
@@ -1976,11 +1984,21 @@ def build_interpreted_device_state(
                     evidence_conflicted = True
                     notes.append(EVIDENCE_NOTE_PASSIVE_OVERRIDES_RUNTIME_ABSENCE)
             elif is_infrastructure_device:
-                if runtime_infrastructure_present:
+                if runtime_infrastructure_present and not (
+                    passive_infrastructure_missing and requires_can_visible_infrastructure_presence
+                ):
                     existence = EVIDENCE_STATUS_PRESENT
-                    confidence = EVIDENCE_CONFIDENCE_MEDIUM
-                    evidence_state = EVIDENCE_STATE_DEGRADED
+                    confidence = EVIDENCE_CONFIDENCE_HIGH
+                    if operability == EVIDENCE_STATUS_UNKNOWN:
+                        operability = EVIDENCE_STATUS_OK
+                    evidence_state = EVIDENCE_STATE_OK
                     notes.append(EVIDENCE_NOTE_INFRA_RUNTIME_PRESENT)
+                elif passive_infrastructure_missing and requires_can_visible_infrastructure_presence:
+                    existence = EVIDENCE_STATUS_ABSENT
+                    confidence = presence_confidence if presence_confidence != EVIDENCE_CONFIDENCE_LOW else EVIDENCE_CONFIDENCE_MEDIUM
+                    operability = EVIDENCE_STATUS_FAILED if operability == EVIDENCE_STATUS_UNKNOWN else operability
+                    evidence_state = EVIDENCE_STATE_MISSING
+                    notes.append(EVIDENCE_NOTE_INFRA_RUNTIME_LOCAL_ONLY)
                 else:
                     existence = EVIDENCE_STATUS_UNKNOWN
                     confidence = EVIDENCE_CONFIDENCE_LOW
@@ -2061,25 +2079,44 @@ def build_interpreted_device_state(
                 evidence_state = EVIDENCE_STATE_DEGRADED
             confidence = EVIDENCE_CONFIDENCE_MEDIUM if confidence == EVIDENCE_CONFIDENCE_HIGH else confidence
             notes.append(ENRICHMENT_NOTE_CONSOLE_ENRICHMENT_ERROR)
-    if existence == EVIDENCE_STATUS_UNKNOWN and runtime_infrastructure_present:
+    if (
+        existence == EVIDENCE_STATUS_UNKNOWN
+        and runtime_infrastructure_present
+        and not (passive_infrastructure_missing and requires_can_visible_infrastructure_presence)
+    ):
         existence = EVIDENCE_STATUS_PRESENT
-        confidence = EVIDENCE_CONFIDENCE_MEDIUM
-        evidence_state = EVIDENCE_STATE_DEGRADED
+        confidence = EVIDENCE_CONFIDENCE_HIGH
+        if operability == EVIDENCE_STATUS_UNKNOWN:
+            operability = EVIDENCE_STATUS_OK
+        evidence_state = EVIDENCE_STATE_OK
         notes.append(EVIDENCE_NOTE_INFRA_RUNTIME_PRESENT)
     if existence == EVIDENCE_STATUS_UNKNOWN and passive_visible and passive_live_support:
         existence = EVIDENCE_STATUS_PRESENT
         confidence = passive_confidence if passive_device is not None else EVIDENCE_CONFIDENCE_MEDIUM
         if is_infrastructure_device and passive_device is None:
-            evidence_state = EVIDENCE_STATE_DEGRADED
-            notes.append(EVIDENCE_NOTE_INFRA_PASSIVE_LIMITED)
+            if runtime_infrastructure_present:
+                confidence = EVIDENCE_CONFIDENCE_HIGH
+                if operability == EVIDENCE_STATUS_UNKNOWN:
+                    operability = EVIDENCE_STATUS_OK
+                evidence_state = EVIDENCE_STATE_OK
+            else:
+                evidence_state = EVIDENCE_STATE_DEGRADED
+                notes.append(EVIDENCE_NOTE_INFRA_PASSIVE_LIMITED)
         else:
             evidence_state = EVIDENCE_STATE_OK
     elif existence == EVIDENCE_STATUS_UNKNOWN and passive_device is not None and passive_expected_status == "missing":
         if is_infrastructure_device:
-            existence = EVIDENCE_STATUS_UNKNOWN
-            confidence = EVIDENCE_CONFIDENCE_LOW
-            evidence_state = EVIDENCE_STATE_UNKNOWN
-            notes.append(EVIDENCE_NOTE_INFRA_SCOPE_ABSENCE)
+            if requires_can_visible_infrastructure_presence:
+                existence = EVIDENCE_STATUS_ABSENT
+                confidence = passive_confidence if passive_confidence != EVIDENCE_CONFIDENCE_LOW else EVIDENCE_CONFIDENCE_MEDIUM
+                operability = EVIDENCE_STATUS_FAILED if operability == EVIDENCE_STATUS_UNKNOWN else operability
+                evidence_state = EVIDENCE_STATE_MISSING if evidence_state == EVIDENCE_STATE_UNKNOWN else evidence_state
+                notes.append(EVIDENCE_NOTE_INFRA_CONSOLE_MISSING)
+            else:
+                existence = EVIDENCE_STATUS_UNKNOWN
+                confidence = EVIDENCE_CONFIDENCE_LOW
+                evidence_state = EVIDENCE_STATE_UNKNOWN
+                notes.append(EVIDENCE_NOTE_INFRA_SCOPE_ABSENCE)
         else:
             existence = EVIDENCE_STATUS_ABSENT
             confidence = passive_confidence
@@ -2125,6 +2162,13 @@ def build_interpreted_device_state(
         manual_recent_observation=manual_recent_observation,
         manual_auto_result=manual_auto_result,
     )
+    runtime_infrastructure_only_positive = bool(
+        is_infrastructure_device
+        and runtime_infrastructure_present
+        and not passive_live_support
+        and probe_bucket != PRESENCE_VALUE_PRESENT
+        and not manual_recent_operability
+    )
     if _console_should_demote_existence(
         console_entry=console_entry,
         console_targets_failure=console_targets_failure,
@@ -2140,13 +2184,15 @@ def build_interpreted_device_state(
         is_infrastructure_device
         and console_targets_failure
         and not stronger_positive_contradiction
-        and not runtime_infrastructure_present
+        and (not runtime_infrastructure_present or runtime_infrastructure_only_positive)
     ):
         existence = EVIDENCE_STATUS_ABSENT
         operability = EVIDENCE_STATUS_FAILED
         confidence = EVIDENCE_CONFIDENCE_MEDIUM
         evidence_state = EVIDENCE_STATE_FAILED
         notes.append(EVIDENCE_NOTE_INFRA_CONSOLE_MISSING)
+        if runtime_infrastructure_only_positive:
+            notes.append(EVIDENCE_NOTE_INFRA_RUNTIME_LOCAL_ONLY)
     if bool(system_console.get(CONSOLE_KEY_SYSTEM_CONFLICT)):
         notes.append("System-level console fault may reflect broader CAN isolation.")
         evidence_conflicted = True
@@ -3060,7 +3106,7 @@ def _collect_device_source_scores(
         runtime_present = runtime_existence == EVIDENCE_STATUS_PRESENT
         runtime_absent = runtime_existence == EVIDENCE_STATUS_ABSENT
     if device_type == DEVICE_CLASS_INFRASTRUCTURE and runtime_infrastructure_present:
-        source_scores["runtime"] = _source_score(70, PRESENCE_STATE_PRESENT, "Singleton runtime telemetry.")
+        source_scores["runtime"] = _source_score(90, PRESENCE_STATE_PRESENT, "Fresh singleton runtime telemetry.")
     elif runtime_present:
         source_scores["runtime"] = _source_score(90, PRESENCE_STATE_PRESENT, "Runtime presence snapshot.")
     elif runtime_absent:
@@ -3961,6 +4007,15 @@ def _is_infrastructure_device(label: object) -> bool:
     """
     normalized = str(label or TEXT_EMPTY).strip().lower()
     return normalized in INFRASTRUCTURE_DEVICE_LABELS
+
+
+def _requires_can_visible_infrastructure_presence(label: object) -> bool:
+    """
+    NAME
+        _requires_can_visible_infrastructure_presence - Return whether an infrastructure singleton must stay CAN-visible.
+    """
+    normalized = str(label or TEXT_EMPTY).strip().lower()
+    return normalized in INFRASTRUCTURE_CAN_PATH_SINGLETON_LABELS
 
 
 def _probe_display_bucket(raw_bucket: str, age_bucket: str) -> str:

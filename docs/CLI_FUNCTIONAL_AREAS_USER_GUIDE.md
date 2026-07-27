@@ -667,7 +667,7 @@ Purpose: Record a few stable rules that apply across all areas.
 
 - The robot is authoritative for actuation and runtime execution.
 - The PC-side CAN tool is passive and read-only on CAN.
-- NetworkTables is used for diagnostics/state visibility, not as the main CLI command transport.
+- NetworkTables is retired for supported CLI and diagnostics workflows. Historical or compatibility-only NT references may still appear in older docs and artifacts.
 - TCP is the main command channel for robot-facing CLI actions.
 - When in doubt, ask first:
   is this command editing host state, or commanding robot state?

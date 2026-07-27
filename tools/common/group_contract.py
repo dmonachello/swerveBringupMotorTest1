@@ -31,6 +31,21 @@ GROUP_KEY_NAME = "name"
 GROUP_KEY_MEMBERS = "members"
 GROUP_KEY_BINDINGS = "bindings"
 GROUP_RUNTIME_PRESENT_THRESHOLD = 0.5
+ACTIVE_GROUP_SINGLETON_LABELS = ("controller0", "roborio", "pdp")
+RUNTIME_KEY_INSTANTIATED = "instantiated"
+RUNTIME_KEY_LIFECYCLE_STATE = "lifecycleState"
+LIFECYCLE_STATE_PREFIX_INSTANTIATED = "instantiated"
+LIFECYCLE_STATE_PREFIX_CONTROLLED = "controlled"
+RUNTIME_MOTOR_HINT_KEYS = (
+    "velRpm",
+    "positionRot",
+    "cmdDuty",
+    "appliedDuty",
+    "motorCurrentA",
+    "currentInstantA",
+    "currentAvgA",
+    "currentPeakA",
+)
 
 
 @dataclass(frozen=True)
@@ -172,6 +187,7 @@ def resolve_group_member_state(
     """
     clean_label = str(label or EMPTY_STRING).strip()
     label_key = clean_label.lower()
+    singleton_keys = {str(value).strip().lower() for value in singleton_labels}
     runtime_device = runtime_state_by_label.get(label_key, {})
     runtime_present = False
     instantiated = False
@@ -179,19 +195,33 @@ def resolve_group_member_state(
     if isinstance(runtime_device, dict):
         presence = runtime_device.get("presenceConfidence")
         runtime_present = isinstance(presence, (int, float)) and float(presence) >= GROUP_RUNTIME_PRESENT_THRESHOLD
-        instantiated = bool(runtime_device.get("instantiated", False))
+        instantiated = runtime_device_instantiated(runtime_device)
         testable = bool(runtime_device.get("testable", False))
-        if not instantiated and label_key in {str(value).strip().lower() for value in singleton_labels}:
-            instantiated = testable
+    resolved_locked = bool(locked) or (label_key in singleton_keys and instantiated)
     return GroupMemberState(
         label=clean_label,
         enabled=bool(enabled),
-        locked=bool(locked),
+        locked=resolved_locked,
         invalid=bool(invalid),
         scope_active=bool(scope_active),
         runtime_present=runtime_present,
         instantiated=instantiated,
         testable=testable,
+    )
+
+
+def runtime_device_instantiated(runtime_device: object) -> bool:
+    """
+    NAME
+        runtime_device_instantiated - Return whether one runtime device payload confirms persistent instantiation.
+    """
+    if not isinstance(runtime_device, dict):
+        return False
+    if bool(runtime_device.get(RUNTIME_KEY_INSTANTIATED, False)):
+        return True
+    lifecycle_state = str(runtime_device.get(RUNTIME_KEY_LIFECYCLE_STATE, EMPTY_STRING)).strip().lower()
+    return lifecycle_state.startswith(LIFECYCLE_STATE_PREFIX_INSTANTIATED) or lifecycle_state.startswith(
+        LIFECYCLE_STATE_PREFIX_CONTROLLED
     )
 
 
@@ -385,7 +415,9 @@ def device_entry_is_motor(device: object) -> bool:
     if device_type == DEVICE_TYPE_MOTOR:
         return True
     type_name = str(device.get(KEY_TYPE, EMPTY_STRING)).strip().lower()
-    return type_name == TYPE_MOTOR.lower()
+    if type_name == TYPE_MOTOR.lower():
+        return True
+    return any(key in device for key in RUNTIME_MOTOR_HINT_KEYS)
 
 
 def resolve_group_motor_targets(

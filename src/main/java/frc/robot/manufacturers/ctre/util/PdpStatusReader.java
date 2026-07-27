@@ -16,7 +16,7 @@ import java.util.function.LongSupplier;
 public final class PdpStatusReader implements AutoCloseable {
   private static final int INDEX_START = 0;
   private static final int MIN_CHANNELS = 1;
-  private static final long READ_FAILURE_COOLDOWN_NS = 1_000_000_000L;
+  private static final long READ_FAILURE_COOLDOWN_NS = 30_000_000_000L;
   private static final long NEVER_FAILED_AT_NS = Long.MIN_VALUE;
   private static final String ERROR_READ_UNAVAILABLE_PREFIX = "cached unavailable: ";
 

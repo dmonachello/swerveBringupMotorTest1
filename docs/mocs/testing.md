@@ -12,7 +12,6 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/TESTING.md|TESTING]]
 - [[docs/TEST_PLAN_TODAY.md|TEST PLAN TODAY]]
 - [[docs/TEST_PROCEDURE_DSL_SELECTED_TEST_DEVICE_ACTIVATION_V2.md|TEST PROCEDURE DSL SELECTED TEST DEVICE ACTIVATION V2]]
-- [[README.md|README]]
 - [[Test Plan Minimal Topology Xbox Motor Bringup.md|Test Plan Minimal Topology Xbox Motor Bringup]]
 - [[Test Plan Today - May 22, 2026.md|Test Plan Today - May 22, 2026]]
 - [[Test PlanV2 May 22, 2026.md|Test PlanV2 May 22, 2026]]
@@ -25,6 +24,7 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/FEATURE_SPEC_TOPOLOGY_UPGRADE.md|FEATURE SPEC TOPOLOGY UPGRADE]]
 - [[docs/SPEC_CTRE_PIGEON2_SUPPORT.md|SPEC CTRE PIGEON2 SUPPORT]]
 - [[docs/SPEC_HOST_LAYERING_AND_SHARED_SERVICES_REFACTOR.md|SPEC HOST LAYERING AND SHARED SERVICES REFACTOR]]
+- [[docs/TEST_BRIDGE_CLI_AND_RECENT.md|TEST BRIDGE CLI AND RECENT]]
 
 ## Procedures
 
@@ -34,7 +34,6 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/TESTING.md|TESTING]]
 - [[docs/TEST_PLAN_TODAY.md|TEST PLAN TODAY]]
 - [[docs/TEST_PROCEDURE_DSL_SELECTED_TEST_DEVICE_ACTIVATION_V2.md|TEST PROCEDURE DSL SELECTED TEST DEVICE ACTIVATION V2]]
-- [[README.md|README]]
 - [[Test Plan Minimal Topology Xbox Motor Bringup.md|Test Plan Minimal Topology Xbox Motor Bringup]]
 - [[Test Plan Today - May 22, 2026.md|Test Plan Today - May 22, 2026]]
 - [[Test PlanV2 May 22, 2026.md|Test PlanV2 May 22, 2026]]
@@ -44,6 +43,7 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/SPEC_CTRE_PIGEON2_SUPPORT.md|SPEC CTRE PIGEON2 SUPPORT]]
 - [[docs/SPEC_HOST_LAYERING_AND_SHARED_SERVICES_REFACTOR.md|SPEC HOST LAYERING AND SHARED SERVICES REFACTOR]]
 - [[docs/TESTING_QUICK_GUIDE_BINDINGS_AND_DSL.md|TESTING QUICK GUIDE BINDINGS AND DSL]]
+- [[docs/TEST_BRIDGE_CLI_AND_RECENT.md|TEST BRIDGE CLI AND RECENT]]
 
 ## Regression
 
@@ -53,7 +53,6 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/TESTING.md|TESTING]]
 - [[docs/TEST_PLAN_TODAY.md|TEST PLAN TODAY]]
 - [[docs/TEST_PROCEDURE_DSL_SELECTED_TEST_DEVICE_ACTIVATION_V2.md|TEST PROCEDURE DSL SELECTED TEST DEVICE ACTIVATION V2]]
-- [[README.md|README]]
 - [[Test Plan Minimal Topology Xbox Motor Bringup.md|Test Plan Minimal Topology Xbox Motor Bringup]]
 - [[Test Plan Today - May 22, 2026.md|Test Plan Today - May 22, 2026]]
 - [[Test PlanV2 May 22, 2026.md|Test PlanV2 May 22, 2026]]
@@ -67,6 +66,7 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/SPEC_CTRE_PIGEON2_SUPPORT.md|SPEC CTRE PIGEON2 SUPPORT]]
 - [[docs/SPEC_HOST_LAYERING_AND_SHARED_SERVICES_REFACTOR.md|SPEC HOST LAYERING AND SHARED SERVICES REFACTOR]]
 - [[docs/TESTING_QUICK_GUIDE_BINDINGS_AND_DSL.md|TESTING QUICK GUIDE BINDINGS AND DSL]]
+- [[docs/TEST_BRIDGE_CLI_AND_RECENT.md|TEST BRIDGE CLI AND RECENT]]
 
 ## Validation
 
@@ -86,6 +86,7 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/SPEC_CTRE_PIGEON2_SUPPORT.md|SPEC CTRE PIGEON2 SUPPORT]]
 - [[docs/SPEC_HOST_LAYERING_AND_SHARED_SERVICES_REFACTOR.md|SPEC HOST LAYERING AND SHARED SERVICES REFACTOR]]
 - [[docs/TESTING_QUICK_GUIDE_BINDINGS_AND_DSL.md|TESTING QUICK GUIDE BINDINGS AND DSL]]
+- [[docs/TEST_BRIDGE_CLI_AND_RECENT.md|TEST BRIDGE CLI AND RECENT]]
 
 ## Related Topics
 
