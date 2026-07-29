@@ -3648,7 +3648,6 @@ class BridgeCli:
             runtime_state_by_label={},
             primary_label=primary_label,
             scope_active=scope_active,
-            singleton_labels=(),
         )
 
     def _resolved_local_group_payload(

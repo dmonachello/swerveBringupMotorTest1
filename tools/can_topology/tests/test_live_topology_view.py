@@ -212,7 +212,7 @@ class LiveTopologyViewTests(unittest.TestCase):
 
         self.assertEqual([], calls)
 
-    def test_active_group_checkbox_toggle_ignores_instantiated_singleton(self) -> None:
+    def test_active_group_checkbox_toggle_does_not_apply_singleton_snapback_heuristic(self) -> None:
         view = self._make_view()
         calls = []
         view._on_active_group_member_toggled_cb = lambda label, enabled: calls.append((label, enabled))
@@ -220,14 +220,12 @@ class LiveTopologyViewTests(unittest.TestCase):
         variable = _BoolVarStub(False)
         view._active_group_member_vars = {"pdp": variable}
         view.set_active_group_edit_action_state(live_view_module.ACTION_STATE_ALLOWED)
-        view._runtime_state = {"pdp": {"instantiated": True}}
-        view._bridge_groups = []
-        view._runtime_groups = [{"name": "active-group", "members": [{"label": "pdp", "enabled": True}]}]
+        view._runtime_state = {"pdp": {"instantiated": True, "lifecycleKind": "SINGLETON"}}
 
         view._on_active_group_member_checkbox_toggled("pdp")
 
-        self.assertEqual([], calls)
-        self.assertTrue(variable.get())
+        self.assertEqual([("pdp", False)], calls)
+        self.assertFalse(variable.get())
 
     def test_override_action_uses_shared_action_gate(self) -> None:
         view = self._make_view()
@@ -538,10 +536,15 @@ class LiveTopologyViewTests(unittest.TestCase):
         group_state = live_view_module.resolve_group_state_from_member_map(
             name="active-group",
             member_map={"pdp": {"label": "pdp", "enabled": True}},
-            runtime_state_by_label={"pdp": {"instantiated": False, "lifecycleState": "controlled-instantiated"}},
+            runtime_state_by_label={
+                "pdp": {
+                    "instantiated": False,
+                    "lifecycleState": "controlled-instantiated",
+                    "lifecycleKind": "SINGLETON",
+                }
+            },
             primary_label="pdp",
             scope_active=False,
-            singleton_labels=live_view_module.ACTIVE_GROUP_SINGLETON_LABELS,
         )
 
         self.assertTrue(group_state.members[0].locked)

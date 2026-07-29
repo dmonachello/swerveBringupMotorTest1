@@ -11,6 +11,12 @@ class BridgeUiCommandHandlerSelectionTest {
   private static final String GROUP_NAME = "motors";
   private static final String MEMBER_ONE = "FALCON 9";
   private static final String MEMBER_TWO = "SPARKMAX/NEO 25";
+  private static final BringupUtil.DeviceEntry PDP_ENTRY =
+      new BringupUtil.DeviceEntry(
+          20, 4, 8, "CAN", "CTRE", "pdp", "pdp", "PDP", null, null, null);
+  private static final BringupUtil.DeviceEntry FALCON_ENTRY =
+      new BringupUtil.DeviceEntry(
+          9, 4, 2, "CAN", "CTRE", "falcon", DEVICE_LABEL, "FALCON", null, null, null);
 
   @Test
   void stageManualDeviceSelectionClearsGroupOwnershipAndPublishesDeviceOwner() {
@@ -64,5 +70,11 @@ class BridgeUiCommandHandlerSelectionTest {
     assertEquals("", selected.group);
     assertFalse(selected.groupEnabled);
     assertTrue(selected.groupMembers.isEmpty());
+  }
+
+  @Test
+  void runtimeLifecycleKindForEntryUsesDeviceTypeInsteadOfLabelHeuristics() {
+    assertEquals("SINGLETON", BridgeUiCommandHandler.runtimeLifecycleKindForEntry(PDP_ENTRY));
+    assertEquals("NORMAL", BridgeUiCommandHandler.runtimeLifecycleKindForEntry(FALCON_ENTRY));
   }
 }

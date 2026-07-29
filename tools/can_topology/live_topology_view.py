@@ -120,7 +120,6 @@ from tools.common.topology_draw import (
     render_topology_canvas_common,
 )
 from tools.common.group_contract import (
-    ACTIVE_GROUP_SINGLETON_LABELS,
     find_group_by_name,
     group_member_labels,
     group_member_map,
@@ -129,6 +128,7 @@ from tools.common.group_contract import (
     normalize_group_name,
     resolve_group_state_from_member_map,
     runtime_device_instantiated,
+    runtime_device_singleton_backed,
 )
 from tools.common.motor_runtime_verdict import (
     infer_motor_runtime_verdict,
@@ -3156,7 +3156,6 @@ class LiveTopologyView(ttk.Frame):
             runtime_state_by_label=self._runtime_state if isinstance(self._runtime_state, dict) else {},
             primary_label=primary_label,
             scope_active=bool(self._controlled_lifecycle_active),
-            singleton_labels=ACTIVE_GROUP_SINGLETON_LABELS,
         )
         member_state_by_label = {
             member.label.strip().lower(): member
@@ -3198,7 +3197,7 @@ class LiveTopologyView(ttk.Frame):
                 enabled = member.enabled if member is not None else None
                 live = self._runtime_state.get(label_key, {})
                 row_locked = bool(member.locked) if member is not None else False
-                if not row_locked and label_key in ACTIVE_GROUP_SINGLETON_LABELS:
+                if not row_locked and runtime_device_singleton_backed(live):
                     row_locked = runtime_device_instantiated(live)
                 if not checked:
                     enabled_text = ACTIVE_GROUP_MEMBER_ABSENT
@@ -3331,13 +3330,6 @@ class LiveTopologyView(ttk.Frame):
         variable = self._active_group_member_vars.get(key)
         if variable is None:
             return
-        if key in ACTIVE_GROUP_SINGLETON_LABELS:
-            live = self._runtime_state.get(key, {})
-            if runtime_device_instantiated(live):
-                active_group = self._effective_group_by_name(ACTIVE_GROUP_NAME) or {}
-                current_member_map = group_member_map(active_group, enabled_only=False)
-                variable.set(key in current_member_map)
-                return
         callback(clean_label, bool(variable.get()))
 
     def _live_fill(self, node: LiveNode, now_ms: int) -> Optional[str]:

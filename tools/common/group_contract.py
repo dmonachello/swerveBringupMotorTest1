@@ -21,7 +21,7 @@ NOTES
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional
 
 from tools.common.profile_constants import KEY_DEVICE_TYPE, KEY_ENABLED, KEY_TYPE, TYPE_MOTOR, get_group_member_label
 
@@ -31,11 +31,12 @@ GROUP_KEY_NAME = "name"
 GROUP_KEY_MEMBERS = "members"
 GROUP_KEY_BINDINGS = "bindings"
 GROUP_RUNTIME_PRESENT_THRESHOLD = 0.5
-ACTIVE_GROUP_SINGLETON_LABELS = ("controller0", "roborio", "pdp")
 RUNTIME_KEY_INSTANTIATED = "instantiated"
 RUNTIME_KEY_LIFECYCLE_STATE = "lifecycleState"
+RUNTIME_KEY_LIFECYCLE_KIND = "lifecycleKind"
 LIFECYCLE_STATE_PREFIX_INSTANTIATED = "instantiated"
 LIFECYCLE_STATE_PREFIX_CONTROLLED = "controlled"
+LIFECYCLE_KIND_SINGLETON = "singleton"
 RUNTIME_MOTOR_HINT_KEYS = (
     "velRpm",
     "positionRot",
@@ -179,7 +180,6 @@ def resolve_group_member_state(
     invalid: bool,
     runtime_state_by_label: Dict[str, Dict[str, Any]],
     scope_active: bool,
-    singleton_labels: Sequence[str] = (),
 ) -> GroupMemberState:
     """
     NAME
@@ -187,7 +187,6 @@ def resolve_group_member_state(
     """
     clean_label = str(label or EMPTY_STRING).strip()
     label_key = clean_label.lower()
-    singleton_keys = {str(value).strip().lower() for value in singleton_labels}
     runtime_device = runtime_state_by_label.get(label_key, {})
     runtime_present = False
     instantiated = False
@@ -197,7 +196,7 @@ def resolve_group_member_state(
         runtime_present = isinstance(presence, (int, float)) and float(presence) >= GROUP_RUNTIME_PRESENT_THRESHOLD
         instantiated = runtime_device_instantiated(runtime_device)
         testable = bool(runtime_device.get("testable", False))
-    resolved_locked = bool(locked) or (label_key in singleton_keys and instantiated)
+    resolved_locked = bool(locked) or (runtime_device_singleton_backed(runtime_device) and instantiated)
     return GroupMemberState(
         label=clean_label,
         enabled=bool(enabled),
@@ -225,6 +224,17 @@ def runtime_device_instantiated(runtime_device: object) -> bool:
     )
 
 
+def runtime_device_singleton_backed(runtime_device: object) -> bool:
+    """
+    NAME
+        runtime_device_singleton_backed - Return whether one runtime device payload declares singleton lifecycle policy.
+    """
+    if not isinstance(runtime_device, dict):
+        return False
+    lifecycle_kind = str(runtime_device.get(RUNTIME_KEY_LIFECYCLE_KIND, EMPTY_STRING)).strip().lower()
+    return lifecycle_kind == LIFECYCLE_KIND_SINGLETON
+
+
 def resolve_group_state_from_member_map(
     *,
     name: object,
@@ -232,7 +242,6 @@ def resolve_group_state_from_member_map(
     runtime_state_by_label: Dict[str, Dict[str, Any]],
     primary_label: object,
     scope_active: bool,
-    singleton_labels: Sequence[str] = (),
 ) -> GroupState:
     """
     NAME
@@ -253,7 +262,6 @@ def resolve_group_state_from_member_map(
                 invalid=False,
                 runtime_state_by_label=runtime_state_by_label,
                 scope_active=scope_active,
-                singleton_labels=singleton_labels,
             )
         )
     enabled_members = [member for member in members if member.enabled]
@@ -275,7 +283,6 @@ def resolve_group_state_from_rows(
     runtime_state_by_label: Dict[str, Dict[str, Any]],
     primary_label: object,
     scope_active: bool,
-    singleton_labels: Sequence[str] = (),
 ) -> GroupState:
     """
     NAME
@@ -296,7 +303,6 @@ def resolve_group_state_from_rows(
                 invalid=bool(row.get("invalid")),
                 runtime_state_by_label=runtime_state_by_label,
                 scope_active=scope_active,
-                singleton_labels=singleton_labels,
             )
         )
     enabled_members = [member for member in members if member.enabled]

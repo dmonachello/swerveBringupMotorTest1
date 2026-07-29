@@ -103,6 +103,7 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_SKIPPED_MEMBERS = "skippedMembers";
   private static final String JSON_KEY_ENABLED = "enabled";
   private static final String JSON_KEY_INSTANTIATED = "instantiated";
+  private static final String JSON_KEY_LIFECYCLE_KIND = "lifecycleKind";
   private static final String JSON_KEY_PRESENCE_CONF = "presenceConfidence";
   private static final String JSON_KEY_LIFECYCLE_STATE = "lifecycleState";
   private static final String JSON_KEY_CONTROLLED_LIFECYCLE_ACTIVE =
@@ -199,6 +200,8 @@ public class BridgeUiCommandHandler {
       "Instantiated by scope activation but not currently active.";
   private static final String TEXT_CONTROLLED_LIFECYCLE_SCOPE_REQUIRED_REASON =
       "Testable only when included in the active scope membership.";
+  private static final String TEXT_LIFECYCLE_KIND_NORMAL = "NORMAL";
+  private static final String TEXT_LIFECYCLE_KIND_SINGLETON = "SINGLETON";
   private static final String JSON_KEY_CURRENT_INSTANT_A = "currentInstantA";
   private static final String JSON_KEY_CURRENT_AVG_A = "currentAvgA";
   private static final String JSON_KEY_CURRENT_PEAK_A = "currentPeakA";
@@ -4043,6 +4046,7 @@ public class BridgeUiCommandHandler {
       obj.addProperty(JSON_KEY_VENDOR, entry.vendor);
       obj.addProperty(JSON_KEY_TYPE, entry.type);
       obj.addProperty(JSON_KEY_ID, entry.id);
+      obj.addProperty(JSON_KEY_LIFECYCLE_KIND, runtimeLifecycleKindForEntry(entry));
       DeviceLifecycleRegistry.DeviceLifecycleView lifecycle =
           runtime.getDeviceLifecycle().viewForLabel(entry.label);
       frc.robot.diag.lifecycle.runtime.DeviceRuntimeState controlledState =
@@ -4162,6 +4166,12 @@ public class BridgeUiCommandHandler {
       array.add(obj);
     }
     return array;
+  }
+
+  static String runtimeLifecycleKindForEntry(BringupUtil.DeviceEntry entry) {
+    return BringupRuntime.isLifecycleSingletonEntry(entry)
+        ? TEXT_LIFECYCLE_KIND_SINGLETON
+        : TEXT_LIFECYCLE_KIND_NORMAL;
   }
 
   private frc.robot.diag.lifecycle.runtime.DeviceRuntimeState controlledLifecycleRuntimeStateForLabel(
