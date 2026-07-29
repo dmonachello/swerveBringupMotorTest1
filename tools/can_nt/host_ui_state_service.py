@@ -23,7 +23,6 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from tools.common.group_contract import (
-    ACTIVE_GROUP_SINGLETON_LABELS,
     resolve_group_state_from_member_map,
     resolve_group_state_from_rows,
 )
@@ -126,7 +125,6 @@ TEST_ACTIVE_GROUP_STATUS_SCOPE_INACTIVE = "scope inactive"
 TEST_ACTIVE_GROUP_STATUS_NOT_ACTIVATED = TEST_ACTIVE_GROUP_STATUS_SCOPE_INACTIVE
 TEST_ACTIVE_GROUP_COLUMN_YES = "yes"
 TEST_ACTIVE_GROUP_COLUMN_NO = "no"
-TEST_ACTIVE_GROUP_SINGLETON_LABELS = set(ACTIVE_GROUP_SINGLETON_LABELS)
 ACTIVE_GROUP_STATUS_WAITING_TEXT = "waiting for robot runtime state"
 ACTIVE_GROUP_STATUS_RESYNC_TEXT = "waiting for active-scope membership resync"
 ACTIVE_GROUP_STATUS_EMPTY_TEXT = "empty - add devices to activate"
@@ -978,7 +976,6 @@ def resolve_tests_active_group_member_rows(
         runtime_state_by_label=runtime_state_by_label,
         primary_label="",
         scope_active=scope_active,
-        singleton_labels=tuple(TEST_ACTIVE_GROUP_SINGLETON_LABELS),
     )
     result: List[ActiveGroupMemberRowState] = []
     row_reason_by_label = {
@@ -1053,7 +1050,6 @@ def resolve_active_group_summary_state(
         runtime_state_by_label=runtime_state_by_label,
         primary_label=primary_label,
         scope_active=controlled_lifecycle_active,
-        singleton_labels=tuple(TEST_ACTIVE_GROUP_SINGLETON_LABELS),
     )
     clean_primary = group_state.primary_label
     member_count = group_state.member_count
@@ -1196,9 +1192,12 @@ def resolve_scope_control_state(
     tracker_pending: bool,
     stale_state: bool,
     runtime_state_seen: bool,
+    runtime_profile_active: bool = False,
     controlled_lifecycle_active: bool,
     transition_pending: bool,
     runnable_scope_state: RunnableScopeState,
+    current_scope_member_labels: Optional[List[object]] = None,
+    desired_scope_member_labels: Optional[List[object]] = None,
     selected_test_name: object,
     selected_test_ready: bool,
     selected_test_invalid: bool,
@@ -1213,6 +1212,26 @@ def resolve_scope_control_state(
     base_allowed = bool(runtime_ui_ready) and not bool(tracker_pending) and not bool(stale_state)
     runtime_block_reason = str(selected_test_runtime_block_reason or "").strip()
     selected_test_selected = str(selected_test_name or "").strip() not in ("", PROFILE_NONE)
+    current_scope_members = tuple(
+        sorted(
+            {
+                str(label or "").strip().lower()
+                for label in list(current_scope_member_labels or [])
+                if str(label or "").strip()
+            }
+        )
+    )
+    desired_scope_members = tuple(
+        sorted(
+            {
+                str(label or "").strip().lower()
+                for label in list(desired_scope_member_labels or [])
+                if str(label or "").strip()
+            }
+        )
+    )
+    membership_change_required = desired_scope_members != current_scope_members
+    runtime_or_scope_active = bool(runtime_profile_active) or bool(controlled_lifecycle_active)
     activate_allowed = False
     deactivate_allowed = False
     run_selected_allowed = False
@@ -1225,6 +1244,8 @@ def resolve_scope_control_state(
         blocked_reason = RUNNABLE_SCOPE_PANEL_RESYNC_DETAIL
     elif normalized_scope == RUNNABLE_SCOPE_KIND_SELECTED_TEST and not selected_test_selected:
         blocked_reason = TEST_SCOPE_STATUS_NO_SELECTION_DETAIL
+    elif normalized_scope == RUNNABLE_SCOPE_KIND_SELECTED_TEST and selected_test_invalid:
+        blocked_reason = TEST_SCOPE_STATUS_REQUIRED_UNAVAILABLE_DETAIL
     elif normalized_scope == RUNNABLE_SCOPE_KIND_SELECTED_TEST and selected_test_running:
         blocked_reason = TEST_SCOPE_STATUS_RUNNING_DETAIL
     elif runtime_block_reason:
@@ -1233,21 +1254,22 @@ def resolve_scope_control_state(
         blocked_reason = str(runnable_scope_state.blocked_reason or "").strip()
     if base_allowed and not transition_pending and not runtime_block_reason and not selected_test_running:
         if normalized_scope == RUNNABLE_SCOPE_KIND_SELECTED_TEST:
-            activate_allowed = selected_test_selected
-        elif runtime_state_seen:
-            activate_allowed = True
+            activate_allowed = (
+                selected_test_selected
+                and not bool(selected_test_invalid)
+            )
+        else:
+            activate_allowed = bool(runnable_scope_state.activation_allowed)
     deactivate_allowed = (
         base_allowed
         and not transition_pending
         and not bool(selected_test_running)
-        and bool(controlled_lifecycle_active)
+        and runtime_or_scope_active
     )
     run_selected_allowed = (
         bool(runtime_ui_ready)
-        and not bool(tracker_pending)
         and normalized_scope == RUNNABLE_SCOPE_KIND_SELECTED_TEST
-        and not transition_pending
-        and not runtime_block_reason
+        and selected_test_selected
         and not bool(selected_test_running)
         and bool(selected_test_ready)
     )

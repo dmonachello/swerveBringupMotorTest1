@@ -38,6 +38,7 @@ from tools.can_nt.bringup_ui import (
     PROFILE_NONE,
     RUNNABLE_SCOPE_DETAIL_SELECT_PROFILE,
     RUNNABLE_SCOPE_PANEL_DISCONNECTED_DETAIL,
+    TEST_SCOPE_DETAIL_REQUIRED_UNAVAILABLE,
     TEST_SCOPE_PANEL_ERROR_BG,
     TEST_SCOPE_PANEL_INACTIVE_BG,
     TEST_SCOPE_PANEL_READY_BG,
@@ -151,9 +152,13 @@ class _ComboBoxStub:
 class _ButtonStub:
     def __init__(self) -> None:
         self.disabled = False
+        self.pack_calls = []
 
     def state(self, states) -> None:
         self.disabled = "disabled" in tuple(states)
+
+    def pack(self, **kwargs) -> None:
+        self.pack_calls.append(dict(kwargs))
 
 
 class _LabelStub:
@@ -1361,7 +1366,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._reset_button = None
         ui._current_right_tab_text = lambda: "Tests"
         ui._active_group_is_currently_active = lambda: True
-        ui._selected_test_ready = lambda: True
+        ui._selected_test_ready = lambda: False
         ui._scope_context_kind = lambda: GROUP_SOURCE_SELECTED_TEST
         ui._tests_active_group_rows = []
         ui._robot_enabled_known = False
@@ -1385,6 +1390,43 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._handshake_done = True
         ui._runtime_state_seen = True
         ui._state_stale = True
+        ui._tracker = _Tracker()
+        ui._refresh_scope_context_label = lambda: None
+        ui._refresh_selected_test_scope_status = lambda: None
+        ui._action_buttons = []
+        ui._action_buttons_by_command = {}
+        ui._host_local_action_enabled = lambda _command: True
+        ui._selected_test_var = _StringVarStub("xxx25_leftY")
+        ui._test_selection_boxes = lambda: []
+        ui._activate_scope_button = _ButtonStub()
+        ui._deactivate_scope_button = _ButtonStub()
+        ui._tests_run_selected_button = _ButtonStub()
+        ui._reset_button = None
+        ui._current_right_tab_text = lambda: "Tests"
+        ui._active_group_is_currently_active = lambda: True
+        ui._selected_test_ready = lambda: True
+        ui._scope_context_kind = lambda: GROUP_SOURCE_SELECTED_TEST
+        ui._tests_active_group_rows = []
+        ui._robot_enabled_known = True
+        ui._robot_estopped_known = False
+        ui._robot_mode_known = "teleop"
+        ui._manual_active_group_is_empty = lambda: False
+        ui._controlled_lifecycle_active_known = True
+
+        ui._update_action_enabled()
+
+        self.assertFalse(ui._tests_run_selected_button.disabled)
+
+    def test_update_action_enabled_allows_run_selected_for_ready_selected_test_even_when_tracker_pending(self) -> None:
+        class _Tracker:
+            def is_pending(self) -> bool:
+                return True
+
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._tcp_connected = True
+        ui._handshake_done = True
+        ui._runtime_state_seen = True
+        ui._state_stale = False
         ui._tracker = _Tracker()
         ui._refresh_scope_context_label = lambda: None
         ui._refresh_selected_test_scope_status = lambda: None
@@ -1436,6 +1478,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._current_right_tab_text = lambda: "Live Topology"
         ui._selected_test_ready = lambda: False
         ui._controlled_lifecycle_active_known = False
+        ui._runtime_active_known = False
         ui._manual_active_group_is_empty = lambda: True
 
         ui._update_action_enabled()
@@ -1444,6 +1487,60 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._controlled_lifecycle_active_known = True
         ui._manual_active_group_is_empty = lambda: False
         ui._update_action_enabled()
+        self.assertFalse(ui._deactivate_scope_button.disabled)
+
+    def test_build_runtime_scope_buttons_retains_widget_references(self) -> None:
+        created_buttons = []
+
+        def _button_factory(_parent=None, **_kwargs):
+            button = _ButtonStub()
+            created_buttons.append(button)
+            return button
+
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._runtime_activate_from_ui = lambda: None
+        ui._runtime_deactivate_from_ui = lambda: None
+
+        with patch("tools.can_nt.bringup_ui.ttk.Button", side_effect=_button_factory):
+            ui._build_runtime_scope_buttons(object())
+
+        self.assertEqual(2, len(created_buttons))
+        self.assertIs(created_buttons[0], ui._activate_scope_button)
+        self.assertIs(created_buttons[1], ui._deactivate_scope_button)
+        self.assertEqual(1, len(ui._activate_scope_button.pack_calls))
+        self.assertEqual(1, len(ui._deactivate_scope_button.pack_calls))
+
+    def test_update_action_enabled_keeps_deactivate_enabled_when_runtime_active_without_controlled_scope(self) -> None:
+        class _Tracker:
+            def is_pending(self) -> bool:
+                return False
+
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._tcp_connected = True
+        ui._handshake_done = True
+        ui._state_stale = False
+        ui._runtime_state_seen = True
+        ui._runtime_active_known = True
+        ui._tracker = _Tracker()
+        ui._refresh_scope_context_label = lambda: None
+        ui._refresh_selected_test_scope_status = lambda: None
+        ui._action_buttons = []
+        ui._action_buttons_by_command = {}
+        ui._host_local_action_enabled = lambda _command: True
+        ui._selected_test_var = _StringVarStub("")
+        ui._test_selection_boxes = lambda: []
+        ui._activate_scope_button = _ButtonStub()
+        ui._deactivate_scope_button = _ButtonStub()
+        ui._tests_run_selected_button = _ButtonStub()
+        ui._reset_button = None
+        ui._current_right_tab_text = lambda: "Live Topology"
+        ui._selected_test_ready = lambda: True
+        ui._controlled_lifecycle_active_known = False
+        ui._manual_active_group_is_empty = lambda: False
+
+        ui._update_action_enabled()
+
+        self.assertFalse(ui._activate_scope_button.disabled)
         self.assertFalse(ui._deactivate_scope_button.disabled)
 
     def test_update_action_enabled_disables_manual_activate_when_active_group_empty(self) -> None:
@@ -3489,6 +3586,83 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertTrue(any("runtimeActivate" in line for line in lines))
         self.assertEqual("runtimeActivate", send_mock.call_args.args[2])
 
+    def test_runtime_activate_from_ui_reports_required_unavailable_when_selected_test_scope_load_fails(self) -> None:
+        class _Tracker:
+            def is_pending(self) -> bool:
+                return False
+
+        ui = BringupControlUI.__new__(BringupControlUI)
+        lines = []
+        ui._tcp_connected = True
+        ui._tracker = _Tracker()
+        ui._append_output = lines.append
+        ui._profile_box = _ProfileBoxStub("test_minimal_25_9", ("test_minimal_25_9",))
+        ui._scope_context_kind = lambda: GROUP_SOURCE_SELECTED_TEST
+        ui._load_selected_test_into_active_group = lambda force_replace=False: setattr(
+            ui, "_tests_active_group_loaded_to_robot", False
+        )
+
+        ui._runtime_activate_from_ui()
+
+        self.assertEqual([TEST_SCOPE_DETAIL_REQUIRED_UNAVAILABLE], lines)
+
+    def test_runtime_activate_from_ui_auto_deactivates_before_selected_test_scope_swap(self) -> None:
+        class _Tracker:
+            def is_pending(self) -> bool:
+                return False
+
+        ui = BringupControlUI.__new__(BringupControlUI)
+        lines = []
+        ui._tcp_connected = True
+        ui._tracker = _Tracker()
+        ui._session = object()
+        ui._last_sent_seq = None
+        ui._append_output = lines.append
+        ui._profile_box = _ProfileBoxStub("test_minimal_25_9", ("test_minimal_25_9",))
+        ui._activation_membership_mode_var = _StringVarStub(ACTIVATION_MEMBERSHIP_MODE_DEFAULT)
+        ui._scope_context_kind = lambda: GROUP_SOURCE_SELECTED_TEST
+        ui._selected_test_membership_change_requires_scope_swap = lambda: True
+        deactivate_calls = []
+        ui._deactivate_group_blocking = lambda: deactivate_calls.append("deactivate") or True
+        load_calls = []
+        ui._load_selected_test_into_active_group = lambda force_replace=False: (
+            load_calls.append(force_replace),
+            setattr(ui, "_tests_active_group_loaded_to_robot", True),
+        )
+
+        with patch("tools.can_nt.bringup_ui.send_tracked_command", return_value=26) as send_mock:
+            ui._runtime_activate_from_ui()
+
+        self.assertEqual(["deactivate"], deactivate_calls)
+        self.assertEqual([True], load_calls)
+        self.assertEqual("runtimeActivate", send_mock.call_args.args[2])
+
+    def test_runtime_activate_from_ui_stops_when_selected_test_scope_swap_deactivate_fails(self) -> None:
+        class _Tracker:
+            def is_pending(self) -> bool:
+                return False
+
+        ui = BringupControlUI.__new__(BringupControlUI)
+        lines = []
+        ui._tcp_connected = True
+        ui._tracker = _Tracker()
+        ui._session = object()
+        ui._last_sent_seq = None
+        ui._append_output = lines.append
+        ui._profile_box = _ProfileBoxStub("test_minimal_25_9", ("test_minimal_25_9",))
+        ui._activation_membership_mode_var = _StringVarStub(ACTIVATION_MEMBERSHIP_MODE_DEFAULT)
+        ui._scope_context_kind = lambda: GROUP_SOURCE_SELECTED_TEST
+        ui._selected_test_membership_change_requires_scope_swap = lambda: True
+        ui._deactivate_group_blocking = lambda: False
+        ui._load_selected_test_into_active_group = lambda force_replace=False: setattr(
+            ui, "_tests_active_group_loaded_to_robot", True
+        )
+
+        with patch("tools.can_nt.bringup_ui.send_tracked_command", return_value=26) as send_mock:
+            ui._runtime_activate_from_ui()
+
+        self.assertFalse(send_mock.called)
+
     def test_runtime_deactivate_from_ui_uses_runtime_command_path(self) -> None:
         class _Tracker:
             def is_pending(self) -> bool:
@@ -5301,6 +5475,43 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._update_action_enabled()
 
         self.assertFalse(ui._activate_scope_button.disabled)
+        self.assertFalse(ui._deactivate_scope_button.disabled)
+
+    def test_update_action_enabled_disables_selected_test_activate_when_scope_change_requires_deactivate(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._refresh_scope_context_label = lambda: None
+        ui._refresh_selected_test_scope_status = lambda: None
+        ui._tcp_connected = True
+        ui._handshake_done = True
+        ui._state_stale = False
+        ui._runtime_state_seen = True
+        ui._runtime_active_known = True
+        ui._tracker = type("TrackerStub", (), {"is_pending": lambda _self: False})()
+        ui._action_buttons = []
+        ui._action_buttons_by_command = {}
+        ui._test_selection_boxes = lambda: []
+        ui._activate_scope_button = _ButtonStub()
+        ui._deactivate_scope_button = _ButtonStub()
+        ui._tests_run_selected_button = _ButtonStub()
+        ui._reset_button = _ButtonStub()
+        ui._test_runtime_block_reason = lambda: ""
+        ui._scope_context_kind = lambda: GROUP_SOURCE_SELECTED_TEST
+        ui._profile_box = _ProfileBoxStub("test_minimal_25_9", values=("test_minimal_25_9",))
+        ui._manual_active_group_is_empty = lambda: False
+        ui._selected_test_var = _StringVarStub("smoke_test")
+        ui._controlled_lifecycle_active_known = True
+        ui._host_local_action_enabled = lambda _command: True
+        ui._selected_test_ready = lambda: True
+        ui._selected_test_has_invalid_members = lambda: False
+        ui._selected_test_running = lambda: False
+        ui._scope_transition_pending = lambda: False
+        ui._runnable_scope_state = lambda stale_state: SimpleNamespace(blocked_reason="")
+        ui._runtime_active_group_members = lambda: [{"label": "FALCON 9", "enabled": True}]
+        ui._current_scope_expected_member_labels = lambda: ["FALCON 9", "lmtSw0"]
+
+        ui._update_action_enabled()
+
+        self.assertTrue(ui._activate_scope_button.disabled)
         self.assertFalse(ui._deactivate_scope_button.disabled)
 
     def test_update_action_enabled_blocks_selected_test_activate_and_deactivate_while_test_running(self) -> None:

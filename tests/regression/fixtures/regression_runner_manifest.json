@@ -139,6 +139,20 @@
         "{repo}/tools/can_nt/scripts/config_api_guard.py"
       ]
     },
+    "ui-runtime-rules-lockstep": {
+      "label": "ui-runtime-rules-lockstep",
+      "mode": "local",
+      "features": [
+        "ui runtime workflow doc lockstep",
+        "regression guide workflow lockstep"
+      ],
+      "argv": [
+        "{python}",
+        "-m",
+        "unittest",
+        "tools.can_nt.tests.test_ui_runtime_rules_lockstep"
+      ]
+    },
     "robot-non-motion": {
       "label": "robot-non-motion",
       "mode": "connected",
@@ -177,7 +191,8 @@
     ],
     "changelog": [
       "changelog-guard",
-      "config-api-guard"
+      "config-api-guard",
+      "ui-runtime-rules-lockstep"
     ],
     "local": [
       "dsl-unit",
@@ -188,7 +203,8 @@
       "topology-editor",
       "cross-surface",
       "changelog-guard",
-      "config-api-guard"
+      "config-api-guard",
+      "ui-runtime-rules-lockstep"
     ],
     "robot-non-motion": [
       "robot-non-motion"

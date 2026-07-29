@@ -213,7 +213,6 @@ from .host_ui_state_service import (
     TEST_ACTIVE_GROUP_STATUS_INVALID as SHARED_TEST_ACTIVE_GROUP_STATUS_INVALID,
     TEST_ACTIVE_GROUP_STATUS_LOCKED as SHARED_TEST_ACTIVE_GROUP_STATUS_LOCKED,
     TEST_ACTIVE_GROUP_STATUS_NOT_ACTIVATED as SHARED_TEST_ACTIVE_GROUP_STATUS_NOT_ACTIVATED,
-    TEST_ACTIVE_GROUP_SINGLETON_LABELS as SHARED_TEST_ACTIVE_GROUP_SINGLETON_LABELS,
     TEST_SCOPE_PANEL_NEUTRAL_LEVEL,
     TEST_SCOPE_STATUS_BLOCKED_DISABLED_DETAIL as SHARED_TEST_SCOPE_STATUS_BLOCKED_DISABLED_DETAIL,
     TEST_SCOPE_STATUS_BLOCKED_ESTOP_DETAIL as SHARED_TEST_SCOPE_STATUS_BLOCKED_ESTOP_DETAIL,
@@ -1275,7 +1274,6 @@ TEST_ACTIVE_GROUP_STATUS_LOCKED = SHARED_TEST_ACTIVE_GROUP_STATUS_LOCKED
 TEST_ACTIVE_GROUP_STATUS_INVALID = SHARED_TEST_ACTIVE_GROUP_STATUS_INVALID
 TEST_ACTIVE_GROUP_STATUS_ENABLED = SHARED_TEST_ACTIVE_GROUP_STATUS_ENABLED
 TEST_ACTIVE_GROUP_PANEL_EMPTY = "No selected-test devices."
-TEST_ACTIVE_GROUP_SINGLETON_LABELS = SHARED_TEST_ACTIVE_GROUP_SINGLETON_LABELS
 TEST_ACTIVE_GROUP_COL_LABEL = "Label"
 TEST_ACTIVE_GROUP_COL_ENABLED = "Enabled"
 TEST_ACTIVE_GROUP_COL_LOCKED = "Locked"
@@ -2327,17 +2325,10 @@ class BringupControlUI(tk.Tk):
         ttk.Button(
             header, text=BUTTON_DOWNLOAD_CONFIG, command=self._download_current_config_from_ui
         ).pack(side="left", padx=(6, 0))
-        ttk.Button(
-            header, text=BUTTON_RUNTIME_ACTIVATE, command=self._runtime_activate_from_ui
-        ).pack(side="left", padx=(6, 0))
-        ttk.Button(
-            header, text=BUTTON_RUNTIME_DEACTIVATE, command=self._runtime_deactivate_from_ui
-        ).pack(side="left", padx=(6, 0))
+        self._build_runtime_scope_buttons(header)
         ttk.Button(
             header, text=BUTTON_SHOW_RUNTIME_STATE, command=self._show_runtime_state_from_ui
         ).pack(side="left", padx=(6, 0))
-        self._activate_scope_button = None
-        self._deactivate_scope_button = None
         self._activation_membership_mode_var = tk.StringVar(
             value=ACTIVATION_MEMBERSHIP_MODE_DEFAULT
         )
@@ -2592,6 +2583,31 @@ class BringupControlUI(tk.Tk):
         self._live_view.set_show_groups(self._live_groups_var.get())
         self._apply_live_topology_lens()
         self._live_view.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+
+    def _build_runtime_scope_buttons(self, parent: tk.Widget) -> None:
+        """
+        NAME
+            _build_runtime_scope_buttons - Create and retain the top-bar runtime scope buttons.
+
+        DESCRIPTION
+            The shared button-state logic updates these retained widget references
+            in `_update_action_enabled()`. The buttons must therefore be stored on
+            the UI instance rather than created as anonymous temporaries.
+        """
+        activate_scope_button = ttk.Button(
+            parent,
+            text=BUTTON_RUNTIME_ACTIVATE,
+            command=self._runtime_activate_from_ui,
+        )
+        activate_scope_button.pack(side="left", padx=(6, 0))
+        deactivate_scope_button = ttk.Button(
+            parent,
+            text=BUTTON_RUNTIME_DEACTIVATE,
+            command=self._runtime_deactivate_from_ui,
+        )
+        deactivate_scope_button.pack(side="left", padx=(6, 0))
+        self._activate_scope_button = activate_scope_button
+        self._deactivate_scope_button = deactivate_scope_button
 
     def _build_can_fault_finder_panel(self, parent: tk.Widget) -> None:
         """
@@ -3996,17 +4012,25 @@ class BringupControlUI(tk.Tk):
         NAME
             _scope_control_state - Return shared scope-control ownership gates for top-level host actions.
         """
+        current_scope_member_labels = [
+            str(row.get("label", "")).strip()
+            for row in self._runtime_active_group_members()
+            if isinstance(row, dict) and bool(row.get("enabled", True)) and str(row.get("label", "")).strip()
+        ]
         return resolve_scope_control_state(
             scope_kind=self._runnable_scope_kind(),
             runtime_ui_ready=self._runtime_ui_actions_ready(),
             tracker_pending=self._tracker.is_pending(),
             stale_state=bool(self.__dict__.get("_state_stale", False)),
             runtime_state_seen=bool(self.__dict__.get("_runtime_state_seen", False)),
+            runtime_profile_active=bool(self.__dict__.get("_runtime_active_known", False)),
             controlled_lifecycle_active=self.__dict__.get("_controlled_lifecycle_active_known") is True,
             transition_pending=self._scope_transition_pending(),
             runnable_scope_state=self._runnable_scope_state(
                 stale_state=bool(self.__dict__.get("_state_stale", False))
             ),
+            current_scope_member_labels=current_scope_member_labels,
+            desired_scope_member_labels=self._current_scope_expected_member_labels(),
             selected_test_name=self._selected_test_name(),
             selected_test_ready=self._selected_test_ready(),
             selected_test_invalid=self._selected_test_has_invalid_members(),
@@ -11261,9 +11285,12 @@ class BringupControlUI(tk.Tk):
             self._append_output(OUTPUT_NO_PROFILE)
             return
         if self._scope_context_kind() == GROUP_SOURCE_SELECTED_TEST:
+            if self._selected_test_membership_change_requires_scope_swap():
+                if not self._deactivate_group_blocking():
+                    return
             self._load_selected_test_into_active_group(force_replace=True)
             if self.__dict__.get("_tests_active_group_loaded_to_robot") is False:
-                self._append_output(TEST_SCOPE_STATUS_REQUIRED_UNAVAILABLE_DETAIL)
+                self._append_output(TEST_SCOPE_DETAIL_REQUIRED_UNAVAILABLE)
                 return
         args = {
             KEY_NAME: profile_name,
@@ -11287,6 +11314,27 @@ class BringupControlUI(tk.Tk):
         )
         if seq is not None:
             self._last_sent_seq = seq
+
+    def _selected_test_membership_change_requires_scope_swap(self) -> bool:
+        """
+        NAME
+            _selected_test_membership_change_requires_scope_swap - Return whether the selected test needs a different active-group membership while a controlled scope is active.
+        """
+        if self._scope_context_kind() != GROUP_SOURCE_SELECTED_TEST:
+            return False
+        if self.__dict__.get("_controlled_lifecycle_active_known") is not True:
+            return False
+        current_labels = {
+            str(row.get("label", "")).strip().lower()
+            for row in self._runtime_active_group_members()
+            if isinstance(row, dict) and bool(row.get("enabled", True)) and str(row.get("label", "")).strip()
+        }
+        desired_labels = {
+            str(row.get("label", "")).strip().lower()
+            for row in self._selected_test_required_rows()
+            if isinstance(row, dict) and bool(row.get("enabled", True)) and str(row.get("label", "")).strip()
+        }
+        return current_labels != desired_labels
 
     def _runtime_deactivate_from_ui(self) -> None:
         """

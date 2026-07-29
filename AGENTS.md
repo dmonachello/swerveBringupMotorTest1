@@ -33,6 +33,12 @@ Hard rules
 - Keep hardware configuration easy to customize: adding a team's device list/profile should be data-driven and clearly documented, not code surgery.
 - The JSON report exposes telemetry under `devices[].attachments` (e.g., `type=revMotor` / `ctreMotor`) with fields such as `cmdDuty`, `appliedDuty`, and `motorCurrentA`.
 - AI diagnosis guidance lives in `docs/AI_DIAGNOSIS.md`.
+- For any task that changes UI/runtime behavior, treat `docs/CURRENT_UI_RUNTIME_RULES.md` as the working behavior baseline:
+  - check the current code against that document before making behavior changes
+  - after the change, verify whether the implementation still conforms
+  - if the behavior intentionally changes, update `docs/CURRENT_UI_RUNTIME_RULES.md` in the same change
+  - if the change affects the `Common Workflows` section in `docs/CURRENT_UI_RUNTIME_RULES.md`, update the matching `UI Runtime Workflow Lockstep` section in `docs/USER_GUIDE_REGRESSION_RUNNER.md` in the same change
+  - those two sections must stay in lockstep; do not change one without the other
 - Every real bug fix must add the narrowest meaningful regression test for that bug unless the bug is inherently not automatable; when automation is not practical, document the reason explicitly in the change notes.
 - Enforce no string or numeric literals in executable code paths. All literals must be defined in a dedicated constants section/file and referenced symbolically. (Documentation and constant definitions are exempt.)
 - Documentation rules:

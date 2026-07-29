@@ -137,6 +137,7 @@ Current coverage:
 - group-targeting regressions
 - topology editor regressions
 - changelog publication guard
+- UI runtime workflow lockstep guard
 
 ### 6.2 `dsl`
 
@@ -169,6 +170,12 @@ Purpose: run topology editor and topology metadata regressions.
 
 Purpose: enforce the major-change changelog update policy.
 
+Current coverage:
+
+- changelog publication guard
+- shared config API policy guard
+- UI runtime workflow lockstep guard
+
 ### 6.7 `robot-non-motion`
 
 Purpose: run the connected robot REST/UI regression without commanding motion.
@@ -184,6 +191,73 @@ To include the robot suite, you must also pass:
 ```text
 --include-robot --rio <host-or-ip>
 ```
+
+## UI Runtime Workflow Lockstep
+
+Purpose: keep [CURRENT_UI_RUNTIME_RULES.md](./CURRENT_UI_RUNTIME_RULES.md) `Common Workflows` in lockstep with maintained regression coverage guidance.
+
+This section must mirror the workflow headings in:
+
+- [CURRENT_UI_RUNTIME_RULES.md](./CURRENT_UI_RUNTIME_RULES.md)
+
+The automated guard compares the workflow subsection headings in both places.
+If one list changes without the other, the regression fails.
+
+### Manual Scope Activation While Inactive
+
+Regression coverage:
+
+- shared host-side scope-control tests
+- selected/manual button-state tests where applicable
+
+### Manual Membership Change While Scope Is Active
+
+Regression coverage:
+
+- shared scope-control gating tests
+- active-group lock/editability tests
+
+### Selected-Test Activation When Scope Is Inactive
+
+Regression coverage:
+
+- selected-test activate button-state tests
+- selected-test runtime activation command-path tests
+
+### Selected-Test Activation When The Active Scope Has The Wrong Membership
+
+Regression coverage:
+
+- shared selected-test activate gating tests
+- UI auto-deactivate/scope-swap/runtime-activate workflow tests
+
+### Selected-Test Run After Ready
+
+Regression coverage:
+
+- shared selected-test readiness tests
+- `Run Selected` enablement synchronization tests
+
+### Leaving The Tests Tab
+
+Regression coverage:
+
+- tests-boundary transition ownership tests
+- manual owner-mode restoration tests
+
+### Manual Right-Click Or Group Duty While Scope Is Active
+
+Regression coverage:
+
+- manual duty access-state tests
+- controlled-scope manual target eligibility tests
+
+### Singleton Devices Across Repeated Workflows
+
+Regression coverage:
+
+- shared selected-test/member-row singleton state tests
+- group contract singleton lock-state tests
 
 ## 7. Running from the Command Line
 

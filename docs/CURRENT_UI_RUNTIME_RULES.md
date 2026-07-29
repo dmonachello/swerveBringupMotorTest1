@@ -9,6 +9,8 @@ This document is intentionally descriptive, not normative.
 - It records what the code does now.
 - It does not describe the older intended designs.
 - It does not try to resolve whether every rule is ideal.
+- It is the current behavior baseline for UI/runtime changes.
+- New code that changes these behaviors should update this document in the same change.
 
 ## Primary Code Owners
 
@@ -35,7 +37,7 @@ Purpose: Identify the code paths that currently define behavior.
 Purpose: State the main runtime model the code currently uses.
 
 - `active-group` is the shared execution group used by manual bringup and by DSL test flows.
-- User-defined groups still exist and still work as named groups.
+- User-defined groups exist and work as named groups.
 - `Runtime Activate` does two separate things:
   - it activates the selected profile runtime
   - it attempts to activate the controlled lifecycle session for `active-group`
@@ -46,6 +48,12 @@ The current code treats them this way:
 - profile runtime activation instantiates the selected profile's devices broadly
 - `active-group` controls which devices are in the active controlled session
 - manual and DSL operations are expected to act on the currently eligible subset of that scope
+
+Current implication:
+
+- yes, it is possible for a device to be instantiated and not in the active scope
+- no, the current controlled-lifecycle model does not intentionally allow `Scope Active: yes` while the device is not instantiated
+- some operations can still run on a device outside the active scope when controlled lifecycle is not active and the runtime payload still marks the device testable
 
 ## Scope Terminology
 
@@ -64,6 +72,12 @@ Important current distinction:
 
 - a device can be `Instantiated: yes` and `Scope Active: no`
 - this means the runtime object exists, but the device is not inside the current active controlled scope
+
+Current manual-run consequence:
+
+- if controlled lifecycle is active, single-device manual duty still requires the device to be active in that controlled scope
+- if controlled lifecycle is inactive, the device may still be manually runnable when the runtime payload marks it testable
+- running a device does not itself add the device to `active-group` or make it `Scope Active: yes`
 
 ## Runtime Activate And Runtime Deactivate
 
@@ -87,11 +101,22 @@ Current behavior:
 - initializes and refreshes lifecycle state
 - then activates `active-group` in `READ_ONLY` lifecycle mode
 
+Current rebuild details:
+
+- reset current core/runtime state
+- replace the core
+- clear runtime-scoped bridge/group state
+- rebuild runtime groups from the current profile config
+- restore preserved `active-group` membership
+- instantiate selected-profile devices through `core.addAllDevicesCommand()`
+- refresh lifecycle publication before controlled activation
+
 Practical result:
 
 - `Runtime Activate` is not incremental allocation
-- it instantiates the active profile broadly
-- then it tries to activate the current `active-group`
+- `BringupUtil.activateSelectedProfile()` makes the selected profile the active runtime profile
+- `core.addAllDevicesCommand()` then instantiates the configured devices for that active runtime profile broadly, not only the currently checked `active-group` subset
+- it then tries to activate the current `active-group`
 
 ### Runtime Deactivate
 
@@ -106,6 +131,114 @@ Current behavior:
 - deactivates the active controlled lifecycle session
 - deactivates the active profile runtime
 - does not rely on tab-specific deactivate behavior
+
+Current consequence:
+
+- profile runtime devices are deactivated with the active profile runtime
+- app-owned singleton-backed allocations may still remain allocated at app lifetime
+- there is not intended to be a separate class of active non-profile runtime devices left untouched by this path
+
+## Activate And Deactivate Button Rules
+
+Purpose: State the intended host-side button-state contract for `Runtime Activate` and `Runtime Deactivate`.
+
+The guiding rule is:
+
+- a button should be enabled only when pressing it can succeed without first needing some other operator step
+
+Current shared prerequisites for both buttons:
+
+- TCP/REST connection is live
+- runtime state is present
+- no tracked command is pending unless the target action is already confirmed ready from runtime state
+- no scope/runtime transition confirmation is pending
+- a profile is selected
+
+Additional prerequisites for `Runtime Activate`:
+
+- robot is in `teleop`
+- robot is enabled
+- robot is not E-stopped
+- the current scope owner has a legal activation request for the current state
+
+Additional prerequisites for `Runtime Deactivate`:
+
+- runtime profile or controlled scope is currently active
+- no DSL test is currently running
+
+### Decision Table
+
+| Scope owner | Runtime active now | Controlled scope active now | Membership/source change required before next activate | Robot enabled + teleop + not estopped | Selected test valid/ready | `Runtime Activate` | `Runtime Deactivate` | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `manual` | no | no | no | yes | n/a | disabled | disabled | Nothing to activate when `active-group` is empty or unchanged. |
+| `manual` | no | no | yes | yes | n/a | enabled | disabled | Typical case after editing `active-group` while deactivated. |
+| `manual` | yes | yes | no | yes | n/a | disabled | enabled | Scope already active and nothing new needs to be applied. |
+| `manual` | yes | yes | yes | yes | n/a | disabled | enabled | Must deactivate before changing membership, then reactivate. |
+| `selected test` | no | no | no | yes | no | disabled | disabled | No valid selected test scope to activate. |
+| `selected test` | no | no | yes | yes | yes | enabled | disabled | Typical case when selected test loads a new device set into `active-group`. |
+| `selected test` | yes | yes | no | yes | yes | enabled | enabled | Re-activate is allowed only when the selected test already matches current `active-group`. |
+| `selected test` | yes | yes | yes | yes | yes | disabled | enabled | Must deactivate before replacing `active-group` membership. |
+| any | any | any | any | no | any | disabled | disabled unless something active can be safely torn down | Disabled, non-teleop, or E-stop blocks activation. |
+| any | any | any | any | any | any | disabled | disabled | Also disabled whenever command tracking or transition resync is still pending. |
+
+### Manual Rules
+
+Purpose: Record the intended `manual` ownership rules.
+
+`Runtime Activate` should be enabled in `manual` scope only when all of these are true:
+
+- shared connection/runtime prerequisites are satisfied
+- robot enabled-state prerequisites are satisfied
+- `active-group` is not empty
+- pressing activate would apply a meaningful scope/runtime change
+
+`Runtime Activate` should be disabled in `manual` scope when any of these are true:
+
+- `active-group` is empty
+- the same manual `active-group` scope is already active and no membership change is pending
+- membership would need to change while controlled scope is already active
+
+`Runtime Deactivate` should be enabled in `manual` scope only when:
+
+- shared connection/runtime prerequisites are satisfied
+- runtime profile or controlled scope is active
+
+### Selected-Test Rules
+
+Purpose: Record the intended `selected test` ownership rules.
+
+`Runtime Activate` should be enabled in `selected test` scope only when all of these are true:
+
+- shared connection/runtime prerequisites are satisfied
+- robot enabled-state prerequisites are satisfied
+- a test is selected
+- the selected test is valid
+- all required devices are resolvable
+- one of these is true:
+  - selected-test scope is currently inactive
+  - or selected-test required membership already exactly matches the current `active-group`
+
+`Runtime Activate` should be disabled in `selected test` scope when any of these are true:
+
+- no test is selected
+- the selected test is invalid
+- one or more required devices are unavailable
+- the selected test is already running
+- runtime block reason exists for that selected test
+
+Current selected-test activate workflow:
+
+- if the selected test requires different `active-group` membership while a controlled scope is already active, `Runtime Activate` may auto-handle the sequence:
+  1. deactivate the active controlled scope
+  2. replace `active-group` membership with the selected test device set
+  3. activate runtime/scope for that selected test set
+- the operator should not be forced through a manual deactivate-first step for that selected-test activation case
+
+`Runtime Deactivate` should be enabled in `selected test` scope only when:
+
+- shared connection/runtime prerequisites are satisfied
+- runtime profile or controlled scope is active
+- no test is currently running
 
 ## Active-Group Ownership
 
@@ -158,6 +291,12 @@ Current behavior:
 - they can still be shown and used for manual/group interactions
 - they are not the default controlled execution scope
 
+Current DSL relation:
+
+- `Run Selected` and selected-test activation do not directly execute against an arbitrary user-defined group
+- instead, the selected test device set is loaded into `active-group`
+- user-defined groups can still be used elsewhere for manual/group workflows
+
 The current system centers execution on:
 
 - `active-group`
@@ -195,11 +334,10 @@ Practical workflow:
 
 Purpose: Describe the current singleton policy as implemented.
 
-Current singleton labels used by the shared host-side contract:
+Current singleton classification rule:
 
-- `controller0`
-- `roborio`
-- `pdp`
+- shared host-side surfaces treat a device as singleton-backed when the robot runtime payload publishes `lifecycleKind = SINGLETON`
+- the host does not rely on hard-coded device labels for singleton locking
 
 Current intended singleton behavior:
 
@@ -218,7 +356,9 @@ Current robot truth for singleton allocation:
 Current UI lock rule:
 
 - host-side row locking comes from shared `group_contract` resolution
-- singleton rows lock when the runtime payload confirms instantiation
+- singleton rows lock when the runtime payload confirms both:
+  - singleton lifecycle kind
+  - instantiated state
 
 ## Instantiation Versus Membership
 
@@ -234,6 +374,12 @@ Current consequence:
 
 - a device may be instantiated even while not selected in `active-group`
 - if it is not in scope, it still should not be eligible for controlled-scope manual actuation
+
+Current meaning of "in scope" for runtime actions:
+
+- when controlled lifecycle is active, "in scope" means the runtime device is inside the currently active controlled session
+- in host-side runtime payload terms, that usually appears as `lifecycleState=controlled-active`
+- when controlled lifecycle is inactive, the system falls back to broader runtime/testable rules instead of a strict active-scope membership requirement
 
 ## Manual Right-Click And Manual Duty Rules
 
@@ -269,6 +415,12 @@ Current implication:
 
 - whole-group rejection because one other member is out of scope is not the current intended behavior
 - the effective runnable subset is what matters
+- this is required for one-device-at-a-time bringup flows and other partial-subset runs
+
+Current success rule:
+
+- the current implementation treats group manual duty as successful if one or more eligible selected members accepted the duty request
+- it does not require every configured member of the named group to run successfully
 
 ## Run Selected Rules
 
@@ -280,10 +432,8 @@ Current host-side rule in `resolve_scope_control_state(...)`:
 
 - runtime UI is ready
 - no tracked command is pending
-- scope transition is not pending
 - current scope kind is `selected test`
 - the selected test is not already running
-- there is no selected-test runtime block reason
 - the selected test is currently ready
 
 Current meaning of selected-test ready:
@@ -292,9 +442,23 @@ Current meaning of selected-test ready:
 - the scope is active for that selected-test-owned set
 - the robot state does not show a blocking condition for that selected test
 
+Current implementation note:
+
+- `Run Selected` now follows that same selected-test readiness truth directly
+- a transient host-side transition-resync flag does not, by itself, disable `Run Selected` once the selected-test state already resolves to ready
+- the `Test State` panel and the `Run Selected` button must stay synchronized
+- both must be derived from the same selected-test readiness rule, not separate interpretations
+- if one surface says the selected test is ready to run, the other surface must not independently block it using extra host-only conditions
+
+Current meaning of selected-test scope selection:
+
+- there is not a separate selected-test runtime scope object anymore
+- the `Tests` tab selects scope by replacing robot `active-group` membership with the selected test devices
+- `Runtime Activate` then activates that `active-group`
+
 ## Runnable State Panels
 
-Purpose: Explain what the green/yellow panels are based on.
+Purpose: Explain what the green/yellow/red panels are based on.
 
 Current status panels are computed host-side from:
 
@@ -307,10 +471,25 @@ Current status panels are computed host-side from:
 - current selected test state
 - `active-group` membership and presence
 
+Current simplified decision flow:
+
+1. If the UI is disconnected or waiting for runtime state, show a waiting/not-runnable state.
+2. If a scope transition is pending, show a resync/not-runnable state.
+3. If the robot is E-stopped, disabled, stale, or blocked by scope/test rules, show not-runnable with that reason.
+4. If the current scope kind is `selected test`, evaluate selected-test readiness rules.
+5. If the current scope kind is `manual`, evaluate `active-group` membership, scope activation, and presence rules.
+6. If the relevant scope is active and the required members are acceptable, show ready.
+
 Current important consequence:
 
 - the panel text is not raw robot text
 - it is a host-side interpretation of robot runtime state plus host command/transition state
+
+Current synchronization requirement:
+
+- the `Test State` panel, `Run Selected`, and any closely related selected-test scope actions must follow the same shared rule path
+- common shared code must decide selected-test readiness and actionability
+- the UI must not keep one code path for panel readiness and a different code path for button enablement when both express the same selected-test runnable truth
 
 ## Active Group Subpanes
 
@@ -324,6 +503,7 @@ Current behavior:
 - checked rows are current `active-group` members
 - unchecked rows are candidate profile devices not currently in the group
 - singleton rows should remain visible even when locked
+- singleton rows are intended to be non-editable once first-instantiated truth is present in the runtime payload
 
 ### Tests Selected Test Devices
 
@@ -343,14 +523,179 @@ Current behavior:
 - overlapping group bindings should not, by themselves, block manual right-click popups
 - manual/group duty is still subject to runtime eligibility and active-scope rules
 
+## Common Workflows
+
+Purpose: Describe how the current code applies these rules in common operator scenarios.
+
+### Manual Scope Activation While Inactive
+
+Scenario:
+
+- the operator is in a manual-scope tab such as `Live Topology`
+- `active-group` already contains the intended manual device set
+- no controlled scope is currently active
+
+Current workflow:
+
+1. the operator edits manual membership while scope is inactive
+2. the shared host-side scope-control state evaluates that activate is allowed
+3. pressing `Runtime Activate` activates the selected profile runtime broadly
+4. the same action then activates the current `active-group`
+5. manual/group runs operate on the currently eligible subset of that active scope
+
+Code-path consequence:
+
+- this is not incremental single-device allocation
+- runtime activation and scope activation happen together from the top-bar activate action
+
+### Manual Membership Change While Scope Is Active
+
+Scenario:
+
+- the operator is still in manual scope
+- the currently active controlled scope does not match the new desired manual membership
+
+Current workflow:
+
+1. the shared host-side scope-control state disables manual membership edits while the controlled scope is active
+2. the operator uses `Runtime Deactivate`
+3. the operator edits `active-group` membership
+4. the operator uses `Runtime Activate` to bring the new manual scope active
+
+Code-path consequence:
+
+- the current implementation still treats manual membership changes as locked while the controlled scope is active
+- this remains a deactivate-edit-reactivate workflow
+
+### Selected-Test Activation When Scope Is Inactive
+
+Scenario:
+
+- the operator is in the `Tests` tab
+- a valid selected test has a required device set
+- no controlled scope is currently active
+
+Current workflow:
+
+1. selecting the test loads its required devices into robot `active-group`
+2. the shared selected-test readiness logic evaluates whether the test is ready
+3. pressing `Runtime Activate` stages runtime activation for the selected profile
+4. the selected-test-owned `active-group` becomes the active controlled scope
+5. once selected-test readiness resolves to ready, `Test State` and `Run Selected` must agree
+
+Code-path consequence:
+
+- the test does not run against a separate hidden scope object
+- the selected test works by owning the shared `active-group`
+
+### Selected-Test Activation When The Active Scope Has The Wrong Membership
+
+Scenario:
+
+- the operator is in the `Tests` tab
+- a controlled scope is already active
+- the selected test needs a different `active-group` membership than the current active scope
+
+Current workflow:
+
+1. the shared selected-test scope rules still allow activate when the test is otherwise valid
+2. pressing `Runtime Activate` detects that the selected test requires a different scope membership
+3. the UI deactivates the currently active controlled scope automatically
+4. the UI replaces robot `active-group` membership with the selected test device set
+5. runtime/scope activation proceeds for that selected test set
+
+Code-path consequence:
+
+- the operator is no longer required to do a separate manual deactivate-first step for this selected-test case
+- this auto-swap behavior applies to selected-test activation, not to arbitrary manual membership edits
+
+### Selected-Test Run After Ready
+
+Scenario:
+
+- the selected test scope is already active
+- the selected test is valid and not currently running
+- the robot is not disabled or E-stopped
+
+Current workflow:
+
+1. shared selected-test readiness resolves to ready
+2. the `Test State` panel shows ready
+3. `Run Selected` is enabled from that same shared readiness truth
+4. pressing `Run Selected` sends the robot-side test run command for the selected test
+5. while the test is running, conflicting activate/deactivate/run actions become blocked until the run finishes
+
+Code-path consequence:
+
+- the panel and the button must not diverge
+- if one says the test is ready to run, the other must express the same actionable truth
+
+### Leaving The Tests Tab
+
+Scenario:
+
+- the operator leaves `Tests` after using selected-test scope activation
+
+Current workflow:
+
+1. host owner mode changes back from `selected test` to `manual`
+2. leaving `Tests` does not automatically tear down the controlled scope
+3. the previously active selected-test-owned scope may still remain active until an explicit deactivate or replacement occurs
+4. manual surfaces then interpret the current runtime/scope state through the manual host-side rules
+
+Code-path consequence:
+
+- tab changes do not, by themselves, imply scope teardown
+- owner-mode changes and active lifecycle state are related but not identical
+
+### Manual Right-Click Or Group Duty While Scope Is Active
+
+Scenario:
+
+- the operator uses manual actuation while a controlled scope session is active
+
+Current workflow:
+
+1. the host checks current runtime state, robot enabled state, and transition status
+2. if controlled lifecycle is active, the target device must be inside the active controlled scope
+3. single-device manual duty is blocked when the target is outside that active scope
+4. group manual duty evaluates the currently eligible subset of selected group members
+5. the command succeeds when at least one eligible selected member accepts the duty request
+
+Code-path consequence:
+
+- manual runs are scope-aware when controlled lifecycle is active
+- group duty is subset-tolerant rather than all-or-nothing
+
+### Singleton Devices Across Repeated Workflows
+
+Scenario:
+
+- the operator revisits scopes or tests that reference singleton-backed devices such as infrastructure devices or controllers
+
+Current workflow:
+
+1. singleton-backed devices may be added to `active-group`
+2. once first-instantiated truth is published, shared host-side row logic treats them as locked
+3. later workflows may still show those devices as instantiated even when they are not the current active scope
+4. selected-test and manual surfaces continue to derive `Instantiated` and `Scope Active` separately
+
+Code-path consequence:
+
+- a singleton can remain allocated across workflows without implying that it is currently in scope
+- operators must read `Instantiated` and `Scope Active` as separate truths
+
 ## Current Non-Obvious Consequences
 
 Purpose: Capture behaviors that follow from the current implementation and may surprise operators.
 
 - `Runtime Activate` is not one-device-at-a-time bringup.
+- It is profile-wide runtime activation plus activation of the current `active-group`.
 - DSL tests currently work by replacing `active-group` membership with the selected test device set.
 - Leaving the `Tests` tab does not automatically tear down the shared active scope.
+- The `active-group` checkboxes are expected to reflect robot-backed group membership state, not simply current runtime object allocation.
 - A device being unchecked in `active-group` does not necessarily mean its runtime object was freed.
+- For singleton-backed devices, the intended allocation rule is "allocate once, then persist"; for non-singletons, runtime object lifetime is more rebuild/deactivate-driven.
 - Singleton lock state depends on robot-published instantiation truth, not just on the last visible checkbox state.
 
 ## Code-Derived Summary
@@ -374,6 +719,7 @@ This document is a current-state reference.
 
 Use it to:
 
+- provide the current behavioral baseline for humans and Codex before changing UI/runtime logic
 - understand today’s behavior before changing it
 - compare future code changes against the current contract
 - identify where implementation and operator expectation still diverge

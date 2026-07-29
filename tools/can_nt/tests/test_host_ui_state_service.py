@@ -367,6 +367,73 @@ class HostUiStateServiceTests(unittest.TestCase):
         self.assertTrue(state.allowed)
         self.assertEqual("", state.blocked_reason)
 
+    def test_resolve_scope_control_state_allows_run_selected_when_ready_even_if_tracker_pending(self) -> None:
+        runnable_state = resolve_runnable_scope_state(
+            scope_kind=RUNNABLE_SCOPE_KIND_SELECTED_TEST,
+            local_selected_profile="test_minimal_25_9",
+            local_profile_required=True,
+            tcp_connected=True,
+            runtime_state_seen=True,
+            stale_state=False,
+            robot_enabled=True,
+            robot_estopped=False,
+            robot_mode="teleop",
+            manual_group_empty=False,
+            scope_active=True,
+        )
+
+        state = resolve_scope_control_state(
+            scope_kind=RUNNABLE_SCOPE_KIND_SELECTED_TEST,
+            runtime_ui_ready=True,
+            tracker_pending=True,
+            stale_state=False,
+            runtime_state_seen=True,
+            controlled_lifecycle_active=True,
+            transition_pending=False,
+            runnable_scope_state=runnable_state,
+            selected_test_name="smoke_test",
+            selected_test_ready=True,
+            selected_test_invalid=False,
+            selected_test_running=False,
+            selected_test_runtime_block_reason="",
+        )
+
+        self.assertTrue(state.run_selected_allowed)
+
+    def test_resolve_scope_control_state_keeps_run_selected_enabled_when_ready_during_transition_resync(self) -> None:
+        runnable_state = resolve_runnable_scope_state(
+            scope_kind=RUNNABLE_SCOPE_KIND_SELECTED_TEST,
+            local_selected_profile="test_minimal_25_9",
+            local_profile_required=True,
+            tcp_connected=True,
+            runtime_state_seen=True,
+            stale_state=False,
+            robot_enabled=True,
+            robot_estopped=False,
+            robot_mode="teleop",
+            manual_group_empty=False,
+            scope_active=True,
+            transition_pending=True,
+        )
+
+        state = resolve_scope_control_state(
+            scope_kind=RUNNABLE_SCOPE_KIND_SELECTED_TEST,
+            runtime_ui_ready=True,
+            tracker_pending=False,
+            stale_state=False,
+            runtime_state_seen=True,
+            controlled_lifecycle_active=True,
+            transition_pending=True,
+            runnable_scope_state=runnable_state,
+            selected_test_name="smoke_test",
+            selected_test_ready=True,
+            selected_test_invalid=False,
+            selected_test_running=False,
+            selected_test_runtime_block_reason="",
+        )
+
+        self.assertTrue(state.run_selected_allowed)
+
     def test_resolve_manual_duty_action_state_requests_runtime_refresh_before_open(self) -> None:
         state = resolve_manual_duty_action_state(
             tcp_connected=True,
@@ -478,9 +545,12 @@ class HostUiStateServiceTests(unittest.TestCase):
             tracker_pending=False,
             stale_state=False,
             runtime_state_seen=True,
+            runtime_profile_active=True,
             controlled_lifecycle_active=True,
             transition_pending=False,
             runnable_scope_state=runnable_state,
+            current_scope_member_labels=["FALCON 9", "lmtSw0"],
+            desired_scope_member_labels=["FALCON 9", "lmtSw0"],
             selected_test_name="smoke_test",
             selected_test_ready=True,
             selected_test_invalid=False,
@@ -491,6 +561,43 @@ class HostUiStateServiceTests(unittest.TestCase):
         self.assertTrue(state.activate_allowed)
         self.assertTrue(state.deactivate_allowed)
         self.assertTrue(state.run_selected_allowed)
+
+    def test_resolve_scope_control_state_keeps_selected_test_activate_enabled_when_membership_change_requires_scope_swap(self) -> None:
+        runnable_state = resolve_runnable_scope_state(
+            scope_kind=RUNNABLE_SCOPE_KIND_SELECTED_TEST,
+            local_selected_profile="test_minimal_25_9",
+            local_profile_required=True,
+            tcp_connected=True,
+            runtime_state_seen=True,
+            stale_state=False,
+            robot_enabled=True,
+            robot_estopped=False,
+            robot_mode="teleop",
+            manual_group_empty=False,
+            scope_active=True,
+        )
+
+        state = resolve_scope_control_state(
+            scope_kind=RUNNABLE_SCOPE_KIND_SELECTED_TEST,
+            runtime_ui_ready=True,
+            tracker_pending=False,
+            stale_state=False,
+            runtime_state_seen=True,
+            runtime_profile_active=True,
+            controlled_lifecycle_active=True,
+            transition_pending=False,
+            runnable_scope_state=runnable_state,
+            current_scope_member_labels=["FALCON 9"],
+            desired_scope_member_labels=["FALCON 9", "lmtSw0"],
+            selected_test_name="smoke_test",
+            selected_test_ready=False,
+            selected_test_invalid=False,
+            selected_test_running=False,
+            selected_test_runtime_block_reason="",
+        )
+
+        self.assertTrue(state.activate_allowed)
+        self.assertTrue(state.deactivate_allowed)
 
     def test_resolve_scope_control_state_blocks_selected_test_activation_while_test_running(self) -> None:
         runnable_state = resolve_runnable_scope_state(
@@ -513,6 +620,7 @@ class HostUiStateServiceTests(unittest.TestCase):
             tracker_pending=False,
             stale_state=False,
             runtime_state_seen=True,
+            runtime_profile_active=True,
             controlled_lifecycle_active=True,
             transition_pending=False,
             runnable_scope_state=runnable_state,
@@ -527,6 +635,43 @@ class HostUiStateServiceTests(unittest.TestCase):
         self.assertFalse(state.deactivate_allowed)
         self.assertFalse(state.run_selected_allowed)
         self.assertEqual(TEST_SCOPE_STATUS_RUNNING_DETAIL, state.blocked_reason)
+
+    def test_resolve_scope_control_state_keeps_deactivate_enabled_when_runtime_active_without_controlled_scope(self) -> None:
+        runnable_state = resolve_runnable_scope_state(
+            scope_kind=RUNNABLE_SCOPE_KIND_MANUAL,
+            local_selected_profile="test_minimal_25_9",
+            local_profile_required=True,
+            tcp_connected=True,
+            runtime_state_seen=True,
+            stale_state=False,
+            robot_enabled=True,
+            robot_estopped=False,
+            robot_mode="teleop",
+            manual_group_empty=False,
+            scope_active=False,
+        )
+
+        state = resolve_scope_control_state(
+            scope_kind=RUNNABLE_SCOPE_KIND_MANUAL,
+            runtime_ui_ready=True,
+            tracker_pending=False,
+            stale_state=False,
+            runtime_state_seen=True,
+            runtime_profile_active=True,
+            controlled_lifecycle_active=False,
+            transition_pending=False,
+            runnable_scope_state=runnable_state,
+            current_scope_member_labels=["FALCON 9"],
+            desired_scope_member_labels=["FALCON 9"],
+            selected_test_name=PROFILE_NONE,
+            selected_test_ready=False,
+            selected_test_invalid=False,
+            selected_test_running=False,
+            selected_test_runtime_block_reason="",
+        )
+
+        self.assertTrue(state.activate_allowed)
+        self.assertTrue(state.deactivate_allowed)
 
     def test_resolve_override_action_state_uses_shared_transport_and_busy_messages(self) -> None:
         disconnected = resolve_override_action_state(
@@ -689,7 +834,13 @@ class HostUiStateServiceTests(unittest.TestCase):
     def test_resolve_tests_active_group_member_rows_keeps_singleton_instantiated_when_scope_is_inactive(self) -> None:
         rows = resolve_tests_active_group_member_rows(
             rows=[{"label": "pdp", "enabled": True, "locked": False, "invalid": False}],
-            runtime_state_by_label={"pdp": {"instantiated": True, "testable": True}},
+            runtime_state_by_label={
+                "pdp": {
+                    "instantiated": True,
+                    "testable": True,
+                    "lifecycleKind": "SINGLETON",
+                }
+            },
             scope_active=False,
         )
 
