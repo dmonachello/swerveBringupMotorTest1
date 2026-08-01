@@ -687,7 +687,7 @@ class BridgeCliRobotTestDslCliTests(unittest.TestCase):
             "runId": 12,
             "state": "passed",
             "test": "spin_up_motor1",
-            "result": "PASS",
+            "result": "PASS_SENSOR_PROVEN",
             "status": 'until until_1: until timer.elapsed >= 3.0',
             "message": "",
             "startedAtMs": 1000,
@@ -741,3 +741,4 @@ class BridgeCliRobotTestDslCliTests(unittest.TestCase):
         text = output.getvalue()
         self.assertNotEqual(result.code, SS__NORMAL)
         self.assertIn("Handshake failed: uiHandshake ACK received but no OUT within 1.5s.", text)
+

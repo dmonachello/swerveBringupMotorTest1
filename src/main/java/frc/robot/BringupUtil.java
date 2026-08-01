@@ -533,6 +533,28 @@ public final class BringupUtil {
 
   /**
    * NAME
+   *   getConfiguredDeviceEntryByLabel - Return one runtime-capable configured device entry by label.
+   *
+   * PARAMETERS
+   *   label - Device label from bringup_system.json.
+   *
+   * RETURNS
+   *   DeviceEntry built from the loaded registry, or null when the label is unknown
+   *   or not runtime-addressable.
+   */
+  public static DeviceEntry getConfiguredDeviceEntryByLabel(String label) {
+    if (label == null || label.isBlank()) {
+      return null;
+    }
+    DeviceDefinition def = DEVICE_REGISTRY.get(normalizeKey(label));
+    if (def == null || !isRuntimeDevice(def)) {
+      return null;
+    }
+    return buildDeviceEntry(def);
+  }
+
+  /**
+   * NAME
    *   getSelectedDslTestSetForProfile - Return the DSL test set referenced by a profile.
    *
    * PARAMETERS

@@ -190,6 +190,58 @@ def build_reference_topics(
                     "children": build_device_topics(catalog, device_docs),
                 },
                 {
+                    "id": "category_language",
+                    "title": "Language Basics",
+                    "summary": "Core syntax rules that apply across all DSL tests.",
+                    "children": [
+                        {
+                            "id": "topic_comments",
+                            "title": "Comments and Formatting",
+                            "summary": "Use # for comments and keep statements line-oriented.",
+                            "syntax": [
+                                "# this is a comment",
+                                'device "cancoder"  # inline comment',
+                            ],
+                            "details": [
+                                "A # character starts a comment and the rest of that line is ignored.",
+                                "Blank lines are allowed and only improve readability.",
+                                "Statements are line-oriented; there are no nested blocks inside phases.",
+                                "Examples in this reference use four-space indentation under init/main/close, but the important rule is one statement per line.",
+                            ],
+                            "examples": [
+                                'test "cancoder_1st_test"',
+                                "",
+                                "# declare every referenced device before phases",
+                                'device "cancoder"',
+                                "",
+                                "main:",
+                                "    # wait long enough to observe motion",
+                                "    until timer.elapsed >= 5.0",
+                            ],
+                        },
+                        {
+                            "id": "topic_names_and_labels",
+                            "title": "Names and Labels",
+                            "summary": "Test names and device labels are quoted strings.",
+                            "syntax": [
+                                'test "my_test_name"',
+                                'device "SPARKMAX/NEO 25"',
+                                'require "pigeon 2".yaw_delta_max_abs > 5.0',
+                            ],
+                            "details": [
+                                "Quote test names and device labels with double quotes.",
+                                "Device labels should match the configured bringup device labels exactly.",
+                                "Signal names and statement keywords are not quoted.",
+                            ],
+                            "examples": [
+                                'test "pigeon2_yaw_static_sanity"',
+                                'device "pigeon 2"',
+                                'success "pigeon 2".yaw_delta_max_abs > 5.0',
+                            ],
+                        },
+                    ],
+                },
+                {
                     "id": "category_top",
                     "title": "Top Level",
                     "summary": "Declarations that appear before phases.",

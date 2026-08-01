@@ -3,6 +3,7 @@ package frc.robot.devices.ctre;
 import com.ctre.phoenix6.hardware.CANcoder;
 import edu.wpi.first.units.Units;
 import frc.robot.BringupUtil;
+import frc.robot.devices.DeviceDslSupport;
 import frc.robot.devices.DeviceUnit;
 import frc.robot.manufacturers.ctre.diag.CtreCANCoderReader;
 import frc.robot.diag.snapshots.DeviceSnapshot;
@@ -76,6 +77,17 @@ public final class CtreCANCoderDevice implements DeviceUnit {
   @Override
   public RegistrationHeader getHeader() {
     return HEADER;
+  }
+
+  /**
+   * NAME
+   *   getActiveHandleForProbe - Return the current runtime-owned CANcoder handle.
+   *
+   * RETURNS
+   *   Active CANcoder instance, or null when the runtime has not created it.
+   */
+  public CANcoder getActiveHandleForProbe() {
+    return device;
   }
 
   @Override
@@ -203,6 +215,11 @@ public final class CtreCANCoderDevice implements DeviceUnit {
     } catch (Exception ex) {
       return null;
     }
+  }
+
+  @Override
+  public Object readDslSignal(String signalName) {
+    return DeviceDslSupport.readEncoderSignal(this, signalName);
   }
 
   /**

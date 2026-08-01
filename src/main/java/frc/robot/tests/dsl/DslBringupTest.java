@@ -53,6 +53,7 @@ public final class DslBringupTest implements BringupTest {
   private final Map<String, DeviceUnit> devices = new LinkedHashMap<>();
   private final Map<String, String> declaredDeviceTypes = new LinkedHashMap<>();
   private final Map<String, Double> startPositions = new HashMap<>();
+  private final Map<String, Double> startImuSignals = new HashMap<>();
   private final Map<String, Boolean> requireSatisfied = new LinkedHashMap<>();
   private final Map<String, Double> requireSatisfiedAt = new LinkedHashMap<>();
   private final Map<String, Double> warningLastSec = new HashMap<>();
@@ -93,7 +94,7 @@ public final class DslBringupTest implements BringupTest {
 
   @Override
   public boolean isFinished() {
-    return result == BringupTestResult.PASS || result == BringupTestResult.FAIL || result == BringupTestResult.INTERRUPTED;
+    return result.isTerminal();
   }
 
   @Override
@@ -130,6 +131,7 @@ public final class DslBringupTest implements BringupTest {
     devices.clear();
     declaredDeviceTypes.clear();
     startPositions.clear();
+    startImuSignals.clear();
     requireSatisfied.clear();
     requireSatisfiedAt.clear();
     lastSampleValues.clear();
@@ -157,17 +159,17 @@ public final class DslBringupTest implements BringupTest {
       DeviceUnit device = context.findDeviceByLabel(ref.name);
       if (device == null) {
         status = "Device not found: " + ref.name;
-        result = BringupTestResult.FAIL;
+        result = BringupTestResult.FAIL_DEVICE_NOT_FOUND;
         return false;
       }
       if (!context.isDeviceTestable(ref.name) && !context.isDeviceInstantiable(ref.name)) {
         status = lifecycleBlockedStatus(context, ref.name, "lifecycle-eligible");
-        result = BringupTestResult.FAIL;
+        result = BringupTestResult.FAIL_RUNTIME_COMMUNICATION;
         return false;
       }
       if (!device.isCreated() && !context.isDeviceInstantiable(ref.name)) {
         status = lifecycleBlockedStatus(context, ref.name, "instantiable");
-        result = BringupTestResult.FAIL;
+        result = BringupTestResult.FAIL_RUNTIME_COMMUNICATION;
         return false;
       }
       device.ensureCreated();
@@ -176,6 +178,9 @@ public final class DslBringupTest implements BringupTest {
       if (position instanceof Number numberValue) {
         startPositions.put(ref.name, numberValue.doubleValue());
       }
+      captureImuBaseline(context, ref.name, DslSignalRegistry.SIGNAL_YAW, nowSec);
+      captureImuBaseline(context, ref.name, DslSignalRegistry.SIGNAL_PITCH, nowSec);
+      captureImuBaseline(context, ref.name, DslSignalRegistry.SIGNAL_ROLL, nowSec);
     }
     applySafeValues(context, nowSec, false);
     if (!applyClears(context, test.init.clears)) {
@@ -222,7 +227,7 @@ public final class DslBringupTest implements BringupTest {
     for (DslCondition condition : test.main.aborts) {
       if (Boolean.TRUE.equals(conditionValues.get(condition.id))) {
         status = "abort " + condition.id + ": " + condition.text;
-        result = BringupTestResult.FAIL;
+        result = BringupTestResult.FAIL_ABORT_CONDITION;
         stop(context);
         return;
       }
@@ -230,7 +235,7 @@ public final class DslBringupTest implements BringupTest {
     for (DslCondition condition : test.main.successes) {
       if (Boolean.TRUE.equals(conditionValues.get(condition.id))) {
         status = "success " + condition.id + ": " + condition.text;
-        result = BringupTestResult.PASS;
+        result = BringupTestResult.PASS_SENSOR_PROVEN;
         stop(context);
         return;
       }
@@ -247,9 +252,12 @@ public final class DslBringupTest implements BringupTest {
         status = "until " + condition.id + ": " + condition.text;
         if (!fallbackActiveThisTick.isEmpty()) {
           status = status + " (fallback active)";
-          result = BringupTestResult.FAIL;
+          result = BringupTestResult.FAIL_SET_FALLBACK_ACTIVE;
         } else {
-          result = allSatisfied ? BringupTestResult.PASS : BringupTestResult.FAIL;
+          result =
+              allSatisfied
+                  ? BringupTestResult.PASS_SENSOR_PROVEN
+                  : BringupTestResult.FAIL_REQUIRE_NOT_MET;
         }
         stop(context);
         return;
@@ -397,17 +405,17 @@ public final class DslBringupTest implements BringupTest {
       DeviceUnit device = devices.get(statement.target.device);
       if (device == null) {
         status = "Device not found: " + statement.target.device;
-        result = BringupTestResult.FAIL;
+        result = BringupTestResult.FAIL_DEVICE_NOT_FOUND;
         return false;
       }
       if (!context.isDeviceTestable(statement.target.device)) {
         status = lifecycleBlockedStatus(context, statement.target.device, "testable for clear");
-        result = BringupTestResult.FAIL;
+        result = BringupTestResult.FAIL_RUNTIME_COMMUNICATION;
         return false;
       }
       if (!device.clearDslSignal(statement.target.signal)) {
         status = "Unsupported clear DSL target at runtime: " + statement.target.text;
-        result = BringupTestResult.FAIL;
+        result = BringupTestResult.FAIL_CLEAR_FAULTS;
         return false;
       }
     }
@@ -505,7 +513,7 @@ public final class DslBringupTest implements BringupTest {
       double nowSec) {
     if (PHASE_INIT.equals(phaseName)) {
       status = "Signal set source unavailable at startup: " + statement.source.text;
-      result = BringupTestResult.FAIL;
+      result = BringupTestResult.FAIL_RUNTIME_COMMUNICATION;
       return ResolvedSetValue.fail();
     }
     if (PHASE_CLOSE.equals(phaseName)) {
@@ -564,19 +572,19 @@ public final class DslBringupTest implements BringupTest {
     DeviceUnit device = devices.get(statement.target.device);
     if (device == null) {
       status = "Device not found: " + statement.target.device;
-      result = BringupTestResult.FAIL;
+      result = BringupTestResult.FAIL_DEVICE_NOT_FOUND;
       return false;
     }
     if (!context.isDeviceTestable(statement.target.device)) {
       status = lifecycleBlockedStatus(context, statement.target.device, "testable for write");
-      result = BringupTestResult.FAIL;
+      result = BringupTestResult.FAIL_RUNTIME_COMMUNICATION;
       return false;
     }
     if (device.writeDslSignal(statement.target.signal, value)) {
       return true;
     }
     status = "Unsupported writable DSL target at runtime: " + statement.target.text;
-    result = BringupTestResult.FAIL;
+    result = BringupTestResult.FAIL_UNSUPPORTED_SIGNAL;
     return false;
   }
 
@@ -795,6 +803,27 @@ public final class DslBringupTest implements BringupTest {
           readSignalValue(context, deviceName, DslSignalRegistry.SIGNAL_POSITION_DELTA, nowSec),
           true);
     }
+    if (DslSignalRegistry.SIGNAL_YAW_DELTA_MAX_ABS.equals(signalName)) {
+      return updateAggregateSignalMax(
+          deviceName,
+          signalName,
+          readSignalValue(context, deviceName, DslSignalRegistry.SIGNAL_YAW_DELTA, nowSec),
+          true);
+    }
+    if (DslSignalRegistry.SIGNAL_PITCH_DELTA_MAX_ABS.equals(signalName)) {
+      return updateAggregateSignalMax(
+          deviceName,
+          signalName,
+          readSignalValue(context, deviceName, DslSignalRegistry.SIGNAL_PITCH_DELTA, nowSec),
+          true);
+    }
+    if (DslSignalRegistry.SIGNAL_ROLL_DELTA_MAX_ABS.equals(signalName)) {
+      return updateAggregateSignalMax(
+          deviceName,
+          signalName,
+          readSignalValue(context, deviceName, DslSignalRegistry.SIGNAL_ROLL_DELTA, nowSec),
+          true);
+    }
     return readDeviceSignalValue(deviceName, signalName);
   }
 
@@ -812,6 +841,14 @@ public final class DslBringupTest implements BringupTest {
       Double start = startPositions.get(deviceName);
       double position = numberValue.doubleValue();
       return start != null ? position - start.doubleValue() : position;
+    }
+    if (deviceSignal instanceof Number imuValue
+        && isImuDeltaSignal(signalName)
+        && DslSignalRegistry.DEVICE_TYPE_IMU.equals(deviceType)) {
+      String baselineSignal = resolveImuBaselineSignal(signalName);
+      Double start = startImuSignals.get(buildSignalStateKey(deviceName, baselineSignal));
+      double current = imuValue.doubleValue();
+      return start != null ? current - start.doubleValue() : current;
     }
     return deviceSignal;
   }
@@ -857,6 +894,40 @@ public final class DslBringupTest implements BringupTest {
         || DslSignalRegistry.SIGNAL_POSITION_DELTA.equals(signalName);
   }
 
+  private boolean isImuDeltaSignal(String signalName) {
+    return DslSignalRegistry.SIGNAL_YAW_DELTA.equals(signalName)
+        || DslSignalRegistry.SIGNAL_PITCH_DELTA.equals(signalName)
+        || DslSignalRegistry.SIGNAL_ROLL_DELTA.equals(signalName);
+  }
+
+  private String resolveImuBaselineSignal(String signalName) {
+    if (DslSignalRegistry.SIGNAL_YAW_DELTA.equals(signalName)) {
+      return DslSignalRegistry.SIGNAL_YAW;
+    }
+    if (DslSignalRegistry.SIGNAL_PITCH_DELTA.equals(signalName)) {
+      return DslSignalRegistry.SIGNAL_PITCH;
+    }
+    if (DslSignalRegistry.SIGNAL_ROLL_DELTA.equals(signalName)) {
+      return DslSignalRegistry.SIGNAL_ROLL;
+    }
+    return signalName;
+  }
+
+  private void captureImuBaseline(
+      BringupTestContext context,
+      String deviceName,
+      String signalName,
+      double nowSec) {
+    Object sample = readSignalValue(context, deviceName, signalName, nowSec);
+    if (sample instanceof Number numberValue) {
+      startImuSignals.put(buildSignalStateKey(deviceName, signalName), numberValue.doubleValue());
+    }
+  }
+
+  private String buildSignalStateKey(String deviceName, String signalName) {
+    return deviceName + "|" + signalName;
+  }
+
   private boolean isRequiredHardwareDeviceName(String deviceName) {
     String deviceType = resolveDeviceType(deviceName);
     return !DslSignalRegistry.DEVICE_TYPE_TEST_TIMER.equals(deviceType);
@@ -868,11 +939,11 @@ public final class DslBringupTest implements BringupTest {
     }
     String declared = declaredDeviceTypes.get(deviceName);
     if (declared != null && !declared.isBlank()) {
-      return declared;
+      return DslSignalRegistry.canonicalDeviceType(declared);
     }
     String configured = BringupUtil.getConfiguredDeviceTypeByLabel(deviceName);
     if (configured != null && !configured.isBlank()) {
-      return configured;
+      return DslSignalRegistry.canonicalDeviceType(configured);
     }
     return devices.containsKey(deviceName) ? DslSignalRegistry.DEVICE_TYPE_MOTOR : null;
   }

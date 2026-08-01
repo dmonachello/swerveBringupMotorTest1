@@ -12,6 +12,8 @@ DESCRIPTION
 from typing import Dict, Tuple
 
 from tools.passive_discovery_poc.constants import (
+    CTRE_DEVICE_TYPE_CANCODER_CANONICAL,
+    CTRE_DEVICE_TYPE_CANCODER_PASSIVE,
     CTRE_DEVICE_TYPE_PIGEON_CANONICAL,
     CTRE_DEVICE_TYPE_PIGEON_PASSIVE,
     CTRE_MANUFACTURER,
@@ -34,7 +36,7 @@ DEVICE_TYPE_NAME_MAP: Dict[int, str] = {
     1: "RobotController",
     DEVICE_TYPE_MOTOR_CONTROLLER: "MotorController",
     CTRE_DEVICE_TYPE_PIGEON_CANONICAL: "Pigeon",
-    7: "Encoder",
+    CTRE_DEVICE_TYPE_CANCODER_CANONICAL: "Encoder",
     DEVICE_TYPE_POWER_DISTRIBUTION: "PowerDistribution",
 }
 
@@ -42,7 +44,8 @@ MODEL_HINT_MAP: Dict[Tuple[int, int], str] = {
     (REV_MANUFACTURER, DEVICE_TYPE_MOTOR_CONTROLLER): "Spark MAX/Flex",
     (REV_MANUFACTURER, DEVICE_TYPE_POWER_DISTRIBUTION): "PDH",
     (CTRE_MANUFACTURER, DEVICE_TYPE_MOTOR_CONTROLLER): "Talon FX/Falcon/Kraken",
-    (CTRE_MANUFACTURER, 6): "Pigeon",
+    (CTRE_MANUFACTURER, CTRE_DEVICE_TYPE_PIGEON_CANONICAL): "Pigeon",
+    (CTRE_MANUFACTURER, CTRE_DEVICE_TYPE_CANCODER_CANONICAL): "CANcoder",
     (CTRE_MANUFACTURER, DEVICE_TYPE_POWER_DISTRIBUTION): "PDP/PDP-like",
     (ROBORIO_MANUFACTURER, 1): "roboRIO",
 }
@@ -84,6 +87,8 @@ def normalize_device_type(manufacturer: int, device_type: int) -> int:
     """
     normalized_manufacturer = int(manufacturer)
     normalized_device_type = int(device_type)
+    if normalized_manufacturer == CTRE_MANUFACTURER and normalized_device_type == CTRE_DEVICE_TYPE_CANCODER_PASSIVE:
+        return CTRE_DEVICE_TYPE_CANCODER_CANONICAL
     if normalized_manufacturer == CTRE_MANUFACTURER and normalized_device_type == CTRE_DEVICE_TYPE_PIGEON_PASSIVE:
         return CTRE_DEVICE_TYPE_PIGEON_CANONICAL
     return normalized_device_type

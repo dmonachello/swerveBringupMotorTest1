@@ -105,6 +105,54 @@ class RobotTestDslServiceTests(unittest.TestCase):
             ),
         )
 
+    def test_resolve_profile_device_dsl_type_normalizes_cancoder_alias_and_inference(self) -> None:
+        self.assertEqual(
+            "encoderExternal",
+            resolve_profile_device_dsl_type(
+                {
+                    "manufacturer": 4,
+                    "deviceType": 7,
+                    "model": "CANCoder",
+                    "type": "",
+                }
+            ),
+        )
+
+    def test_resolve_profile_device_dsl_type_normalizes_pigeon_alias_and_inference(self) -> None:
+        self.assertEqual(
+            "imu",
+            resolve_profile_device_dsl_type(
+                {
+                    "manufacturer": 4,
+                    "deviceType": 4,
+                    "model": "Pigeon 2",
+                    "type": "",
+                }
+            ),
+        )
+        self.assertEqual(
+            "imu",
+            resolve_profile_device_dsl_type(
+                {
+                    "manufacturer": 4,
+                    "deviceType": 4,
+                    "model": "Pigeon 2",
+                    "type": "Pigeon",
+                }
+            ),
+        )
+        self.assertEqual(
+            "encoderExternal",
+            resolve_profile_device_dsl_type(
+                {
+                    "manufacturer": 4,
+                    "deviceType": 7,
+                    "model": "CANCoder",
+                    "type": "CANCoder",
+                }
+            ),
+        )
+
     def test_signal_catalog_includes_power_distribution_channel_signals(self) -> None:
         catalog = signal_catalog()
 
@@ -131,7 +179,13 @@ class RobotTestDslServiceTests(unittest.TestCase):
         self.assertIn("current_actual_max", catalog["motor"])
         self.assertIn("velocity_actual_max_abs", catalog["motor"])
         self.assertIn("position_delta_max_abs", catalog["motor"])
+        self.assertIn("velocity_actual_max_abs", catalog["encoderExternal"])
         self.assertIn("position_delta_max_abs", catalog["encoderExternal"])
+        self.assertIn("yaw_delta_max_abs", catalog["imu"])
+        self.assertIn("angular_velocity_z", catalog["imu"])
+        self.assertIn("accel_z", catalog["imu"])
+        self.assertIn("supply_voltage", catalog["imu"])
+        self.assertIn("faults", catalog["imu"])
 
     def test_generated_dsl_reference_payload_includes_device_docs_and_signals(self) -> None:
         payload = generate_reference_payload()
@@ -153,6 +207,15 @@ class RobotTestDslServiceTests(unittest.TestCase):
         self.assertIn("Motor controller devices", motor_topic["summary"])
         self.assertTrue(any("current_actual_max" in line for line in motor_topic["signals"]))
         self.assertTrue(str(motor_topic.get("sourcePath", "")).endswith("motor.devices.md"))
+        imu_topic = topic_map["topic_device_type_imu"]
+        self.assertIn("orientation evidence", imu_topic["summary"])
+        self.assertTrue(any("yaw_delta_max_abs" in line for line in imu_topic["signals"]))
+        self.assertTrue(any("angular_velocity_z" in line for line in imu_topic["signals"]))
+        self.assertTrue(any("supply_voltage" in line for line in imu_topic["signals"]))
+        self.assertTrue(str(imu_topic.get("sourcePath", "")).endswith("imu.devices.md"))
+        comments_topic = topic_map["topic_comments"]
+        self.assertIn("# character starts a comment", " ".join(comments_topic["details"]))
+        self.assertIn('device "cancoder"  # inline comment', comments_topic["syntax"])
 
     def test_import_test_into_root_payload_without_explicit_set_uses_profile_owned_set(self) -> None:
         payload = self._root_payload(include_controller=True)

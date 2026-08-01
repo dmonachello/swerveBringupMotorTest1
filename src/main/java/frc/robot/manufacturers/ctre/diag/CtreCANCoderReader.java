@@ -17,6 +17,8 @@ import frc.robot.diag.snapshots.EncoderAttachment;
  * Samples absolute position status signals and packages telemetry into snapshots.
  */
 public final class CtreCANCoderReader {
+  private static final double DEGREES_PER_ROTATION = 360.0;
+
   private CtreCANCoderReader() {}
 
   /**
@@ -45,9 +47,12 @@ public final class CtreCANCoderReader {
 
     EncoderAttachment encoder = new EncoderAttachment();
     var absolute = device.getAbsolutePosition();
-    BaseStatusSignal.refreshAll(absolute);
+    var velocity = device.getVelocity();
+    BaseStatusSignal.refreshAll(absolute, velocity);
     double rotations = absolute.getValue().in(Units.Rotations);
-    encoder.absDeg = rotations * 360.0;
+    encoder.absRot = rotations;
+    encoder.absDeg = rotations * DEGREES_PER_ROTATION;
+    encoder.velocityRps = velocity.getValue().in(Units.RotationsPerSecond);
     encoder.lastError = String.valueOf(absolute.getStatus());
     snap.addAttachment(encoder);
     return snap;

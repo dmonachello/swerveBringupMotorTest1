@@ -1,6 +1,8 @@
 package frc.robot;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.google.gson.JsonObject;
@@ -102,6 +104,43 @@ class BringupUtilCurrentConfigJsonTest {
     assertTrue(current.getAsJsonArray("devices").size() > 0);
     assertTrue(current.has("data_hash"));
     assertTrue(!current.get("data_hash").getAsString().isBlank());
+  }
+
+  @Test
+  void getConfiguredDeviceEntryByLabelUsesLoadedRegistryEvenWithoutActiveProfile() throws Exception {
+    captureState();
+
+    Object deviceDefinition = newInstance(CLASS_DEVICE_DEFINITION);
+    setField(deviceDefinition, FIELD_DEVICE_LABEL, "cancoder");
+    setField(deviceDefinition, "id", 18);
+    setField(deviceDefinition, "manufacturer", 4);
+    setField(deviceDefinition, "deviceType", 7);
+    setField(deviceDefinition, "deviceInterface", "CAN");
+    setField(deviceDefinition, "type", "encoderExternal");
+    @SuppressWarnings("unchecked")
+    Map<String, Object> deviceRegistry = (Map<String, Object>) getStaticField(FIELD_DEVICE_REGISTRY);
+    deviceRegistry.clear();
+    deviceRegistry.put(normalizeKey("cancoder"), deviceDefinition);
+
+    BringupUtil.DeviceEntry entry = BringupUtil.getConfiguredDeviceEntryByLabel("cancoder");
+
+    assertNotNull(entry);
+    assertEquals("cancoder", entry.label);
+    assertEquals(18, entry.id);
+    assertEquals(4, entry.manufacturer);
+    assertEquals(7, entry.deviceType);
+  }
+
+  @Test
+  void getConfiguredDeviceEntryByLabelRejectsUnknownLabel() throws Exception {
+    captureState();
+    @SuppressWarnings("unchecked")
+    Map<String, Object> deviceRegistry = (Map<String, Object>) getStaticField(FIELD_DEVICE_REGISTRY);
+    deviceRegistry.clear();
+
+    BringupUtil.DeviceEntry entry = BringupUtil.getConfiguredDeviceEntryByLabel("missing");
+
+    assertNull(entry);
   }
 
   private void captureState() throws Exception {

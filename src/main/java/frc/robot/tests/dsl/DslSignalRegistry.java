@@ -4,6 +4,7 @@ import com.google.gson.JsonObject;
 import frc.robot.tests.dsl.signals.DslDeviceSignalProvider;
 import frc.robot.tests.dsl.signals.DslSignalMeta;
 import frc.robot.tests.dsl.signals.EncoderExternalSignalProvider;
+import frc.robot.tests.dsl.signals.ImuSignalProvider;
 import frc.robot.tests.dsl.signals.LimitSwitchSignalProvider;
 import frc.robot.tests.dsl.signals.MotorSignalProvider;
 import frc.robot.tests.dsl.signals.PowerDistributionSignalProvider;
@@ -26,6 +27,9 @@ public final class DslSignalRegistry {
   public static final String DEVICE_TYPE_MOTOR = "motor";
   public static final String DEVICE_TYPE_LIMIT_SWITCH = "limitSwitch";
   public static final String DEVICE_TYPE_ENCODER_EXTERNAL = "encoderExternal";
+  public static final String DEVICE_TYPE_CANCODER = "CANCoder";
+  public static final String DEVICE_TYPE_IMU = "imu";
+  public static final String DEVICE_TYPE_PIGEON = "Pigeon";
   public static final String DEVICE_TYPE_XBOX_CONTROLLER = "xboxController";
   public static final String DEVICE_TYPE_TEST_TIMER = "TestTimer";
   public static final String DEVICE_TYPE_PDH = "PDH";
@@ -49,8 +53,24 @@ public final class DslSignalRegistry {
   public static final String SIGNAL_POSITION_ACTUAL = "position_actual";
   public static final String SIGNAL_POSITION_DELTA = "position_delta";
   public static final String SIGNAL_POSITION_DELTA_MAX_ABS = "position_delta_max_abs";
+  public static final String SIGNAL_YAW = "yaw";
+  public static final String SIGNAL_PITCH = "pitch";
+  public static final String SIGNAL_ROLL = "roll";
+  public static final String SIGNAL_YAW_DELTA = "yaw_delta";
+  public static final String SIGNAL_PITCH_DELTA = "pitch_delta";
+  public static final String SIGNAL_ROLL_DELTA = "roll_delta";
+  public static final String SIGNAL_YAW_DELTA_MAX_ABS = "yaw_delta_max_abs";
+  public static final String SIGNAL_PITCH_DELTA_MAX_ABS = "pitch_delta_max_abs";
+  public static final String SIGNAL_ROLL_DELTA_MAX_ABS = "roll_delta_max_abs";
+  public static final String SIGNAL_ANGULAR_VELOCITY_X = "angular_velocity_x";
+  public static final String SIGNAL_ANGULAR_VELOCITY_Y = "angular_velocity_y";
+  public static final String SIGNAL_ANGULAR_VELOCITY_Z = "angular_velocity_z";
+  public static final String SIGNAL_ACCEL_X = "accel_x";
+  public static final String SIGNAL_ACCEL_Y = "accel_y";
+  public static final String SIGNAL_ACCEL_Z = "accel_z";
   public static final String SIGNAL_FAULTS = "faults";
   public static final String SIGNAL_VOLTAGE = "voltage";
+  public static final String SIGNAL_SUPPLY_VOLTAGE = "supply_voltage";
   public static final String SIGNAL_TOTAL_CURRENT = "total_current";
   public static final String SIGNAL_SWITCHABLE_ENABLED = "switchable_enabled";
   public static final String SIGNAL_PRESSED = "pressed";
@@ -87,6 +107,7 @@ public final class DslSignalRegistry {
       new MotorSignalProvider(),
       new LimitSwitchSignalProvider(),
       new EncoderExternalSignalProvider(),
+      new ImuSignalProvider(),
       new PowerDistributionSignalProvider(DEVICE_TYPE_PDP, PDP_CHANNEL_COUNT),
       new PowerDistributionSignalProvider(DEVICE_TYPE_PDH, PDH_CHANNEL_COUNT),
       new XboxControllerSignalProvider(),
@@ -139,6 +160,19 @@ public final class DslSignalRegistry {
 
   public static List<DslDeviceSignalProvider> providers() {
     return PROVIDERS;
+  }
+
+  public static String canonicalDeviceType(String deviceType) {
+    if (deviceType == null || deviceType.isBlank()) {
+      return deviceType;
+    }
+    if (DEVICE_TYPE_CANCODER.equals(deviceType)) {
+      return DEVICE_TYPE_ENCODER_EXTERNAL;
+    }
+    if (DEVICE_TYPE_PIGEON.equals(deviceType)) {
+      return DEVICE_TYPE_IMU;
+    }
+    return deviceType;
   }
 
   private static Map<String, Map<String, DslSignalMeta>> buildRegistry() {

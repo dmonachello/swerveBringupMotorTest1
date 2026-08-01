@@ -10,6 +10,7 @@ from unittest.mock import patch
 from tools.passive_discovery_poc.adapters import apply_discovery_to_devices, update_or_create_device
 from tools.passive_discovery_poc.capture import observe_rev_serial_session, observe_slcan_session
 from tools.passive_discovery_poc.discovery import analyze_capture, analyze_frames
+from tools.passive_discovery_poc.enrich_ctre import collect_ctre_enrichment
 from tools.passive_discovery_poc.enrichment import enrich_console_log, enrich_topology
 from tools.passive_discovery_poc.json_api import result_from_json_dict, result_to_json_dict
 from tools.passive_discovery_poc.models import AdapterContext
@@ -303,6 +304,88 @@ class PassiveDiscoveryPublicApiTests(unittest.TestCase):
         self.assertGreaterEqual(diagnostics["rawBytesReceived"], 1)
         self.assertGreaterEqual(diagnostics["parsedRecordCount"], 1)
         self.assertGreaterEqual(diagnostics["normalizedFrameCount"], 1)
+
+    def test_collect_ctre_enrichment_preserves_vendor_fields_from_getdevices(self) -> None:
+        responses = {
+            "getdevices": {
+                "DeviceArray": [
+                    {
+                        "Model": "CANcoder",
+                        "Name": "Front Right",
+                        "ID": 18,
+                        "CANbus": "rio",
+                        "CurrentVers": "25.5.1.0 (Phoenix 6)",
+                        "Status": "Running Application",
+                        "Vendor": "CTR Electronics",
+                        "HardwareRev": "1.0",
+                        "BootloaderRev": "1.0",
+                        "Manufactured": "Jun 30, 2025",
+                        "IsPROLicensed": False,
+                        "SupportsControl": False,
+                        "SupportsConfigs": True,
+                        "SupportsDecoratedSelfTest": True,
+                    },
+                    {
+                        "Model": "Pigeon 2 vers. S",
+                        "Name": "Pigeon 2 vers. S (Device ID 19)",
+                        "ID": 19,
+                        "CANbus": "rio",
+                        "CurrentVers": "26.1.0.0 (Phoenix 6)",
+                        "Status": "Running Application",
+                        "Vendor": "CTR Electronics",
+                        "HardwareRev": "1.0",
+                        "BootloaderRev": "1.0",
+                        "Manufactured": "Jun 30, 2025",
+                        "IsPROLicensed": False,
+                        "SupportsControl": False,
+                        "SupportsConfigs": False,
+                        "SupportsDecoratedSelfTest": False,
+                    },
+                ]
+            },
+            "decoratedselftest": {
+                "SelfTest": {
+                    "Fault_Hardware": {"Value": "True"},
+                    "StickyFault_BootDuringEnable": {"Value": "True"},
+                }
+            },
+        }
+
+        def fake_http_get_json(base_url, params):
+            _ = base_url
+            action = str(params.get("action", "")).strip()
+            return responses[action]
+
+        with patch("tools.passive_discovery_poc.enrich_ctre._http_get_json", side_effect=fake_http_get_json):
+            enrichment, warnings = collect_ctre_enrichment("http://127.0.0.1:1250")
+
+        self.assertEqual([], warnings)
+        cancoder = enrichment[(4, 7, 18)]
+        self.assertEqual("CANcoder", cancoder["model"])
+        self.assertEqual("Front Right", cancoder["name"])
+        self.assertEqual("rio", cancoder["canbus"])
+        self.assertEqual("Running Application", cancoder["status"])
+        self.assertEqual("CTR Electronics", cancoder["vendor"])
+        self.assertEqual("1.0", cancoder["hardwareRev"])
+        self.assertEqual("1.0", cancoder["bootloader"])
+        self.assertEqual("Jun 30, 2025", cancoder["manufactured"])
+        self.assertFalse(cancoder["isProLicensed"])
+        self.assertFalse(cancoder["supportsControl"])
+        self.assertTrue(cancoder["supportsConfigs"])
+        self.assertTrue(cancoder["supportsDecoratedSelfTest"])
+        self.assertEqual(["Fault_Hardware"], cancoder["faultsTrue"])
+        self.assertEqual(["StickyFault_BootDuringEnable"], cancoder["stickyFaultsTrue"])
+
+        pigeon = enrichment[(4, 4, 19)]
+        self.assertEqual("Pigeon 2 vers. S", pigeon["model"])
+        self.assertEqual("Pigeon 2 vers. S (Device ID 19)", pigeon["name"])
+        self.assertEqual("rio", pigeon["canbus"])
+        self.assertEqual("Running Application", pigeon["status"])
+        self.assertEqual("CTR Electronics", pigeon["vendor"])
+        self.assertFalse(pigeon["supportsControl"])
+        self.assertFalse(pigeon["supportsConfigs"])
+        self.assertFalse(pigeon["supportsDecoratedSelfTest"])
+        self.assertNotIn("faultsTrue", pigeon)
 
 
 if __name__ == "__main__":

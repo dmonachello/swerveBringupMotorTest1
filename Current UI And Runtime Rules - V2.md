@@ -110,6 +110,18 @@ Current implication:
 
 - some operations can still run on a device outside the active scope when controlled lifecycle is not active and the runtime payload still marks the device testable
 
+## Diagnostics Surface Semantics
+
+Purpose: Capture the current shared meaning for runtime report and Evidence-tab diagnostics details.
+
+- Virtual singleton infrastructure devices such as `roborio` are reported as present in robot-local runtime snapshots even though they do not allocate a vendor CAN API object.
+
+- Report, dump, and Evidence surfaces should therefore treat `roborio` presence as a virtual-runtime truth, not as proof of observed CAN traffic.
+
+- CAN/fault suspicion wording must distinguish active fault state from sticky-only fault state when the underlying telemetry provides both.
+
+- A sticky-only condition should not be collapsed into the same operator-facing wording as an active fault.
+
   
 
 ## Scope Terminology
@@ -176,11 +188,11 @@ Current path:
 
   
 
-- `BridgeUiProfileCommands.executeProfileActivate(...)`
+- top-bar `Runtime Activate` resolves the current UI-owned scope first
 
-- `BringupRuntime.activateSelectedProfile(...)`
+- both `manual` and `selected test` contexts activate through the same `active-group` lifecycle path
 
-- `BringupRuntime.resetAndInstantiateForProfile(...)`
+- the host sends `lifecycleActivate` for `active-group` when activation is allowed
 
   
 
@@ -188,19 +200,15 @@ Current behavior:
 
   
 
-- requires enabled teleop for the UI `runtimeActivate` path
+- requires enabled teleop for the UI activation path
 
-- keeps the already-selected profile if the requested profile name matches the current selection
+- does not use a separate selected-test activation command path
 
-- performs a profile runtime rebuild
+- uses the current `active-group` membership as the activation authority
 
-- preserves and restores `active-group`
+- allows `selected test` activation only when the selected test's required devices are already contained in the current `active-group`
 
-- calls `core.addAllDevicesCommand()`
-
-- initializes and refreshes lifecycle state
-
-- then activates `active-group` in `READ_ONLY` lifecycle mode
+- reports `scope swap required` when a selected test would need different membership instead of activating through a separate path
 
   
 
@@ -228,13 +236,11 @@ Practical result:
 
   
 
-- `Runtime Activate` is not incremental allocation
+- `Runtime Activate` is a shared controlled-scope activation action
 
-- `BringupUtil.activateSelectedProfile()` makes the selected profile the active runtime profile
+- `manual` and `selected test` now converge on the same activation authority
 
-- `core.addAllDevicesCommand()` then instantiates the configured devices for that active runtime profile broadly, not only the currently checked `active-group` subset
-
-- it then tries to activate the current `active-group`
+- it is not an incremental add-members path
 
   
 
@@ -246,11 +252,7 @@ Current path:
 
   
 
-- `BridgeUiProfileCommands.executeRuntimeDeactivate(...)`
-
-- `deactivateRuntimeActiveGroup()`
-
-- `deactivateActiveProfile()`
+- top-bar `Runtime Deactivate` uses the shared `lifecycleDeactivateActive` path
 
   
 
@@ -259,8 +261,6 @@ Current behavior:
   
 
 - deactivates the active controlled lifecycle session
-
-- deactivates the active profile runtime
 
 - does not rely on tab-specific deactivate behavior
 
@@ -345,7 +345,7 @@ Additional prerequisites for `Runtime Deactivate`:
 | `manual`        | yes                | yes                         | no                                                     | yes                                   | n/a                       | disabled           | enabled                                                  | Scope already active and nothing new needs to be applied.                                  |
 | `manual`        | yes                | yes                         | yes                                                    | yes                                   | n/a                       | disabled           | enabled                                                  | Must deactivate before changing membership, then reactivate.                               |
 | `selected test` | no                 | no                          | no                                                     | yes                                   | no                        | disabled           | disabled                                                 | No valid selected test scope to activate.                                                  |
-| `selected test` | no                 | no                          | yes                                                    | yes                                   | yes                       | enabled            | disabled                                                 | Typical case when selected test loads a new device set into `active-group`.                |
+| `selected test` | no                 | no                          | yes                                                    | yes                                   | yes                       | enabled            | disabled                                                 | `Runtime Activate` may first load the selected test's required devices into `active-group`, then activate through the shared lifecycle path. |
 | `selected test` | yes                | yes                         | no                                                     | yes                                   | yes                       | enabled            | enabled                                                  | Re-activate is allowed only when the selected test already matches current `active-group`. |
 | `selected test` | yes                | yes                         | yes                                                    | yes                                   | yes                       | disabled           | enabled                                                  | Must deactivate before replacing `active-group` membership.                                |
 | any             | any                | any                         | any                                                    | no                                    | any                       | disabled           | disabled unless something active can be safely torn down | Disabled, non-teleop, or E-stop blocks activation.                                         |
@@ -423,7 +423,7 @@ Purpose: Record the intended `selected test` ownership rules.
 
   - selected-test scope is currently inactive
 
-  - or selected-test required membership already exactly matches the current `active-group`
+  - or selected-test required membership is already contained in the current `active-group`
 
   
 
@@ -450,6 +450,8 @@ This last rule is the important limit-switch case:
   
 
 - if the newly selected test requires one more device than the currently active scope has, the button should be disabled until the operator first uses `Runtime Deactivate`
+  
+- when selected-test scope is inactive, `Runtime Activate` may load the selected test's required devices into `active-group` before activating the shared lifecycle scope
 
   
 
@@ -498,8 +500,8 @@ Current transition rule in `bringup_ui.py`:
   
 
 - entering the `Tests` tab sets owner mode to `selected test`
-
-- entering `Tests` immediately loads the selected test's required devices into robot `active-group`
+- entering `Tests` refreshes `Selected Test Devices` from the selected DSL test and compares that required set against the current robot-backed active scope membership
+- entering `Tests` does not automatically rewrite robot `active-group` membership
 
 - leaving `Tests` changes owner mode back to `manual`
 
@@ -512,8 +514,7 @@ Important current fact:
   
 
 - the `Tests` tab no longer runs against a separate hidden scope model
-
-- it now loads its selected-test device set into the same robot `active-group`
+- it evaluates the selected test against the shared active scope using required-device containment, not exact membership equality
 
   
 
@@ -532,8 +533,7 @@ When the operator selects a test in the `Tests` tab:
 - the UI sends `selectTestByName`
 
 - the UI resolves required devices from robot-reported test metadata, with local DSL fallback when needed
-
-- the UI replaces robot `active-group` membership with the selected test devices by calling `groupReplaceMembers`
+- the UI refreshes `Selected Test Devices` from the selected test and checks whether all required devices are already present in the current robot-backed active scope
 
   
 
@@ -541,9 +541,9 @@ Current implication:
 
   
 
-- the selected test owns the robot `active-group` while the operator is working in the `Tests` tab
+- extra devices in the active scope are acceptable as long as every device required by the selected test is already included
 
-- `Selected Test Devices` is a presentation of that selected-test-derived membership and runtime state
+- `Selected Test Devices` is a presentation of the selected test's required device set overlaid with runtime state, not proof that the host rewrote robot `active-group`
 
   
 
@@ -865,7 +865,7 @@ Current meaning of selected-test ready:
 
   
 
-- the selected test devices are loaded into `active-group`
+- the selected test's required devices are already contained in `active-group`
 
 - the scope is active for that selected-test-owned set
 
@@ -879,7 +879,7 @@ Current meaning of selected-test scope selection:
 
 - there is not a separate selected-test runtime scope object anymore
 
-- the `Tests` tab selects scope by replacing robot `active-group` membership with the selected test devices
+- the `Tests` tab evaluates readiness against the current robot-backed `active-group`
 
 - `Runtime Activate` then activates that `active-group`
 
@@ -985,6 +985,18 @@ Current behavior:
 
 - `Instantiated` and `Scope Active` come from current runtime state, not from the DSL source alone
 
+### Tests Last Result Header
+
+Current behavior:
+
+- the `Last Result` header in the `Tests` tab shows the terminal `runResult` value when one is present
+
+- passed DSL runs therefore surface precise result names such as `PASS_SENSOR_PROVEN`
+
+- failed DSL runs therefore surface precise result names such as `FAIL_REQUIRE_NOT_MET`
+
+- the success or failure detail text still comes from the shared run payload status/details formatting path
+
   
 
 ## Binding And Group Effects
@@ -1019,7 +1031,7 @@ Purpose: Capture behaviors that follow from the current implementation and may s
 
 - It is profile-wide runtime activation plus activation of the current `active-group`.
 
-- DSL tests currently work by replacing `active-group` membership with the selected test device set.
+- DSL tests currently work by validating required-device containment against the current `active-group` and then using the same shared activation path.
 
 - Leaving the `Tests` tab does not automatically tear down the shared active scope.
 
@@ -1049,13 +1061,107 @@ As the code currently works:
 
 - `active-group` is the shared execution scope used by both manual workflows and DSL tests
 
-- the `Tests` tab temporarily owns `active-group` by replacing its membership with the selected test device set
+- the `Tests` tab does not get a separate activation path; it evaluates and activates through the shared `active-group` scope
 
 - controlled lifecycle activation determines `Scope Active`
 
 - singletons are intended to remain allocated once first instantiated and then become locked in membership UIs
 
 - manual and group runs should operate on the currently eligible subset, not fail because of unrelated ineligible members
+
+  
+
+## Common Workflows
+
+  
+
+Purpose: Describe common operator scenarios and the code-driven behavior they should follow.
+
+  
+
+### Manual Scope Activation While Inactive
+
+  
+
+- `Runtime Activate` activates the current `active-group` through the shared lifecycle activation path.
+
+- `selected test` uses that same path once its required devices are already contained in the current `active-group`.
+
+- This is a controlled-scope activation path, not an incremental add-members path.
+
+  
+
+### Manual Membership Change While Scope Is Active
+
+  
+
+- `active-group` membership is locked while a controlled scope session is active.
+
+- Manual membership edits that would change the active controlled scope require scope deactivation before the membership change can take effect.
+
+  
+
+### Selected-Test Activation When Scope Is Inactive
+
+  
+
+- The selected test can be selected and edited offline or while scope is inactive without rewriting `active-group`.
+
+- When scope is inactive, the selected-test panel should report `not activated` rather than claiming required devices are unavailable solely because the host has not pushed membership.
+
+- The host UI should present the resulting readiness and action state through shared selected-test readiness logic.
+
+  
+
+### Selected-Test Activation When The Active Scope Has The Wrong Membership
+
+  
+
+- If a selected test requires one or more devices that are missing from the currently active locked scope, the host UI must report that a scope swap is required.
+
+- If the currently active locked scope already contains every required selected-test device, the host must treat that as a match even when the scope also contains extra devices.
+
+- The host must not automatically issue `groupReplaceMembers` while a locked active scope session is running just because the operator selected a different test in the `Tests` tab.
+
+  
+
+### Selected-Test Run After Ready
+
+  
+
+- When selected-test readiness says the test is runnable, `Run Selected` must be enabled under that same shared truth.
+
+- The readiness panel and the action button must not use separate gating rules.
+
+  
+
+### Leaving The Tests Tab
+
+  
+
+- Leaving test-owned flows must not strand `active-group` ownership or leave the UI in a stale selected-test-only interpretation.
+
+- Ownership restoration and boundary transitions must be handled by the same shared state model used by the UI surfaces.
+
+  
+
+### Manual Right-Click Or Group Duty While Scope Is Active
+
+  
+
+- Manual duty actions remain constrained by the active controlled scope while scope control is active.
+
+- The UI must not expose manual actuation paths that contradict the current active-scope eligibility rules.
+
+  
+
+### Singleton Devices Across Repeated Workflows
+
+  
+
+- Singleton-backed devices keep distinct lifecycle behavior from normal runtime-owned devices across repeated activate/deactivate workflows.
+
+- UI lock/editability state for singleton-backed devices must come from shared runtime lifecycle semantics, not local label heuristics.
 
   
 

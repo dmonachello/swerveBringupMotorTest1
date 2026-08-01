@@ -33,6 +33,18 @@ public final class EncoderExternalSignalProvider implements DslDeviceSignalProvi
         DslSignalRegistry.SIGNAL_POSITION_DELTA_MAX_ABS,
         new DslSignalMeta(
             DslSignalRegistry.VALUE_TYPE_NUMBER, true, false, false, null, false, false));
+    signals.put(
+        DslSignalRegistry.SIGNAL_VELOCITY,
+        new DslSignalMeta(
+            DslSignalRegistry.VALUE_TYPE_NUMBER, true, false, false, null, false, false));
+    signals.put(
+        DslSignalRegistry.SIGNAL_VELOCITY_ACTUAL,
+        new DslSignalMeta(
+            DslSignalRegistry.VALUE_TYPE_NUMBER, true, false, false, null, false, false));
+    signals.put(
+        DslSignalRegistry.SIGNAL_VELOCITY_ACTUAL_MAX_ABS,
+        new DslSignalMeta(
+            DslSignalRegistry.VALUE_TYPE_NUMBER, true, false, false, null, false, false));
     return signals;
   }
 }

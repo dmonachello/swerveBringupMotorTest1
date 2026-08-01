@@ -2,6 +2,8 @@ package frc.robot.diag.probe;
 
 import com.ctre.phoenix6.BaseStatusSignal;
 import com.ctre.phoenix6.StatusCode;
+import com.ctre.phoenix6.hardware.CANcoder;
+import com.ctre.phoenix6.hardware.Pigeon2;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -13,6 +15,8 @@ import edu.wpi.first.units.Units;
 import frc.robot.BringupCore;
 import frc.robot.BringupUtil;
 import frc.robot.devices.DeviceUnit;
+import frc.robot.devices.ctre.CtreCANCoderDevice;
+import frc.robot.devices.ctre.CtrePigeonDevice;
 import frc.robot.devices.ctre.CtrePdpDevice;
 import frc.robot.devices.ctre.CtreTalonFxDevice;
 import frc.robot.devices.rev.RevFlexVortexDevice;
@@ -58,6 +62,8 @@ public final class ActiveDevicePresenceProbe {
   private static final String MODEL_TALON_FX = "TALON_FX";
   private static final String MODEL_SPARK_MAX = "SPARK_MAX";
   private static final String MODEL_SPARK_FLEX = "SPARK_FLEX";
+  private static final String MODEL_CANCODER = "CANCODER";
+  private static final String MODEL_PIGEON = "PIGEON";
   private static final String MODEL_PDP = "PDP";
   private static final String MODEL_PDH = "PDH";
   private static final String MODEL_UNSUPPORTED = "UNSUPPORTED";
@@ -112,6 +118,18 @@ public final class ActiveDevicePresenceProbe {
   private static final int TALON_POSITION = 10;
   private static final int TALON_NO_ACTIVE_FAULTS = 10;
   private static final int TALON_NO_STICKY_FAULTS = 10;
+  private static final int CANCODER_STATUS_OK = 35;
+  private static final int CANCODER_POSITION = 20;
+  private static final int CANCODER_VELOCITY = 15;
+  private static final int CANCODER_NO_ACTIVE_FAULTS = 15;
+  private static final int CANCODER_NO_STICKY_FAULTS = 15;
+  private static final int PIGEON_STATUS_OK = 30;
+  private static final int PIGEON_SUPPLY_VOLTAGE = 20;
+  private static final int PIGEON_YAW = 10;
+  private static final int PIGEON_PITCH = 10;
+  private static final int PIGEON_ROLL = 10;
+  private static final int PIGEON_NO_ACTIVE_FAULTS = 10;
+  private static final int PIGEON_NO_STICKY_FAULTS = 10;
   private static final int REV_LAST_ERROR_OK = 25;
   private static final int REV_BUS_VOLTAGE = 20;
   private static final int REV_CURRENT = 10;
@@ -133,6 +151,7 @@ public final class ActiveDevicePresenceProbe {
   private static final double MIN_MEANINGFUL_POWER_TEMP_C = 1.0;
   private static final int MIN_VALID_POWER_CHANNEL_COUNT = 1;
   private static final int EXPECTED_RESET_BITS = 0;
+  private static final long EXPECTED_ZERO_FAULT_BITS = 0L;
   private static final String TEXT_SESSION_HEADER = "=== Full Device State Probe ===";
   private static final String TEXT_DURATION_MS = "durationMs";
   private static final String TEXT_TOTAL_DURATION_MS = "totalDurationMs";
@@ -294,24 +313,43 @@ public final class ActiveDevicePresenceProbe {
     String label = entry != null && entry.label != null ? entry.label : TEXT_EMPTY;
     int canId = entry != null ? entry.id : -1;
     String vendor = entry != null && entry.vendor != null ? entry.vendor : TEXT_EMPTY;
-    String model = MODEL_UNSUPPORTED;
-    if (device instanceof CtreTalonFxDevice) {
+    String model = inferProbeModel(device);
+    if (MODEL_TALON_FX.equals(model)
+        || MODEL_CANCODER.equals(model)
+        || MODEL_PIGEON.equals(model)
+        || MODEL_PDP.equals(model)) {
       vendor = VENDOR_CTRE;
-      model = MODEL_TALON_FX;
-    } else if (device instanceof RevSparkMaxNeoDevice || device instanceof RevSparkMaxNeo550Device) {
+    } else if (MODEL_SPARK_MAX.equals(model)
+        || MODEL_SPARK_FLEX.equals(model)
+        || MODEL_PDH.equals(model)) {
       vendor = VENDOR_REV;
-      model = MODEL_SPARK_MAX;
-    } else if (device instanceof RevFlexVortexDevice) {
-      vendor = VENDOR_REV;
-      model = MODEL_SPARK_FLEX;
-    } else if (device instanceof CtrePdpDevice) {
-      vendor = VENDOR_CTRE;
-      model = MODEL_PDP;
-    } else if (device instanceof RevPdhDevice) {
-      vendor = VENDOR_REV;
-      model = MODEL_PDH;
     }
     return new ProbeTarget(label, canId, normalizeVendor(vendor), model);
+  }
+
+  static String inferProbeModel(DeviceUnit device) {
+    if (device instanceof CtreTalonFxDevice) {
+      return MODEL_TALON_FX;
+    }
+    if (device instanceof RevSparkMaxNeoDevice || device instanceof RevSparkMaxNeo550Device) {
+      return MODEL_SPARK_MAX;
+    }
+    if (device instanceof RevFlexVortexDevice) {
+      return MODEL_SPARK_FLEX;
+    }
+    if (device instanceof CtreCANCoderDevice) {
+      return MODEL_CANCODER;
+    }
+    if (device instanceof CtrePigeonDevice) {
+      return MODEL_PIGEON;
+    }
+    if (device instanceof CtrePdpDevice) {
+      return MODEL_PDP;
+    }
+    if (device instanceof RevPdhDevice) {
+      return MODEL_PDH;
+    }
+    return MODEL_UNSUPPORTED;
   }
 
   private String normalizeVendor(String vendor) {
@@ -338,6 +376,8 @@ public final class ActiveDevicePresenceProbe {
       case MODEL_TALON_FX -> probeTalonFx(target, (CtreTalonFxDevice) device, preclearSticky);
       case MODEL_SPARK_MAX -> probeSparkMax(target, device, preclearSticky);
       case MODEL_SPARK_FLEX -> probeSparkFlex(target, (RevFlexVortexDevice) device, preclearSticky);
+      case MODEL_CANCODER -> probeCancoder(target, (CtreCANCoderDevice) device, preclearSticky);
+      case MODEL_PIGEON -> probePigeon(target, (CtrePigeonDevice) device, preclearSticky);
       case MODEL_PDP -> probePdp(target, (CtrePdpDevice) device, preclearSticky);
       case MODEL_PDH -> probePdh(target, (RevPdhDevice) device, preclearSticky);
       default -> unsupportedTarget(target, TEXT_UNSUPPORTED_MODEL_PREFIX + target.model);
@@ -509,6 +549,265 @@ public final class ActiveDevicePresenceProbe {
       RevFlexVortexDevice device,
       boolean preclearSticky) {
     return probeRevSparkBase(target, device.getActiveHandleForProbe(), preclearSticky);
+  }
+
+  private ProbeDeviceResult probeCancoder(
+      ProbeTarget target,
+      CtreCANCoderDevice device,
+      boolean preclearSticky) {
+    long deviceStartNs = System.nanoTime();
+    ProbeAccumulator acc = new ProbeAccumulator(target);
+    long stageStartNs = System.nanoTime();
+    CANcoder cancoder = device.getActiveHandleForProbe();
+    acc.recordStageDuration(TEXT_STAGE_GET_HANDLE, nanosToMs(System.nanoTime() - stageStartNs));
+    if (cancoder == null) {
+      ProbeDeviceResult result = missingRuntimeDevice(target);
+      result.totalDurationMs = nanosToMs(System.nanoTime() - deviceStartNs);
+      return result;
+    }
+    acc.pass(
+        CODE_OBJECT_HANDLE_REUSED,
+        "Using runtime-owned CANcoder handle.",
+        WEIGHT_CONSTRUCT,
+        Integer.toString(target.canId));
+    acc.recordStageDuration(TEXT_STAGE_HANDLE, nanosToMs(System.nanoTime() - deviceStartNs));
+    try {
+      if (preclearSticky) {
+        stageStartNs = System.nanoTime();
+        StatusCode clearStatus = cancoder.clearStickyFaults();
+        if (clearStatus == StatusCode.OK) {
+          acc.pass(CODE_CLEAR_STICKY_OK, "Cleared Phoenix sticky faults.", 0, OBSERVED_OK);
+        } else {
+          acc.warn(
+              CODE_CLEAR_STICKY_FAILED,
+              "Phoenix sticky-fault clear did not return OK.",
+              0,
+              String.valueOf(clearStatus),
+              StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK);
+        }
+        acc.recordStageDuration(TEXT_STAGE_CLEAR_STICKY, nanosToMs(System.nanoTime() - stageStartNs));
+      }
+      stageStartNs = System.nanoTime();
+      var absolutePosition = cancoder.getAbsolutePosition();
+      var velocity = cancoder.getVelocity();
+      var faultField = cancoder.getFaultField();
+      var stickyFaultField = cancoder.getStickyFaultField();
+      BaseStatusSignal.refreshAll(absolutePosition, velocity, faultField, stickyFaultField);
+      acc.recordStageDuration(TEXT_STAGE_VENDOR_READ, nanosToMs(System.nanoTime() - stageStartNs));
+      stageStartNs = System.nanoTime();
+      boolean allOk = true;
+      allOk &= isOkStatus(absolutePosition.getStatus());
+      allOk &= isOkStatus(velocity.getStatus());
+      allOk &= isOkStatus(faultField.getStatus());
+      allOk &= isOkStatus(stickyFaultField.getStatus());
+      if (allOk) {
+        acc.pass(
+            CODE_STATUS_REFRESH_OK,
+            "All Phoenix status reads returned OK.",
+            CANCODER_STATUS_OK,
+            OBSERVED_OK);
+      } else {
+        acc.fail(CODE_STATUS_REFRESH_OK, TEXT_STATUS_NOT_OK, CANCODER_STATUS_OK, OBSERVED_NOT_OK);
+      }
+      double absoluteRot = absolutePosition.getValue().in(Units.Rotations);
+      addTelemetryCheck(
+          acc,
+          allOk && Double.isFinite(absoluteRot),
+          CODE_POSITION_READ_VALID,
+          "Absolute position read succeeded.",
+          allOk
+              ? "Absolute position read failed."
+              : "Absolute position ignored because Phoenix status was not fresh.",
+          CANCODER_POSITION,
+          formatDouble(absoluteRot));
+      double velocityRps = velocity.getValue().in(Units.RotationsPerSecond);
+      addTelemetryCheck(
+          acc,
+          allOk && Double.isFinite(velocityRps),
+          CODE_CURRENT_READ_VALID,
+          "Velocity read succeeded.",
+          allOk ? "Velocity read failed." : "Velocity ignored because Phoenix status was not fresh.",
+          CANCODER_VELOCITY,
+          formatDouble(velocityRps));
+      long faultsRaw = faultField.getValue();
+      if (allOk && faultsRaw == EXPECTED_ZERO_FAULT_BITS) {
+        acc.pass(CODE_NO_ACTIVE_FAULTS, "No active Phoenix fault bits.", CANCODER_NO_ACTIVE_FAULTS, "0");
+      } else {
+        acc.fail(
+            CODE_NO_ACTIVE_FAULTS,
+            allOk
+                ? "Active Phoenix fault bits were reported."
+                : "Active-fault check ignored because Phoenix status was not fresh.",
+            CANCODER_NO_ACTIVE_FAULTS,
+            "faults=" + faultsRaw);
+      }
+      long stickyFaultsRaw = stickyFaultField.getValue();
+      if (allOk && stickyFaultsRaw == EXPECTED_ZERO_FAULT_BITS) {
+        acc.pass(CODE_NO_STICKY_FAULTS, "No Phoenix sticky fault bits.", CANCODER_NO_STICKY_FAULTS, "0");
+      } else {
+        acc.fail(
+            CODE_NO_STICKY_FAULTS,
+            allOk
+                ? "Phoenix sticky fault bits were reported."
+                : "Sticky-fault check ignored because Phoenix status was not fresh.",
+            CANCODER_NO_STICKY_FAULTS,
+            "sticky=" + stickyFaultsRaw);
+      }
+      if (!allOk) {
+        acc.forceBucket(BUCKET_ABSENT, StatusCatalogGenerated.SS__DEVICE__ABSENT, TEXT_STATUS_FORCE_ABSENT);
+      }
+      acc.recordStageDuration(TEXT_STAGE_EVALUATE, nanosToMs(System.nanoTime() - stageStartNs));
+      acc.setTotalDurationMs(nanosToMs(System.nanoTime() - deviceStartNs));
+      return acc.finish();
+    } catch (Exception ex) {
+      acc.error(
+          CODE_EXCEPTION_THROWN,
+          TEXT_EXCEPTION_PREFIX + ex.getClass().getSimpleName(),
+          MAX_SCORE,
+          safeExceptionMessage(ex),
+          StatusCatalogGenerated.SS__DEVICE__PROBE_EXCEPTION);
+      acc.setTotalDurationMs(nanosToMs(System.nanoTime() - deviceStartNs));
+      return acc.finish();
+    }
+  }
+
+  private ProbeDeviceResult probePigeon(
+      ProbeTarget target,
+      CtrePigeonDevice device,
+      boolean preclearSticky) {
+    long deviceStartNs = System.nanoTime();
+    ProbeAccumulator acc = new ProbeAccumulator(target);
+    long stageStartNs = System.nanoTime();
+    Pigeon2 pigeon = device.getActiveHandleForProbe();
+    acc.recordStageDuration(TEXT_STAGE_GET_HANDLE, nanosToMs(System.nanoTime() - stageStartNs));
+    if (pigeon == null) {
+      ProbeDeviceResult result = missingRuntimeDevice(target);
+      result.totalDurationMs = nanosToMs(System.nanoTime() - deviceStartNs);
+      return result;
+    }
+    acc.pass(
+        CODE_OBJECT_HANDLE_REUSED,
+        "Using runtime-owned Pigeon2 handle.",
+        WEIGHT_CONSTRUCT,
+        Integer.toString(target.canId));
+    acc.recordStageDuration(TEXT_STAGE_HANDLE, nanosToMs(System.nanoTime() - deviceStartNs));
+    try {
+      if (preclearSticky) {
+        stageStartNs = System.nanoTime();
+        StatusCode clearStatus = pigeon.clearStickyFaults();
+        if (clearStatus == StatusCode.OK) {
+          acc.pass(CODE_CLEAR_STICKY_OK, "Cleared Phoenix sticky faults.", 0, OBSERVED_OK);
+        } else {
+          acc.warn(
+              CODE_CLEAR_STICKY_FAILED,
+              "Phoenix sticky-fault clear did not return OK.",
+              0,
+              String.valueOf(clearStatus),
+              StatusCatalogGenerated.SS__DEVICE__COMMUNICATION_WEAK);
+        }
+        acc.recordStageDuration(TEXT_STAGE_CLEAR_STICKY, nanosToMs(System.nanoTime() - stageStartNs));
+      }
+      stageStartNs = System.nanoTime();
+      var yaw = pigeon.getYaw();
+      var pitch = pigeon.getPitch();
+      var roll = pigeon.getRoll();
+      var supplyVoltage = pigeon.getSupplyVoltage();
+      var faultField = pigeon.getFaultField();
+      var stickyFaultField = pigeon.getStickyFaultField();
+      BaseStatusSignal.refreshAll(yaw, pitch, roll, supplyVoltage, faultField, stickyFaultField);
+      acc.recordStageDuration(TEXT_STAGE_VENDOR_READ, nanosToMs(System.nanoTime() - stageStartNs));
+      stageStartNs = System.nanoTime();
+      boolean allOk = true;
+      allOk &= isOkStatus(yaw.getStatus());
+      allOk &= isOkStatus(pitch.getStatus());
+      allOk &= isOkStatus(roll.getStatus());
+      allOk &= isOkStatus(supplyVoltage.getStatus());
+      allOk &= isOkStatus(faultField.getStatus());
+      allOk &= isOkStatus(stickyFaultField.getStatus());
+      if (allOk) {
+        acc.pass(
+            CODE_STATUS_REFRESH_OK,
+            "All Phoenix status reads returned OK.",
+            PIGEON_STATUS_OK,
+            OBSERVED_OK);
+      } else {
+        acc.fail(CODE_STATUS_REFRESH_OK, TEXT_STATUS_NOT_OK, PIGEON_STATUS_OK, OBSERVED_NOT_OK);
+      }
+      double busV = supplyVoltage.getValue().in(Units.Volts);
+      addTelemetryCheck(
+          acc,
+          allOk && isReasonableBusVoltage(busV),
+          CODE_BUS_VOLTAGE_VALID,
+          "Supply voltage looks valid.",
+          allOk
+              ? "Supply voltage not in expected range."
+              : "Supply voltage ignored because Phoenix status was not fresh.",
+          PIGEON_SUPPLY_VOLTAGE,
+          formatDouble(busV));
+      addTelemetryCheck(
+          acc,
+          allOk && Double.isFinite(yaw.getValue().in(Units.Degrees)),
+          CODE_POSITION_READ_VALID,
+          "Yaw read succeeded.",
+          allOk ? "Yaw read failed." : "Yaw ignored because Phoenix status was not fresh.",
+          PIGEON_YAW,
+          formatDouble(yaw.getValue().in(Units.Degrees)));
+      addTelemetryCheck(
+          acc,
+          allOk && Double.isFinite(pitch.getValue().in(Units.Degrees)),
+          CODE_TEMPERATURE_READ_VALID,
+          "Pitch read succeeded.",
+          allOk ? "Pitch read failed." : "Pitch ignored because Phoenix status was not fresh.",
+          PIGEON_PITCH,
+          formatDouble(pitch.getValue().in(Units.Degrees)));
+      addTelemetryCheck(
+          acc,
+          allOk && Double.isFinite(roll.getValue().in(Units.Degrees)),
+          CODE_CURRENT_READ_VALID,
+          "Roll read succeeded.",
+          allOk ? "Roll read failed." : "Roll ignored because Phoenix status was not fresh.",
+          PIGEON_ROLL,
+          formatDouble(roll.getValue().in(Units.Degrees)));
+      long faultsRaw = faultField.getValue();
+      if (allOk && faultsRaw == EXPECTED_ZERO_FAULT_BITS) {
+        acc.pass(CODE_NO_ACTIVE_FAULTS, "No active Phoenix fault bits.", PIGEON_NO_ACTIVE_FAULTS, "0");
+      } else {
+        acc.fail(
+            CODE_NO_ACTIVE_FAULTS,
+            allOk
+                ? "Active Phoenix fault bits were reported."
+                : "Active-fault check ignored because Phoenix status was not fresh.",
+            PIGEON_NO_ACTIVE_FAULTS,
+            "faults=" + faultsRaw);
+      }
+      long stickyFaultsRaw = stickyFaultField.getValue();
+      if (allOk && stickyFaultsRaw == EXPECTED_ZERO_FAULT_BITS) {
+        acc.pass(CODE_NO_STICKY_FAULTS, "No Phoenix sticky fault bits.", PIGEON_NO_STICKY_FAULTS, "0");
+      } else {
+        acc.fail(
+            CODE_NO_STICKY_FAULTS,
+            allOk
+                ? "Phoenix sticky fault bits were reported."
+                : "Sticky-fault check ignored because Phoenix status was not fresh.",
+            PIGEON_NO_STICKY_FAULTS,
+            "sticky=" + stickyFaultsRaw);
+      }
+      if (!allOk) {
+        acc.forceBucket(BUCKET_ABSENT, StatusCatalogGenerated.SS__DEVICE__ABSENT, TEXT_STATUS_FORCE_ABSENT);
+      }
+      acc.recordStageDuration(TEXT_STAGE_EVALUATE, nanosToMs(System.nanoTime() - stageStartNs));
+      acc.setTotalDurationMs(nanosToMs(System.nanoTime() - deviceStartNs));
+      return acc.finish();
+    } catch (Exception ex) {
+      acc.error(
+          CODE_EXCEPTION_THROWN,
+          TEXT_EXCEPTION_PREFIX + ex.getClass().getSimpleName(),
+          MAX_SCORE,
+          safeExceptionMessage(ex),
+          StatusCatalogGenerated.SS__DEVICE__PROBE_EXCEPTION);
+      acc.setTotalDurationMs(nanosToMs(System.nanoTime() - deviceStartNs));
+      return acc.finish();
+    }
   }
 
   private ProbeDeviceResult probeRevSparkBase(

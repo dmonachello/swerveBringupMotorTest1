@@ -91,7 +91,7 @@ public final class RoboRioDevice implements DeviceUnit {
     snap.deviceType = DEVICE_TYPE;
     snap.canId = canId;
     snap.label = label;
-    snap.present = isCreated();
+    snap.present = true;
     snap.note = NOTE_VIRTUAL;
     return snap;
   }

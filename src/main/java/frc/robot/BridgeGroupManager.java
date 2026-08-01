@@ -20,6 +20,7 @@ public final class BridgeGroupManager {
   private static final String EMPTY_STRING = "";
   private static final String DUTY_WRITE_SOURCE_BINDING_PREFIX = "bridge-binding:";
   private static final int MAX_CONTROLLER_COUNT = 6;
+  private final Object stateLock = new Object();
   /**
    * NAME
    *   BindingKind - Supported binding behavior.
@@ -183,7 +184,9 @@ public final class BridgeGroupManager {
    *   aliases - Alias map (alias -> canonical input key).
    */
   public void setInputAliases(Map<String, String> aliases) {
-    inputAliases = aliases != null ? new LinkedHashMap<>(aliases) : new LinkedHashMap<>();
+    synchronized (stateLock) {
+      inputAliases = aliases != null ? new LinkedHashMap<>(aliases) : new LinkedHashMap<>();
+    }
   }
 
   /**
@@ -191,8 +194,10 @@ public final class BridgeGroupManager {
    *   clear - Remove all groups and bindings.
    */
   public void clear() {
-    groups.clear();
-    edge.reset();
+    synchronized (stateLock) {
+      groups.clear();
+      edge.reset();
+    }
   }
 
   /**
@@ -209,25 +214,27 @@ public final class BridgeGroupManager {
    *   devices - Member labels to include.
    */
   public void syncGroupMembers(String groupName, List<String> devices) {
-    String key = normalize(groupName);
-    if (key.isEmpty()) {
-      return;
-    }
-    Group group = groups.get(key);
-    if (group == null) {
-      group = new Group(groupName);
-      groups.put(key, group);
-    }
-    group.members.clear();
-    if (devices == null || devices.isEmpty()) {
-      return;
-    }
-    for (String device : devices) {
-      String deviceKey = normalize(device);
-      if (deviceKey.isEmpty()) {
-        continue;
+    synchronized (stateLock) {
+      String key = normalize(groupName);
+      if (key.isEmpty()) {
+        return;
       }
-      group.members.put(deviceKey, new MemberState(device, true));
+      Group group = groups.get(key);
+      if (group == null) {
+        group = new Group(groupName);
+        groups.put(key, group);
+      }
+      group.members.clear();
+      if (devices == null || devices.isEmpty()) {
+        return;
+      }
+      for (String device : devices) {
+        String deviceKey = normalize(device);
+        if (deviceKey.isEmpty()) {
+          continue;
+        }
+        group.members.put(deviceKey, new MemberState(device, true));
+      }
     }
   }
 
@@ -239,7 +246,9 @@ public final class BridgeGroupManager {
    *   List of groups (copy) for read-only inspection.
    */
   public List<Group> getGroups() {
-    return new ArrayList<>(groups.values());
+    synchronized (stateLock) {
+      return copyGroups(groups.values());
+    }
   }
 
   /**
@@ -255,22 +264,24 @@ public final class BridgeGroupManager {
    *   List of normalized binding input identifiers.
    */
   public List<String> getActiveBindingInputs() {
-    List<String> inputs = new ArrayList<>();
-    for (Group group : groups.values()) {
-      if (group == null || !group.enabled) {
-        continue;
-      }
-      for (Binding binding : group.bindings) {
-        if (binding == null) {
+    synchronized (stateLock) {
+      List<String> inputs = new ArrayList<>();
+      for (Group group : groups.values()) {
+        if (group == null || !group.enabled) {
           continue;
         }
-        String input = normalize(binding.input);
-        if (!input.isEmpty()) {
-          inputs.add(input);
+        for (Binding binding : group.bindings) {
+          if (binding == null) {
+            continue;
+          }
+          String input = normalize(binding.input);
+          if (!input.isEmpty()) {
+            inputs.add(input);
+          }
         }
       }
+      return inputs;
     }
-    return inputs;
   }
 
   /**
@@ -284,7 +295,9 @@ public final class BridgeGroupManager {
    *   Group instance or null when not found.
    */
   public Group getGroup(String name) {
-    return groups.get(normalize(name));
+    synchronized (stateLock) {
+      return copyGroup(groups.get(normalize(name)));
+    }
   }
 
   /**
@@ -298,16 +311,18 @@ public final class BridgeGroupManager {
    *   Group name or null when unassigned.
    */
   public String getDeviceGroup(String device) {
-    String deviceKey = normalize(device);
-    if (deviceKey.isEmpty()) {
+    synchronized (stateLock) {
+      String deviceKey = normalize(device);
+      if (deviceKey.isEmpty()) {
+        return null;
+      }
+      for (Group group : groups.values()) {
+        if (group != null && group.members.containsKey(deviceKey)) {
+          return group.name;
+        }
+      }
       return null;
     }
-    for (Group group : groups.values()) {
-      if (group != null && group.members.containsKey(deviceKey)) {
-        return group.name;
-      }
-    }
-    return null;
   }
 
   /**
@@ -321,12 +336,14 @@ public final class BridgeGroupManager {
    *   True when created, false if invalid or already exists.
    */
   public boolean createGroup(String name) {
-    String key = normalize(name);
-    if (key.isEmpty() || groups.containsKey(key)) {
-      return false;
+    synchronized (stateLock) {
+      String key = normalize(name);
+      if (key.isEmpty() || groups.containsKey(key)) {
+        return false;
+      }
+      groups.put(key, new Group(name));
+      return true;
     }
-    groups.put(key, new Group(name));
-    return true;
   }
 
   /**
@@ -340,12 +357,14 @@ public final class BridgeGroupManager {
    *   True when removed, false if missing.
    */
   public boolean deleteGroup(String name) {
-    String key = normalize(name);
-    Group removed = groups.remove(key);
-    if (removed == null) {
-      return false;
+    synchronized (stateLock) {
+      String key = normalize(name);
+      Group removed = groups.remove(key);
+      if (removed == null) {
+        return false;
+      }
+      return true;
     }
-    return true;
   }
 
   /**
@@ -360,12 +379,14 @@ public final class BridgeGroupManager {
    *   True when the group exists and was updated.
    */
   public boolean setGroupEnabled(String name, boolean enabled) {
-    Group group = groups.get(normalize(name));
-    if (group == null) {
-      return false;
+    synchronized (stateLock) {
+      Group group = groups.get(normalize(name));
+      if (group == null) {
+        return false;
+      }
+      group.enabled = enabled;
+      return true;
     }
-    group.enabled = enabled;
-    return true;
   }
 
   /**
@@ -381,19 +402,21 @@ public final class BridgeGroupManager {
    *   True when added or moved successfully.
    */
   public boolean addMember(String groupName, String device, boolean forceMove) {
-    Group group = groups.get(normalize(groupName));
-    if (group == null) {
-      return false;
-    }
-    String deviceKey = normalize(device);
-    if (deviceKey.isEmpty()) {
-      return false;
-    }
-    if (group.members.containsKey(deviceKey)) {
+    synchronized (stateLock) {
+      Group group = groups.get(normalize(groupName));
+      if (group == null) {
+        return false;
+      }
+      String deviceKey = normalize(device);
+      if (deviceKey.isEmpty()) {
+        return false;
+      }
+      if (group.members.containsKey(deviceKey)) {
+        return true;
+      }
+      group.members.put(deviceKey, new MemberState(device, true));
       return true;
     }
-    group.members.put(deviceKey, new MemberState(device, true));
-    return true;
   }
 
   public boolean addDevice(String groupName, String device, boolean forceMove) {
@@ -412,15 +435,17 @@ public final class BridgeGroupManager {
    *   True when the target group's member map contains the normalized label.
    */
   public boolean hasDevice(String groupName, String device) {
-    Group group = groups.get(normalize(groupName));
-    if (group == null) {
-      return false;
+    synchronized (stateLock) {
+      Group group = groups.get(normalize(groupName));
+      if (group == null) {
+        return false;
+      }
+      String deviceKey = normalize(device);
+      if (deviceKey.isEmpty()) {
+        return false;
+      }
+      return group.members.containsKey(deviceKey);
     }
-    String deviceKey = normalize(device);
-    if (deviceKey.isEmpty()) {
-      return false;
-    }
-    return group.members.containsKey(deviceKey);
   }
 
   /**
@@ -435,13 +460,15 @@ public final class BridgeGroupManager {
    *   True when removed, false if missing.
    */
   public boolean removeDevice(String groupName, String device) {
-    Group group = groups.get(normalize(groupName));
-    if (group == null) {
-      return false;
+    synchronized (stateLock) {
+      Group group = groups.get(normalize(groupName));
+      if (group == null) {
+        return false;
+      }
+      String deviceKey = normalize(device);
+      group.members.remove(deviceKey);
+      return true;
     }
-    String deviceKey = normalize(device);
-    group.members.remove(deviceKey);
-    return true;
   }
 
   /**
@@ -457,16 +484,18 @@ public final class BridgeGroupManager {
    *   True when updated, false if missing.
    */
   public boolean setMemberEnabled(String groupName, String device, boolean enabled) {
-    Group group = groups.get(normalize(groupName));
-    if (group == null) {
-      return false;
+    synchronized (stateLock) {
+      Group group = groups.get(normalize(groupName));
+      if (group == null) {
+        return false;
+      }
+      MemberState member = group.members.get(normalize(device));
+      if (member == null) {
+        return false;
+      }
+      member.enabled = enabled;
+      return true;
     }
-    MemberState member = group.members.get(normalize(device));
-    if (member == null) {
-      return false;
-    }
-    member.enabled = enabled;
-    return true;
   }
 
   /**
@@ -481,16 +510,18 @@ public final class BridgeGroupManager {
    *   True when toggled, false if missing.
    */
   public boolean toggleMember(String groupName, String device) {
-    Group group = groups.get(normalize(groupName));
-    if (group == null) {
-      return false;
+    synchronized (stateLock) {
+      Group group = groups.get(normalize(groupName));
+      if (group == null) {
+        return false;
+      }
+      MemberState member = group.members.get(normalize(device));
+      if (member == null) {
+        return false;
+      }
+      member.enabled = !member.enabled;
+      return true;
     }
-    MemberState member = group.members.get(normalize(device));
-    if (member == null) {
-      return false;
-    }
-    member.enabled = !member.enabled;
-    return true;
   }
 
   /**
@@ -504,12 +535,14 @@ public final class BridgeGroupManager {
    *   True when cleared, false if missing.
    */
   public boolean clearBindings(String groupName) {
-    Group group = groups.get(normalize(groupName));
-    if (group == null) {
-      return false;
+    synchronized (stateLock) {
+      Group group = groups.get(normalize(groupName));
+      if (group == null) {
+        return false;
+      }
+      group.bindings.clear();
+      return true;
     }
-    group.bindings.clear();
-    return true;
   }
 
   /**
@@ -526,12 +559,14 @@ public final class BridgeGroupManager {
    *   True when binding added, false if group or kind invalid.
    */
   public boolean addBinding(String groupName, String input, BindingKind kind, double value) {
-    Group group = groups.get(normalize(groupName));
-    if (group == null || kind == null) {
-      return false;
+    synchronized (stateLock) {
+      Group group = groups.get(normalize(groupName));
+      if (group == null || kind == null) {
+        return false;
+      }
+      group.bindings.add(new Binding(input, kind, value));
+      return true;
     }
-    group.bindings.add(new Binding(input, kind, value));
-    return true;
   }
 
   /**
@@ -556,7 +591,12 @@ public final class BridgeGroupManager {
       clearBindingActivity();
       return;
     }
-    for (Group group : snapshotGroups(groups)) {
+    List<Group> groupSnapshot;
+    synchronized (stateLock) {
+      groupSnapshot = copyGroups(groups.values());
+    }
+    Map<String, GroupActivity> activityByGroupKey = new LinkedHashMap<>();
+    for (Group group : groupSnapshot) {
       group.lastSkippedMembers.clear();
       group.bindingActive = false;
       group.lastBindingOutput = 0.0;
@@ -589,6 +629,12 @@ public final class BridgeGroupManager {
           group.lastSkippedMembers.add(member.label);
         }
       }
+      activityByGroupKey.put(
+          normalize(group.name),
+          new GroupActivity(group.bindingActive, group.lastBindingOutput, group.lastSkippedMembers));
+    }
+    synchronized (stateLock) {
+      applyGroupActivityUpdates(activityByGroupKey);
     }
   }
 
@@ -670,6 +716,65 @@ public final class BridgeGroupManager {
    *   True when any enabled runtime group with a nonzero current binding output contains the device.
    */
   public boolean hasActiveBindingForDevice(String device) {
+    synchronized (stateLock) {
+      String deviceKey = normalize(device);
+      if (deviceKey.isEmpty()) {
+        return false;
+      }
+      for (Group group : groups.values()) {
+        if (group == null || !group.bindingActive || !group.enabled) {
+          continue;
+        }
+        if (group.members.containsKey(deviceKey)) {
+          return true;
+        }
+      }
+      return false;
+    }
+  }
+
+  /**
+   * NAME
+   *   hasActiveBindingForGroup - Return whether any member of one group is currently owned by a binding.
+   *
+   * PARAMETERS
+   *   groupName - Group name to inspect.
+   *
+   * RETURNS
+   *   True when any enabled member overlaps a nonzero active binding group.
+   */
+  public boolean hasActiveBindingForGroup(String groupName) {
+    synchronized (stateLock) {
+      Group group = groups.get(normalize(groupName));
+      if (group == null) {
+        return false;
+      }
+      for (MemberState member : group.members.values()) {
+        if (member == null || !member.enabled || member.label == null || member.label.isBlank()) {
+          continue;
+        }
+        if (hasActiveBindingForDeviceUnsafe(member.label)) {
+          return true;
+        }
+      }
+      return false;
+    }
+  }
+
+  private void clearBindingActivity() {
+    synchronized (stateLock) {
+      for (Group group : groups.values()) {
+        if (group == null) {
+          continue;
+        }
+        group.bindingActive = false;
+        group.lastBindingOutput = 0.0;
+        group.lastSkippedMembers.clear();
+      }
+    }
+  }
+
+  private boolean hasActiveBindingForDeviceUnsafe(String device) {
     String deviceKey = normalize(device);
     if (deviceKey.isEmpty()) {
       return false;
@@ -685,40 +790,71 @@ public final class BridgeGroupManager {
     return false;
   }
 
-  /**
-   * NAME
-   *   hasActiveBindingForGroup - Return whether any member of one group is currently owned by a binding.
-   *
-   * PARAMETERS
-   *   groupName - Group name to inspect.
-   *
-   * RETURNS
-   *   True when any enabled member overlaps a nonzero active binding group.
-   */
-  public boolean hasActiveBindingForGroup(String groupName) {
-    Group group = getGroup(groupName);
-    if (group == null) {
-      return false;
-    }
-    for (MemberState member : group.members.values()) {
-      if (member == null || !member.enabled || member.label == null || member.label.isBlank()) {
+  private void applyGroupActivityUpdates(Map<String, GroupActivity> activityByGroupKey) {
+    for (Map.Entry<String, GroupActivity> entry : activityByGroupKey.entrySet()) {
+      Group group = groups.get(entry.getKey());
+      GroupActivity activity = entry.getValue();
+      if (group == null || activity == null) {
         continue;
       }
-      if (hasActiveBindingForDevice(member.label)) {
-        return true;
-      }
+      group.bindingActive = activity.bindingActive;
+      group.lastBindingOutput = activity.lastBindingOutput;
+      group.lastSkippedMembers.clear();
+      group.lastSkippedMembers.addAll(activity.lastSkippedMembers);
     }
-    return false;
   }
 
-  private void clearBindingActivity() {
-    for (Group group : groups.values()) {
-      if (group == null) {
+  private static List<Group> copyGroups(Iterable<Group> sourceGroups) {
+    List<Group> copies = new ArrayList<>();
+    if (sourceGroups == null) {
+      return copies;
+    }
+    for (Group group : sourceGroups) {
+      Group copy = copyGroup(group);
+      if (copy != null) {
+        copies.add(copy);
+      }
+    }
+    return copies;
+  }
+
+  private static Group copyGroup(Group group) {
+    if (group == null) {
+      return null;
+    }
+    Group copy = new Group(group.name);
+    copy.enabled = group.enabled;
+    for (Map.Entry<String, MemberState> memberEntry : group.members.entrySet()) {
+      MemberState member = memberEntry.getValue();
+      if (member == null) {
         continue;
       }
-      group.bindingActive = false;
-      group.lastBindingOutput = 0.0;
-      group.lastSkippedMembers.clear();
+      copy.members.put(memberEntry.getKey(), new MemberState(member.label, member.enabled));
+    }
+    for (Binding binding : group.bindings) {
+      if (binding == null) {
+        continue;
+      }
+      Binding bindingCopy = new Binding(binding.input, binding.kind, binding.value);
+      bindingCopy.toggled = binding.toggled;
+      copy.bindings.add(bindingCopy);
+    }
+    copy.lastSkippedMembers.addAll(group.lastSkippedMembers);
+    copy.bindingActive = group.bindingActive;
+    copy.lastBindingOutput = group.lastBindingOutput;
+    return copy;
+  }
+
+  private static final class GroupActivity {
+    final boolean bindingActive;
+    final double lastBindingOutput;
+    final List<String> lastSkippedMembers;
+
+    GroupActivity(boolean bindingActive, double lastBindingOutput, List<String> lastSkippedMembers) {
+      this.bindingActive = bindingActive;
+      this.lastBindingOutput = lastBindingOutput;
+      this.lastSkippedMembers =
+          lastSkippedMembers != null ? new ArrayList<>(lastSkippedMembers) : List.of();
     }
   }
 

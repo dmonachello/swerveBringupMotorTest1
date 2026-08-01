@@ -166,7 +166,30 @@ class BridgeGroupManagerTest {
     assertEquals(1, groupSnapshot.size());
     assertEquals(2, memberSnapshot.size());
     assertEquals(1, bindingSnapshot.size());
-    assertEquals(1, group.members.size());
-    assertTrue(group.bindings.isEmpty());
+    BridgeGroupManager.Group updated = groups.getGroup(GROUP_NAME);
+    assertTrue(updated != null);
+    assertEquals(1, updated.members.size());
+    assertTrue(updated.bindings.isEmpty());
+  }
+
+  @Test
+  void getGroupReturnsStableCopyAfterUnderlyingMutation() {
+    BridgeGroupManager groups = new BridgeGroupManager();
+    groups.createGroup(GROUP_NAME);
+    groups.addDevice(GROUP_NAME, DEVICE_LABEL, false);
+    groups.addBinding(GROUP_NAME, INPUT_RIGHT_Y, BridgeGroupManager.BindingKind.ANALOG, 0.0);
+
+    BridgeGroupManager.Group snapshot = groups.getGroup(GROUP_NAME);
+    assertTrue(snapshot != null);
+
+    groups.removeDevice(GROUP_NAME, DEVICE_LABEL);
+    groups.clearBindings(GROUP_NAME);
+
+    assertEquals(1, snapshot.members.size());
+    assertEquals(1, snapshot.bindings.size());
+    BridgeGroupManager.Group updated = groups.getGroup(GROUP_NAME);
+    assertTrue(updated != null);
+    assertTrue(updated.members.isEmpty());
+    assertTrue(updated.bindings.isEmpty());
   }
 }

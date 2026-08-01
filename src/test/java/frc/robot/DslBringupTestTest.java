@@ -39,6 +39,10 @@ class DslBringupTestTest {
   private static final String CONTROLLER_TYPE = "xboxController";
   private static final String DSL_MOTOR_TYPE = "motor";
   private static final String PDP_LABEL = "pdp";
+  private static final String CANCODER_LABEL = "cancoder-a";
+  private static final String PIGEON_LABEL = "pigeon-a";
+  private static final String CANCODER_TYPE = "CANCoder";
+  private static final String PIGEON_TYPE = "Pigeon";
   private static final String SIGNAL_A = "A";
   private static final String SIGNAL_X = "X";
   private static final String SIGNAL_D_UP = "D_UP";
@@ -46,6 +50,8 @@ class DslBringupTestTest {
   private static final String SIGNAL_LEFT_Y = "leftY";
   private static final String SIGNAL_CHANNEL0_FAULT = "channel0_fault";
   private static final String SIGNAL_CURRENT = "current";
+  private static final String SIGNAL_POSITION = "position";
+  private static final String SIGNAL_YAW = "yaw";
   private static final String FIELD_DEVICE_REGISTRY = "DEVICE_REGISTRY";
   private static final String CLASS_DEVICE_DEFINITION = "frc.robot.BringupUtil$DeviceDefinition";
   private static final String FIELD_LABEL = "label";
@@ -79,7 +85,7 @@ class DslBringupTestTest {
     test.update(context, UPDATE_SEC);
     test.update(context, FINISH_SEC);
 
-    assertEquals(BringupTestResult.PASS, test.getResult());
+    assertEquals(BringupTestResult.PASS_SENSOR_PROVEN, test.getResult());
     assertEquals(2, device.dutyWrites);
     assertEquals(2, device.stopWrites);
     assertEquals(DUTY, device.lastDuty);
@@ -95,7 +101,7 @@ class DslBringupTestTest {
     assertTrue(test.start(context, START_SEC));
     test.update(context, UPDATE_SEC);
 
-    assertEquals(BringupTestResult.PASS, test.getResult());
+    assertEquals(BringupTestResult.PASS_SENSOR_PROVEN, test.getResult());
   }
 
   @Test
@@ -109,11 +115,11 @@ class DslBringupTestTest {
 
     assertTrue(xButtonTest.start(context, START_SEC));
     xButtonTest.update(context, UPDATE_SEC);
-    assertEquals(BringupTestResult.PASS, xButtonTest.getResult());
+    assertEquals(BringupTestResult.PASS_SENSOR_PROVEN, xButtonTest.getResult());
 
     assertTrue(dpadUpTest.start(context, START_SEC));
     dpadUpTest.update(context, UPDATE_SEC);
-    assertEquals(BringupTestResult.PASS, dpadUpTest.getResult());
+    assertEquals(BringupTestResult.PASS_SENSOR_PROVEN, dpadUpTest.getResult());
   }
 
   @Test
@@ -126,7 +132,7 @@ class DslBringupTestTest {
     assertTrue(test.start(context, START_SEC));
     test.update(context, UPDATE_SEC);
 
-    assertEquals(BringupTestResult.PASS, test.getResult());
+    assertEquals(BringupTestResult.PASS_SENSOR_PROVEN, test.getResult());
   }
 
   @Test
@@ -141,7 +147,7 @@ class DslBringupTestTest {
     test.update(context, UPDATE_SEC);
     test.update(context, 11.1);
 
-    assertEquals(BringupTestResult.PASS, test.getResult());
+    assertEquals(BringupTestResult.PASS_SENSOR_PROVEN, test.getResult());
     assertEquals(2, motor.dutyWrites);
     assertEquals(0.2, motor.lastDuty, 0.0001);
   }
@@ -160,7 +166,7 @@ class DslBringupTestTest {
     test.update(context, UPDATE_SEC);
     test.update(context, 11.1);
 
-    assertEquals(BringupTestResult.PASS, test.getResult());
+    assertEquals(BringupTestResult.PASS_SENSOR_PROVEN, test.getResult());
     assertEquals(2, motor.dutyWrites);
     assertEquals(0.2, motor.lastDuty, 0.0001);
   }
@@ -182,7 +188,7 @@ class DslBringupTestTest {
     DslBringupTest test = new DslBringupTest(buildSignalSetMainTest(0.25, 0.0, true));
 
     assertFalse(test.start(context, START_SEC));
-    assertEquals(BringupTestResult.FAIL, test.getResult());
+    assertEquals(BringupTestResult.FAIL_RUNTIME_COMMUNICATION, test.getResult());
     assertEquals("Signal set source unavailable at startup: controller0.leftY", test.getStatus());
   }
 
@@ -196,7 +202,7 @@ class DslBringupTestTest {
     assertTrue(test.start(context, START_SEC));
     test.update(context, 11.1);
 
-    assertEquals(BringupTestResult.FAIL, test.getResult());
+    assertEquals(BringupTestResult.FAIL_SET_FALLBACK_ACTIVE, test.getResult());
     assertEquals("until until_1: timer.elapsed >= 1.0 (fallback active)", test.getStatus());
     assertEquals(1, motor.dutyWrites);
     assertEquals(0.0, motor.lastDuty, 0.0001);
@@ -216,7 +222,7 @@ class DslBringupTestTest {
     test.update(context, 10.5);
     test.update(context, 11.1);
 
-    assertEquals(BringupTestResult.PASS, test.getResult());
+    assertEquals(BringupTestResult.PASS_SENSOR_PROVEN, test.getResult());
     assertEquals(3, motor.dutyWrites);
     assertEquals(0.15, motor.lastDuty, 0.0001);
   }
@@ -233,7 +239,7 @@ class DslBringupTestTest {
     test.update(context, UPDATE_SEC);
     test.update(context, 11.1);
 
-    assertEquals(BringupTestResult.PASS, test.getResult());
+    assertEquals(BringupTestResult.PASS_SENSOR_PROVEN, test.getResult());
     assertEquals(2, motor.dutyWrites);
     assertEquals(0.0, motor.lastDuty, 0.0001);
   }
@@ -250,7 +256,7 @@ class DslBringupTestTest {
     test.update(context, UPDATE_SEC);
     test.update(context, 11.1);
 
-    assertEquals(BringupTestResult.PASS, test.getResult());
+    assertEquals(BringupTestResult.PASS_SENSOR_PROVEN, test.getResult());
     assertEquals(2, motor.dutyWrites);
     assertEquals(0.025, motor.lastDuty, 0.0001);
   }
@@ -277,7 +283,7 @@ class DslBringupTestTest {
     BringupTestContext context = context(motor);
 
     assertFalse(test.start(context, START_SEC));
-    assertEquals(BringupTestResult.FAIL, test.getResult());
+    assertEquals(BringupTestResult.FAIL_CLEAR_FAULTS, test.getResult());
     assertEquals("Unsupported clear DSL target at runtime: motor-a.faults", test.getStatus());
   }
 
@@ -295,7 +301,7 @@ class DslBringupTestTest {
     test.update(context, START_SEC + 0.12);
     test.update(context, START_SEC + 0.30);
 
-    assertEquals(BringupTestResult.PASS, test.getResult());
+    assertEquals(BringupTestResult.PASS_SENSOR_PROVEN, test.getResult());
     assertTrue(test.buildRunDetails().toString().contains("stableSatisfied=true"));
     assertTrue(test.buildRunDetails().toString().contains("latchedSatisfied=true"));
   }
@@ -317,7 +323,7 @@ class DslBringupTestTest {
     test.update(context, START_SEC + 0.20);
     test.update(context, START_SEC + 0.36);
 
-    assertEquals(BringupTestResult.FAIL, test.getResult());
+    assertEquals(BringupTestResult.FAIL_ABORT_CONDITION, test.getResult());
     assertEquals("abort abort_1: abort motor-a.current > 40 stable 0.1", test.getStatus());
   }
 
@@ -333,7 +339,7 @@ class DslBringupTestTest {
     motor.setSignal("current", 25.0);
     test.update(context, START_SEC + 0.20);
 
-    assertEquals(BringupTestResult.PASS, test.getResult());
+    assertEquals(BringupTestResult.PASS_SENSOR_PROVEN, test.getResult());
   }
 
   @Test
@@ -349,7 +355,7 @@ class DslBringupTestTest {
     pdp.removeSignal(SIGNAL_CHANNEL0_FAULT);
     test.update(context, START_SEC + 0.25);
 
-    assertEquals(BringupTestResult.FAIL, test.getResult());
+    assertEquals(BringupTestResult.FAIL_REQUIRE_NOT_MET, test.getResult());
     assertEquals("until until_1: timer.elapsed >= 0.2", test.getStatus());
     assertTrue(test.buildRunDetails().toString().contains("satisfied=false"));
   }
@@ -366,7 +372,7 @@ class DslBringupTestTest {
     motor.removeSignal(SIGNAL_CURRENT);
     test.update(context, START_SEC + 0.25);
 
-    assertEquals(BringupTestResult.PASS, test.getResult());
+    assertEquals(BringupTestResult.PASS_SENSOR_PROVEN, test.getResult());
     assertEquals("until until_1: timer.elapsed >= 0.2", test.getStatus());
     assertTrue(test.buildRunDetails().toString().contains("satisfied=true"));
   }
@@ -394,11 +400,93 @@ class DslBringupTestTest {
 
     test.update(context, START_SEC + 0.35);
 
-    assertEquals(BringupTestResult.PASS, test.getResult());
+    assertEquals(BringupTestResult.PASS_SENSOR_PROVEN, test.getResult());
     String runDetails = test.buildRunDetails().toString();
     assertTrue(runDetails.contains("current_actual_max=3.4"));
     assertTrue(runDetails.contains("velocity_actual_max_abs=72.0"));
     assertTrue(runDetails.contains("position_delta_max_abs=2.25"));
+  }
+
+  @Test
+  void dslConfiguredCancoderUsesEncoderDeltaSemantics() {
+    seedConfiguredDeviceType(CANCODER_LABEL, CANCODER_TYPE);
+    SignalRecordingDevice encoder = new SignalRecordingDevice(CANCODER_LABEL, CANCODER_TYPE);
+    encoder.setSignal(SIGNAL_POSITION, 5.0);
+    encoder.setSignal("position_delta", 5.0);
+    DslBringupTest test = new DslBringupTest(buildCancoderAggregateDeltaTest());
+    BringupTestContext context = context(encoder);
+
+    assertTrue(test.start(context, START_SEC));
+
+    encoder.setSignal(SIGNAL_POSITION, 5.5);
+    encoder.setSignal("position_delta", 5.5);
+    test.update(context, START_SEC + 0.05);
+    test.update(context, START_SEC + 0.25);
+
+    assertEquals(BringupTestResult.PASS_SENSOR_PROVEN, test.getResult());
+    String runDetails = test.buildRunDetails().toString();
+    assertTrue(runDetails.contains("position_delta_max_abs=0.5"));
+  }
+
+  @Test
+  void dslConfiguredCancoderTracksVelocityAggregateSemantics() {
+    seedConfiguredDeviceType(CANCODER_LABEL, CANCODER_TYPE);
+    SignalRecordingDevice encoder = new SignalRecordingDevice(CANCODER_LABEL, CANCODER_TYPE);
+    encoder.setSignal(SIGNAL_POSITION, 5.0);
+    encoder.setSignal(DslSignalRegistry.SIGNAL_VELOCITY_ACTUAL, 0.0);
+    DslBringupTest test = new DslBringupTest(buildCancoderVelocityAggregateTest());
+    BringupTestContext context = context(encoder);
+
+    assertTrue(test.start(context, START_SEC));
+
+    encoder.setSignal(DslSignalRegistry.SIGNAL_VELOCITY_ACTUAL, -3.25);
+    test.update(context, START_SEC + 0.05);
+    encoder.setSignal(DslSignalRegistry.SIGNAL_VELOCITY_ACTUAL, -7.5);
+    test.update(context, START_SEC + 0.15);
+    test.update(context, START_SEC + 0.25);
+
+    assertEquals(BringupTestResult.PASS_SENSOR_PROVEN, test.getResult());
+    assertTrue(test.buildRunDetails().toString().contains("velocity_actual_max_abs=7.5"));
+  }
+
+  @Test
+  void dslConfiguredPigeonUsesImuDeltaSemantics() {
+    seedConfiguredDeviceType(PIGEON_LABEL, PIGEON_TYPE);
+    SignalRecordingDevice imu = new SignalRecordingDevice(PIGEON_LABEL, PIGEON_TYPE);
+    imu.setSignal(SIGNAL_YAW, 10.0);
+    DslBringupTest test = new DslBringupTest(buildImuAggregateDeltaTest());
+    BringupTestContext context = context(imu);
+
+    assertTrue(test.start(context, START_SEC));
+
+    imu.setSignal(SIGNAL_YAW, 12.5);
+    imu.setSignal(DslSignalRegistry.SIGNAL_YAW_DELTA, 12.5);
+    test.update(context, START_SEC + 0.05);
+    imu.setSignal(SIGNAL_YAW, 16.0);
+    imu.setSignal(DslSignalRegistry.SIGNAL_YAW_DELTA, 16.0);
+    test.update(context, START_SEC + 0.15);
+    test.update(context, START_SEC + 0.25);
+
+    assertEquals(BringupTestResult.PASS_SENSOR_PROVEN, test.getResult());
+    assertTrue(test.buildRunDetails().toString().contains("yaw_delta_max_abs=6.0"));
+  }
+
+  @Test
+  void dslConfiguredPigeonSupportsExtendedImuSignals() {
+    seedConfiguredDeviceType(PIGEON_LABEL, PIGEON_TYPE);
+    SignalRecordingDevice imu = new SignalRecordingDevice(PIGEON_LABEL, PIGEON_TYPE);
+    imu.setSignal(DslSignalRegistry.SIGNAL_ANGULAR_VELOCITY_Z, 1.5);
+    imu.setSignal(DslSignalRegistry.SIGNAL_ACCEL_Z, 0.92);
+    imu.setSignal(DslSignalRegistry.SIGNAL_SUPPLY_VOLTAGE, 12.3);
+    imu.setSignal(DslSignalRegistry.SIGNAL_FAULTS, false);
+    DslBringupTest test = new DslBringupTest(buildImuDirectSignalTest());
+    BringupTestContext context = context(imu);
+
+    assertTrue(test.start(context, START_SEC));
+
+    test.update(context, START_SEC + 0.25);
+
+    assertEquals(BringupTestResult.PASS_SENSOR_PROVEN, test.getResult());
   }
 
   private static DslModels.DslNormalizedTest buildTest() {
@@ -428,6 +516,141 @@ class DslBringupTestTest {
 
   private static DslModels.DslNormalizedTest buildControllerButtonTest() {
     return buildControllerButtonTest(SIGNAL_A);
+  }
+
+  private static DslModels.DslNormalizedTest buildCancoderAggregateDeltaTest() {
+    DslModels.DslNormalizedTest test = new DslModels.DslNormalizedTest();
+    test.name = "cancoder_delta";
+    DslModels.DslDeviceRef device = new DslModels.DslDeviceRef();
+    device.name = CANCODER_LABEL;
+    test.devices.add(device);
+
+    DslModels.DslCondition requirePosition = new DslModels.DslCondition();
+    requirePosition.id = "require_1";
+    requirePosition.kind = "require";
+    requirePosition.text = "require cancoder-a.position_delta_max_abs > 0.4";
+    requirePosition.reference = reference(CANCODER_LABEL, "position_delta_max_abs");
+    requirePosition.operator = ">";
+    requirePosition.literal = numberLiteral(0.4);
+    test.main.requires.add(requirePosition);
+
+    DslModels.DslCondition until = new DslModels.DslCondition();
+    until.id = "until_1";
+    until.kind = "until";
+    until.text = "timer.elapsed >= 0.2";
+    until.reference = reference("timer", "elapsed");
+    until.operator = ">=";
+    until.literal = numberLiteral(0.2);
+    test.main.untils.add(until);
+    return test;
+  }
+
+  private static DslModels.DslNormalizedTest buildCancoderVelocityAggregateTest() {
+    DslModels.DslNormalizedTest test = new DslModels.DslNormalizedTest();
+    test.name = "cancoder_velocity";
+    DslModels.DslDeviceRef device = new DslModels.DslDeviceRef();
+    device.name = CANCODER_LABEL;
+    test.devices.add(device);
+
+    DslModels.DslCondition requireVelocity = new DslModels.DslCondition();
+    requireVelocity.id = "require_1";
+    requireVelocity.kind = "require";
+    requireVelocity.text = "require cancoder-a.velocity_actual_max_abs > 7.0";
+    requireVelocity.reference = reference(CANCODER_LABEL, "velocity_actual_max_abs");
+    requireVelocity.operator = ">";
+    requireVelocity.literal = numberLiteral(7.0);
+    test.main.requires.add(requireVelocity);
+
+    DslModels.DslCondition until = new DslModels.DslCondition();
+    until.id = "until_1";
+    until.kind = "until";
+    until.text = "timer.elapsed >= 0.2";
+    until.reference = reference("timer", "elapsed");
+    until.operator = ">=";
+    until.literal = numberLiteral(0.2);
+    test.main.untils.add(until);
+    return test;
+  }
+
+  private static DslModels.DslNormalizedTest buildImuAggregateDeltaTest() {
+    DslModels.DslNormalizedTest test = new DslModels.DslNormalizedTest();
+    test.name = "imu_delta";
+    DslModels.DslDeviceRef device = new DslModels.DslDeviceRef();
+    device.name = PIGEON_LABEL;
+    test.devices.add(device);
+
+    DslModels.DslCondition requireYaw = new DslModels.DslCondition();
+    requireYaw.id = "require_1";
+    requireYaw.kind = "require";
+    requireYaw.text = "require pigeon-a.yaw_delta_max_abs > 5.0";
+    requireYaw.reference = reference(PIGEON_LABEL, "yaw_delta_max_abs");
+    requireYaw.operator = ">";
+    requireYaw.literal = numberLiteral(5.0);
+    test.main.requires.add(requireYaw);
+
+    DslModels.DslCondition until = new DslModels.DslCondition();
+    until.id = "until_1";
+    until.kind = "until";
+    until.text = "timer.elapsed >= 0.2";
+    until.reference = reference("timer", "elapsed");
+    until.operator = ">=";
+    until.literal = numberLiteral(0.2);
+    test.main.untils.add(until);
+    return test;
+  }
+
+  private static DslModels.DslNormalizedTest buildImuDirectSignalTest() {
+    DslModels.DslNormalizedTest test = new DslModels.DslNormalizedTest();
+    test.name = "imu_direct";
+    DslModels.DslDeviceRef device = new DslModels.DslDeviceRef();
+    device.name = PIGEON_LABEL;
+    test.devices.add(device);
+
+    DslModels.DslCondition requireAngularVelocity = new DslModels.DslCondition();
+    requireAngularVelocity.id = "require_1";
+    requireAngularVelocity.kind = "require";
+    requireAngularVelocity.text = "require pigeon-a.angular_velocity_z < 2.0";
+    requireAngularVelocity.reference = reference(PIGEON_LABEL, DslSignalRegistry.SIGNAL_ANGULAR_VELOCITY_Z);
+    requireAngularVelocity.operator = "<";
+    requireAngularVelocity.literal = numberLiteral(2.0);
+    test.main.requires.add(requireAngularVelocity);
+
+    DslModels.DslCondition requireAccel = new DslModels.DslCondition();
+    requireAccel.id = "require_2";
+    requireAccel.kind = "require";
+    requireAccel.text = "require pigeon-a.accel_z > 0.7";
+    requireAccel.reference = reference(PIGEON_LABEL, DslSignalRegistry.SIGNAL_ACCEL_Z);
+    requireAccel.operator = ">";
+    requireAccel.literal = numberLiteral(0.7);
+    test.main.requires.add(requireAccel);
+
+    DslModels.DslCondition requireSupply = new DslModels.DslCondition();
+    requireSupply.id = "require_3";
+    requireSupply.kind = "require";
+    requireSupply.text = "require pigeon-a.supply_voltage > 10.0";
+    requireSupply.reference = reference(PIGEON_LABEL, DslSignalRegistry.SIGNAL_SUPPLY_VOLTAGE);
+    requireSupply.operator = ">";
+    requireSupply.literal = numberLiteral(10.0);
+    test.main.requires.add(requireSupply);
+
+    DslModels.DslCondition requireFaults = new DslModels.DslCondition();
+    requireFaults.id = "require_4";
+    requireFaults.kind = "require";
+    requireFaults.text = "require pigeon-a.faults == false";
+    requireFaults.reference = reference(PIGEON_LABEL, DslSignalRegistry.SIGNAL_FAULTS);
+    requireFaults.operator = "==";
+    requireFaults.literal = booleanLiteral(false);
+    test.main.requires.add(requireFaults);
+
+    DslModels.DslCondition until = new DslModels.DslCondition();
+    until.id = "until_1";
+    until.kind = "until";
+    until.text = "timer.elapsed >= 0.2";
+    until.reference = reference("timer", "elapsed");
+    until.operator = ">=";
+    until.literal = numberLiteral(0.2);
+    test.main.untils.add(until);
+    return test;
   }
 
   private static DslModels.DslNormalizedTest buildAggregateSignalTest() {
@@ -980,3 +1203,7 @@ class DslBringupTestTest {
     }
   }
 }
+
+
+
+

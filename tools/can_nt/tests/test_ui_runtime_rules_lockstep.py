@@ -1,6 +1,6 @@
 """
 NAME
-    test_ui_runtime_rules_lockstep.py - Guard CURRENT_UI_RUNTIME_RULES workflow headings against regression-guide drift.
+    test_ui_runtime_rules_lockstep.py - Guard UI runtime rules V2 workflow headings against regression-guide drift.
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-UI_RULES_PATH = REPO_ROOT / "docs" / "CURRENT_UI_RUNTIME_RULES.md"
+UI_RULES_PATH = REPO_ROOT / "Current UI And Runtime Rules - V2.md"
 REGRESSION_GUIDE_PATH = REPO_ROOT / "docs" / "USER_GUIDE_REGRESSION_RUNNER.md"
 
 SECTION_COMMON_WORKFLOWS = "## Common Workflows"

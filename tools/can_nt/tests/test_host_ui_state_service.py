@@ -34,8 +34,12 @@ from tools.can_nt.host_ui_state_service import (
     RUNNABLE_SCOPE_KIND_SELECTED_TEST,
     RUNNABLE_SCOPE_PANEL_RESYNC_DETAIL,
     RUNNABLE_SCOPE_PANEL_WAITING_DETAIL,
+    TEST_SCOPE_PANEL_INACTIVE_HEADLINE,
+    TEST_SCOPE_STATUS_BLOCKED_NOT_CONNECTED_DETAIL,
+    TEST_SCOPE_STATUS_LOADED_NOT_ACTIVATED_DETAIL,
     TEST_SCOPE_STATUS_NO_SELECTION_DETAIL,
     TEST_SCOPE_STATUS_RUNNING_DETAIL,
+    TEST_SCOPE_STATUS_SCOPE_SWAP_REQUIRED_DETAIL,
     resolve_active_group_edit_action_state,
     resolve_manual_duty_access_state,
     resolve_manual_duty_action_state,
@@ -44,6 +48,9 @@ from tools.can_nt.host_ui_state_service import (
     resolve_manual_duty_binding_state,
     resolve_manual_duty_scope_state,
     resolve_override_action_state,
+    resolve_selected_test_panel_state,
+    resolve_selected_test_runtime_block_reason,
+    resolve_selected_test_scope_state,
     resolve_runtime_state_fetch_state,
     resolve_scope_control_state,
     resolve_runnable_scope_state,
@@ -562,7 +569,7 @@ class HostUiStateServiceTests(unittest.TestCase):
         self.assertTrue(state.deactivate_allowed)
         self.assertTrue(state.run_selected_allowed)
 
-    def test_resolve_scope_control_state_keeps_selected_test_activate_enabled_when_membership_change_requires_scope_swap(self) -> None:
+    def test_resolve_scope_control_state_blocks_selected_test_activate_when_membership_change_requires_scope_swap(self) -> None:
         runnable_state = resolve_runnable_scope_state(
             scope_kind=RUNNABLE_SCOPE_KIND_SELECTED_TEST,
             local_selected_profile="test_minimal_25_9",
@@ -596,8 +603,9 @@ class HostUiStateServiceTests(unittest.TestCase):
             selected_test_runtime_block_reason="",
         )
 
-        self.assertTrue(state.activate_allowed)
+        self.assertFalse(state.activate_allowed)
         self.assertTrue(state.deactivate_allowed)
+        self.assertEqual(TEST_SCOPE_STATUS_SCOPE_SWAP_REQUIRED_DETAIL, state.blocked_reason)
 
     def test_resolve_scope_control_state_blocks_selected_test_activation_while_test_running(self) -> None:
         runnable_state = resolve_runnable_scope_state(
@@ -685,6 +693,77 @@ class HostUiStateServiceTests(unittest.TestCase):
 
         self.assertEqual(HOST_ACTION_BLOCKED_NOT_CONNECTED_TEXT, disconnected.blocked_reason)
         self.assertEqual(HOST_ACTION_BLOCKED_BUSY_TEXT, busy.blocked_reason)
+
+    def test_selected_test_panel_reports_disconnected_when_local_selection_exists(self) -> None:
+        runtime_block_reason = resolve_selected_test_runtime_block_reason(
+            tcp_connected=False,
+            robot_estopped=False,
+            robot_enabled=True,
+            robot_mode="teleop",
+        )
+        scope_state = resolve_selected_test_scope_state(
+            selected_name="newTests_123",
+            active_group_rows=[],
+            runtime_block_reason=runtime_block_reason,
+            scope_active=False,
+            loaded_to_robot=None,
+            selected_row=None,
+        )
+        panel_state = resolve_selected_test_panel_state(scope_state)
+
+        self.assertEqual(TEST_SCOPE_PANEL_INACTIVE_HEADLINE, panel_state.headline)
+        self.assertEqual(TEST_SCOPE_STATUS_BLOCKED_NOT_CONNECTED_DETAIL, panel_state.detail)
+
+    def test_selected_test_scope_state_keeps_inactive_loaded_not_activated_when_robot_knows_test(self) -> None:
+        scope_state = resolve_selected_test_scope_state(
+            selected_name="newTests_123",
+            active_group_rows=[{"label": "FALCON 9", "enabled": True, "invalid": False}],
+            runtime_block_reason="",
+            scope_active=False,
+            loaded_to_robot=False,
+            selected_row={"name": "newTests_123", "requiredDevices": ["FALCON 9"]},
+        )
+
+        self.assertEqual("selected test scope ready - not activated", scope_state.inactive_reason)
+        panel_state = resolve_selected_test_panel_state(scope_state)
+        self.assertEqual(TEST_SCOPE_STATUS_LOADED_NOT_ACTIVATED_DETAIL, panel_state.detail)
+
+    def test_resolve_scope_control_state_allows_selected_test_when_active_scope_contains_extra_devices(self) -> None:
+        runnable_state = resolve_runnable_scope_state(
+            scope_kind=RUNNABLE_SCOPE_KIND_SELECTED_TEST,
+            local_selected_profile="test_minimal_25_9",
+            local_profile_required=True,
+            tcp_connected=True,
+            runtime_state_seen=True,
+            stale_state=False,
+            robot_enabled=True,
+            robot_estopped=False,
+            robot_mode="teleop",
+            manual_group_empty=False,
+            scope_active=True,
+        )
+
+        state = resolve_scope_control_state(
+            scope_kind=RUNNABLE_SCOPE_KIND_SELECTED_TEST,
+            runtime_ui_ready=True,
+            tracker_pending=False,
+            stale_state=False,
+            runtime_state_seen=True,
+            runtime_profile_active=True,
+            controlled_lifecycle_active=True,
+            transition_pending=False,
+            runnable_scope_state=runnable_state,
+            current_scope_member_labels=["FALCON 9", "pigeon 2", "cancoder"],
+            desired_scope_member_labels=["FALCON 9", "cancoder"],
+            selected_test_name="newTests_123",
+            selected_test_ready=True,
+            selected_test_invalid=False,
+            selected_test_running=False,
+            selected_test_runtime_block_reason="",
+        )
+
+        self.assertTrue(state.activate_allowed)
+        self.assertNotEqual(TEST_SCOPE_STATUS_SCOPE_SWAP_REQUIRED_DETAIL, state.blocked_reason)
 
     def test_should_clear_runtime_event_notice_when_disabled_conflicts_with_ready_state(self) -> None:
         state = resolve_runnable_scope_state(

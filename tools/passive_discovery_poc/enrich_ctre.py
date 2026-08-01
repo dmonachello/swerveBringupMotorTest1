@@ -18,6 +18,38 @@ from tools.passive_discovery_poc.constants import (
     CTRE_HTTP_ACTION_DECORATED_SELFTEST,
     CTRE_HTTP_ACTION_GET_DEVICES,
     CTRE_HTTP_CANBUS_RIO,
+    CTRE_DEVICE_TYPE_CANCODER_CANONICAL,
+    CTRE_DEVICE_TYPE_PIGEON_CANONICAL,
+    CTRE_HTTP_KEY_BOOTLOADER_REV,
+    CTRE_HTTP_KEY_CANBUS,
+    CTRE_HTTP_KEY_CURRENT_VERS,
+    CTRE_HTTP_KEY_DEVICE_ARRAY,
+    CTRE_HTTP_KEY_HARDWARE_REV,
+    CTRE_HTTP_KEY_ID,
+    CTRE_HTTP_KEY_IS_PRO_LICENSED,
+    CTRE_HTTP_KEY_MANUFACTURED,
+    CTRE_HTTP_KEY_MODEL,
+    CTRE_HTTP_KEY_NAME,
+    CTRE_HTTP_KEY_STATUS,
+    CTRE_HTTP_KEY_SUPPORTS_CONFIGS,
+    CTRE_HTTP_KEY_SUPPORTS_CONTROL,
+    CTRE_HTTP_KEY_SUPPORTS_DECORATED_SELF_TEST,
+    CTRE_HTTP_KEY_VENDOR,
+    CTRE_ENRICHMENT_KEY_BOOTLOADER,
+    CTRE_ENRICHMENT_KEY_CANBUS,
+    CTRE_ENRICHMENT_KEY_FAULTS_TRUE,
+    CTRE_ENRICHMENT_KEY_FIRMWARE,
+    CTRE_ENRICHMENT_KEY_HARDWARE_REV,
+    CTRE_ENRICHMENT_KEY_IS_PRO_LICENSED,
+    CTRE_ENRICHMENT_KEY_MANUFACTURED,
+    CTRE_ENRICHMENT_KEY_MODEL,
+    CTRE_ENRICHMENT_KEY_NAME,
+    CTRE_ENRICHMENT_KEY_STATUS,
+    CTRE_ENRICHMENT_KEY_STICKY_FAULTS_TRUE,
+    CTRE_ENRICHMENT_KEY_SUPPORTS_CONFIGS,
+    CTRE_ENRICHMENT_KEY_SUPPORTS_CONTROL,
+    CTRE_ENRICHMENT_KEY_SUPPORTS_DECORATED_SELF_TEST,
+    CTRE_ENRICHMENT_KEY_VENDOR,
     CTRE_MANUFACTURER,
     ENCODING_UTF8,
 )
@@ -40,7 +72,7 @@ def collect_ctre_enrichment(base_url: str) -> Tuple[Dict[Tuple[int, int, int], D
     except Exception as exc:
         warnings.append(f"CTRE HTTP unavailable: {exc}")
         return ({}, warnings)
-    device_array = devices_payload.get("DeviceArray", [])
+    device_array = devices_payload.get(CTRE_HTTP_KEY_DEVICE_ARRAY, [])
     if not isinstance(device_array, list):
         warnings.append("CTRE HTTP getdevices response missing DeviceArray")
         return ({}, warnings)
@@ -48,20 +80,14 @@ def collect_ctre_enrichment(base_url: str) -> Tuple[Dict[Tuple[int, int, int], D
     for device in device_array:
         if not isinstance(device, dict):
             continue
-        model = str(device.get("Model", "")).strip()
-        device_id = device.get("ID")
+        model = _clean_text(device.get(CTRE_HTTP_KEY_MODEL))
+        device_id = device.get(CTRE_HTTP_KEY_ID)
         if not isinstance(device_id, int):
             continue
         device_type = normalize_device_type(CTRE_MANUFACTURER, _infer_ctre_device_type(model))
         key = (CTRE_MANUFACTURER, device_type, device_id)
-        entry: Dict[str, object] = {
-            "model": model,
-            "name": str(device.get("Name", "")).strip(),
-            "firmware": str(device.get("CurrentVers", "")).strip(),
-            "supportsDecoratedSelfTest": bool(device.get("SupportsDecoratedSelfTest", False)),
-            "supportsConfigs": bool(device.get("SupportsConfigs", False)),
-        }
-        if bool(device.get("SupportsDecoratedSelfTest", False)) and model:
+        entry = _build_ctre_enrichment_entry(device=device, model=model)
+        if bool(device.get(CTRE_HTTP_KEY_SUPPORTS_DECORATED_SELF_TEST, False)) and model:
             try:
                 detail_payload = _http_get_json(
                     base_url=base_url,
@@ -74,8 +100,11 @@ def collect_ctre_enrichment(base_url: str) -> Tuple[Dict[Tuple[int, int, int], D
                 )
                 self_test = detail_payload.get("SelfTest", {})
                 if isinstance(self_test, dict):
-                    entry["faultsTrue"] = _collect_true_flags(self_test=self_test, prefix="Fault_")
-                    entry["stickyFaultsTrue"] = _collect_true_flags(self_test=self_test, prefix="StickyFault_")
+                    entry[CTRE_ENRICHMENT_KEY_FAULTS_TRUE] = _collect_true_flags(self_test=self_test, prefix="Fault_")
+                    entry[CTRE_ENRICHMENT_KEY_STICKY_FAULTS_TRUE] = _collect_true_flags(
+                        self_test=self_test,
+                        prefix="StickyFault_",
+                    )
             except Exception as exc:
                 warnings.append(f"CTRE decoratedselftest failed for {model} {device_id}: {exc}")
         result[key] = entry
@@ -106,12 +135,44 @@ def _infer_ctre_device_type(model: str) -> int:
     if "talon fx" in normalized:
         return 2
     if "pigeon" in normalized:
-        return 6
+        return CTRE_DEVICE_TYPE_PIGEON_CANONICAL
     if "pdp" in normalized:
         return 8
     if "cancoder" in normalized:
-        return 7
+        return CTRE_DEVICE_TYPE_CANCODER_CANONICAL
     return 0
+
+
+def _build_ctre_enrichment_entry(device: Dict[str, object], model: str) -> Dict[str, object]:
+    """
+    NAME
+        _build_ctre_enrichment_entry - Normalize one CTRE inventory row into stable enrichment fields.
+    """
+    return {
+        CTRE_ENRICHMENT_KEY_MODEL: model,
+        CTRE_ENRICHMENT_KEY_NAME: _clean_text(device.get(CTRE_HTTP_KEY_NAME)),
+        CTRE_ENRICHMENT_KEY_FIRMWARE: _clean_text(device.get(CTRE_HTTP_KEY_CURRENT_VERS)),
+        CTRE_ENRICHMENT_KEY_VENDOR: _clean_text(device.get(CTRE_HTTP_KEY_VENDOR)),
+        CTRE_ENRICHMENT_KEY_STATUS: _clean_text(device.get(CTRE_HTTP_KEY_STATUS)),
+        CTRE_ENRICHMENT_KEY_CANBUS: _clean_text(device.get(CTRE_HTTP_KEY_CANBUS)),
+        CTRE_ENRICHMENT_KEY_BOOTLOADER: _clean_text(device.get(CTRE_HTTP_KEY_BOOTLOADER_REV)),
+        CTRE_ENRICHMENT_KEY_HARDWARE_REV: _clean_text(device.get(CTRE_HTTP_KEY_HARDWARE_REV)),
+        CTRE_ENRICHMENT_KEY_MANUFACTURED: _clean_text(device.get(CTRE_HTTP_KEY_MANUFACTURED)),
+        CTRE_ENRICHMENT_KEY_IS_PRO_LICENSED: bool(device.get(CTRE_HTTP_KEY_IS_PRO_LICENSED, False)),
+        CTRE_ENRICHMENT_KEY_SUPPORTS_CONTROL: bool(device.get(CTRE_HTTP_KEY_SUPPORTS_CONTROL, False)),
+        CTRE_ENRICHMENT_KEY_SUPPORTS_CONFIGS: bool(device.get(CTRE_HTTP_KEY_SUPPORTS_CONFIGS, False)),
+        CTRE_ENRICHMENT_KEY_SUPPORTS_DECORATED_SELF_TEST: bool(
+            device.get(CTRE_HTTP_KEY_SUPPORTS_DECORATED_SELF_TEST, False)
+        ),
+    }
+
+
+def _clean_text(value: object) -> str:
+    """
+    NAME
+        _clean_text - Normalize one optional vendor string value.
+    """
+    return str(value or "").strip()
 
 
 def _collect_true_flags(self_test: Dict[str, object], prefix: str) -> List[str]:

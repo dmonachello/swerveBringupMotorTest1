@@ -74,9 +74,11 @@ BLANK_REASON_LOCAL_PROFILE_REQUIRED = "Local profile selection required."
 OUTPUT_NO_SELECTED_TEST = "no selected test"
 SELECTED_TEST_STATUS_LOADED_NOT_ACTIVATED = "selected test scope ready - not activated"
 SELECTED_TEST_STATUS_MANUAL_RESTORED = "manual active-group restored - not activated"
+SELECTED_TEST_STATUS_SCOPE_SWAP_REQUIRED = "selected test scope swap required"
 SELECTED_TEST_STATUS_BLOCKED_ESTOP = "robot disabled (E-Stop)"
 SELECTED_TEST_STATUS_BLOCKED_DISABLED = "robot disabled"
 SELECTED_TEST_STATUS_BLOCKED_NOT_TELEOP = "robot not in teleop"
+SELECTED_TEST_STATUS_BLOCKED_NOT_CONNECTED = "robot not connected"
 SELECTED_TEST_STATUS_REQUIRED_UNAVAILABLE = "required devices unavailable"
 SELECTED_TEST_STATUS_MISSING_PREFIX = "missing resource/device - "
 TEST_SCOPE_PANEL_READY_HEADLINE = "READY TO RUN"
@@ -93,6 +95,10 @@ TEST_SCOPE_STATUS_LOADED_NOT_ACTIVATED_DETAIL = (
 TEST_SCOPE_STATUS_MANUAL_RESTORED_DETAIL = (
     "The remembered manual active-group was restored after leaving Tests. Press Runtime Activate before running manual actions."
 )
+TEST_SCOPE_STATUS_SCOPE_SWAP_REQUIRED_DETAIL = (
+    "This test needs a different device scope than the currently active locked scope. "
+    "Use Runtime Deactivate, then Runtime Activate to switch scope."
+)
 TEST_SCOPE_STATUS_MISSING_DEVICE_PREFIX = (
     "This test cannot run because a required profile device is missing: "
 )
@@ -107,6 +113,9 @@ TEST_SCOPE_STATUS_BLOCKED_DISABLED_DETAIL = (
 )
 TEST_SCOPE_STATUS_BLOCKED_NOT_TELEOP_DETAIL = (
     "This test cannot run because the robot is not in teleop. Switch to teleop before pressing Runtime Activate or running the test."
+)
+TEST_SCOPE_STATUS_BLOCKED_NOT_CONNECTED_DETAIL = (
+    "This test source is selected locally, but the robot is disconnected. Reconnect before Runtime Activate or running the test."
 )
 TEST_SCOPE_STATUS_RUNNING_DETAIL = (
     "This test is currently running. Wait for the run to finish before activating or deactivating scope."
@@ -801,6 +810,7 @@ def should_clear_runtime_event_notice(
 
 
 def resolve_selected_test_runtime_block_reason(
+    tcp_connected: bool,
     robot_estopped: bool,
     robot_enabled: bool,
     robot_mode: object,
@@ -809,6 +819,8 @@ def resolve_selected_test_runtime_block_reason(
     NAME
         resolve_selected_test_runtime_block_reason - Return robot-state blocker text for selected-test execution.
     """
+    if not tcp_connected:
+        return SELECTED_TEST_STATUS_BLOCKED_NOT_CONNECTED
     if robot_estopped:
         return SELECTED_TEST_STATUS_BLOCKED_ESTOP
     if not robot_enabled:
@@ -868,8 +880,6 @@ def resolve_selected_test_scope_state(
     if not scope_active:
         if not isinstance(selected_row, dict):
             reason = SELECTED_TEST_STATUS_REQUIRED_UNAVAILABLE
-        elif loaded_to_robot is False:
-            reason = SELECTED_TEST_STATUS_REQUIRED_UNAVAILABLE
         else:
             reason = SELECTED_TEST_STATUS_LOADED_NOT_ACTIVATED
         return SelectedTestScopeState(
@@ -878,6 +888,15 @@ def resolve_selected_test_scope_state(
             ready=False,
             headline=TEST_SCOPE_PANEL_INACTIVE_HEADLINE,
             detail_reason=reason,
+            level=RUNNABLE_STATE_LEVEL_WARN,
+        )
+    if loaded_to_robot is False:
+        return SelectedTestScopeState(
+            selected_name=clean_name,
+            inactive_reason=SELECTED_TEST_STATUS_SCOPE_SWAP_REQUIRED,
+            ready=False,
+            headline=TEST_SCOPE_PANEL_INACTIVE_HEADLINE,
+            detail_reason=SELECTED_TEST_STATUS_SCOPE_SWAP_REQUIRED,
             level=RUNNABLE_STATE_LEVEL_WARN,
         )
     if not isinstance(selected_row, dict):
@@ -941,12 +960,16 @@ def resolve_selected_test_panel_state(state: SelectedTestScopeState) -> Selected
         detail = TEST_SCOPE_STATUS_LOADED_NOT_ACTIVATED_DETAIL
     elif reason == SELECTED_TEST_STATUS_MANUAL_RESTORED:
         detail = TEST_SCOPE_STATUS_MANUAL_RESTORED_DETAIL
+    elif reason == SELECTED_TEST_STATUS_SCOPE_SWAP_REQUIRED:
+        detail = TEST_SCOPE_STATUS_SCOPE_SWAP_REQUIRED_DETAIL
     elif reason == SELECTED_TEST_STATUS_BLOCKED_ESTOP:
         detail = TEST_SCOPE_STATUS_BLOCKED_ESTOP_DETAIL
     elif reason == SELECTED_TEST_STATUS_BLOCKED_DISABLED:
         detail = TEST_SCOPE_STATUS_BLOCKED_DISABLED_DETAIL
     elif reason == SELECTED_TEST_STATUS_BLOCKED_NOT_TELEOP:
         detail = TEST_SCOPE_STATUS_BLOCKED_NOT_TELEOP_DETAIL
+    elif reason == SELECTED_TEST_STATUS_BLOCKED_NOT_CONNECTED:
+        detail = TEST_SCOPE_STATUS_BLOCKED_NOT_CONNECTED_DETAIL
     elif reason.startswith(SELECTED_TEST_STATUS_MISSING_PREFIX):
         missing = reason.split(" - ", 1)[1].strip()
         detail = TEST_SCOPE_STATUS_MISSING_DEVICE_PREFIX + missing
@@ -1230,7 +1253,9 @@ def resolve_scope_control_state(
             }
         )
     )
-    membership_change_required = desired_scope_members != current_scope_members
+    membership_change_required = bool(desired_scope_members) and any(
+        member not in current_scope_members for member in desired_scope_members
+    )
     runtime_or_scope_active = bool(runtime_profile_active) or bool(controlled_lifecycle_active)
     activate_allowed = False
     deactivate_allowed = False
@@ -1248,6 +1273,12 @@ def resolve_scope_control_state(
         blocked_reason = TEST_SCOPE_STATUS_REQUIRED_UNAVAILABLE_DETAIL
     elif normalized_scope == RUNNABLE_SCOPE_KIND_SELECTED_TEST and selected_test_running:
         blocked_reason = TEST_SCOPE_STATUS_RUNNING_DETAIL
+    elif (
+        normalized_scope == RUNNABLE_SCOPE_KIND_SELECTED_TEST
+        and bool(controlled_lifecycle_active)
+        and membership_change_required
+    ):
+        blocked_reason = TEST_SCOPE_STATUS_SCOPE_SWAP_REQUIRED_DETAIL
     elif runtime_block_reason:
         blocked_reason = runtime_block_reason
     else:
@@ -1257,6 +1288,7 @@ def resolve_scope_control_state(
             activate_allowed = (
                 selected_test_selected
                 and not bool(selected_test_invalid)
+                and not (bool(controlled_lifecycle_active) and membership_change_required)
             )
         else:
             activate_allowed = bool(runnable_scope_state.activation_allowed)

@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import frc.robot.BringupUtil;
+import frc.robot.devices.ctre.CtreCANCoderDevice;
+import frc.robot.devices.ctre.CtrePigeonDevice;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -57,6 +59,18 @@ class ActiveDevicePresenceProbeTest {
     assertTrue(ActiveDevicePresenceProbe.isSupplementalProbeTarget("PDH"));
     assertFalse(ActiveDevicePresenceProbe.isSupplementalProbeTarget("TALON_FX"));
     assertFalse(ActiveDevicePresenceProbe.isSupplementalProbeTarget("UNSUPPORTED"));
+  }
+
+  @Test
+  void inferProbeModelRecognizesCancoderAndPigeonTargets() {
+    assertEquals(
+        "CANCODER",
+        ActiveDevicePresenceProbe.inferProbeModel(
+            new CtreCANCoderDevice(18, "cancoder", new BringupUtil.LimitConfig())));
+    assertEquals(
+        "PIGEON",
+        ActiveDevicePresenceProbe.inferProbeModel(
+            new CtrePigeonDevice(19, "pigeon 2")));
   }
 
   @Test

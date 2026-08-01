@@ -8,6 +8,7 @@ import frc.robot.devices.DeviceUnit;
 import frc.robot.devices.ctre.CtreCANCoderDevice;
 import frc.robot.devices.ctre.CtreCANdleDevice;
 import frc.robot.devices.ctre.CtrePdpDevice;
+import frc.robot.devices.ctre.CtrePigeonDevice;
 import frc.robot.devices.ctre.CtreTalonFxDevice;
 import frc.robot.diag.snapshots.DeviceSnapshot;
 import frc.robot.diag.snapshots.LimitsAttachment;
@@ -99,6 +100,15 @@ public final class CtreDeviceGroup implements ManufacturerGroup {
       false,
       config -> new CtrePdpDevice(config.getId(), config.getLabel()));
 
+  private static final DeviceRegistration PIGEON_REGISTRATION = new DeviceRegistration(
+      CtrePigeonDevice.HEADER,
+      "CTRE",
+      "Pigeon",
+      "Pigeon",
+      DeviceRole.MISC,
+      false,
+      config -> new CtrePigeonDevice(config.getId(), config.getLabel()));
+
   private final List<DeviceTypeBucket> buckets = new ArrayList<>();
   private final List<DeviceTypeBucket> motorBuckets = new ArrayList<>();
 
@@ -118,6 +128,7 @@ public final class CtreDeviceGroup implements ManufacturerGroup {
     register(CANCODER_REGISTRATION, false);
     register(CANDLE_REGISTRATION, false);
     register(PDP_REGISTRATION, false);
+    register(PIGEON_REGISTRATION, false);
   }
 
   @Override

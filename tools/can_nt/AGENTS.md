@@ -25,6 +25,10 @@ Entry points and usage
 Change discipline
 - If editing shared host-side diagnostics contracts, update every supported consumer in the same repo change.
 - Avoid cleverness. Prefer readable code and comments over micro-optimizations.
+- If planned host-side UI/runtime work would change operator-facing rules or workflows documented in `Current UI And Runtime Rules - V2.md`, stop first and explicitly tell the user that the change would alter the rules.
+- Ask whether to continue before changing code or updating the rules document.
+- Do not automatically update the rules document for behavior changes without that explicit approval.
+- No cached host-local flag may be the authoritative source for operator-facing steady-state truth when the same meaning can be derived from current shared runtime/robot state.
 
 Testing checklist for tool changes
 - Script starts and can open the CAN bus.

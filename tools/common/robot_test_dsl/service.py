@@ -67,9 +67,14 @@ DEVICE_TYPE_DSL_PDH = "PDH"
 DEVICE_TYPE_DSL_PDP = "PDP"
 DEVICE_TYPE_DSL_LIMIT_SWITCH = "limitSwitch"
 DEVICE_TYPE_DSL_ENCODER_EXTERNAL = "encoderExternal"
+DEVICE_TYPE_DSL_IMU = "imu"
 DEVICE_TYPE_DSL_XBOX_CONTROLLER = "xboxController"
+DEVICE_TYPE_ALIAS_CANCODER = "CANCoder"
+DEVICE_TYPE_ALIAS_PIGEON = "Pigeon"
 MANUFACTURER_CTRE = 4
 MANUFACTURER_REV = 5
+DEVICE_TYPE_GYRO = 4
+DEVICE_TYPE_ENCODER = 7
 DEVICE_TYPE_POWER = 8
 MODEL_PDP = "PDP"
 MODEL_PDH = "PDH"
@@ -140,7 +145,7 @@ def resolve_profile_device_dsl_type(device_entry: Dict[str, object]) -> str:
         return ""
     explicit_type = str(device_entry.get(KEY_TYPE, "") or "").strip()
     if explicit_type:
-        return explicit_type
+        return _canonicalize_profile_device_dsl_type(explicit_type)
     raw_model = str(device_entry.get(KEY_MODEL, "") or "").strip().upper()
     raw_manufacturer = device_entry.get(KEY_MANUFACTURER)
     raw_device_type = device_entry.get(KEY_DEVICE_TYPE)
@@ -152,12 +157,30 @@ def resolve_profile_device_dsl_type(device_entry: Dict[str, object]) -> str:
         device_type = int(raw_device_type)
     except Exception:
         device_type = None
+    if manufacturer == MANUFACTURER_CTRE and device_type == DEVICE_TYPE_ENCODER:
+        return DEVICE_TYPE_DSL_ENCODER_EXTERNAL
+    if manufacturer == MANUFACTURER_CTRE and device_type == DEVICE_TYPE_GYRO:
+        return DEVICE_TYPE_DSL_IMU
     if device_type == DEVICE_TYPE_POWER:
         if manufacturer == MANUFACTURER_CTRE or MODEL_PDP in raw_model:
             return DEVICE_TYPE_DSL_PDP
         if manufacturer == MANUFACTURER_REV or MODEL_PDH in raw_model:
             return DEVICE_TYPE_DSL_PDH
     return ""
+
+
+def _canonicalize_profile_device_dsl_type(device_type: str) -> str:
+    """
+    NAME
+        _canonicalize_profile_device_dsl_type - Normalize one profile/config logical device type to the shared DSL catalog key.
+    """
+    if not device_type:
+        return ""
+    if device_type == DEVICE_TYPE_ALIAS_CANCODER:
+        return DEVICE_TYPE_DSL_ENCODER_EXTERNAL
+    if device_type == DEVICE_TYPE_ALIAS_PIGEON:
+        return DEVICE_TYPE_DSL_IMU
+    return device_type
 
 
 def device_catalog(root_payload: Dict[str, object], profile_name: str) -> Dict[str, Dict[str, object]]:

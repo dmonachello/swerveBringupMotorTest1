@@ -36,6 +36,9 @@ TEST_DISCOVERED_IDENTITY = "99:88:77"
 TEST_DISCOVERED_LABEL = "UNPROFILED_DEVICE_1"
 TEST_RENAMED_LABEL = "rear-can-observer"
 TEST_OBSERVER_SOURCE = "src0"
+TEST_PIGEON_LABEL = "Pigeon 2"
+TEST_PIGEON_CANONICAL_IDENTITY = "4:4:19"
+TEST_PIGEON_RAW_ARB_ID = 0x15040013
 
 
 class VisibilityProviderTests(unittest.TestCase):
@@ -206,6 +209,40 @@ class VisibilityProviderTests(unittest.TestCase):
 
         self.assertEqual(1, len(recent))
         self.assertEqual(frame, recent[0])
+
+    def test_normalized_frame_identity_overrides_raw_decode_for_ctre_pigeon(self) -> None:
+        provider = self._build_provider()
+        provider.set_expected_devices([(TEST_PIGEON_LABEL, TEST_PIGEON_CANONICAL_IDENTITY)])
+        frame = NormalizedFrame(
+            timestamp_s=1.25,
+            can_id=TEST_PIGEON_RAW_ARB_ID,
+            dlc=8,
+            data_hex="0000000000000000",
+            is_extended=True,
+            is_rtr=False,
+            manufacturer=4,
+            device_type=4,
+            api_class=0,
+            api_index=0,
+            device_id=19,
+            observer_source=TEST_OBSERVER_SOURCE,
+        )
+
+        provider.ingest_frame(
+            TEST_SOURCE_ID,
+            arb_id=TEST_PIGEON_RAW_ARB_ID,
+            ts_ms=TEST_SEEN_MS,
+            decoded_key=None,
+            label=TEST_PIGEON_LABEL,
+            normalized_frame=frame,
+        )
+
+        snapshot = provider.snapshot(VIS_SCOPE_BOTH, TEST_NOW_MS)
+        devices = snapshot[VIS_KEY_DEVICES]
+
+        self.assertEqual(1, len(devices))
+        self.assertEqual(TEST_PIGEON_LABEL, devices[0][VIS_KEY_LABEL])
+        self.assertEqual(TEST_PIGEON_CANONICAL_IDENTITY, devices[0][VIS_KEY_IDENTITY])
 
 
 if __name__ == "__main__":

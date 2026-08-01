@@ -5,7 +5,9 @@ package frc.robot.diag.snapshots;
  *   EncoderAttachment - Encoder telemetry for a device.
  */
 public final class EncoderAttachment extends DeviceAttachment {
+  public Double absRot;
   public Double absDeg;
+  public Double velocityRps;
   public String lastError = "";
 
   /**

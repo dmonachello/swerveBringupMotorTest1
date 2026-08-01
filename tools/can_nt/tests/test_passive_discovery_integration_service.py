@@ -95,7 +95,7 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
 
         title = evidence_overall_title("Device Evidence", status)
 
-        self.assertEqual("Device Evidence [NEW]", title)
+        self.assertEqual("Device Evidence", title)
 
     def test_normalize_evidence_engine_status_promotes_all_new_sections(self) -> None:
         status = {
@@ -436,6 +436,16 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
                         "ctre": {
                             "model": "Talon FX",
                             "firmware": "1.2.3",
+                            "vendor": "CTR Electronics",
+                            "status": "Running Application",
+                            "canbus": "rio",
+                            "hardwareRev": "1.0",
+                            "bootloader": "1.0",
+                            "manufactured": "Jun 30, 2025",
+                            "isProLicensed": False,
+                            "supportsControl": True,
+                            "supportsConfigs": True,
+                            "supportsDecoratedSelfTest": True,
                             "faultsTrue": [],
                             "stickyFaultsTrue": [],
                         }
@@ -469,6 +479,16 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
         self.assertIn("lastEvaluationAt", row)
         self.assertIn("runStatus=Enrichment: ran 1.0s ago", row["enrichmentText"])
         self.assertIn("ctreHttp=present", row["enrichmentText"])
+        self.assertIn("status=Running Application", row["enrichmentText"])
+        self.assertIn("vendor=CTR Electronics", row["enrichmentText"])
+        self.assertIn("canbus=rio", row["enrichmentText"])
+        self.assertIn("hardwareRev=1.0", row["enrichmentText"])
+        self.assertIn("bootloader=1.0", row["enrichmentText"])
+        self.assertIn("manufactured=Jun 30, 2025", row["enrichmentText"])
+        self.assertIn("isProLicensed=no", row["enrichmentText"])
+        self.assertIn("supportsControl=yes", row["enrichmentText"])
+        self.assertIn("supportsConfigs=yes", row["enrichmentText"])
+        self.assertIn("supportsDecoratedSelfTest=yes", row["enrichmentText"])
         self.assertIn("deviceContribution=ctreHttp", row["enrichmentText"])
         self.assertIn(
             "Host enrichment ran 1.0s ago; ctreHttp=ok; topology=ok; consoleLog=empty.",

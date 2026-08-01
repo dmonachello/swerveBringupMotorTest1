@@ -836,6 +836,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     state = SnifferState()
     frame_queue: queue.Queue[FrameItem] = queue.Queue()
     source_stop_event = threading.Event()
+    source_control_lock = threading.Lock()
     stop_requested = False
     state.last_marker_ts = 0.0
     marker_keys = {"0", "1", "2", "3", "4", "m", "q", "h"}
@@ -884,14 +885,99 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 )
             frame_queue.put(FrameItem(runtime.source_id, msg, time.time()))
 
+    def _set_runtime_source_available(runtime: SourceRuntime, available: bool) -> None:
+        """
+        NAME
+            _set_runtime_source_available - Update one source availability flag and publish it to visibility state.
+        """
+        runtime.available = bool(available)
+        visibility_provider.set_source_available(
+            runtime.source_id,
+            runtime.available,
+            int(time.time() * VIS_MS_PER_SEC),
+        )
+
+    def _shutdown_runtime_bus(runtime: SourceRuntime) -> None:
+        """
+        NAME
+            _shutdown_runtime_bus - Close one runtime CAN bus and mark the source unavailable.
+        """
+        bus_handle = runtime.bus
+        runtime.bus = None
+        _set_runtime_source_available(runtime, SOURCE_AVAILABLE_FALSE)
+        if bus_handle is None:
+            return
+        try:
+            bus_handle.shutdown()
+        except Exception as exc:
+            print(f"WARNING: Failed to close CAN bus for source {runtime.source_id}: {exc}")
+
+    def _open_runtime_bus(runtime: SourceRuntime) -> bool:
+        """
+        NAME
+            _open_runtime_bus - Open one runtime CAN bus and publish availability.
+        """
+        if not runtime.enabled:
+            _set_runtime_source_available(runtime, SOURCE_AVAILABLE_FALSE)
+            return False
+        if not runtime.port:
+            print(SOURCE_ERR_PORT.format(source_id=runtime.source_id))
+            _set_runtime_source_available(runtime, SOURCE_AVAILABLE_FALSE)
+            return False
+        try:
+            runtime.bus = can.Bus(
+                interface=runtime.interface,
+                channel=runtime.port,
+                bitrate=runtime.bitrate,
+            )
+        except Exception as exc:
+            runtime.bus = None
+            _set_runtime_source_available(runtime, SOURCE_AVAILABLE_FALSE)
+            print(SOURCE_WARN_OPEN.format(source_id=runtime.source_id, error=exc))
+            return False
+        _set_runtime_source_available(runtime, SOURCE_AVAILABLE_TRUE)
+        print(SOURCE_INFO_AVAILABLE.format(source_id=runtime.source_id))
+        return True
+
+    def _refresh_primary_bus_selection() -> None:
+        """
+        NAME
+            _refresh_primary_bus_selection - Recompute the current primary bus/source from open runtimes.
+        """
+        nonlocal bus, primary_bus, primary_source_id, primary_channel
+        primary_bus = None
+        primary_source_id = EMPTY_STRING
+        primary_channel = EMPTY_STRING
+        for runtime in source_runtimes:
+            if runtime.bus is None:
+                continue
+            primary_bus = runtime.bus
+            primary_source_id = runtime.source_id
+            primary_channel = runtime.port
+            break
+        bus = primary_bus
+
+    def _clear_pending_frames() -> None:
+        """
+        NAME
+            _clear_pending_frames - Drop any queued passive CAN frames after a source restart.
+        """
+        while True:
+            try:
+                frame_queue.get_nowait()
+            except queue.Empty:
+                break
+
     def _start_source_threads() -> None:
         """
         NAME
             _start_source_threads - Start reader threads for enabled sources.
         """
+        source_stop_event.clear()
         for runtime in source_runtimes:
             if runtime.bus is None:
                 continue
+            runtime.stop_event.clear()
             thread = threading.Thread(
                 target=_source_reader,
                 args=(runtime,),
@@ -913,6 +999,27 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             if runtime.thread is None:
                 continue
             runtime.thread.join(timeout=SOURCE_THREAD_JOIN_SEC)
+            runtime.thread = None
+
+    def _restart_source_threads() -> bool:
+        """
+        NAME
+            _restart_source_threads - Restart passive CAN source buses and reader threads in place.
+        """
+        if not sniffer_enabled:
+            return False
+        with source_control_lock:
+            _stop_source_threads()
+            _clear_pending_frames()
+            for runtime in source_runtimes:
+                _shutdown_runtime_bus(runtime)
+            reopened_any = False
+            for runtime in source_runtimes:
+                if _open_runtime_bus(runtime):
+                    reopened_any = True
+            _refresh_primary_bus_selection()
+            _start_source_threads()
+            return reopened_any
 
     def _keyboard_worker() -> None:
         try:
@@ -984,15 +1091,36 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         ts_s = item.ts_s
         ts_ms = int(ts_s * VIS_MS_PER_SEC)
 
+        normalized_frame = build_normalized_frame(
+            timestamp_s=ts_s,
+            can_id=arb_id,
+            data_bytes=data,
+            is_extended=is_extended,
+            is_rtr=is_rtr,
+            observer_source=item.source_id,
+        )
         decoded_key = None
         label = None
-        try:
-            mfg, dtype, did = _decode_device_key(arb_id)
-            decoded_key = _visibility_key_from_ids(mfg, dtype, did)
-            label = _resolve_device_label((mfg, dtype, did))
-        except Exception:
-            decoded_key = None
-            label = None
+        if (
+            normalized_frame.manufacturer is not None
+            and normalized_frame.device_type is not None
+            and normalized_frame.device_id is not None
+        ):
+            canonical_key = (
+                int(normalized_frame.manufacturer),
+                int(normalized_frame.device_type),
+                int(normalized_frame.device_id),
+            )
+            decoded_key = _visibility_key_from_ids(canonical_key[0], canonical_key[1], canonical_key[2])
+            label = _resolve_device_label(canonical_key)
+        else:
+            try:
+                mfg, dtype, did = _decode_device_key(arb_id)
+                decoded_key = _visibility_key_from_ids(mfg, dtype, did)
+                label = _resolve_device_label((mfg, dtype, did))
+            except Exception:
+                decoded_key = None
+                label = None
 
         visibility_provider.ingest_frame(
             item.source_id,
@@ -1000,14 +1128,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             ts_ms,
             decoded_key=decoded_key,
             label=label,
-            normalized_frame=build_normalized_frame(
-                timestamp_s=ts_s,
-                can_id=arb_id,
-                data_bytes=data,
-                is_extended=is_extended,
-                is_rtr=is_rtr,
-                observer_source=item.source_id,
-            ),
+            normalized_frame=normalized_frame,
         )
 
         if item.source_id != primary_source_id:
@@ -1460,6 +1581,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             on_close=on_close,
             visibility_provider=visibility_provider,
             console_monitor=console_monitor,
+            restart_can_sniffer=_restart_source_threads if sniffer_enabled else None,
         )
         def _release_ui_lock() -> None:
             try:

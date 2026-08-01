@@ -1590,9 +1590,9 @@ public final class BringupCore {
         BringupTestResult result) {
       TestRunSnapshot snapshot = idle();
       snapshot.runId = runId;
-      if (result == BringupTestResult.PASS) {
+      if (result != null && result.isPassing()) {
         snapshot.state = TEST_RUN_STATE_PASSED;
-      } else if (result == BringupTestResult.INTERRUPTED) {
+      } else if (result != null && result.isInterrupted()) {
         snapshot.state = TEST_RUN_STATE_INTERRUPTED;
       } else {
         snapshot.state = TEST_RUN_STATE_FAILED;

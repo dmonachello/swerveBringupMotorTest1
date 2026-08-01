@@ -23,8 +23,8 @@ Hard rules
 
 - The Python side must be read-only on CAN. Never transmit CAN frames.
 - Keep a strict separation between local robot data (read directly on the roboRIO) and CAN-bus data coming from the PC tool through supported REST-driven or host-local diagnostics flows. Do not mix or conflate the two in logging, diagnostics, or APIs.
-- NetworkTables is retired for supported bringup flows. If NT appears in current code, docs, or generated artifacts, treat it as historical, compatibility-only, or a regression unless explicitly justified.
-- Before changing any remaining NT references, inventory current Java/Python usage first and document whether the reference is active, compatibility-only, generated, or historical.
+- NetworkTables is retired for supported bringup flows. If a NetworkTables reference appears in current code, docs, or generated artifacts, treat it as historical, compatibility-only, or a regression unless explicitly justified.
+- Before changing any remaining NetworkTables references, inventory current Java/Python usage first and document whether the reference is active, compatibility-only, generated, or historical.
 - Windows is the primary host for the Python tool (Driver Station Windows PC). Avoid Linux-only assumptions (SocketCAN, can0, etc) unless explicitly requested.
 - Prefer small, reversible diffs. No sweeping refactors unless asked.
 - For behavior exposed through multiple surfaces (for example editor, live UI, CLI, reports), common code must own the full shared contract, not just helper primitives. If two surfaces are supposed to show or interpret the same topology/config state, they must share the same scene/model-building path or an explicitly documented compatibility adapter. Do not add or preserve independent render/composition pipelines for the same artifact unless the difference is intentional and documented.
@@ -33,11 +33,14 @@ Hard rules
 - Keep hardware configuration easy to customize: adding a team's device list/profile should be data-driven and clearly documented, not code surgery.
 - The JSON report exposes telemetry under `devices[].attachments` (e.g., `type=revMotor` / `ctreMotor`) with fields such as `cmdDuty`, `appliedDuty`, and `motorCurrentA`.
 - AI diagnosis guidance lives in `docs/AI_DIAGNOSIS.md`.
-- For any task that changes UI/runtime behavior, treat `docs/CURRENT_UI_RUNTIME_RULES.md` as the working behavior baseline:
+- For any task that changes UI/runtime behavior, treat `Current UI And Runtime Rules - V2.md` as the working behavior baseline:
   - check the current code against that document before making behavior changes
-  - after the change, verify whether the implementation still conforms
-  - if the behavior intentionally changes, update `docs/CURRENT_UI_RUNTIME_RULES.md` in the same change
-  - if the change affects the `Common Workflows` section in `docs/CURRENT_UI_RUNTIME_RULES.md`, update the matching `UI Runtime Workflow Lockstep` section in `docs/USER_GUIDE_REGRESSION_RUNNER.md` in the same change
+  - if the intended implementation would change that document's rules, workflows, or operator-facing behavior, stop before making the behavior/doc change and explicitly tell the user that the planned work would change the rules
+  - ask whether to continue before changing the implementation or updating the rules document
+  - do not automatically update `Current UI And Runtime Rules - V2.md` just because code drift or a newer rule seems preferable
+  - only after the user explicitly approves the behavior/rules change may the implementation and `Current UI And Runtime Rules - V2.md` be updated
+  - after an approved behavior change, verify whether the implementation still conforms
+  - if the approved change affects the `Common Workflows` section in `Current UI And Runtime Rules - V2.md`, update the matching `UI Runtime Workflow Lockstep` section in `docs/USER_GUIDE_REGRESSION_RUNNER.md` in the same change
   - those two sections must stay in lockstep; do not change one without the other
 - Every real bug fix must add the narrowest meaningful regression test for that bug unless the bug is inherently not automatable; when automation is not practical, document the reason explicitly in the change notes.
 - Enforce no string or numeric literals in executable code paths. All literals must be defined in a dedicated constants section/file and referenced symbolically. (Documentation and constant definitions are exempt.)
@@ -161,6 +164,10 @@ Purpose: Keep new work aligned with the current architecture docs without forcin
 - One Shared-State Rule:
   - if two surfaces show the same meaning, they must consume the same shared state/view-model
   - no surface may independently recompute that meaning unless there is an explicit documented exception
+- No Cached-Truth Rule:
+  - no cached host-local flag may be the authoritative source for operator-facing state when that state can be derived from current shared runtime/robot state
+  - cached values may be used for pending intent, throttling, offline fallback, or transient workflow bookkeeping, but not as steady-state truth
+  - if live runtime/shared state and a cached flag disagree, the live runtime/shared state must win
 - Do not redo Java-side architecture just because a spec mentions a split; preserve existing working boundaries unless the task requires a change.
 - Preserve command semantics, status codes, batch behavior, and regression script compatibility during refactors.
 
@@ -276,7 +283,7 @@ Stage 4: Hypothesis decoders
 
 Stage 5: Publish insights
 
-- Publish inventory and key findings through supported host-local or REST-driven surfaces unless a compatibility-only NT path is explicitly justified.
+- Publish inventory and key findings through supported host-local or REST-driven surfaces unless a compatibility-only NetworkTables path is explicitly justified.
 - Java consumption must fail soft when host diagnostics are absent.
 
 Pit robot diagnosis direction

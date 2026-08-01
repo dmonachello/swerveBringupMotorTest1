@@ -4442,7 +4442,11 @@ public class BridgeUiCommandHandler {
     if (entry != null) {
       return entry;
     }
-    return findDeviceEntryByLabel(label, BringupUtil.getSelectedDevicesSorted());
+    entry = findDeviceEntryByLabel(label, BringupUtil.getSelectedDevicesSorted());
+    if (entry != null) {
+      return entry;
+    }
+    return BringupUtil.getConfiguredDeviceEntryByLabel(label);
   }
 
   /**

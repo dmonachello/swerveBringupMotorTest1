@@ -503,6 +503,16 @@ ENRICHMENT_CTRE_KEY_MODEL = "model"
 ENRICHMENT_CTRE_KEY_FIRMWARE = "firmware"
 ENRICHMENT_CTRE_KEY_FAULTS_TRUE = "faultsTrue"
 ENRICHMENT_CTRE_KEY_STICKY_FAULTS_TRUE = "stickyFaultsTrue"
+ENRICHMENT_CTRE_KEY_VENDOR = "vendor"
+ENRICHMENT_CTRE_KEY_STATUS = "status"
+ENRICHMENT_CTRE_KEY_CANBUS = "canbus"
+ENRICHMENT_CTRE_KEY_HARDWARE_REV = "hardwareRev"
+ENRICHMENT_CTRE_KEY_BOOTLOADER = "bootloader"
+ENRICHMENT_CTRE_KEY_MANUFACTURED = "manufactured"
+ENRICHMENT_CTRE_KEY_IS_PRO_LICENSED = "isProLicensed"
+ENRICHMENT_CTRE_KEY_SUPPORTS_CONTROL = "supportsControl"
+ENRICHMENT_CTRE_KEY_SUPPORTS_CONFIGS = "supportsConfigs"
+ENRICHMENT_CTRE_KEY_SUPPORTS_DECORATED_SELF_TEST = "supportsDecoratedSelfTest"
 CONSOLE_RECORD_KEY_CANDIDATE_PROFILE_NODE = "candidateProfileNode"
 CONSOLE_RECORD_KEY_SEVERITY = "severity"
 CONSOLE_RECORD_KEY_PARSED_EVIDENCE_TYPE = "parsedEvidenceType"
@@ -667,19 +677,17 @@ def section_engine_label(status: Dict[str, Any], section_key: str) -> str:
 def evidence_section_title(base_title: str, status: Dict[str, Any], section_key: str) -> str:
     """
     NAME
-        evidence_section_title - Append one explicit engine label to a UI section title.
+        evidence_section_title - Return the visible title for one Evidence inspector section.
     """
-    label = section_engine_label(status, section_key)
-    return f"{base_title} [{label}]"
+    return str(base_title or "")
 
 
 def evidence_overall_title(base_title: str, status: Dict[str, Any]) -> str:
     """
     NAME
-        evidence_overall_title - Append the overall engine label to a top-level Evidence surface title.
+        evidence_overall_title - Return the visible title for the top-level Evidence surface.
     """
-    label = str(status.get("engineLabel", ENGINE_LABEL_LEGACY)).strip() or ENGINE_LABEL_LEGACY
-    return f"{base_title} [{label}]"
+    return str(base_title or "")
 
 
 def normalize_evidence_engine_status(status: Dict[str, Any]) -> Dict[str, Any]:
@@ -3573,14 +3581,26 @@ def _build_enrichment_text(
     ctre_entry = enrichment_entry.get(ENRICHMENT_DEVICE_KEY_CTRE)
     if isinstance(ctre_entry, Mapping):
         device_sources.append(ENRICHMENT_SOURCE_CTRE)
+        ctre_parts = [
+            "ctreHttp=present",
+            f"model={str(ctre_entry.get(ENRICHMENT_CTRE_KEY_MODEL, TEXT_EMPTY)).strip() or EVIDENCE_SOURCE_NONE}",
+            f"firmware={str(ctre_entry.get(ENRICHMENT_CTRE_KEY_FIRMWARE, TEXT_EMPTY)).strip() or EVIDENCE_SOURCE_NONE}",
+            f"status={str(ctre_entry.get(ENRICHMENT_CTRE_KEY_STATUS, TEXT_EMPTY)).strip() or EVIDENCE_SOURCE_NONE}",
+            f"vendor={str(ctre_entry.get(ENRICHMENT_CTRE_KEY_VENDOR, TEXT_EMPTY)).strip() or EVIDENCE_SOURCE_NONE}",
+            f"canbus={str(ctre_entry.get(ENRICHMENT_CTRE_KEY_CANBUS, TEXT_EMPTY)).strip() or EVIDENCE_SOURCE_NONE}",
+            f"hardwareRev={str(ctre_entry.get(ENRICHMENT_CTRE_KEY_HARDWARE_REV, TEXT_EMPTY)).strip() or EVIDENCE_SOURCE_NONE}",
+            f"bootloader={str(ctre_entry.get(ENRICHMENT_CTRE_KEY_BOOTLOADER, TEXT_EMPTY)).strip() or EVIDENCE_SOURCE_NONE}",
+            f"manufactured={str(ctre_entry.get(ENRICHMENT_CTRE_KEY_MANUFACTURED, TEXT_EMPTY)).strip() or EVIDENCE_SOURCE_NONE}",
+            f"isProLicensed={_bool_text(ctre_entry.get(ENRICHMENT_CTRE_KEY_IS_PRO_LICENSED))}",
+            f"supportsControl={_bool_text(ctre_entry.get(ENRICHMENT_CTRE_KEY_SUPPORTS_CONTROL))}",
+            f"supportsConfigs={_bool_text(ctre_entry.get(ENRICHMENT_CTRE_KEY_SUPPORTS_CONFIGS))}",
+            (
+                "supportsDecoratedSelfTest="
+                + _bool_text(ctre_entry.get(ENRICHMENT_CTRE_KEY_SUPPORTS_DECORATED_SELF_TEST))
+            ),
+        ]
         lines.append(
-            EVIDENCE_NOTE_SEPARATOR.join(
-                (
-                    "ctreHttp=present",
-                    f"model={str(ctre_entry.get(ENRICHMENT_CTRE_KEY_MODEL, TEXT_EMPTY)).strip() or EVIDENCE_SOURCE_NONE}",
-                    f"firmware={str(ctre_entry.get(ENRICHMENT_CTRE_KEY_FIRMWARE, TEXT_EMPTY)).strip() or EVIDENCE_SOURCE_NONE}",
-                )
-            )
+            EVIDENCE_NOTE_SEPARATOR.join(ctre_parts)
         )
     topology_entry = enrichment_entry.get(ENRICHMENT_DEVICE_KEY_TOPOLOGY)
     if isinstance(topology_entry, Mapping):

@@ -7,6 +7,7 @@ import frc.robot.diag.snapshots.LedStatusAttachment;
 import frc.robot.manufacturers.ctre.diag.CtreMotorAttachment;
 import frc.robot.diag.snapshots.DeviceSnapshot;
 import frc.robot.diag.snapshots.EncoderAttachment;
+import frc.robot.diag.snapshots.ImuAttachment;
 import frc.robot.diag.snapshots.LimitsAttachment;
 import frc.robot.diag.snapshots.MotorSpecAttachment;
 import frc.robot.manufacturers.ctre.diag.PdpStatusAttachment;
@@ -61,6 +62,9 @@ public final class ReportTextBuilder {
   private static final String STATUS_STICKY_FAULT = "STICKY_FAULT";
   private static final String STATUS_ACTIVE_FAULT = "ACTIVE_FAULT";
   private static final String STATUS_OK = "OK";
+  private static final String TEXT_VIRTUAL_NO_API = ": present=YES (virtual, no API)";
+  private static final String TEXT_PIGEON_FAULT = " fault=0x";
+  private static final String TEXT_PIGEON_STICKY = " sticky=0x";
   private static final String FORMAT_CH = "%02d";
   private static final String FORMAT_CURRENT = "%6.2f";
 
@@ -154,10 +158,12 @@ public final class ReportTextBuilder {
         appendPdhDevice(sb, snap);
       } else if (DEVICE_TYPE_PDP.equals(snap.deviceType)) {
         appendPdpDevice(sb, snap);
+      } else if ("Pigeon".equals(snap.deviceType)) {
+        appendPigeon(sb, snap);
       } else if ("roboRIO".equals(snap.deviceType)) {
         ReportTextUtil.appendLine(
             sb,
-            "  roboRIO CAN " + snap.canId + ": present=YES (virtual, no API)");
+            "  roboRIO CAN " + snap.canId + TEXT_VIRTUAL_NO_API);
       }
     }
   }
@@ -259,6 +265,33 @@ public final class ReportTextBuilder {
         ": present=YES absDeg=" + formatDouble(encoder != null ? encoder.absDeg : null, 1) +
         " lastErr=" + safeText(encoder != null ? encoder.lastError : "") +
         formatLimitSummary(limits));
+    appendCanSuspicionLines(sb, snap);
+    appendLedLines(sb, snap);
+  }
+
+  /**
+   * NAME
+   *   appendPigeon - Append Pigeon device line.
+   */
+  private void appendPigeon(StringBuilder sb, DeviceSnapshot snap) {
+    if (!snap.present) {
+      ReportTextUtil.appendLine(
+          sb,
+          "  Pigeon CAN " + snap.canId + ": present=NO (not added)");
+      appendCanSuspicionLines(sb, snap);
+      appendLedLines(sb, snap);
+      return;
+    }
+    ImuAttachment imu = snap.getAttachment(ImuAttachment.class);
+    ReportTextUtil.appendLine(
+        sb,
+        "  Pigeon CAN " + snap.canId
+            + ": present=YES yawDeg=" + formatDouble(imu != null ? imu.yawDeg : null, 1)
+            + " pitchDeg=" + formatDouble(imu != null ? imu.pitchDeg : null, 1)
+            + " rollDeg=" + formatDouble(imu != null ? imu.rollDeg : null, 1)
+            + TEXT_PIGEON_FAULT + Integer.toHexString(imu != null && imu.faultsRaw != null ? imu.faultsRaw : 0)
+            + TEXT_PIGEON_STICKY + Integer.toHexString(imu != null && imu.stickyFaultsRaw != null ? imu.stickyFaultsRaw : 0)
+            + " lastErr=" + safeText(imu != null ? imu.lastError : ""));
     appendCanSuspicionLines(sb, snap);
     appendLedLines(sb, snap);
   }

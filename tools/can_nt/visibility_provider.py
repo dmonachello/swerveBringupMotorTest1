@@ -162,6 +162,16 @@ def _device_key_from_arb(arb_id: int) -> str:
     return VIS_KEY_ARB_PREFIX + VIS_HEX_PREFIX + format(arb_id, VIS_HEX_FORMAT)
 
 
+def _device_key_from_normalized_frame(frame: NormalizedFrame) -> str:
+    """
+    NAME
+        _device_key_from_normalized_frame - Build a visibility key from one normalized frame.
+    """
+    if frame.manufacturer is None or frame.device_type is None or frame.device_id is None:
+        return VIS_EMPTY_STRING
+    return _device_key_from_ids(int(frame.manufacturer), int(frame.device_type), int(frame.device_id))
+
+
 class VisibilityProvider:
     """
     NAME
@@ -275,6 +285,8 @@ class VisibilityProvider:
             if source_id not in self._sources:
                 return
             key = decoded_key
+            if not key and normalized_frame is not None:
+                key = _device_key_from_normalized_frame(normalized_frame)
             if not key:
                 try:
                     decoded = decode_shared_frc_ext_id(arb_id)

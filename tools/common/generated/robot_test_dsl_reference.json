@@ -41,7 +41,10 @@
                 "- position: number | read",
                 "- position_actual: number | read",
                 "- position_delta: number | read",
-                "- position_delta_max_abs: number | read"
+                "- position_delta_max_abs: number | read",
+                "- velocity: number | read",
+                "- velocity_actual: number | read",
+                "- velocity_actual_max_abs: number | read"
               ],
               "examples": [
                 "device \"driveEncoder0\"",
@@ -50,6 +53,58 @@
                 "    require \"driveEncoder0\".position_delta_max_abs > 5.0"
               ],
               "sourcePath": "src/main/java/frc/robot/tests/dsl/signals/encoderExternal.devices.md"
+            },
+            {
+              "id": "topic_device_type_imu",
+              "title": "imu",
+              "summary": "Inertial measurement devices used for orientation evidence without commanding motion directly.",
+              "syntax": [
+                "device \"<label>\"  # resolves to DSL type imu"
+              ],
+              "details": [
+                "Use this for configured devices whose logical DSL type resolves to `imu`, such as `Pigeon`.",
+                "`yaw`, `pitch`, and `roll` are live absolute readings from the runtime snapshot.",
+                "`yaw_delta`, `pitch_delta`, and `roll_delta` compare the current reading to the value captured at test start.",
+                "Aggregate signals such as `yaw_delta_max_abs` prove that orientation changed sometime during the run.",
+                "`angular_velocity_x`, `angular_velocity_y`, and `angular_velocity_z` are device-frame angular rates in degrees per second.",
+                "`accel_x`, `accel_y`, and `accel_z` are accelerometer readings in G.",
+                "`supply_voltage` reports the IMU supply rail in volts.",
+                "`faults` is true when active or sticky IMU faults are reported and may be cleared with `clear \"device\".faults`."
+              ],
+              "signals": [
+                "- accel_x: number | read",
+                "- accel_y: number | read",
+                "- accel_z: number | read",
+                "- angular_velocity_x: number | read",
+                "- angular_velocity_y: number | read",
+                "- angular_velocity_z: number | read",
+                "- faults: boolean | read, clear",
+                "- pitch: number | read",
+                "- pitch_delta: number | read",
+                "- pitch_delta_max_abs: number | read",
+                "- roll: number | read",
+                "- roll_delta: number | read",
+                "- roll_delta_max_abs: number | read",
+                "- supply_voltage: number | read",
+                "- yaw: number | read",
+                "- yaw_delta: number | read",
+                "- yaw_delta_max_abs: number | read"
+              ],
+              "examples": [
+                "device \"pigeon 2\"",
+                "main:",
+                "    until timer.elapsed >= 2.0",
+                "    require \"pigeon 2\".yaw_delta_max_abs > 5.0",
+                "test \"pigeon_static_sanity\"",
+                "device \"pigeon 2\"",
+                "main:",
+                "    until timer.elapsed >= 0.5",
+                "    require \"pigeon 2\".angular_velocity_z < 2.0",
+                "    require \"pigeon 2\".accel_z > 0.7",
+                "    require \"pigeon 2\".supply_voltage > 10.0",
+                "    require \"pigeon 2\".faults == false"
+              ],
+              "sourcePath": "src/main/java/frc/robot/tests/dsl/signals/imu.devices.md"
             },
             {
               "id": "topic_device_type_limitSwitch",
@@ -331,8 +386,24 @@
               "signals": [
                 "- A: boolean | read",
                 "- B: boolean | read",
+                "- BACK: boolean | read",
+                "- D_DOWN: boolean | read",
+                "- D_LEFT: boolean | read",
+                "- D_RIGHT: boolean | read",
+                "- D_UP: boolean | read",
+                "- LB: boolean | read",
+                "- leftTrigger: number | read",
+                "- leftX: number | read",
                 "- leftY: number | read",
-                "- rightY: number | read"
+                "- LS: boolean | read",
+                "- RB: boolean | read",
+                "- rightTrigger: number | read",
+                "- rightX: number | read",
+                "- rightY: number | read",
+                "- RS: boolean | read",
+                "- START: boolean | read",
+                "- X: boolean | read",
+                "- Y: boolean | read"
               ],
               "examples": [
                 "device \"controller0\"",
@@ -341,6 +412,58 @@
                 "    set \"SPARKMAX/NEO 25\".output_percent_cmd = controller0.leftY deadband 0.08 scaled 0.25 default 0.0"
               ],
               "sourcePath": "src/main/java/frc/robot/tests/dsl/signals/xboxController.devices.md"
+            }
+          ]
+        },
+        {
+          "id": "category_language",
+          "title": "Language Basics",
+          "summary": "Core syntax rules that apply across all DSL tests.",
+          "children": [
+            {
+              "id": "topic_comments",
+              "title": "Comments and Formatting",
+              "summary": "Use # for comments and keep statements line-oriented.",
+              "syntax": [
+                "# this is a comment",
+                "device \"cancoder\"  # inline comment"
+              ],
+              "details": [
+                "A # character starts a comment and the rest of that line is ignored.",
+                "Blank lines are allowed and only improve readability.",
+                "Statements are line-oriented; there are no nested blocks inside phases.",
+                "Examples in this reference use four-space indentation under init/main/close, but the important rule is one statement per line."
+              ],
+              "examples": [
+                "test \"cancoder_1st_test\"",
+                "",
+                "# declare every referenced device before phases",
+                "device \"cancoder\"",
+                "",
+                "main:",
+                "    # wait long enough to observe motion",
+                "    until timer.elapsed >= 5.0"
+              ]
+            },
+            {
+              "id": "topic_names_and_labels",
+              "title": "Names and Labels",
+              "summary": "Test names and device labels are quoted strings.",
+              "syntax": [
+                "test \"my_test_name\"",
+                "device \"SPARKMAX/NEO 25\"",
+                "require \"pigeon 2\".yaw_delta_max_abs > 5.0"
+              ],
+              "details": [
+                "Quote test names and device labels with double quotes.",
+                "Device labels should match the configured bringup device labels exactly.",
+                "Signal names and statement keywords are not quoted."
+              ],
+              "examples": [
+                "test \"pigeon2_yaw_static_sanity\"",
+                "device \"pigeon 2\"",
+                "success \"pigeon 2\".yaw_delta_max_abs > 5.0"
+              ]
             }
           ]
         },

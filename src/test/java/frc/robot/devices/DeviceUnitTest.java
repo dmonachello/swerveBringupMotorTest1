@@ -1,6 +1,7 @@
 package frc.robot.devices;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import frc.robot.devices.ni.RoboRioDevice;
@@ -54,6 +55,17 @@ class DeviceUnitTest {
 
     assertTrue(first.isCreated());
     assertTrue(replacement.isCreated());
+  }
+
+  @Test
+  void roboRioSnapshotAlwaysReportsVirtualPresence() {
+    RoboRioDevice device = new RoboRioDevice(0, "roborio");
+
+    DeviceSnapshot snapshot = device.snapshot();
+
+    assertTrue(snapshot.present);
+    assertEquals("virtual", snapshot.note);
+    assertFalse(device.isCreated());
   }
 
   private static final class FakeDevice implements DeviceUnit {

@@ -1,6 +1,8 @@
 package frc.robot.devices;
 
 import frc.robot.diag.snapshots.DeviceSnapshot;
+import frc.robot.diag.snapshots.EncoderAttachment;
+import frc.robot.diag.snapshots.ImuAttachment;
 import frc.robot.diag.snapshots.LimitsAttachment;
 import frc.robot.manufacturers.ctre.diag.CtreMotorAttachment;
 import frc.robot.manufacturers.ctre.diag.PdpStatusAttachment;
@@ -25,6 +27,24 @@ public final class DeviceDslSupport {
   private static final String CHANNEL_CURRENT_SUFFIX = "_current";
   private static final String CHANNEL_FAULT_SUFFIX = "_fault";
   private static final String CHANNEL_STICKY_FAULT_SUFFIX = "_sticky_fault";
+  private static final String IMU_SIGNAL_YAW = DslSignalRegistry.SIGNAL_YAW;
+  private static final String IMU_SIGNAL_PITCH = DslSignalRegistry.SIGNAL_PITCH;
+  private static final String IMU_SIGNAL_ROLL = DslSignalRegistry.SIGNAL_ROLL;
+  private static final String IMU_SIGNAL_YAW_DELTA = DslSignalRegistry.SIGNAL_YAW_DELTA;
+  private static final String IMU_SIGNAL_PITCH_DELTA = DslSignalRegistry.SIGNAL_PITCH_DELTA;
+  private static final String IMU_SIGNAL_ROLL_DELTA = DslSignalRegistry.SIGNAL_ROLL_DELTA;
+  private static final String IMU_SIGNAL_ANGULAR_VELOCITY_X =
+      DslSignalRegistry.SIGNAL_ANGULAR_VELOCITY_X;
+  private static final String IMU_SIGNAL_ANGULAR_VELOCITY_Y =
+      DslSignalRegistry.SIGNAL_ANGULAR_VELOCITY_Y;
+  private static final String IMU_SIGNAL_ANGULAR_VELOCITY_Z =
+      DslSignalRegistry.SIGNAL_ANGULAR_VELOCITY_Z;
+  private static final String IMU_SIGNAL_ACCEL_X = DslSignalRegistry.SIGNAL_ACCEL_X;
+  private static final String IMU_SIGNAL_ACCEL_Y = DslSignalRegistry.SIGNAL_ACCEL_Y;
+  private static final String IMU_SIGNAL_ACCEL_Z = DslSignalRegistry.SIGNAL_ACCEL_Z;
+  private static final String IMU_SIGNAL_SUPPLY_VOLTAGE =
+      DslSignalRegistry.SIGNAL_SUPPLY_VOLTAGE;
+  private static final String IMU_SIGNAL_FAULTS = DslSignalRegistry.SIGNAL_FAULTS;
 
   private DeviceDslSupport() {}
 
@@ -98,12 +118,68 @@ public final class DeviceDslSupport {
   }
 
   public static Object readEncoderSignal(DeviceUnit device, String signalName) {
-    if (device == null
-        || signalName == null
-        || !isEncoderPositionSignal(signalName)) {
+    if (device == null || signalName == null) {
       return null;
     }
-    return device.getPositionRotations();
+    DeviceSnapshot snapshot = device.snapshot();
+    EncoderAttachment encoder = snapshot.getAttachment(EncoderAttachment.class);
+    if (isEncoderPositionSignal(signalName)) {
+      if (encoder != null && encoder.absRot != null) {
+        return encoder.absRot;
+      }
+      return device.getPositionRotations();
+    }
+    if (isEncoderVelocitySignal(signalName)) {
+      if (encoder != null) {
+        return encoder.velocityRps;
+      }
+    }
+    return null;
+  }
+
+  public static Object readImuSignal(DeviceUnit device, String signalName) {
+    if (device == null || signalName == null || !isImuSignal(signalName)) {
+      return null;
+    }
+    DeviceSnapshot snapshot = device.snapshot();
+    ImuAttachment imu = snapshot.getAttachment(ImuAttachment.class);
+    if (imu == null) {
+      return null;
+    }
+    if (IMU_SIGNAL_YAW.equals(signalName) || IMU_SIGNAL_YAW_DELTA.equals(signalName)) {
+      return imu.yawDeg;
+    }
+    if (IMU_SIGNAL_PITCH.equals(signalName) || IMU_SIGNAL_PITCH_DELTA.equals(signalName)) {
+      return imu.pitchDeg;
+    }
+    if (IMU_SIGNAL_ROLL.equals(signalName) || IMU_SIGNAL_ROLL_DELTA.equals(signalName)) {
+      return imu.rollDeg;
+    }
+    if (IMU_SIGNAL_ANGULAR_VELOCITY_X.equals(signalName)) {
+      return imu.angularVelocityXDps;
+    }
+    if (IMU_SIGNAL_ANGULAR_VELOCITY_Y.equals(signalName)) {
+      return imu.angularVelocityYDps;
+    }
+    if (IMU_SIGNAL_ANGULAR_VELOCITY_Z.equals(signalName)) {
+      return imu.angularVelocityZDps;
+    }
+    if (IMU_SIGNAL_ACCEL_X.equals(signalName)) {
+      return imu.accelXG;
+    }
+    if (IMU_SIGNAL_ACCEL_Y.equals(signalName)) {
+      return imu.accelYG;
+    }
+    if (IMU_SIGNAL_ACCEL_Z.equals(signalName)) {
+      return imu.accelZG;
+    }
+    if (IMU_SIGNAL_SUPPLY_VOLTAGE.equals(signalName)) {
+      return imu.supplyVoltage;
+    }
+    if (IMU_SIGNAL_FAULTS.equals(signalName)) {
+      return imu.faults;
+    }
+    return null;
   }
 
   public static Object readPowerDistributionSignal(DeviceUnit device, String signalName) {
@@ -294,6 +370,28 @@ public final class DeviceDslSupport {
     return DslSignalRegistry.SIGNAL_POSITION.equals(signalName)
         || DslSignalRegistry.SIGNAL_POSITION_ACTUAL.equals(signalName)
         || DslSignalRegistry.SIGNAL_POSITION_DELTA.equals(signalName);
+  }
+
+  private static boolean isEncoderVelocitySignal(String signalName) {
+    return DslSignalRegistry.SIGNAL_VELOCITY.equals(signalName)
+        || DslSignalRegistry.SIGNAL_VELOCITY_ACTUAL.equals(signalName);
+  }
+
+  private static boolean isImuSignal(String signalName) {
+    return IMU_SIGNAL_YAW.equals(signalName)
+        || IMU_SIGNAL_PITCH.equals(signalName)
+        || IMU_SIGNAL_ROLL.equals(signalName)
+        || IMU_SIGNAL_YAW_DELTA.equals(signalName)
+        || IMU_SIGNAL_PITCH_DELTA.equals(signalName)
+        || IMU_SIGNAL_ROLL_DELTA.equals(signalName)
+        || IMU_SIGNAL_ANGULAR_VELOCITY_X.equals(signalName)
+        || IMU_SIGNAL_ANGULAR_VELOCITY_Y.equals(signalName)
+        || IMU_SIGNAL_ANGULAR_VELOCITY_Z.equals(signalName)
+        || IMU_SIGNAL_ACCEL_X.equals(signalName)
+        || IMU_SIGNAL_ACCEL_Y.equals(signalName)
+        || IMU_SIGNAL_ACCEL_Z.equals(signalName)
+        || IMU_SIGNAL_SUPPLY_VOLTAGE.equals(signalName)
+        || IMU_SIGNAL_FAULTS.equals(signalName);
   }
 
   private static Integer parsePowerChannelSignalIndex(String signalName, String suffix) {

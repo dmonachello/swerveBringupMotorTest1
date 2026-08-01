@@ -194,11 +194,11 @@ To include the robot suite, you must also pass:
 
 ## UI Runtime Workflow Lockstep
 
-Purpose: keep [CURRENT_UI_RUNTIME_RULES.md](./CURRENT_UI_RUNTIME_RULES.md) `Common Workflows` in lockstep with maintained regression coverage guidance.
+Purpose: keep [Current UI And Runtime Rules - V2.md](../Current%20UI%20And%20Runtime%20Rules%20-%20V2.md) `Common Workflows` in lockstep with maintained regression coverage guidance.
 
 This section must mirror the workflow headings in:
 
-- [CURRENT_UI_RUNTIME_RULES.md](./CURRENT_UI_RUNTIME_RULES.md)
+- [Current UI And Runtime Rules - V2.md](../Current%20UI%20And%20Runtime%20Rules%20-%20V2.md)
 
 The automated guard compares the workflow subsection headings in both places.
 If one list changes without the other, the regression fails.
@@ -222,14 +222,14 @@ Regression coverage:
 Regression coverage:
 
 - selected-test activate button-state tests
-- selected-test runtime activation command-path tests
+- selected-test shared lifecycle activation command-path tests
 
 ### Selected-Test Activation When The Active Scope Has The Wrong Membership
 
 Regression coverage:
 
 - shared selected-test activate gating tests
-- UI auto-deactivate/scope-swap/runtime-activate workflow tests
+- scope-swap-required workflow tests that prove no alternate activation path is used
 
 ### Selected-Test Run After Ready
 

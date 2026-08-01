@@ -39,13 +39,14 @@ This guide is honest about both:
 
 ## Core Idea
 
-Adding a device can affect up to five layers:
+Adding a device can affect up to six layers:
 
 1. profile/config layer
 2. passive discovery layer
 3. enrichment layer
 4. robot runtime layer
-5. UI interpretation layer
+5. DSL and operator workflow layer
+6. UI interpretation layer
 
 The system is healthiest when a new device only changes the lowest necessary layer.
 
@@ -136,7 +137,7 @@ Usually needed:
 - optional enrichment plugin
 - tests and documentation
 
-## The Five Extension Layers
+## The Six Extension Layers
 
 ## 1. Profile and Config Layer
 
@@ -282,7 +283,37 @@ Today:
 
 A new vendor or truly new device type usually still needs Java implementation work.
 
-## 5. UI Interpretation Layer
+## 5. DSL And Operator Workflow Layer
+
+## Purpose
+
+Define whether the device can be tested through the Robot Diagnostic Test DSL and what external stimulus or operator action is required.
+
+Important areas:
+
+- [docs/SPEC_DSL_DEVICE_SIGNAL_INTERFACE.md](/c:/Users/dmona/swerve3/docs/SPEC_DSL_DEVICE_SIGNAL_INTERFACE.md)
+- [docs/USER_GUIDE_ROBOT_TEST_DSL.md](/c:/Users/dmona/swerve3/docs/USER_GUIDE_ROBOT_TEST_DSL.md)
+- [docs/SPEC_NON_MOTOR_DEVICE_TESTING_AND_DSL_INTERVENTION.md](/c:/Users/dmona/swerve3/docs/SPEC_NON_MOTOR_DEVICE_TESTING_AND_DSL_INTERVENTION.md)
+- [src/main/java/frc/robot/tests/dsl/DslSignalRegistry.java](/c:/Users/dmona/swerve3/src/main/java/frc/robot/tests/dsl/DslSignalRegistry.java)
+- [tools/common/robot_test_dsl/service.py](/c:/Users/dmona/swerve3/tools/common/robot_test_dsl/service.py)
+
+This layer matters most for non-motor devices:
+
+- encoders need a shaft/module rotation stimulus
+- IMUs need a yaw/tilt stimulus
+- ambiguous checks may need a human confirmation signal
+- workflow scenarios must have matching regression coverage
+
+### User-Extensible Status
+
+Today:
+
+- ordinary motor and controller tests are supported
+- non-motor sensor tests need deliberate signal contracts and procedures
+
+A new sensor family is not complete until DSL-visible signals, operator instructions, and regression coverage are defined.
+
+## 6. UI Interpretation Layer
 
 ## Purpose
 

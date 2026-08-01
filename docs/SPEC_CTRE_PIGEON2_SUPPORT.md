@@ -6,6 +6,10 @@ SPEC_STATUS: PROPOSED
 
 Define the first complete bringup-system implementation of CTRE Pigeon 2.0 support.
 
+The generic non-motor testing and operator-intervention contract lives in:
+
+- [SPEC_NON_MOTOR_DEVICE_TESTING_AND_DSL_INTERVENTION.md](./SPEC_NON_MOTOR_DEVICE_TESTING_AND_DSL_INTERVENTION.md)
+
 This spec is intentionally scoped to a useful first slice:
 
 - robot-side device presence and telemetry support
@@ -237,7 +241,8 @@ test "pigeon_yaw_turn"
 device "IMU (Pigeon2)"
 
 main:
-    until "IMU (Pigeon2)".yaw > 20.0
+    until timer.elapsed >= 8.0
+    require "IMU (Pigeon2)".yaw_delta_max_abs > 15.0
 ```
 
 ```text
@@ -246,15 +251,15 @@ test "pigeon_pitch_tilt"
 device "IMU (Pigeon2)"
 
 main:
-    until abs("IMU (Pigeon2)".pitch) > 5.0
+    until timer.elapsed >= 8.0
+    require "IMU (Pigeon2)".pitch_delta_max_abs > 5.0
 ```
 
 First-pass rule:
 
 - signal names must be stable and documented in [docs/USER_GUIDE_ROBOT_TEST_DSL.md](/c:/Users/dmona/swerve3/docs/USER_GUIDE_ROBOT_TEST_DSL.md)
 - do not add multiple redundant aliases in the first slice
-
-SID_QUESTION: The current DSL examples assume `abs(...)` is acceptable in the expression layer. If not already supported, the initial manual procedure should avoid absolute-value expressions and use directional thresholds instead.
+- the current DSL does not support function calls such as `abs(...)`; use derived max-absolute delta signals for sign-independent movement tests
 
 ## UI Surfaces
 

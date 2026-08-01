@@ -59,6 +59,8 @@
         "SPARKMAX/NEO 25",
         "lmtSw0",
         "FALCON 9",
+        "pigeon 2",
+        "cancoder",
         "controller0"
       ],
       "dslTestSet": "test_minimal_25_9"
@@ -262,10 +264,30 @@
       "deviceType": 8,
       "model": "PDP",
       "type": ""
+    },
+    {
+      "label": "pigeon 2",
+      "deviceInterface": "CAN",
+      "id": 19,
+      "manufacturer": 4,
+      "deviceType": 4,
+      "model": "pigeon 2",
+      "type": "",
+      "terminator": false
+    },
+    {
+      "label": "cancoder",
+      "deviceInterface": "CAN",
+      "id": 18,
+      "manufacturer": 4,
+      "deviceType": 7,
+      "model": "cancoder",
+      "type": "encoderExternal",
+      "terminator": false
     }
   ],
-  "data_version": "2026-07-10_192524",
-  "data_hash": "3f4bbc61f05bad467a5c7b31de4d258f7b23d9ab705caf7f901d7c68cf7a4c9b",
+  "data_version": "2026-08-01_145650",
+  "data_hash": "34071f355514c22729fa8cf57bc4ab9137abedae09e81109cc75ba3bf4a56c32",
   "default_profile": "test_minimal_25_9",
   "bridgeConfig": {
     "schemaVersion": 2,
@@ -851,7 +873,9 @@
         "xxx25_leftY",
         "testDSL1",
         "newTests_123",
-        "mtrs_limit"
+        "pigeon2_yaw_static_sanity",
+        "mtrs_limit",
+        "cancoder_1st_test"
       ]
     },
     "testsByName": {
@@ -2332,8 +2356,8 @@
         "runnable": true
       },
       "newTests_123": {
-        "source": "test \"newTests_123\"\n\ndevice \"SPARKMAX/NEO 25\"\ndevice \"FALCON 9\"\ndevice \"controller0\"\ndevice \"pdp\"\ndevice \"lmtSw0\"\n\nmain:\n\tset \"SPARKMAX/NEO 25\".output_percent_cmd = controller0.leftY deadband 0.08 scaled 0.25 default 0.0\n\tset \"FALCON 9\".output_percent_cmd = 0.333\n\n\tuntil timer.elapsed >= 10.0\n\tuntil lmtSw0.pressed == true\n\n\tabort pdp.channel0_current > 10.0\n\trequire pdp.channel0_fault == false\n\trequire \"FALCON 9\".current_actual > 0.1\n\trequire \"SPARKMAX/NEO 25\".current_actual > 0.1\n",
-        "sourceHash": "c155328c9fcbd2d0cafc0e5d7dbc4276070437400c7027f1e620d96b567cfc23",
+        "source": "test \"newTests_123\"\n\ndevice \"SPARKMAX/NEO 25\"\ndevice \"FALCON 9\"\ndevice \"controller0\"\ndevice \"pdp\"\ndevice \"lmtSw0\"\ndevice \"pigeon 2\"\ndevice \"cancoder\"\n\nmain:\n\tset \"SPARKMAX/NEO 25\".output_percent_cmd = controller0.leftY deadband 0.08 scaled 0.25 default 0.0\n\tset \"FALCON 9\".output_percent_cmd = 0.333\n\n\tuntil timer.elapsed >= 10.0\n\tuntil lmtSw0.pressed == true\n\n\tabort pdp.channel0_current > 10.0\n\trequire pdp.channel0_fault == false\n\trequire \"FALCON 9\".current_actual > 0.1\n\trequire \"SPARKMAX/NEO 25\".current_actual > 0.1\n\trequire \"pigeon 2\".yaw_delta_max_abs > 5.0\n#\trequire \"cancoder\".position_delta_max_abs > 5.0\n\n\n",
+        "sourceHash": "c5556fc6abdbef20d4b2a31aeed8320d54e1a99c704f9c89f2af0ce8f9ea4732",
         "normalized": {
           "name": "newTests_123",
           "devices": [
@@ -2351,6 +2375,12 @@
             },
             {
               "name": "lmtSw0"
+            },
+            {
+              "name": "pigeon 2"
+            },
+            {
+              "name": "cancoder"
             }
           ],
           "unsafeExit": [],
@@ -2498,6 +2528,256 @@
                 "operator": ">",
                 "literal": {
                   "value": 0.1,
+                  "valueType": "number"
+                }
+              },
+              {
+                "id": "require_4",
+                "kind": "require",
+                "text": "require \"pigeon 2\".yaw_delta_max_abs > 5.0",
+                "reference": {
+                  "device": "pigeon 2",
+                  "signal": "yaw_delta_max_abs",
+                  "text": "pigeon 2.yaw_delta_max_abs"
+                },
+                "mode": "comparison",
+                "operator": ">",
+                "literal": {
+                  "value": 5.0,
+                  "valueType": "number"
+                }
+              }
+            ]
+          },
+          "close": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          }
+        },
+        "runnable": true
+      },
+      "pigeon2_yaw_static_sanity": {
+        "source": "test \"pigeon2_yaw_static_sanity\"\n\ndevice \"pigeon 2\"\ninit:\n    clear \"pigeon 2\".faults\n\nmain:\n    until timer.elapsed >= 8.0\n    require \"pigeon 2\".yaw_delta_max_abs > 5.0\n    require \"pigeon 2\".angular_velocity_z < 2.0\n    require \"pigeon 2\".accel_z > 0.7\n    require \"pigeon 2\".supply_voltage > 10.0\n    require \"pigeon 2\".faults == false\n",
+        "sourceHash": "b79b427165c350df2034fccdbe0ac61d7629fe374bfcbeb2d54456532e7db0d1",
+        "normalized": {
+          "name": "pigeon2_yaw_static_sanity",
+          "devices": [
+            {
+              "name": "pigeon 2"
+            }
+          ],
+          "unsafeExit": [],
+          "init": {
+            "sets": [],
+            "clears": [
+              {
+                "id": "clear_1",
+                "text": "clear \"pigeon 2\".faults",
+                "target": {
+                  "device": "pigeon 2",
+                  "signal": "faults",
+                  "text": "pigeon 2.faults"
+                }
+              }
+            ],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          },
+          "main": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [
+              {
+                "id": "until_1",
+                "kind": "until",
+                "text": "until timer.elapsed >= 8.0",
+                "reference": {
+                  "device": "timer",
+                  "signal": "elapsed",
+                  "text": "timer.elapsed"
+                },
+                "mode": "comparison",
+                "operator": ">=",
+                "literal": {
+                  "value": 8.0,
+                  "valueType": "number"
+                }
+              }
+            ],
+            "requires": [
+              {
+                "id": "require_1",
+                "kind": "require",
+                "text": "require \"pigeon 2\".yaw_delta_max_abs > 5.0",
+                "reference": {
+                  "device": "pigeon 2",
+                  "signal": "yaw_delta_max_abs",
+                  "text": "pigeon 2.yaw_delta_max_abs"
+                },
+                "mode": "comparison",
+                "operator": ">",
+                "literal": {
+                  "value": 5.0,
+                  "valueType": "number"
+                }
+              },
+              {
+                "id": "require_2",
+                "kind": "require",
+                "text": "require \"pigeon 2\".angular_velocity_z < 2.0",
+                "reference": {
+                  "device": "pigeon 2",
+                  "signal": "angular_velocity_z",
+                  "text": "pigeon 2.angular_velocity_z"
+                },
+                "mode": "comparison",
+                "operator": "<",
+                "literal": {
+                  "value": 2.0,
+                  "valueType": "number"
+                }
+              },
+              {
+                "id": "require_3",
+                "kind": "require",
+                "text": "require \"pigeon 2\".accel_z > 0.7",
+                "reference": {
+                  "device": "pigeon 2",
+                  "signal": "accel_z",
+                  "text": "pigeon 2.accel_z"
+                },
+                "mode": "comparison",
+                "operator": ">",
+                "literal": {
+                  "value": 0.7,
+                  "valueType": "number"
+                }
+              },
+              {
+                "id": "require_4",
+                "kind": "require",
+                "text": "require \"pigeon 2\".supply_voltage > 10.0",
+                "reference": {
+                  "device": "pigeon 2",
+                  "signal": "supply_voltage",
+                  "text": "pigeon 2.supply_voltage"
+                },
+                "mode": "comparison",
+                "operator": ">",
+                "literal": {
+                  "value": 10.0,
+                  "valueType": "number"
+                }
+              },
+              {
+                "id": "require_5",
+                "kind": "require",
+                "text": "require \"pigeon 2\".faults == false",
+                "reference": {
+                  "device": "pigeon 2",
+                  "signal": "faults",
+                  "text": "pigeon 2.faults"
+                },
+                "mode": "comparison",
+                "operator": "==",
+                "literal": {
+                  "value": false,
+                  "valueType": "boolean"
+                }
+              }
+            ]
+          },
+          "close": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          }
+        },
+        "runnable": true
+      },
+      "cancoder_1st_test": {
+        "source": "test \"cancoder_1st_test\"\n\ndevice \"cancoder\"\n\nmain:\n    until timer.elapsed >= 8.0\n    require \"cancoder\".position_delta_max_abs > 0.01\n    require \"cancoder\".velocity_actual_max_abs > 0.01\n",
+        "sourceHash": "d34c705d7f630fee4b2a4eaec9508e045359875458d6895ee5c282fb3a0b5e65",
+        "normalized": {
+          "name": "cancoder_1st_test",
+          "devices": [
+            {
+              "name": "cancoder"
+            }
+          ],
+          "unsafeExit": [],
+          "init": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [],
+            "requires": []
+          },
+          "main": {
+            "sets": [],
+            "clears": [],
+            "aborts": [],
+            "successes": [],
+            "untils": [
+              {
+                "id": "until_1",
+                "kind": "until",
+                "text": "until timer.elapsed >= 8.0",
+                "reference": {
+                  "device": "timer",
+                  "signal": "elapsed",
+                  "text": "timer.elapsed"
+                },
+                "mode": "comparison",
+                "operator": ">=",
+                "literal": {
+                  "value": 8.0,
+                  "valueType": "number"
+                }
+              }
+            ],
+            "requires": [
+              {
+                "id": "require_1",
+                "kind": "require",
+                "text": "require \"cancoder\".position_delta_max_abs > 0.01",
+                "reference": {
+                  "device": "cancoder",
+                  "signal": "position_delta_max_abs",
+                  "text": "cancoder.position_delta_max_abs"
+                },
+                "mode": "comparison",
+                "operator": ">",
+                "literal": {
+                  "value": 0.01,
+                  "valueType": "number"
+                }
+              },
+              {
+                "id": "require_2",
+                "kind": "require",
+                "text": "require \"cancoder\".velocity_actual_max_abs > 0.01",
+                "reference": {
+                  "device": "cancoder",
+                  "signal": "velocity_actual_max_abs",
+                  "text": "cancoder.velocity_actual_max_abs"
+                },
+                "mode": "comparison",
+                "operator": ">",
+                "literal": {
+                  "value": 0.01,
                   "valueType": "number"
                 }
               }
@@ -3861,8 +4141,8 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 887.7058823529412,
-              "y": 82.84893048128342,
+              "x": 974.4224598930482,
+              "y": 71.89973262032086,
               "yRelative": true
             }
           },
@@ -3875,8 +4155,8 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 438.3770053475932,
-              "y": 106.93716577540107,
+              "x": 666.1203208556157,
+              "y": 97.44786096256685,
               "yRelative": true
             }
           },
@@ -3903,8 +4183,8 @@
             "layout": {
               "bus": 0,
               "row": 0,
-              "x": 640.9465240641708,
-              "y": -57.30080213903743,
+              "x": 766.4973262032096,
+              "y": -47.81149732620321,
               "yRelative": true
             }
           },
@@ -3924,6 +4204,34 @@
               "y": -62.41042780748663,
               "yRelative": true
             }
+          },
+          {
+            "key": 8,
+            "objectType": "device",
+            "nodeType": "device",
+            "nodeClass": "device",
+            "deviceRef": "pigeon 2",
+            "layout": {
+              "bus": 0,
+              "row": 0,
+              "x": 443.02139037433125,
+              "y": -121.53609625668449,
+              "yRelative": true
+            }
+          },
+          {
+            "key": 9,
+            "objectType": "device",
+            "nodeType": "device",
+            "nodeClass": "device",
+            "deviceRef": "cancoder",
+            "layout": {
+              "bus": 0,
+              "row": 0,
+              "x": 889.7486631016035,
+              "y": -151.4639037433155,
+              "yRelative": true
+            }
           }
         ],
         "edges": [
@@ -3939,12 +4247,20 @@
             "id": "edge_2",
             "fromNode": 7,
             "fromPort": "right",
-            "toNode": 4,
+            "toNode": 8,
             "toPort": "left",
             "edgeType": "can_tap"
           },
           {
             "id": "edge_3",
+            "fromNode": 8,
+            "fromPort": "right",
+            "toNode": 4,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_4",
             "fromNode": 4,
             "fromPort": "right",
             "toNode": 6,
@@ -3952,15 +4268,23 @@
             "edgeType": "can_trunk"
           },
           {
-            "id": "edge_4",
+            "id": "edge_5",
             "fromNode": 6,
+            "fromPort": "right",
+            "toNode": 9,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_6",
+            "fromNode": 9,
             "fromPort": "right",
             "toNode": 2,
             "toPort": "left",
             "edgeType": "can_trunk"
           },
           {
-            "id": "edge_5",
+            "id": "edge_7",
             "fromNode": 1,
             "fromPort": "dio",
             "toNode": 5,
@@ -3968,7 +4292,7 @@
             "edgeType": "dio"
           },
           {
-            "id": "edge_6",
+            "id": "edge_8",
             "fromNode": 2,
             "fromPort": "power",
             "toNode": 6,
@@ -3976,7 +4300,7 @@
             "edgeType": "power"
           },
           {
-            "id": "edge_7",
+            "id": "edge_9",
             "fromNode": 2,
             "fromPort": "power",
             "toNode": 4,
@@ -3984,7 +4308,7 @@
             "edgeType": "power"
           },
           {
-            "id": "edge_8",
+            "id": "edge_10",
             "fromNode": 1,
             "fromPort": "power",
             "toNode": 2,
@@ -3992,7 +4316,23 @@
             "edgeType": "power"
           },
           {
-            "id": "edge_9",
+            "id": "edge_11",
+            "fromNode": 2,
+            "fromPort": "power",
+            "toNode": 9,
+            "toPort": "power",
+            "edgeType": "power"
+          },
+          {
+            "id": "edge_12",
+            "fromNode": 2,
+            "fromPort": "power",
+            "toNode": 8,
+            "toPort": "power",
+            "edgeType": "power"
+          },
+          {
+            "id": "edge_13",
             "fromNode": 4,
             "fromPort": "attachment",
             "toNode": 5,
@@ -4010,7 +4350,7 @@
             -4.0
           ],
           "busRights": [
-            1007.7058823529412
+            1054.4224598930482
           ],
           "busConnectors": [],
           "busConnectorSides": [],
@@ -4031,5 +4371,8 @@
         }
       }
     }
+  },
+  "diagram": {
+    "profiles": {}
   }
 }

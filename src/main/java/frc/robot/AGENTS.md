@@ -18,7 +18,7 @@ Hard rules
 - AI diagnosis guidance lives in `AI_DIAGNOSIS.md`.
 
 Interface contract discipline
-- Before altering any NT paths, search the codebase for all occurrences of:
+- Before altering any legacy NetworkTables compatibility paths, search the codebase for all occurrences of:
   - NetworkTable / NetworkTables
   - SmartDashboard
   - Shuffleboard
@@ -30,6 +30,10 @@ Change discipline
 - Keep changes small and testable.
 - Prefer explicit code paths over abstract frameworks for bringup code.
 - Keep operator controls and printouts stable unless asked to redesign them.
+- If planned work would change operator-facing UI/runtime rules or workflow behavior documented in `Current UI And Runtime Rules - V2.md`, stop first and explicitly tell the user that the change would alter the rules.
+- Ask whether to continue before changing code or updating the rules document.
+- Do not automatically update the rules document for behavior changes without that explicit approval.
+- No cached host-local or compatibility-side flag may be the authoritative source for operator-facing steady-state truth when the same meaning can be derived from current shared runtime/robot state.
 
 Reverse engineering support on robot side (new work)
 
