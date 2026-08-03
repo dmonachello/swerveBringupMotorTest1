@@ -6,6 +6,7 @@ Purpose: hub page for related documentation in this topic cluster.
 
 ## Concepts
 
+- [[Current UI And Runtime Rules - V2.md|Current UI And Runtime Rules - V2]]
 - [[Feature Spec - Scope-Aware Runtime Activation And Incremental Instantiation.md|Feature Spec - Scope-Aware Runtime Activation And Incremental Instantiation]]
 - [[docs/FEATURE_SPEC_RUNNABLE_VS_OBSERVED_DEVICE_SCOPE.md|FEATURE SPEC RUNNABLE VS OBSERVED DEVICE SCOPE]]
 - [[docs/FEATURE_SPEC_SCOPE_AWARE_RUNTIME_ACTIVATION_AND_INCREMENTAL_INSTANTIATION.md|FEATURE SPEC SCOPE AWARE RUNTIME ACTIVATION AND INCREMENTAL INSTANTIATION]]
@@ -25,7 +26,6 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/TEST_PROCEDURE_DSL_SELECTED_TEST_DEVICE_ACTIVATION_V2.md|TEST PROCEDURE DSL SELECTED TEST DEVICE ACTIVATION V2]]
 - [[docs/TEST_PROCEDURE_DSL_SELECTED_TEST_SCOPE_ACTIVATION.md|TEST PROCEDURE DSL SELECTED TEST SCOPE ACTIVATION]]
 - [[docs/TEST_PROCEDURE_ZERO_CONFIG.md|TEST PROCEDURE ZERO CONFIG]]
-- [[docs/WHITEPAPER_Bringup_DSL_Semantic_Model.md|WHITEPAPER Bringup DSL Semantic Model]]
 
 ## Editor
 
@@ -41,6 +41,7 @@ Purpose: hub page for related documentation in this topic cluster.
 
 ## Runtime
 
+- [[Current UI And Runtime Rules - V2.md|Current UI And Runtime Rules - V2]]
 - [[Feature Spec - Scope-Aware Runtime Activation And Incremental Instantiation.md|Feature Spec - Scope-Aware Runtime Activation And Incremental Instantiation]]
 - [[docs/FEATURE_SPEC_RUNNABLE_VS_OBSERVED_DEVICE_SCOPE.md|FEATURE SPEC RUNNABLE VS OBSERVED DEVICE SCOPE]]
 - [[docs/FEATURE_SPEC_SCOPE_AWARE_RUNTIME_ACTIVATION_AND_INCREMENTAL_INSTANTIATION.md|FEATURE SPEC SCOPE AWARE RUNTIME ACTIVATION AND INCREMENTAL INSTANTIATION]]
@@ -60,10 +61,10 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/TEST_PROCEDURE_DSL_SELECTED_TEST_DEVICE_ACTIVATION_V2.md|TEST PROCEDURE DSL SELECTED TEST DEVICE ACTIVATION V2]]
 - [[docs/TEST_PROCEDURE_DSL_SELECTED_TEST_SCOPE_ACTIVATION.md|TEST PROCEDURE DSL SELECTED TEST SCOPE ACTIVATION]]
 - [[docs/TEST_PROCEDURE_ZERO_CONFIG.md|TEST PROCEDURE ZERO CONFIG]]
-- [[docs/WHITEPAPER_Bringup_DSL_Semantic_Model.md|WHITEPAPER Bringup DSL Semantic Model]]
 
 ## Tests
 
+- [[Current UI And Runtime Rules - V2.md|Current UI And Runtime Rules - V2]]
 - [[Feature Spec - Scope-Aware Runtime Activation And Incremental Instantiation.md|Feature Spec - Scope-Aware Runtime Activation And Incremental Instantiation]]
 - [[docs/FEATURE_SPEC_RUNNABLE_VS_OBSERVED_DEVICE_SCOPE.md|FEATURE SPEC RUNNABLE VS OBSERVED DEVICE SCOPE]]
 - [[docs/FEATURE_SPEC_SCOPE_AWARE_RUNTIME_ACTIVATION_AND_INCREMENTAL_INSTANTIATION.md|FEATURE SPEC SCOPE AWARE RUNTIME ACTIVATION AND INCREMENTAL INSTANTIATION]]
@@ -83,7 +84,6 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/TEST_PROCEDURE_DSL_SELECTED_TEST_DEVICE_ACTIVATION_V2.md|TEST PROCEDURE DSL SELECTED TEST DEVICE ACTIVATION V2]]
 - [[docs/TEST_PROCEDURE_DSL_SELECTED_TEST_SCOPE_ACTIVATION.md|TEST PROCEDURE DSL SELECTED TEST SCOPE ACTIVATION]]
 - [[docs/TEST_PROCEDURE_ZERO_CONFIG.md|TEST PROCEDURE ZERO CONFIG]]
-- [[docs/WHITEPAPER_Bringup_DSL_Semantic_Model.md|WHITEPAPER Bringup DSL Semantic Model]]
 
 ## Related Topics
 

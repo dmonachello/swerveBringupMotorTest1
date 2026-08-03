@@ -20,6 +20,10 @@ Use the execution spec for authoritative runtime semantics:
 - [ROBOT_DIAGNOSTIC_TEST_DSL_SPEC_V0_3.md](./ROBOT_DIAGNOSTIC_TEST_DSL_SPEC_V0_3.md)
 - [FEATURE_SPEC_DSL_CONDITION_STABILITY_AND_RANGE_OPERATORS.md](./FEATURE_SPEC_DSL_CONDITION_STABILITY_AND_RANGE_OPERATORS.md)
 
+Use the interpreter runtime guide to explain compile-time and 20 ms loop behavior:
+
+- [DSL_INTERPRETER_RUNTIME.md](./DSL_INTERPRETER_RUNTIME.md)
+
 ## 2. Writing Model
 
 The DSL is not a top-to-bottom script.

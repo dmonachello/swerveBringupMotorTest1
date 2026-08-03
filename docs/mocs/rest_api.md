@@ -20,11 +20,11 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/HOST_SOFTWARE_ARCHITECTURE.md|HOST SOFTWARE ARCHITECTURE]]
 - [[docs/SPEC_REMOVE_NETWORKTABLES_COMPLETE.md|SPEC REMOVE NETWORKTABLES COMPLETE]]
 - [[docs/WORKFLOW_01_NEW_ROBOT_BRINGUP.md|WORKFLOW 01 NEW ROBOT BRINGUP]]
+- [[Current UI And Runtime Rules - V2.md|Current UI And Runtime Rules - V2]]
 - [[Host TCP Command Serialization Layer.md|Host TCP Command Serialization Layer]]
 - [[docs/ALPHA_RELEASE_READINESS.md|ALPHA RELEASE READINESS]]
 - [[docs/BRIDGE_CLI_DESIGN.md|BRIDGE CLI DESIGN]]
 - [[docs/BRIDGE_CLI_FULL_SPEC.md|BRIDGE CLI FULL SPEC]]
-- [[docs/CAN_BACKGROUND.md|CAN BACKGROUND]]
 
 ## Endpoints
 
@@ -43,10 +43,10 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/SPEC_REMOVE_NETWORKTABLES_COMPLETE.md|SPEC REMOVE NETWORKTABLES COMPLETE]]
 - [[docs/WORKFLOW_01_NEW_ROBOT_BRINGUP.md|WORKFLOW 01 NEW ROBOT BRINGUP]]
 - [[notes/research/dut-review.md|dut-review]]
+- [[Current UI And Runtime Rules - V2.md|Current UI And Runtime Rules - V2]]
 - [[Host TCP Command Serialization Layer.md|Host TCP Command Serialization Layer]]
 - [[docs/ALPHA_RELEASE_READINESS.md|ALPHA RELEASE READINESS]]
 - [[docs/BRIDGE_CLI_FULL_SPEC.md|BRIDGE CLI FULL SPEC]]
-- [[docs/CAN_BACKGROUND.md|CAN BACKGROUND]]
 
 ## Protocol
 
@@ -65,11 +65,11 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/SPEC_REMOVE_NETWORKTABLES_COMPLETE.md|SPEC REMOVE NETWORKTABLES COMPLETE]]
 - [[docs/WORKFLOW_01_NEW_ROBOT_BRINGUP.md|WORKFLOW 01 NEW ROBOT BRINGUP]]
 - [[notes/research/dut-review.md|dut-review]]
+- [[Current UI And Runtime Rules - V2.md|Current UI And Runtime Rules - V2]]
 - [[Host TCP Command Serialization Layer.md|Host TCP Command Serialization Layer]]
 - [[docs/ALPHA_RELEASE_READINESS.md|ALPHA RELEASE READINESS]]
 - [[docs/BRIDGE_CLI_DESIGN.md|BRIDGE CLI DESIGN]]
 - [[docs/BRIDGE_CLI_FULL_SPEC.md|BRIDGE CLI FULL SPEC]]
-- [[docs/CAN_BACKGROUND.md|CAN BACKGROUND]]
 
 ## Integration
 
@@ -88,6 +88,7 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/SPEC_REMOVE_NETWORKTABLES_COMPLETE.md|SPEC REMOVE NETWORKTABLES COMPLETE]]
 - [[docs/WORKFLOW_01_NEW_ROBOT_BRINGUP.md|WORKFLOW 01 NEW ROBOT BRINGUP]]
 - [[notes/research/dut-review.md|dut-review]]
+- [[Current UI And Runtime Rules - V2.md|Current UI And Runtime Rules - V2]]
 - [[Host TCP Command Serialization Layer.md|Host TCP Command Serialization Layer]]
 - [[docs/ALPHA_RELEASE_READINESS.md|ALPHA RELEASE READINESS]]
 - [[docs/BRIDGE_CLI_FULL_SPEC.md|BRIDGE CLI FULL SPEC]]

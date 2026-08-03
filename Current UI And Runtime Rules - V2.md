@@ -190,9 +190,11 @@ Current path:
 
 - top-bar `Runtime Activate` resolves the current UI-owned scope first
 
-- both `manual` and `selected test` contexts activate through the same `active-group` lifecycle path
+- both `manual` and `selected test` contexts use the same top-bar runtime activation path
 
-- the host sends `lifecycleActivate` for `active-group` when activation is allowed
+- the host sends `runtimeActivate` with the selected profile when activation is allowed
+
+- robot-side runtime activation rebuilds/stages the selected profile, then activates `active-group` through the shared lifecycle path
 
   
 
@@ -252,7 +254,7 @@ Current path:
 
   
 
-- top-bar `Runtime Deactivate` uses the shared `lifecycleDeactivateActive` path
+- top-bar `Runtime Deactivate` sends `runtimeDeactivate`
 
   
 
@@ -261,6 +263,8 @@ Current behavior:
   
 
 - deactivates the active controlled lifecycle session
+
+- deactivates the active profile runtime
 
 - does not rely on tab-specific deactivate behavior
 
@@ -1083,7 +1087,7 @@ Purpose: Describe common operator scenarios and the code-driven behavior they sh
 
   
 
-- `Runtime Activate` activates the current `active-group` through the shared lifecycle activation path.
+- `Runtime Activate` sends the full runtime activation command, which activates the current `active-group` through the shared lifecycle activation path.
 
 - `selected test` uses that same path once its required devices are already contained in the current `active-group`.
 

@@ -144,6 +144,8 @@ from .bridge_ops import (
     lifecycle_activate,
     lifecycle_deactivate_active,
     push_config,
+    runtime_activate,
+    runtime_deactivate,
     send_command,
     show_lifecycle_state,
     select_test_by_name,
@@ -262,7 +264,7 @@ from tools.common.json_io import read_json, write_json
 from tools.common.config_api import ConfigEditSession, ConfigRepository
 from tools.common.paths import repo_root, tests_deploy_path
 from tools.common.profile_constants import KEY_DEFAULT_PROFILE, KEY_DSL_TESTS
-from tools.common.topology_parse import topology_profile_from_payload
+from tools.common.topology_parse import parse_bridge_groups, topology_profile_from_payload
 from tools.common.tests_domain import collect_available_tests
 from tools.common.config_lifecycle import LocalConfigQueryService
 from tools.common.profiles import list_profile_names
@@ -275,6 +277,8 @@ from tools.common.profile_constants import (
 from tools.common.profile_constants import KEY_ENABLED
 from tools.common.profile_constants import KEY_TYPE
 from tools.common.group_contract import (
+    find_group_by_name,
+    group_member_labels,
     group_member_map,
     resolve_group_motor_targets,
 )
@@ -592,6 +596,7 @@ OUTPUT_GROUP_REPLACE_FMT = "CMD groupReplaceMembers \"{group}\" members={count}"
 OUTPUT_SELECTED_PROFILE_PREFIX = "Selected profile: "
 OUTPUT_GROUP_RUN_FMT = "CMD groupRunTest \"{group}\""
 OUTPUT_OWNER_REQUIRED = "Owning control client required. Use Reconnect UI Session to reclaim control."
+SCOPE_TRANSITION_WAIT_TIMEOUT_SEC = 3.0
 DOWNLOAD_FILENAME = "bringup_system.downloaded.json"
 CONFIG_FILE_TYPES = (("JSON files", "*.json"), ("All files", "*.*"))
 PROFILES_APPLY_STAGE_KEYS = (
@@ -722,6 +727,7 @@ VIS_CTRE_RAW_SECTION_LABEL = "CTRE Raw Decode"
 VIS_PASSIVE_DEEP_DIVE_SECTION_LABEL = "Shared Passive CAN Deep Dive"
 VIS_CLEAR_PANELS_BUTTON = "Clear Panels"
 VIS_RESTART_SNIFFER_BUTTON = "Restart CAN Sniffer"
+VIS_FRAME_FAMILY_HELP_BUTTON = "Frame Family Help"
 VIS_RESTART_SNIFFER_REQUESTED = "Restarting passive CAN sniffer..."
 VIS_RESTART_SNIFFER_DONE = "Passive CAN sniffer restart requested."
 VIS_RESTART_SNIFFER_UNAVAILABLE = "Passive CAN sniffer restart is unavailable."
@@ -867,6 +873,66 @@ COLOR_KEY_TEXT_TIME_NOTE = (
 COLOR_KEY_SECTION_PAD = (10, 8)
 COLOR_KEY_ROW_PADY = 2
 COLOR_KEY_ROW_PADX = 8
+CAN_FRAME_FAMILY_HELP_ATTR = "_can_frame_family_help_window"
+CAN_FRAME_FAMILY_HELP_TITLE = "CAN Frame Family Help"
+CAN_FRAME_FAMILY_HELP_MENU_LABEL = "CAN Frame Family Help"
+CAN_FRAME_FAMILY_HELP_GEOMETRY = "780x620"
+CAN_FRAME_FAMILY_HELP_MIN_WIDTH = 620
+CAN_FRAME_FAMILY_HELP_MIN_HEIGHT = 440
+CAN_FRAME_FAMILY_HELP_PADDING = 10
+CAN_FRAME_FAMILY_HELP_WRAP = "word"
+CAN_FRAME_FAMILY_HELP_STATE_NORMAL = "normal"
+CAN_FRAME_FAMILY_HELP_STATE_DISABLED = "disabled"
+CAN_FRAME_FAMILY_HELP_INSERT_END = "end"
+TK_PROTOCOL_WINDOW_DELETE = "WM_DELETE_WINDOW"
+HELP_LINE_SEPARATOR = "\n"
+HELP_TAB_CAN_VISIBILITY = "CAN Visibility"
+CAN_FRAME_FAMILY_HELP_LINES = (
+    "Purpose:",
+    "  Explain the raw CAN frame-family evidence shown in CAN Visibility and Evidence details.",
+    "",
+    "What api=12/3 means:",
+    "  - api=12/3 is shorthand for apiClass=12 and apiIndex=3.",
+    "  - These numbers are decoded from the 29-bit FRC extended CAN arbitration ID.",
+    "  - apiClass is bits 10..15; apiIndex is bits 6..9.",
+    "  - The full passive grouping key is manufacturer + deviceType + deviceId + apiClass + apiIndex.",
+    "  - It is a vendor frame family, not a DSL test API, fault code, or direct sensor value.",
+    "",
+    "How to read one evidence line:",
+    "  api=12/3 | role=DEVICE_EMITTED_SECONDARY_STATUS | rate=115.5Hz | count=393 | countsForPresence=yes",
+    "  - api=12/3 identifies the raw frame family.",
+    "  - role says how the passive classifier currently interprets that family.",
+    "  - rate is how often the observer is seeing that family.",
+    "  - count is the number of packets seen in the active observation window.",
+    "  - countsForPresence=yes means this family contributes to passive device-presence confidence.",
+    "",
+    "Role meanings:",
+    "  - DEVICE_EMITTED_PRIMARY_STATUS: strong recurring device status evidence, usually high rate.",
+    "  - DEVICE_EMITTED_SECONDARY_STATUS: companion recurring device status evidence.",
+    "  - DEVICE_EMITTED_HEARTBEAT_HOUSEKEEPING: recurring heartbeat/housekeeping evidence.",
+    "  - CONTROLLER_EMITTED_COMMAND or CONTROLLER_EMITTED_POLL: controller traffic; not proof the device is alive.",
+    "  - SHARED_BUS_CONTROL: bus-level traffic; not proof of one specific device.",
+    "  - UNKNOWN: retained for inspection only; do not use as a confident operator conclusion.",
+    "",
+    "Presence meaning:",
+    "  - Present/high rate means the passive CAN observer sees recurring device-emitted traffic.",
+    "  - This is good evidence that the device is powered and talking on CAN.",
+    "  - It does not prove the mechanism is connected, calibrated, healthy, or mapped to the correct robot function.",
+    "",
+    "Absence or stale meaning:",
+    "  - The observer is not seeing a recent expected device-emitted family.",
+    "  - Possible causes: device power loss, CAN wiring break, wrong CAN ID/profile, observer/CANable issue,",
+    "    very slow configured status period, or a vendor frame family the classifier does not know yet.",
+    "",
+    "Low rate meaning:",
+    "  - The observer sees the family, but not at the expected recurring rate.",
+    "  - Possible causes: high bus load, dropped observer frames, slow configured status period, intermittent wiring,",
+    "    boot/recovery transitions, or a classifier expectation that needs adjustment for that device.",
+    "",
+    "Operator rule:",
+    "  Use the plain evidence summary first: present/missing, rate, age, and whether it counts for presence.",
+    "  Use apiClass/apiIndex only as advanced raw evidence when comparing captures or debugging the passive decoder.",
+)
 VIS_TREE_SHOW = "headings"
 VIS_TREE_END = "end"
 VIS_TREE_ROOT = ""
@@ -882,6 +948,7 @@ VIS_SCROLLBAR_ORIENT = "vertical"
 VIS_PAD_HEADER = (8, 8, 8, 4)
 VIS_PAD_TABLE = (8, 0, 8, 8)
 VIS_PAD_LEFT = (8, 0)
+VIS_HEADER_BUTTON_PAD = (0, 8)
 VIS_COL_DEVICE_WIDTH = 240
 VIS_COL_IDENTITY_WIDTH = 110
 VIS_COL_LAST_SEEN_WIDTH = 90
@@ -1117,6 +1184,12 @@ INVENTORY_KEY_SOURCE = "source"
 KEY_NAME = "name"
 CMD_SHOW_RUNTIME_STATE = "showRuntimeState"
 CMD_SHOW_LIFECYCLE_STATE = "showLifecycleState"
+CMD_RUNTIME_ACTIVATE = "runtimeActivate"
+CMD_RUNTIME_DEACTIVATE = "runtimeDeactivate"
+CMD_LIFECYCLE_ACTIVATE = "lifecycleActivate"
+CMD_LIFECYCLE_DEACTIVATE_ACTIVE = "lifecycleDeactivateActive"
+KEY_COMMAND_MODE = "mode"
+KEY_COMMAND_MEMBERSHIP_MODE = "membershipMode"
 LIFECYCLE_DEFAULT_MODE = "READ_ONLY"
 ACTIVATION_MEMBERSHIP_MODE_STRICT = "STRICT"
 ACTIVATION_MEMBERSHIP_MODE_PARTIAL = "PARTIAL"
@@ -2149,6 +2222,7 @@ class BringupControlUI(tk.Tk):
         self._pending_runtime_active_expected: Optional[bool] = None
         self._pending_controlled_lifecycle_expected: Optional[bool] = None
         self._pending_scope_member_labels_expected: Tuple[str, ...] = tuple()
+        self._scope_transition_started_at = 0.0
         self._robot_enabled_known = True
         self._robot_estopped_known = False
         self._robot_mode_known = "disabled"
@@ -2191,6 +2265,7 @@ class BringupControlUI(tk.Tk):
         self._manual_motion_checks: Dict[str, Dict[str, Any]] = {}
         self._manual_test_observations: Dict[str, Dict[str, Any]] = {}
         self._profile_devices: Dict[str, Dict[str, Any]] = {}
+        self._profile_active_group_member_labels: Tuple[str, ...] = tuple()
         self._test_profile_devices: Dict[str, Dict[str, Any]] = {}
         self._remembered_manual_active_group_members: List[Dict[str, Any]] = []
         self._tests_active_group_rows: List[Dict[str, Any]] = []
@@ -2290,6 +2365,10 @@ class BringupControlUI(tk.Tk):
         help_menu = tk.Menu(menubar, tearoff=False)
         help_menu.add_command(label="Help", command=self._show_help)
         help_menu.add_command(label="Color Key", command=self._toggle_color_key_window)
+        help_menu.add_command(
+            label=CAN_FRAME_FAMILY_HELP_MENU_LABEL,
+            command=self._show_can_frame_family_help,
+        )
         help_menu.add_separator()
         help_menu.add_command(label="About", command=self._show_about)
         menubar.add_cascade(label="Preferences", menu=prefs_menu)
@@ -3048,10 +3127,15 @@ class BringupControlUI(tk.Tk):
             text=VIS_RESTART_SNIFFER_BUTTON,
             command=self._restart_visibility_can_sniffer,
         )
-        restart_button.pack(side=VIS_PACK_SIDE_RIGHT, padx=(0, 8))
+        restart_button.pack(side=VIS_PACK_SIDE_RIGHT, padx=VIS_HEADER_BUTTON_PAD)
         if not callable(self._restart_can_sniffer):
             restart_button.state(["disabled"])
         self._visibility_restart_sniffer_button = restart_button
+        ttk.Button(
+            header,
+            text=VIS_FRAME_FAMILY_HELP_BUTTON,
+            command=self._show_can_frame_family_help,
+        ).pack(side=VIS_PACK_SIDE_RIGHT, padx=VIS_HEADER_BUTTON_PAD)
 
         body = ttk.Panedwindow(parent, orient="horizontal")
         body.pack(fill=VIS_FILL_BOTH, expand=True, padx=8, pady=8)
@@ -3773,7 +3857,9 @@ class BringupControlUI(tk.Tk):
             return False
         if self.__dict__.get("_controlled_lifecycle_active_known") is True:
             return False
-        return not bool(self._runtime_active_group_members())
+        if self._runtime_active_group_members():
+            return False
+        return not bool(self.__dict__.get("_profile_active_group_member_labels", tuple()))
 
     def _send_and_wait(self, command: str, args: Dict[str, Any]) -> bool:
         """
@@ -4329,11 +4415,21 @@ class BringupControlUI(tk.Tk):
         NAME
             _scope_transition_pending - Return whether a scope/runtime transition is awaiting runtime confirmation.
         """
-        return (
+        pending = (
             self.__dict__.get("_pending_runtime_active_expected") is not None
             or self.__dict__.get("_pending_controlled_lifecycle_expected") is not None
             or bool(self.__dict__.get("_pending_scope_member_labels_expected", tuple()))
         )
+        if not pending:
+            return False
+        started_at = float(self.__dict__.get("_scope_transition_started_at", 0.0) or 0.0)
+        if started_at <= 0.0:
+            self._scope_transition_started_at = time.time()
+            return True
+        if (time.time() - started_at) > SCOPE_TRANSITION_WAIT_TIMEOUT_SEC:
+            self._clear_scope_transition_wait()
+            return False
+        return True
 
     def _begin_scope_transition_wait(
         self,
@@ -4360,6 +4456,8 @@ class BringupControlUI(tk.Tk):
                     }
                 )
             )
+        if self._scope_transition_pending():
+            self._scope_transition_started_at = time.time()
 
     def _clear_scope_transition_wait(self) -> None:
         """
@@ -4369,6 +4467,7 @@ class BringupControlUI(tk.Tk):
         self._pending_runtime_active_expected = None
         self._pending_controlled_lifecycle_expected = None
         self._pending_scope_member_labels_expected = tuple()
+        self._scope_transition_started_at = 0.0
 
     def _current_scope_expected_member_labels(self) -> List[str]:
         """
@@ -4597,6 +4696,7 @@ class BringupControlUI(tk.Tk):
             return tuple(rows)
 
         name = _normalize_profile_name(profile_name)
+        self._refresh_profile_active_group_members(name)
         previous_profile_name = _normalize_profile_name(
             self.__dict__.get("_evidence_enrichment_profile_name", PROFILE_NONE)
         )
@@ -4685,6 +4785,30 @@ class BringupControlUI(tk.Tk):
                 _build_visibility_expected_devices(list(mapping.values()))
             )
             self._visibility_last_update = 0.0
+
+    def _refresh_profile_active_group_members(self, profile_name: object) -> None:
+        """
+        NAME
+            _refresh_profile_active_group_members - Cache configured active-group members for the selected profile.
+
+        DESCRIPTION
+            Runtime Activate rebuilds the selected profile before activating
+            active-group. A missing runtime group snapshot is therefore not the
+            same thing as an empty configured active-group.
+        """
+        name = _normalize_profile_name(profile_name)
+        if name == PROFILE_NONE:
+            self._profile_active_group_member_labels = tuple()
+            return
+        labels: Tuple[str, ...] = tuple()
+        try:
+            groups = parse_bridge_groups(self._load_local_profiles_payload(), name)
+            group = find_group_by_name(groups, GROUP_ACTIVE_NAME)
+            if group is not None:
+                labels = tuple(group_member_labels(group, enabled_only=True))
+        except Exception:
+            labels = tuple()
+        self._profile_active_group_member_labels = labels
 
     def _set_evidence_engine_section_label(self, section_key: str, label: str) -> None:
         """
@@ -4838,6 +4962,7 @@ class BringupControlUI(tk.Tk):
         self._pending_runtime_active_expected = None
         self._pending_controlled_lifecycle_expected = None
         self._pending_scope_member_labels_expected = tuple()
+        self._scope_transition_started_at = 0.0
         self._robot_enabled_known = False
         self._robot_estopped_known = False
         self._robot_mode_known = "disabled"
@@ -8049,6 +8174,58 @@ class BringupControlUI(tk.Tk):
         self._color_key_window.lift()
         self._color_key_window.focus_set()
 
+    def _show_can_frame_family_help(self) -> None:
+        """
+        NAME
+            _show_can_frame_family_help - Display advanced passive-CAN frame-family help.
+        """
+        window = self.__dict__.get(CAN_FRAME_FAMILY_HELP_ATTR)
+        if window is not None and window.winfo_exists():
+            window.deiconify()
+            window.lift()
+            window.focus_set()
+            return
+        window = self._build_can_frame_family_help_window()
+        self.__dict__[CAN_FRAME_FAMILY_HELP_ATTR] = window
+        window.lift()
+        window.focus_set()
+
+    def _build_can_frame_family_help_window(self) -> tk.Toplevel:
+        """
+        NAME
+            _build_can_frame_family_help_window - Build the raw CAN frame-family help popup.
+        """
+        window = tk.Toplevel(self)
+        window.title(CAN_FRAME_FAMILY_HELP_TITLE)
+        window.geometry(CAN_FRAME_FAMILY_HELP_GEOMETRY)
+        window.minsize(CAN_FRAME_FAMILY_HELP_MIN_WIDTH, CAN_FRAME_FAMILY_HELP_MIN_HEIGHT)
+        window.protocol(TK_PROTOCOL_WINDOW_DELETE, window.destroy)
+
+        body = ttk.Frame(window, padding=CAN_FRAME_FAMILY_HELP_PADDING)
+        body.pack(fill=VIS_FILL_BOTH, expand=True)
+        text_widget = tk.Text(
+            body,
+            wrap=CAN_FRAME_FAMILY_HELP_WRAP,
+            state=CAN_FRAME_FAMILY_HELP_STATE_NORMAL,
+        )
+        text_widget.pack(side=VIS_PACK_SIDE_LEFT, fill=VIS_FILL_BOTH, expand=True)
+        scroll = ttk.Scrollbar(body, command=text_widget.yview)
+        scroll.pack(side=VIS_PACK_SIDE_RIGHT, fill=VIS_FILL_Y)
+        text_widget.configure(yscrollcommand=scroll.set)
+        text_widget.insert(
+            CAN_FRAME_FAMILY_HELP_INSERT_END,
+            self._build_can_frame_family_help_text(),
+        )
+        text_widget.configure(state=CAN_FRAME_FAMILY_HELP_STATE_DISABLED)
+        return window
+
+    def _build_can_frame_family_help_text(self) -> str:
+        """
+        NAME
+            _build_can_frame_family_help_text - Build user-facing help for passive CAN frame-family evidence.
+        """
+        return HELP_LINE_SEPARATOR.join(CAN_FRAME_FAMILY_HELP_LINES)
+
     def _build_color_key_window(self) -> tk.Toplevel:
         """
         NAME
@@ -8175,6 +8352,7 @@ class BringupControlUI(tk.Tk):
             ("Tests", self._build_tests_help()),
             ("System", self._build_system_help()),
             ("Live Topology", self._build_live_help()),
+            (HELP_TAB_CAN_VISIBILITY, self._build_can_frame_family_help_text()),
             ("Troubleshooting", self._build_troubleshooting_help()),
         ]
         for title, text in tabs:
@@ -11369,9 +11547,9 @@ class BringupControlUI(tk.Tk):
     def _runtime_activate_from_ui(self) -> None:
         """
         NAME
-            _runtime_activate_from_ui - Explicitly activate the current UI-owned scope.
+            _runtime_activate_from_ui - Activate selected-profile runtime and current UI-owned scope.
         """
-        self._activate_scope_from_ui()
+        self._activate_runtime_from_ui()
 
     def _selected_test_membership_change_requires_scope_swap(self) -> bool:
         """
@@ -11420,9 +11598,28 @@ class BringupControlUI(tk.Tk):
     def _runtime_deactivate_from_ui(self) -> None:
         """
         NAME
-            _runtime_deactivate_from_ui - Explicitly deactivate the current UI-owned scope.
+            _runtime_deactivate_from_ui - Deactivate selected-profile runtime and current UI-owned scope.
         """
-        self._deactivate_scope_from_ui()
+        if not self._tcp_connected:
+            self._append_output(OUTPUT_NOT_CONNECTED)
+            return
+        if self._tracker.is_pending():
+            self._append_output(OUTPUT_BUSY)
+            return
+        self._append_output(f"{timestamp_hms()} {OUTPUT_RUNTIME_DEACTIVATE}")
+        self._last_cmd = (CMD_RUNTIME_DEACTIVATE, {})
+        seq = send_tracked_command(
+            self._session,
+            self._tracker,
+            CMD_RUNTIME_DEACTIVATE,
+            {},
+            sender=lambda session, _command_name, _command_args: runtime_deactivate(
+                session
+            ),
+            now=time.time(),
+        )
+        if seq is not None:
+            self._last_sent_seq = seq
 
     def _show_runtime_state_from_ui(self) -> None:
         """
@@ -11501,8 +11698,8 @@ class BringupControlUI(tk.Tk):
         if self._scope_context_kind() == GROUP_SOURCE_SELECTED_TEST:
             args = {
                 PROFILE_KEY_LABEL: GROUP_ACTIVE_NAME,
-                "mode": LIFECYCLE_DEFAULT_MODE,
-                "membershipMode": membership_mode,
+                KEY_COMMAND_MODE: LIFECYCLE_DEFAULT_MODE,
+                KEY_COMMAND_MEMBERSHIP_MODE: membership_mode,
             }
             if self._selected_test_membership_change_requires_scope_swap():
                 self._append_output(TEST_SCOPE_DETAIL_SCOPE_SWAP_REQUIRED)
@@ -11519,11 +11716,11 @@ class BringupControlUI(tk.Tk):
             self._append_output(
                 f"{timestamp_hms()} {OUTPUT_LIFECYCLE_ACTIVATE_FMT.format(label=GROUP_ACTIVE_NAME, mode=LIFECYCLE_DEFAULT_MODE, membership_mode=membership_mode)}"
             )
-            self._last_cmd = ("lifecycleActivate", args)
+            self._last_cmd = (CMD_LIFECYCLE_ACTIVATE, args)
             seq = send_tracked_command(
                 self._session,
                 self._tracker,
-                "lifecycleActivate",
+                CMD_LIFECYCLE_ACTIVATE,
                 args,
                 sender=lambda session, _command_name, _command_args: lifecycle_activate(
                     session,
@@ -11540,20 +11737,76 @@ class BringupControlUI(tk.Tk):
         label = GROUP_ACTIVE_NAME
         args = {
             PROFILE_KEY_LABEL: label,
-            "mode": mode,
-            "membershipMode": membership_mode,
+            KEY_COMMAND_MODE: mode,
+            KEY_COMMAND_MEMBERSHIP_MODE: membership_mode,
         }
         self._append_output(
             f"{timestamp_hms()} {OUTPUT_LIFECYCLE_ACTIVATE_FMT.format(label=label, mode=mode, membership_mode=membership_mode)}"
         )
-        self._last_cmd = ("lifecycleActivate", args)
+        self._last_cmd = (CMD_LIFECYCLE_ACTIVATE, args)
         seq = send_tracked_command(
             self._session,
             self._tracker,
-            "lifecycleActivate",
+            CMD_LIFECYCLE_ACTIVATE,
             args,
             sender=lambda session, _command_name, _command_args: lifecycle_activate(
                 session, label, mode, membership_mode
+            ),
+            now=time.time(),
+        )
+        if seq is not None:
+            self._last_sent_seq = seq
+
+    def _activate_runtime_from_ui(self) -> None:
+        """
+        NAME
+            _activate_runtime_from_ui - Activate the robot runtime path for the current UI-owned scope.
+
+        DESCRIPTION
+            The top-bar Runtime Activate action must exercise the robot-side
+            runtimeActivate command because that command rebuilds/stages the
+            selected profile before activating the shared active-group scope.
+            Direct lifecycle activation is reserved for lower-level lifecycle
+            helpers.
+        """
+        if not self._tcp_connected:
+            self._append_output(OUTPUT_NOT_CONNECTED)
+            return
+        if self._tracker.is_pending():
+            self._append_output(OUTPUT_BUSY)
+            return
+        membership_mode = self._selected_activation_membership_mode()
+        if self._scope_context_kind() == GROUP_SOURCE_SELECTED_TEST:
+            if self._selected_test_membership_change_requires_scope_swap():
+                self._append_output(TEST_SCOPE_DETAIL_SCOPE_SWAP_REQUIRED)
+                return
+            required_loaded = self._selected_test_required_membership_loaded_to_robot()
+            if required_loaded is False:
+                self._load_selected_test_into_active_group(force_replace=True)
+                required_loaded = self.__dict__.get("_tests_active_group_loaded_to_robot")
+                if required_loaded is not True:
+                    required_loaded = self._selected_test_required_membership_loaded_to_robot()
+                if required_loaded is not True:
+                    self._append_output(TEST_SCOPE_DETAIL_REQUIRED_UNAVAILABLE)
+                    return
+        profile_name = self._selected_real_profile()
+        args = {}
+        if profile_name:
+            args[KEY_NAME] = profile_name
+        args[KEY_COMMAND_MEMBERSHIP_MODE] = membership_mode
+        self._append_output(
+            f"{timestamp_hms()} {OUTPUT_RUNTIME_ACTIVATE_FMT.format(profile=profile_name)}"
+        )
+        self._last_cmd = (CMD_RUNTIME_ACTIVATE, args)
+        seq = send_tracked_command(
+            self._session,
+            self._tracker,
+            CMD_RUNTIME_ACTIVATE,
+            args,
+            sender=lambda session, _command_name, _command_args: runtime_activate(
+                session,
+                profile_name,
+                membership_mode,
             ),
             now=time.time(),
         )
@@ -11582,11 +11835,11 @@ class BringupControlUI(tk.Tk):
             self._append_output(OUTPUT_NO_ACTIVE_CONTROLLED_SESSION)
             return
         self._append_output(f"{timestamp_hms()} {OUTPUT_LIFECYCLE_DEACTIVATE_ACTIVE}")
-        self._last_cmd = ("lifecycleDeactivateActive", {})
+        self._last_cmd = (CMD_LIFECYCLE_DEACTIVATE_ACTIVE, {})
         seq = send_tracked_command(
             self._session,
             self._tracker,
-            "lifecycleDeactivateActive",
+            CMD_LIFECYCLE_DEACTIVATE_ACTIVE,
             {},
             sender=lambda session, _command_name, _command_args: lifecycle_deactivate_active(
                 session
@@ -11615,11 +11868,11 @@ class BringupControlUI(tk.Tk):
             self._append_output(OUTPUT_BUSY)
             return
         self._append_output(f"{timestamp_hms()} {OUTPUT_LIFECYCLE_DEACTIVATE_ACTIVE}")
-        self._last_cmd = ("lifecycleDeactivateActive", {})
+        self._last_cmd = (CMD_LIFECYCLE_DEACTIVATE_ACTIVE, {})
         seq = send_tracked_command(
             self._session,
             self._tracker,
-            "lifecycleDeactivateActive",
+            CMD_LIFECYCLE_DEACTIVATE_ACTIVE,
             {},
             sender=lambda session, _command_name, _command_args: lifecycle_deactivate_active(session),
             now=time.time(),

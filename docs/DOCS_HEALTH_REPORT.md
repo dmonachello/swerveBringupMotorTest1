@@ -2,8 +2,8 @@
 
 # Documentation Health Report
 
-- Pages processed: 300
-- Broken links: 8
+- Pages processed: 303
+- Broken links: 9
 - Orphan pages: 136
 - Duplicate title families: 13
 - Suggested renames: 13
@@ -11,6 +11,7 @@
 ## Broken Links
 
 - docs/USER_GUIDE_REGRESSION_RUNNER.md -> .codex/skills/regression-runner/SKILL.md
+- docs/USER_GUIDE_REGRESSION_RUNNER.md -> Current%20UI%20And%20Runtime%20Rules%20-%20V2.md
 - feature spec - Generic Robot-Side Sampled Telemetry.md -> Screenshot 2026-05-30 133943.png
 - notes/recovery/2026-07-18_162335/untracked_copy/docs/mocs/architecture.md -> docs/TEST_PLAN_HOST_REFACTOR_MORNING_VALIDATION_2026_06_10.md
 - notes/recovery/2026-07-18_162335/untracked_copy/docs/mocs/dsl.md -> docs/FEATURE_SPEC_TEST_CREATION_DSL_POST_V1.md

@@ -20,6 +20,8 @@ from tools.can_nt.bringup_ui import (
     ATTACHMENT_TYPE_ACTIVE_PRESENCE_PROBE,
     BringupControlUI,
     CMD_PRINT_CAN_DIAG,
+    CMD_RUNTIME_ACTIVATE,
+    CMD_RUNTIME_DEACTIVATE,
     CMD_SHOW_LIFECYCLE_STATE,
     EVIDENCE_PROBE_TEXT,
     GROUP_ACTIVE_NAME,
@@ -28,6 +30,8 @@ from tools.can_nt.bringup_ui import (
     HIDDEN_LEFT_RAIL_COMMANDS,
     INVENTORY_KEY_ACTION_KIND,
     INVENTORY_KEY_SOURCE,
+    KEY_COMMAND_MEMBERSHIP_MODE,
+    KEY_NAME,
     KEY_TYPE,
     LIVE_LENS_OPTION_EVIDENCE,
     LIVE_LENS_OPTION_RUNTIME,
@@ -39,6 +43,7 @@ from tools.can_nt.bringup_ui import (
     PROFILE_NONE,
     RUNNABLE_SCOPE_DETAIL_SELECT_PROFILE,
     RUNNABLE_SCOPE_PANEL_DISCONNECTED_DETAIL,
+    SCOPE_TRANSITION_WAIT_TIMEOUT_SEC,
     TEST_SCOPE_DETAIL_REQUIRED_UNAVAILABLE,
     TEST_SCOPE_DETAIL_SCOPE_SWAP_REQUIRED,
     TEST_SCOPE_PANEL_ERROR_BG,
@@ -412,6 +417,17 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         sections = _action_sections()
         flattened = [command for _section, items in sections for _label, command in items]
         self.assertNotIn("printNTdiag", flattened)
+
+    def test_can_frame_family_help_explains_raw_api_evidence(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+
+        text = ui._build_can_frame_family_help_text()
+
+        self.assertIn("api=12/3 is shorthand for apiClass=12 and apiIndex=3", text)
+        self.assertIn("not a DSL test API, fault code, or direct sensor value", text)
+        self.assertIn("countsForPresence=yes means this family contributes", text)
+        self.assertIn("Absence or stale meaning:", text)
+        self.assertIn("Low rate meaning:", text)
 
     def test_dispatch_host_local_action_handles_can_bus_report(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
@@ -1585,6 +1601,46 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._update_action_enabled()
 
         self.assertTrue(ui._activate_scope_button.disabled)
+
+    def test_manual_active_group_empty_uses_configured_profile_active_group_fallback(self) -> None:
+        payload = {
+            "bridgeConfig": {
+                "byProfile": {
+                    "test_minimal_25_9": {
+                        "groups": [
+                            {
+                                "name": GROUP_ACTIVE_NAME,
+                                "members": [
+                                    {
+                                        "label": "cancoder",
+                                        "enabled": True,
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                }
+            }
+        }
+
+        class _FakeSnapshot:
+            def to_payload(self):
+                return payload
+
+        class _FakeRepository:
+            def load_canonical(self):
+                return _FakeSnapshot()
+
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._group_owner_mode = "manual"
+        ui._profile_box = _ProfileBoxStub("test_minimal_25_9", values=("test_minimal_25_9",))
+        ui._controlled_lifecycle_active_known = False
+        ui._runtime_active_group_members = lambda: []
+
+        with patch("tools.can_nt.bringup_ui.ConfigRepository", _FakeRepository):
+            ui._refresh_profile_active_group_members("test_minimal_25_9")
+
+        self.assertFalse(ui._manual_active_group_is_empty())
 
     def test_update_action_enabled_allows_manual_activate_when_runtime_state_is_live_without_handshake(self) -> None:
         class _Tracker:
@@ -2769,6 +2825,21 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertIsNone(ui._pending_controlled_lifecycle_expected)
         self.assertEqual(tuple(), ui._pending_scope_member_labels_expected)
 
+    def test_scope_transition_wait_expires_stale_confirmation_latch(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._pending_runtime_active_expected = None
+        ui._pending_controlled_lifecycle_expected = True
+        ui._pending_scope_member_labels_expected = tuple()
+        ui._scope_transition_started_at = (
+            time.time() - SCOPE_TRANSITION_WAIT_TIMEOUT_SEC - 0.1
+        )
+
+        self.assertFalse(ui._scope_transition_pending())
+        self.assertIsNone(ui._pending_runtime_active_expected)
+        self.assertIsNone(ui._pending_controlled_lifecycle_expected)
+        self.assertEqual(tuple(), ui._pending_scope_member_labels_expected)
+        self.assertEqual(0.0, ui._scope_transition_started_at)
+
     def test_scope_transition_wait_clears_from_current_manual_scope_after_partial_group_edit(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
         ui._pending_runtime_active_expected = None
@@ -3634,7 +3705,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertEqual(ui._last_sent_seq, 21)
         self.assertTrue(any("lifecycleActivate" in line for line in lines))
 
-    def test_runtime_activate_from_ui_uses_active_group_lifecycle_path(self) -> None:
+    def test_runtime_activate_from_ui_uses_runtime_activate_path(self) -> None:
         class _Tracker:
             def is_pending(self) -> bool:
                 return False
@@ -3653,14 +3724,14 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         with patch("tools.can_nt.bringup_ui.send_tracked_command", return_value=26) as send_mock:
             ui._runtime_activate_from_ui()
 
-        self.assertEqual(ui._last_cmd[0], "lifecycleActivate")
-        self.assertEqual(ui._last_cmd[1]["label"], "active-group")
+        self.assertEqual(ui._last_cmd[0], CMD_RUNTIME_ACTIVATE)
+        self.assertEqual(ui._last_cmd[1][KEY_NAME], "test_minimal_25_9")
         self.assertEqual(
-            ui._last_cmd[1]["membershipMode"], ACTIVATION_MEMBERSHIP_MODE_DEFAULT
+            ui._last_cmd[1][KEY_COMMAND_MEMBERSHIP_MODE], ACTIVATION_MEMBERSHIP_MODE_DEFAULT
         )
         self.assertEqual(ui._last_sent_seq, 26)
-        self.assertTrue(any("lifecycleActivate" in line for line in lines))
-        self.assertEqual("lifecycleActivate", send_mock.call_args.args[2])
+        self.assertTrue(any(CMD_RUNTIME_ACTIVATE in line for line in lines))
+        self.assertEqual(CMD_RUNTIME_ACTIVATE, send_mock.call_args.args[2])
 
     def test_runtime_activate_from_ui_reports_scope_swap_required_when_selected_test_scope_differs(self) -> None:
         class _Tracker:
@@ -3724,7 +3795,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         with patch("tools.can_nt.bringup_ui.send_tracked_command", return_value=26) as send_mock:
             ui._runtime_activate_from_ui()
 
-        self.assertEqual("lifecycleActivate", send_mock.call_args.args[2])
+        self.assertEqual(CMD_RUNTIME_ACTIVATE, send_mock.call_args.args[2])
 
     def test_runtime_activate_from_ui_selected_test_scope_loads_required_members_before_activation(self) -> None:
         class _Tracker:
@@ -3751,7 +3822,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
             ui._runtime_activate_from_ui()
 
         self.assertEqual([True], load_calls)
-        self.assertEqual("lifecycleActivate", send_mock.call_args.args[2])
+        self.assertEqual(CMD_RUNTIME_ACTIVATE, send_mock.call_args.args[2])
 
     def test_runtime_activate_from_ui_selected_test_scope_blocks_when_required_members_still_missing(self) -> None:
         class _Tracker:
@@ -3780,7 +3851,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertFalse(send_mock.called)
         self.assertEqual([TEST_SCOPE_DETAIL_REQUIRED_UNAVAILABLE], lines)
 
-    def test_runtime_deactivate_from_ui_uses_lifecycle_deactivate_active_path(self) -> None:
+    def test_runtime_deactivate_from_ui_uses_runtime_deactivate_path(self) -> None:
         class _Tracker:
             def is_pending(self) -> bool:
                 return False
@@ -3792,16 +3863,15 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._session = object()
         ui._last_sent_seq = None
         ui._append_output = lines.append
-        ui._controlled_lifecycle_active_known = True
 
         with patch("tools.can_nt.bringup_ui.send_tracked_command", return_value=27) as send_mock:
             ui._runtime_deactivate_from_ui()
 
-        self.assertEqual(ui._last_cmd[0], "lifecycleDeactivateActive")
+        self.assertEqual(ui._last_cmd[0], CMD_RUNTIME_DEACTIVATE)
         self.assertEqual(ui._last_cmd[1], {})
         self.assertEqual(ui._last_sent_seq, 27)
-        self.assertTrue(any("lifecycleDeactivateActive" in line for line in lines))
-        self.assertEqual("lifecycleDeactivateActive", send_mock.call_args.args[2])
+        self.assertTrue(any(CMD_RUNTIME_DEACTIVATE in line for line in lines))
+        self.assertEqual(CMD_RUNTIME_DEACTIVATE, send_mock.call_args.args[2])
 
     def test_lifecycle_deactivate_from_ui_uses_lifecycle_command_path(self) -> None:
         class _Tracker:
