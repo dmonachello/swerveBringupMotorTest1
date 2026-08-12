@@ -14,7 +14,7 @@ DESCRIPTION
 
 import json
 import time
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from tools.common.profile_constants import (
     INTERFACE_CAN,
@@ -46,6 +46,8 @@ KEY_GENERATED = "generated"
 KEY_SCHEMA_VERSION_CAN_CONFIG = "schema_version"
 KEY_DEVICES_CAN_CONFIG = "devices"
 KEY_SEEN_LABELS = "seen_labels"
+KEY_NON_DEVICE_TRAFFIC_FAMILIES = "nonDeviceTrafficFamilies"
+KEY_FAMILY_KEY = "familyKey"
 
 UNKNOWN_PREFIX = "Device"
 UNKNOWN_LABEL_TEMPLATE = "Unknown {mfg}-{dtype}-{did}"
@@ -226,6 +228,7 @@ def dump_profile(
     profile_name: str,
     seen_keys: Iterable[Tuple[int, int, int]],
     include_unknown: bool,
+    non_device_traffic_families: Optional[List[Dict[str, Any]]] = None,
 ) -> None:
     """
     NAME
@@ -236,6 +239,7 @@ def dump_profile(
         profile_name: Profile key to create in output.
         seen_keys: Observed (mfg, type, id) tuples.
         include_unknown: Whether to include unknown devices.
+        non_device_traffic_families: Stable metadata rows for non-device traffic.
 
     SIDE EFFECTS
         Writes JSON to disk.
@@ -252,6 +256,11 @@ def dump_profile(
             }
         },
     }
+    if non_device_traffic_families:
+        payload[KEY_NON_DEVICE_TRAFFIC_FAMILIES] = sorted(
+            [dict(row) for row in non_device_traffic_families if isinstance(row, dict)],
+            key=lambda row: str(row.get(KEY_FAMILY_KEY, "")),
+        )
     payload[KEY_DATA_HASH] = _compute_data_hash(payload)
     try:
         with open(path, "w", encoding="utf-8") as f:

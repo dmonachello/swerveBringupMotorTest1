@@ -61,6 +61,7 @@
         "FALCON 9",
         "pigeon 2",
         "cancoder",
+        "SPARKMAX/NEO 7",
         "controller0"
       ],
       "dslTestSet": "test_minimal_25_9"
@@ -268,26 +269,55 @@
     {
       "label": "pigeon 2",
       "deviceInterface": "CAN",
+      "terminator": false,
       "id": 19,
       "manufacturer": 4,
       "deviceType": 4,
       "model": "pigeon 2",
-      "type": "",
-      "terminator": false
+      "type": ""
     },
     {
       "label": "cancoder",
       "deviceInterface": "CAN",
+      "terminator": false,
       "id": 18,
       "manufacturer": 4,
       "deviceType": 7,
       "model": "cancoder",
-      "type": "encoderExternal",
-      "terminator": false
+      "type": "encoderExternal"
+    },
+    {
+      "label": "UNPROFILED_DEVICE_50207",
+      "deviceInterface": "CAN",
+      "manufacturer": 5,
+      "deviceType": 2,
+      "id": 7,
+      "model": "MotorController",
+      "type": "motor",
+      "tags": [
+        "guessed:label",
+        "guessed:model",
+        "guessed:type"
+      ]
+    },
+    {
+      "label": "SPARKMAX/NEO 7",
+      "deviceInterface": "CAN",
+      "tags": [
+        "guessed:label",
+        "guessed:model",
+        "guessed:type"
+      ],
+      "terminator": false,
+      "id": 7,
+      "manufacturer": 5,
+      "deviceType": 2,
+      "model": "REV NEO",
+      "type": "motor"
     }
   ],
-  "data_version": "2026-08-01_145650",
-  "data_hash": "34071f355514c22729fa8cf57bc4ab9137abedae09e81109cc75ba3bf4a56c32",
+  "data_version": "2026-08-12_162539",
+  "data_hash": "c2fd532c4f9355635cc2f9b7ee0aa0a8bc4c1dd758d6f65124206454a57b6cbd",
   "default_profile": "test_minimal_25_9",
   "bridgeConfig": {
     "schemaVersion": 2,
@@ -819,6 +849,10 @@
               },
               {
                 "label": "FALCON 9",
+                "enabled": true
+              },
+              {
+                "label": "SPARKMAX/NEO 7",
                 "enabled": true
               }
             ],
@@ -4127,7 +4161,7 @@
             "layout": {
               "bus": 0,
               "row": 0,
-              "x": 87.59090909090908,
+              "x": 150.0,
               "y": -66.06016042780749,
               "yRelative": true
             }
@@ -4189,23 +4223,6 @@
             }
           },
           {
-            "key": 7,
-            "label": "can analyzer 1",
-            "category": "analyzer",
-            "objectType": "analyzer",
-            "nodeType": "analyzer",
-            "nodeClass": "infrastructure",
-            "vendor": "ANALYZER",
-            "model": "",
-            "layout": {
-              "bus": 0,
-              "row": 0,
-              "x": 264.24064171122996,
-              "y": -62.41042780748663,
-              "yRelative": true
-            }
-          },
-          {
             "key": 8,
             "objectType": "device",
             "nodeType": "device",
@@ -4214,7 +4231,7 @@
             "layout": {
               "bus": 0,
               "row": 0,
-              "x": 443.02139037433125,
+              "x": 450.0,
               "y": -121.53609625668449,
               "yRelative": true
             }
@@ -4232,6 +4249,37 @@
               "y": -151.4639037433155,
               "yRelative": true
             }
+          },
+          {
+            "key": 10,
+            "objectType": "device",
+            "nodeType": "device",
+            "nodeClass": "device",
+            "deviceRef": "SPARKMAX/NEO 7",
+            "layout": {
+              "bus": 0,
+              "row": 1,
+              "x": 822.0053475935836,
+              "y": 104.74732620320856,
+              "yRelative": true
+            }
+          },
+          {
+            "key": 12,
+            "label": "can analyzer 1",
+            "category": "analyzer",
+            "objectType": "analyzer",
+            "nodeType": "analyzer",
+            "nodeClass": "infrastructure",
+            "vendor": "ANALYZER",
+            "model": "",
+            "layout": {
+              "bus": 0,
+              "row": 0,
+              "x": 300.0,
+              "y": -62.41042780748663,
+              "yRelative": true
+            }
           }
         ],
         "edges": [
@@ -4239,17 +4287,17 @@
             "id": "edge_1",
             "fromNode": 1,
             "fromPort": "right",
-            "toNode": 7,
+            "toNode": 11,
             "toPort": "left",
-            "edgeType": "can_tap"
+            "edgeType": "can_trunk"
           },
           {
             "id": "edge_2",
-            "fromNode": 7,
+            "fromNode": 11,
             "fromPort": "right",
             "toNode": 8,
             "toPort": "left",
-            "edgeType": "can_tap"
+            "edgeType": "can_trunk"
           },
           {
             "id": "edge_3",
@@ -4271,12 +4319,20 @@
             "id": "edge_5",
             "fromNode": 6,
             "fromPort": "right",
-            "toNode": 9,
+            "toNode": 10,
             "toPort": "left",
             "edgeType": "can_trunk"
           },
           {
             "id": "edge_6",
+            "fromNode": 10,
+            "fromPort": "right",
+            "toNode": 9,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_7",
             "fromNode": 9,
             "fromPort": "right",
             "toNode": 2,
@@ -4284,7 +4340,7 @@
             "edgeType": "can_trunk"
           },
           {
-            "id": "edge_7",
+            "id": "edge_8",
             "fromNode": 1,
             "fromPort": "dio",
             "toNode": 5,
@@ -4292,7 +4348,7 @@
             "edgeType": "dio"
           },
           {
-            "id": "edge_8",
+            "id": "edge_9",
             "fromNode": 2,
             "fromPort": "power",
             "toNode": 6,
@@ -4300,7 +4356,7 @@
             "edgeType": "power"
           },
           {
-            "id": "edge_9",
+            "id": "edge_10",
             "fromNode": 2,
             "fromPort": "power",
             "toNode": 4,
@@ -4308,7 +4364,7 @@
             "edgeType": "power"
           },
           {
-            "id": "edge_10",
+            "id": "edge_11",
             "fromNode": 1,
             "fromPort": "power",
             "toNode": 2,
@@ -4316,7 +4372,7 @@
             "edgeType": "power"
           },
           {
-            "id": "edge_11",
+            "id": "edge_12",
             "fromNode": 2,
             "fromPort": "power",
             "toNode": 9,
@@ -4324,7 +4380,7 @@
             "edgeType": "power"
           },
           {
-            "id": "edge_12",
+            "id": "edge_13",
             "fromNode": 2,
             "fromPort": "power",
             "toNode": 8,
@@ -4332,7 +4388,15 @@
             "edgeType": "power"
           },
           {
-            "id": "edge_13",
+            "id": "edge_14",
+            "fromNode": 2,
+            "fromPort": "power",
+            "toNode": 10,
+            "toPort": "power",
+            "edgeType": "power"
+          },
+          {
+            "id": "edge_15",
             "fromNode": 4,
             "fromPort": "attachment",
             "toNode": 5,
@@ -4350,7 +4414,7 @@
             -4.0
           ],
           "busRights": [
-            1054.4224598930482
+            1094.4224598930482
           ],
           "busConnectors": [],
           "busConnectorSides": [],

@@ -30,17 +30,17 @@ Purpose: non-destructive suggestions for future in-page linking and navigation u
 - [[AGENTS.md|AGENTS]]
 - [[CAN Evidence Run Note.md|CAN Evidence Run Note]]
 - [[Current UI And Runtime Rules - V2.md|Current UI And Runtime Rules - V2]]
+- [[DSL Interpreter Runtime.md|DSL Interpreter Runtime]]
 - [[Device FSM state table.md|Device FSM state table]]
-- [[Feature Spec - CAN Bus Debug Final Push.md|Feature Spec - CAN Bus Debug Final Push]]
 
 ### Current UI And Runtime Rules
 
 - [[Feature Spec - Scope-Aware Runtime Activation And Incremental Instantiation.md|Feature Spec - Scope-Aware Runtime Activation And Incremental Instantiation]]
 - [[docs/FEATURE_SPEC_SCOPE_AWARE_RUNTIME_ACTIVATION_AND_INCREMENTAL_INSTANTIATION.md|FEATURE SPEC SCOPE AWARE RUNTIME ACTIVATION AND INCREMENTAL INSTANTIATION]]
 - [[docs/FEATURE_SPEC_UI_RUNTIME_AND_CONFIG_SYNC.md|FEATURE SPEC UI RUNTIME AND CONFIG SYNC]]
+- [[DSL Interpreter Runtime.md|DSL Interpreter Runtime]]
+- [[docs/DSL_INTERPRETER_RUNTIME.md|DSL INTERPRETER RUNTIME]]
 - [[docs/FEATURE_SPEC_DSL_CONDITION_STABILITY_AND_RANGE_OPERATORS.md|FEATURE SPEC DSL CONDITION STABILITY AND RANGE OPERATORS]]
-- [[docs/FEATURE_SPEC_DSL_SELECTED_TEST_DEVICE_ACTIVATION.md|FEATURE SPEC DSL SELECTED TEST DEVICE ACTIVATION]]
-- [[docs/SPEC_NON_MOTOR_DEVICE_TESTING_AND_DSL_INTERVENTION.md|SPEC NON MOTOR DEVICE TESTING AND DSL INTERVENTION]]
 
 ### Device FSM state table
 
@@ -73,19 +73,19 @@ Purpose: non-destructive suggestions for future in-page linking and navigation u
 
 - [[docs/RELEASE_1_0_READINESS.md|RELEASE 1 0 READINESS]]
 - [[docs/FEATURE_SPEC_VERSION_HELPER.md|FEATURE SPEC VERSION HELPER]]
+- [[docs/ARCHITECTURE.md|ARCHITECTURE]]
+- [[docs/DSL_INTERPRETER_RUNTIME.md|DSL INTERPRETER RUNTIME]]
 - [[docs/FEATURE_SPEC_DSL_CONDITION_STABILITY_AND_RANGE_OPERATORS.md|FEATURE SPEC DSL CONDITION STABILITY AND RANGE OPERATORS]]
 - [[docs/FEATURE_SPEC_DSL_SELECTED_TEST_DEVICE_ACTIVATION.md|FEATURE SPEC DSL SELECTED TEST DEVICE ACTIVATION]]
-- [[docs/FEATURE_SPEC_DSL_SELECTED_TEST_DEVICE_ACTIVATION_V2.md|FEATURE SPEC DSL SELECTED TEST DEVICE ACTIVATION V2]]
-- [[docs/FEATURE_SPEC_REGRESSION_AUTOMATION.md|FEATURE SPEC REGRESSION AUTOMATION]]
 
 ### Architecture
 
+- [[docs/SPEC_LAYERED_ARCHITECTURE_REFACTOR.md|SPEC LAYERED ARCHITECTURE REFACTOR]]
 - [[docs/BRIDGE_RUNTIME_ARCH.md|BRIDGE RUNTIME ARCH]]
 - [[docs/COMMAND_HANDLER_ARCHITECTURE.md|COMMAND HANDLER ARCHITECTURE]]
 - [[docs/HOST_SOFTWARE_ARCHITECTURE.md|HOST SOFTWARE ARCHITECTURE]]
-- [[docs/SPEC_LAYERED_ARCHITECTURE_REFACTOR.md|SPEC LAYERED ARCHITECTURE REFACTOR]]
+- [[docs/STATUS_REVIEW_2026-08-03.md|STATUS REVIEW 2026-08-03]]
 - [[docs/historical/SPEC_ROBOT_DIAGNOSTIC_ARCHITECTURE_V0_5.md|SPEC ROBOT DIAGNOSTIC ARCHITECTURE V0 5]]
-- [[docs/FEATURE_SPEC_DSL_CONDITION_STABILITY_AND_RANGE_OPERATORS.md|FEATURE SPEC DSL CONDITION STABILITY AND RANGE OPERATORS]]
 
 ### BRIDGE CLI DESIGN
 
@@ -107,12 +107,12 @@ Purpose: non-destructive suggestions for future in-page linking and navigation u
 
 ### Bridge Runtime Architecture
 
-- [[docs/GROUPS_GUIDE.md|GROUPS GUIDE]]
 - [[docs/ARCHITECTURE.md|ARCHITECTURE]]
+- [[docs/DSL_INTERPRETER_RUNTIME.md|DSL INTERPRETER RUNTIME]]
+- [[docs/GROUPS_GUIDE.md|GROUPS GUIDE]]
+- [[docs/SPEC_LAYERED_ARCHITECTURE_REFACTOR.md|SPEC LAYERED ARCHITECTURE REFACTOR]]
 - [[docs/BRIDGE_CLI_DESIGN.md|BRIDGE CLI DESIGN]]
 - [[docs/BRIDGE_CLI_FULL_SPEC.md|BRIDGE CLI FULL SPEC]]
-- [[docs/CLI_Spec.md|CLI Spec]]
-- [[docs/COMMAND_HANDLER_ARCHITECTURE.md|COMMAND HANDLER ARCHITECTURE]]
 
 ### Bringup Label Link Map
 
@@ -250,6 +250,11 @@ Purpose: non-destructive suggestions for future in-page linking and navigation u
 - Feature Spec: Bridge UI + CLI Test Authoring (No Direct JSON Editing) -> docs/FEATURE_SPEC_TEST_AUTHORING.md
 - Robot Test DSL User Guide -> docs/USER_GUIDE_ROBOT_TEST_DSL.md
 
+### DSL Interpreter Runtime
+
+- Robot Test DSL User Guide -> docs/USER_GUIDE_ROBOT_TEST_DSL.md
+- DSL Interpreter Runtime -> DSL Interpreter Runtime.md
+
 ### Feature Catalog
 
 - Feature Spec: Explicit Runtime Activation -> docs/FEATURE_SPEC_EXPLICIT_RUNTIME_ACTIVATION.md
@@ -284,7 +289,3 @@ Purpose: non-destructive suggestions for future in-page linking and navigation u
 ### Feature Spec: CLI Usability and Configuration Workflow
 
 - Feature Spec: Controller Naming + Unified Input Sources -> docs/FEATURE_SPEC_CONTROLLER_NAMING.md
-
-### Feature Spec: CLI Wizards for Student Operators
-
-- Feature Spec: Bridge UI + CLI Test Authoring (No Direct JSON Editing) -> docs/FEATURE_SPEC_TEST_AUTHORING.md

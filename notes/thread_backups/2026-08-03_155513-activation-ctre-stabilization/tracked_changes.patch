@@ -1,0 +1,257 @@
+warning: in the working copy of 'tools/can_nt/tests/test_bringup_ui_actions.py', LF will be replaced by CRLF the next time Git touches it
+diff --git a/src/main/java/frc/robot/BuildInfo.java b/src/main/java/frc/robot/BuildInfo.java
+index fef3d5c..63c6ac0 100644
+--- a/src/main/java/frc/robot/BuildInfo.java
++++ b/src/main/java/frc/robot/BuildInfo.java
+@@ -7,14 +7,14 @@ package frc.robot;
+ public final class BuildInfo {
+   private BuildInfo() {}
+ 
+-  public static final String BUILD_GIT_DESCRIBE = "cancoder-pigeon2-checkpoint-2026-08-01-dirty";
+-  public static final String BUILD_REVISION = "272";
++  public static final String BUILD_GIT_DESCRIBE = "checkpoint-2026-08-03-ui-runtime-dsl-docs";
++  public static final String BUILD_REVISION = "273";
+   public static final String BUILD_WORKSPACE_REVISION = "453";
+   public static final String BUILD_CODE_REVISION = "f648ad38aca2";
+-  public static final String BUILD_GIT_SHA = "893e436";
++  public static final String BUILD_GIT_SHA = "33165d3";
+   public static final String BUILD_GIT_BRANCH = "main";
+   public static final String BUILD_GIT_DIRTY = "dirty";
+-  public static final String BUILD_TIMESTAMP = "2026-08-01T15:20:27-04:00";
++  public static final String BUILD_TIMESTAMP = "2026-08-03T11:20:00-04:00";
+ 
+   public static final String BUILD_LABEL_REVISION = "build-revision";
+   public static final String BUILD_LABEL_WORKSPACE_REVISION = "workspace-revision";
+diff --git a/tools/can_nt/tests/test_bringup_ui_actions.py b/tools/can_nt/tests/test_bringup_ui_actions.py
+index 8f3046c..13de0a4 100644
+--- a/tools/can_nt/tests/test_bringup_ui_actions.py
++++ b/tools/can_nt/tests/test_bringup_ui_actions.py
+@@ -3851,6 +3851,205 @@ class BringupUiActionMetadataTests(unittest.TestCase):
+         self.assertFalse(send_mock.called)
+         self.assertEqual([TEST_SCOPE_DETAIL_REQUIRED_UNAVAILABLE], lines)
+ 
++    def test_selected_test_membership_change_requires_scope_swap_allows_superset_membership(self) -> None:
++        ui = BringupControlUI.__new__(BringupControlUI)
++        ui._scope_context_kind = lambda: GROUP_SOURCE_SELECTED_TEST
++        ui._controlled_lifecycle_active_known = True
++        ui._runtime_active_group_members = lambda: [
++            {"label": "FALCON 9", "enabled": True},
++            {"label": "controller0", "enabled": True},
++            {"label": "SPARKMAX/NEO 25", "enabled": True},
++        ]
++        ui._selected_test_required_rows = lambda: [
++            {"label": "FALCON 9", "enabled": True},
++            {"label": "controller0", "enabled": True},
++        ]
++
++        self.assertFalse(ui._selected_test_membership_change_requires_scope_swap())
++
++    def test_selected_test_membership_change_requires_scope_swap_when_required_member_missing(self) -> None:
++        ui = BringupControlUI.__new__(BringupControlUI)
++        ui._scope_context_kind = lambda: GROUP_SOURCE_SELECTED_TEST
++        ui._controlled_lifecycle_active_known = True
++        ui._runtime_active_group_members = lambda: [
++            {"label": "FALCON 9", "enabled": True},
++        ]
++        ui._selected_test_required_rows = lambda: [
++            {"label": "FALCON 9", "enabled": True},
++            {"label": "controller0", "enabled": True},
++        ]
++
++        self.assertTrue(ui._selected_test_membership_change_requires_scope_swap())
++
++    def test_selected_test_required_membership_loaded_to_robot_allows_superset_membership(self) -> None:
++        ui = BringupControlUI.__new__(BringupControlUI)
++        ui._tcp_connected = True
++        ui._runtime_active_group_members = lambda: [
++            {"label": "FALCON 9", "enabled": True},
++            {"label": "controller0", "enabled": True},
++            {"label": "SPARKMAX/NEO 25", "enabled": True},
++        ]
++        ui._selected_test_required_rows = lambda: [
++            {"label": "FALCON 9", "enabled": True},
++            {"label": "controller0", "enabled": True},
++        ]
++
++        self.assertTrue(ui._selected_test_required_membership_loaded_to_robot())
++
++    def test_selected_test_required_membership_loaded_to_robot_returns_false_when_required_member_missing(self) -> None:
++        ui = BringupControlUI.__new__(BringupControlUI)
++        ui._tcp_connected = True
++        ui._runtime_active_group_members = lambda: [
++            {"label": "FALCON 9", "enabled": True},
++        ]
++        ui._selected_test_required_rows = lambda: [
++            {"label": "FALCON 9", "enabled": True},
++            {"label": "controller0", "enabled": True},
++        ]
++
++        self.assertFalse(ui._selected_test_required_membership_loaded_to_robot())
++
++    def test_selected_test_required_membership_loaded_to_robot_returns_none_when_disconnected(self) -> None:
++        ui = BringupControlUI.__new__(BringupControlUI)
++        ui._tcp_connected = False
++        ui._runtime_active_group_members = lambda: [
++            {"label": "FALCON 9", "enabled": True},
++        ]
++        ui._selected_test_required_rows = lambda: [
++            {"label": "FALCON 9", "enabled": True},
++        ]
++
++        self.assertIsNone(ui._selected_test_required_membership_loaded_to_robot())
++
++    def test_apply_live_runtime_notice_from_ack_runtime_activate_starts_pending_runtime_confirmation(self) -> None:
++        ui = BringupControlUI.__new__(BringupControlUI)
++        ui._pending_runtime_active_expected = None
++        ui._pending_controlled_lifecycle_expected = None
++        ui._pending_scope_member_labels_expected = tuple()
++        ui._scope_transition_started_at = 0.0
++        ui._clear_runtime_event_notice = lambda: None
++        ui._iter_live_views = lambda: []
++
++        ui._apply_live_runtime_notice_from_ack("runtimeActivate", "ok", "")
++
++        self.assertTrue(ui._scope_transition_pending())
++        self.assertTrue(ui._pending_runtime_active_expected)
++        self.assertIsNone(ui._pending_controlled_lifecycle_expected)
++        self.assertEqual(tuple(), ui._pending_scope_member_labels_expected)
++
++    def test_apply_live_runtime_notice_from_ack_runtime_deactivate_starts_pending_runtime_deactivation(self) -> None:
++        ui = BringupControlUI.__new__(BringupControlUI)
++        ui._pending_runtime_active_expected = None
++        ui._pending_controlled_lifecycle_expected = None
++        ui._pending_scope_member_labels_expected = tuple()
++        ui._scope_transition_started_at = 0.0
++        ui._clear_runtime_event_notice = lambda: None
++        ui._iter_live_views = lambda: []
++
++        ui._apply_live_runtime_notice_from_ack("runtimeDeactivate", "ok", "")
++
++        self.assertTrue(ui._scope_transition_pending())
++        self.assertFalse(ui._pending_runtime_active_expected)
++        self.assertIsNone(ui._pending_controlled_lifecycle_expected)
++        self.assertEqual(tuple(), ui._pending_scope_member_labels_expected)
++
++    def test_apply_live_runtime_notice_from_ack_lifecycle_activate_starts_membership_confirmation(self) -> None:
++        ui = BringupControlUI.__new__(BringupControlUI)
++        ui._pending_runtime_active_expected = None
++        ui._pending_controlled_lifecycle_expected = None
++        ui._pending_scope_member_labels_expected = tuple()
++        ui._scope_transition_started_at = 0.0
++        ui._clear_runtime_event_notice = lambda: None
++        ui._iter_live_views = lambda: []
++        ui._current_scope_expected_member_labels = lambda: ["FALCON 9", "controller0"]
++
++        ui._apply_live_runtime_notice_from_ack("lifecycleActivate", "ok", "")
++
++        self.assertTrue(ui._scope_transition_pending())
++        self.assertIsNone(ui._pending_runtime_active_expected)
++        self.assertTrue(ui._pending_controlled_lifecycle_expected)
++        self.assertEqual(("controller0", "falcon 9"), ui._pending_scope_member_labels_expected)
++
++    def test_apply_live_runtime_notice_from_ack_lifecycle_deactivate_active_starts_deactivation_confirmation(self) -> None:
++        ui = BringupControlUI.__new__(BringupControlUI)
++        ui._pending_runtime_active_expected = None
++        ui._pending_controlled_lifecycle_expected = None
++        ui._pending_scope_member_labels_expected = ("falcon 9",)
++        ui._scope_transition_started_at = 0.0
++        ui._clear_runtime_event_notice = lambda: None
++        ui._iter_live_views = lambda: []
++
++        ui._apply_live_runtime_notice_from_ack("lifecycleDeactivateActive", "ok", "")
++
++        self.assertTrue(ui._scope_transition_pending())
++        self.assertIsNone(ui._pending_runtime_active_expected)
++        self.assertFalse(ui._pending_controlled_lifecycle_expected)
++        self.assertEqual(tuple(), ui._pending_scope_member_labels_expected)
++
++    def test_apply_live_runtime_notice_from_ack_selected_test_deactivate_starts_deactivation_confirmation(self) -> None:
++        ui = BringupControlUI.__new__(BringupControlUI)
++        ui._pending_runtime_active_expected = None
++        ui._pending_controlled_lifecycle_expected = None
++        ui._pending_scope_member_labels_expected = ("falcon 9",)
++        ui._scope_transition_started_at = 0.0
++        ui._clear_runtime_event_notice = lambda: None
++        ui._iter_live_views = lambda: []
++
++        ui._apply_live_runtime_notice_from_ack("deactivateSelectedTestDevices", "ok", "")
++
++        self.assertTrue(ui._scope_transition_pending())
++        self.assertIsNone(ui._pending_runtime_active_expected)
++        self.assertFalse(ui._pending_controlled_lifecycle_expected)
++        self.assertEqual(tuple(), ui._pending_scope_member_labels_expected)
++
++    def test_scope_transition_wait_does_not_clear_runtime_activation_without_membership_confirmation(self) -> None:
++        ui = BringupControlUI.__new__(BringupControlUI)
++        ui._pending_runtime_active_expected = True
++        ui._pending_controlled_lifecycle_expected = None
++        ui._pending_scope_member_labels_expected = ("falcon 9",)
++        ui._scope_transition_started_at = time.time()
++        ui._latest_runtime_devices = {}
++        ui._scope_context_kind = lambda: GROUP_SOURCE_SELECTED_TEST
++        ui._runtime_active_group_members = lambda: []
++
++        ui._maybe_complete_scope_transition_wait({"runtimeActive": True})
++
++        self.assertTrue(ui._scope_transition_pending())
++        self.assertIsNone(ui._pending_runtime_active_expected)
++        self.assertEqual(("falcon 9",), ui._pending_scope_member_labels_expected)
++
++    def test_scope_transition_wait_clears_runtime_activation_after_membership_confirmation(self) -> None:
++        ui = BringupControlUI.__new__(BringupControlUI)
++        ui._pending_runtime_active_expected = True
++        ui._pending_controlled_lifecycle_expected = None
++        ui._pending_scope_member_labels_expected = ("falcon 9",)
++        ui._scope_transition_started_at = time.time()
++        ui._latest_runtime_devices = {
++            "falcon 9": {
++                "label": "FALCON 9",
++                "lifecycleState": "controlled-active",
++                "instantiated": True,
++                "testable": True,
++                "activeGroupLabel": "active-group",
++            },
++            "sparkmax/neo 25": {
++                "label": "SPARKMAX/NEO 25",
++                "lifecycleState": "controlled-active",
++                "instantiated": True,
++                "testable": True,
++                "activeGroupLabel": "active-group",
++            },
++        }
++        ui._scope_context_kind = lambda: GROUP_SOURCE_SELECTED_TEST
++        ui._runtime_active_group_members = lambda: [{"label": "FALCON 9", "enabled": True}]
++        ui._scope_is_currently_active = lambda: True
++
++        ui._maybe_complete_scope_transition_wait({"runtimeActive": True})
++
++        self.assertFalse(ui._scope_transition_pending())
++        self.assertIsNone(ui._pending_runtime_active_expected)
++        self.assertEqual(tuple(), ui._pending_scope_member_labels_expected)
++
+     def test_runtime_deactivate_from_ui_uses_runtime_deactivate_path(self) -> None:
+         class _Tracker:
+             def is_pending(self) -> bool:
+diff --git a/tools/common/build_info.py b/tools/common/build_info.py
+index bbf9ad0..a574a7b 100644
+--- a/tools/common/build_info.py
++++ b/tools/common/build_info.py
+@@ -11,14 +11,14 @@ from hashlib import sha256
+ from pathlib import Path
+ from time import time
+ 
+-BUILD_GIT_DESCRIBE = "cancoder-pigeon2-checkpoint-2026-08-01-dirty"
+-BUILD_REVISION = "272"
++BUILD_GIT_DESCRIBE = "checkpoint-2026-08-03-ui-runtime-dsl-docs"
++BUILD_REVISION = "273"
+ BUILD_WORKSPACE_REVISION = "453"
+ BUILD_CODE_REVISION = "f648ad38aca2"
+-BUILD_GIT_SHA = "893e436"
++BUILD_GIT_SHA = "33165d3"
+ BUILD_GIT_BRANCH = "main"
+ BUILD_GIT_DIRTY = "dirty"
+-BUILD_TIMESTAMP = "2026-08-01T15:20:27-04:00"
++BUILD_TIMESTAMP = "2026-08-03T11:20:00-04:00"
+ 
+ BUILD_LABEL_REVISION = "build-revision"
+ BUILD_LABEL_WORKSPACE_REVISION = "workspace-revision"

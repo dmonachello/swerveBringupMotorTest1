@@ -17,6 +17,29 @@ PROFILE_NAME = "test_minimal_25_9"
 TEXT_GOLDEN_FRAME_A = "(1.000000) slcan0 0205B819#00008E0600188000 R"
 TEXT_GOLDEN_FRAME_B = "(1.020000) slcan0 0205B819#00008E0600188000 R"
 TEXT_GOLDEN_FRAME_C = "(1.250000) slcan0 000502C0#01 R"
+CTRE_MANUFACTURER = 4
+CTRE_DEVICE_TYPE_PIGEON = 4
+CTRE_DEVICE_TYPE_CANCODER = 7
+CTRE_DEVICE_TYPE_POWER = 8
+CTRE_API_CLASS_STATUS = 11
+CTRE_API_CLASS_POWER_STATUS = 5
+CTRE_API_CLASS_DIAGNOSTIC_ENUMERATION = 62
+CTRE_API_INDEX_CANCODER_PRIMARY = 3
+CTRE_API_INDEX_PIGEON_PRIMARY = 4
+CTRE_API_INDEX_POWER_STATUS = 13
+CTRE_API_INDEX_DIAGNOSTIC_RESPONSE = 5
+CTRE_CAN_ID_CANCODER = 18
+CTRE_CAN_ID_CANCODER_DIAGNOSTIC = 7
+CTRE_CAN_ID_PIGEON = 19
+CTRE_CAN_ID_PIGEON_DIAGNOSTIC = 9
+CTRE_CAN_ID_PDP = 20
+CTRE_CAN_ID_PDP_DIAGNOSTIC = 8
+TEST_DLC = 8
+TEST_DATA_HEX = "0000000000000000"
+TEST_OBSERVER_SOURCE = "test"
+TEST_ARBITRATION_ID = 0
+TEST_FRAME_COUNT = 50
+TEST_PERIOD_S = 0.01
 
 
 class PassiveDiscoveryAnalysisTests(unittest.TestCase):
@@ -327,6 +350,87 @@ class PassiveDiscoveryAnalysisTests(unittest.TestCase):
         self.assertEqual("UNKNOWN", by_family[(7, 5)].role)
         self.assertEqual("missing", result.device_records[0].expected_status)
         self.assertEqual("uncertain", result.device_records[0].presence_confidence)
+
+    def test_ctre_sensor_and_power_status_rules_count_as_presence_evidence(self) -> None:
+        cases = (
+            (
+                CTRE_DEVICE_TYPE_CANCODER,
+                CTRE_CAN_ID_CANCODER,
+                CTRE_API_CLASS_STATUS,
+                CTRE_API_INDEX_CANCODER_PRIMARY,
+            ),
+            (
+                CTRE_DEVICE_TYPE_PIGEON,
+                CTRE_CAN_ID_PIGEON,
+                CTRE_API_CLASS_STATUS,
+                CTRE_API_INDEX_PIGEON_PRIMARY,
+            ),
+            (
+                CTRE_DEVICE_TYPE_POWER,
+                CTRE_CAN_ID_PDP,
+                CTRE_API_CLASS_POWER_STATUS,
+                CTRE_API_INDEX_POWER_STATUS,
+            ),
+        )
+
+        for device_type, device_id, api_class, api_index in cases:
+            with self.subTest(device_type=device_type, api_class=api_class, api_index=api_index):
+                frames = [
+                    NormalizedFrame(
+                        timestamp_s=TEST_PERIOD_S * float(index),
+                        can_id=TEST_ARBITRATION_ID,
+                        dlc=TEST_DLC,
+                        data_hex=TEST_DATA_HEX,
+                        is_extended=True,
+                        is_rtr=False,
+                        manufacturer=CTRE_MANUFACTURER,
+                        device_type=device_type,
+                        api_class=api_class,
+                        api_index=api_index,
+                        device_id=device_id,
+                        observer_source=TEST_OBSERVER_SOURCE,
+                    )
+                    for index in range(TEST_FRAME_COUNT)
+                ]
+
+                result = analyze_frames(frames=frames, expected_rows={})
+
+                self.assertEqual("DEVICE_EMITTED_PRIMARY_STATUS", result.family_records[0].role)
+                self.assertEqual("unexpected", result.device_records[0].expected_status)
+                self.assertGreaterEqual(result.device_records[0].presence_score, 50)
+
+    def test_ctre_diagnostic_enumeration_does_not_count_as_presence_evidence(self) -> None:
+        cases = (
+            (CTRE_DEVICE_TYPE_CANCODER, CTRE_CAN_ID_CANCODER_DIAGNOSTIC),
+            (CTRE_DEVICE_TYPE_PIGEON, CTRE_CAN_ID_PIGEON_DIAGNOSTIC),
+            (CTRE_DEVICE_TYPE_POWER, CTRE_CAN_ID_PDP_DIAGNOSTIC),
+        )
+
+        for device_type, device_id in cases:
+            with self.subTest(device_type=device_type, device_id=device_id):
+                frames = [
+                    NormalizedFrame(
+                        timestamp_s=TEST_PERIOD_S * float(index),
+                        can_id=TEST_ARBITRATION_ID,
+                        dlc=TEST_DLC,
+                        data_hex=TEST_DATA_HEX,
+                        is_extended=True,
+                        is_rtr=False,
+                        manufacturer=CTRE_MANUFACTURER,
+                        device_type=device_type,
+                        api_class=CTRE_API_CLASS_DIAGNOSTIC_ENUMERATION,
+                        api_index=CTRE_API_INDEX_DIAGNOSTIC_RESPONSE,
+                        device_id=device_id,
+                        observer_source=TEST_OBSERVER_SOURCE,
+                    )
+                    for index in range(TEST_FRAME_COUNT)
+                ]
+
+                result = analyze_frames(frames=frames, expected_rows={})
+
+                self.assertEqual("UNKNOWN", result.family_records[0].role)
+                self.assertEqual("uncertain", result.device_records[0].expected_status)
+                self.assertEqual("uncertain", result.device_records[0].presence_confidence)
 
 
 if __name__ == "__main__":

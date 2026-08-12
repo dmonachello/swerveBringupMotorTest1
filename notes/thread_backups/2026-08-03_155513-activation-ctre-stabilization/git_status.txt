@@ -1,0 +1,6 @@
+ M src/main/java/frc/robot/BuildInfo.java
+ M tools/can_nt/tests/test_bringup_ui_actions.py
+ M tools/common/build_info.py
+?? docs/STATUS_REVIEW_2026-08-03.md
+?? docs/TEST_PLAN_ACTIVATION_HARDENING_2026-08-03.md
+?? "github chat.md"

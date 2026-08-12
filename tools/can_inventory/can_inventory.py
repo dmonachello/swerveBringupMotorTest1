@@ -29,6 +29,8 @@ KEY_FRAME_DATA = "frame_data"
 KEY_CAPTURE_TIMESTAMP = "capture_timestamp"
 KEY_SOURCE = "source"
 KEY_ROBOT_IP = "robot_ip"
+KEY_NON_DEVICE_TRAFFIC_FAMILIES = "nonDeviceTrafficFamilies"
+KEY_FAMILY_KEY = "familyKey"
 KEY_PARAMETERS = "parameters"
 KEY_NAME = "name"
 KEY_DIO_DEVICES = "dio_devices"
@@ -46,6 +48,7 @@ def dump_api_inventory(
     channel: str,
     bitrate: int,
     pairs: Dict[Tuple[str, int, int], Dict[str, float]],
+    non_device_traffic_families: Optional[List[Dict[str, Any]]] = None,
     source: str = "can_nt_bridge",
     robot_ip: Optional[str] = None,
 ) -> None:
@@ -60,6 +63,7 @@ def dump_api_inventory(
         channel: CAN channel (e.g., COM port).
         bitrate: CAN bitrate in bps.
         pairs: Observed pair stats keyed by (label,apiClass,apiIndex).
+        non_device_traffic_families: Stable metadata rows for non-device traffic.
         source: Inventory source label.
         robot_ip: Robot IP address string.
 
@@ -91,6 +95,10 @@ def dump_api_inventory(
         },
         KEY_DEVICES: [devices[key] for key in sorted(devices.keys())],
     }
+    if non_device_traffic_families:
+        payload[KEY_NON_DEVICE_TRAFFIC_FAMILIES] = _sorted_non_device_traffic_families(
+            non_device_traffic_families
+        )
     try:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2)
@@ -136,6 +144,22 @@ def load_inventory(path: str) -> Dict[Tuple[str, int, int], float]:
                 fps = 0.0
             result[(label, api_class, api_index)] = fps
     return result
+
+
+def _sorted_non_device_traffic_families(
+    rows: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """
+    NAME
+        _sorted_non_device_traffic_families - Return stable sorted non-device traffic rows.
+    """
+    normalized: List[Dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        normalized.append(dict(row))
+    normalized.sort(key=lambda row: str(row.get(KEY_FAMILY_KEY, "")))
+    return normalized
 
 
 def print_inventory_diff(path_a: str, path_b: str, top_n: int) -> None:

@@ -30,7 +30,8 @@ from tools.common.motor_runtime_verdict import (
 from tools.common.profile_constants import KEY_ID, KEY_LABEL, KEY_MANUFACTURER, KEY_MODEL
 from tools.passive_discovery_poc.discovery import analyze_frames
 from tools.passive_discovery_poc.enrichment import enrich_console_log, enrich_ctre, enrich_topology
-from tools.passive_discovery_poc.models import DeviceRecord, EnrichmentRecord, RunResult
+from tools.passive_discovery_poc.constants import MODEL_UNKNOWN
+from tools.passive_discovery_poc.models import DeviceRecord, EnrichmentRecord, FamilyRecord, RunResult
 from tools.passive_discovery_poc.profile import load_profile
 
 ENGINE_LABEL_LEGACY = "LEGACY"
@@ -57,6 +58,8 @@ SECTION_INTERPRETATION = "interpretation"
 
 PROFILE_PATH_AUTO = ""
 TEXT_EMPTY = ""
+TEXT_COLON_DELIM = ":"
+TEXT_GUESS_PREFIX = "Guess: "
 TEXT_SECTION_SEPARATOR = "; "
 TEXT_ENGINE_BANNER_PREFIX = "Evidence Engine: "
 TEXT_ROLLOUT_PREFIX = "rollout="
@@ -78,6 +81,10 @@ RUN_METADATA_SOURCE = "source"
 RUN_METADATA_SOURCE_KIND = "sourceKind"
 RUN_METADATA_FRAME_PROVIDER = "visibility_provider"
 RUN_METADATA_HOST_PASSIVE = "host_live_passive_discovery"
+INT_ZERO = 0
+INT_ONE = 1
+INT_TWO = 2
+COUNT_THREE = 3
 ATTACHMENT_KEY_TYPE = "type"
 ATTACHMENT_TYPE_PRESENCE_CHECK = "presenceCheck"
 PRESENCE_KEY_BUCKET = "bucket"
@@ -109,6 +116,11 @@ EVIDENCE_CONFIDENCE_LOW = "LOW"
 EVIDENCE_SOURCE_NONE = "--"
 EVIDENCE_SOURCE_LOCAL_SNAPSHOT = "localSnapshot"
 EVIDENCE_SOURCE_RUNTIME_STATE = "runtimeState"
+EXPECTED_STATUS_UNEXPECTED = "unexpected"
+ROLE_DEVICE_EMITTED_PREFIX = "DEVICE_EMITTED_"
+ROLE_DEVICE_EMITTED_PRIMARY_STATUS = "DEVICE_EMITTED_PRIMARY_STATUS"
+ROLE_DEVICE_EMITTED_SECONDARY_STATUS = "DEVICE_EMITTED_SECONDARY_STATUS"
+ROLE_DEVICE_EMITTED_HEARTBEAT_HOUSEKEEPING = "DEVICE_EMITTED_HEARTBEAT_HOUSEKEEPING"
 RUNTIME_DEVICE_KEY_ATTACHMENTS = "attachments"
 RUNTIME_DEVICE_KEY_PRESENCE_CONFIDENCE = "presenceConfidence"
 RUNTIME_DEVICE_KEY_INSTANTIATED = "instantiated"
@@ -2715,17 +2727,17 @@ def build_passive_device_detail_snapshot(
     clean_label = str(label or TEXT_EMPTY).strip().lower()
     if not clean_label or not isinstance(passive_result, RunResult):
         return snapshot
+    visibility_identity_text = _visibility_identity_text_from_device(visibility_device)
     visibility_metrics = (
         visibility_device.get("metrics")
         if isinstance(visibility_device, Mapping) and isinstance(visibility_device.get("metrics"), Mapping)
         else {}
     )
-    device_record = None
-    for candidate in passive_result.device_records:
-        candidate_label = str(candidate.profile_label or TEXT_EMPTY).strip().lower()
-        if candidate_label == clean_label:
-            device_record = candidate
-            break
+    device_record = resolve_passive_visibility_device_record(
+        label=clean_label,
+        passive_result=passive_result,
+        visibility_identity_text=visibility_identity_text,
+    )
     if device_record is None:
         latest_seen_ms: Optional[float] = None
         for metric_entry in visibility_metrics.values():
@@ -3282,13 +3294,11 @@ def build_passive_visibility_deep_dive_text(
     clean_label = str(label or TEXT_EMPTY).strip()
     if not clean_label:
         return EVIDENCE_SOURCE_NONE
-    passive_device: Optional[DeviceRecord] = None
-    if isinstance(passive_result, RunResult):
-        for device in passive_result.device_records:
-            device_label = str(device.profile_label or TEXT_EMPTY).strip()
-            if device_label.lower() == clean_label.lower():
-                passive_device = device
-                break
+    passive_device = resolve_passive_visibility_device_record(
+        label=clean_label,
+        passive_result=passive_result,
+        visibility_identity_text=visibility_identity_text,
+    )
     if passive_device is None:
         return "\n".join(
             [
@@ -3372,7 +3382,132 @@ def build_passive_visibility_deep_dive_text(
             lines.append(f"- {str(gap).strip()}")
     else:
         lines.append("No major passive CAN evidence gaps reported.")
+    lines.extend(("", "Guesses"))
+    guesses = _passive_visibility_guess_lines(
+        passive_device=passive_device,
+        evidence_families=evidence_families,
+        supporting_families=supporting_families,
+    )
+    if guesses:
+        lines.extend(guesses)
+    else:
+        lines.append("No conservative passive-only guesses available.")
     return "\n".join(lines)
+
+
+def resolve_passive_visibility_device_record(
+    *,
+    label: str,
+    passive_result: Optional[RunResult],
+    visibility_identity_text: str,
+) -> Optional[DeviceRecord]:
+    """
+    NAME
+        resolve_passive_visibility_device_record - Resolve one passive visibility row to a shared DeviceRecord by label first, then passive identity.
+    """
+    clean_label = str(label or TEXT_EMPTY).strip().lower()
+    if not clean_label or not isinstance(passive_result, RunResult):
+        return None
+    for device in passive_result.device_records:
+        device_label = str(device.profile_label or TEXT_EMPTY).strip().lower()
+        if device_label == clean_label:
+            return device
+    parsed_identity = _parse_visibility_identity_key(visibility_identity_text)
+    if parsed_identity is None:
+        return None
+    manufacturer, device_type, device_id = parsed_identity
+    for device in passive_result.device_records:
+        identity = getattr(device, "identity", None)
+        if identity is None:
+            continue
+        if (
+            int(getattr(identity, "manufacturer", -1)) == manufacturer
+            and int(getattr(identity, "device_type", -1)) == device_type
+            and int(getattr(identity, "device_id", -1)) == device_id
+        ):
+            return device
+    return None
+
+
+def _parse_visibility_identity_key(identity_text: object) -> Optional[Tuple[int, int, int]]:
+    """
+    NAME
+        _parse_visibility_identity_key - Parse one passive visibility identity key into manufacturer, device type, and device id.
+    """
+    clean_identity = str(identity_text or TEXT_EMPTY).strip()
+    if not clean_identity:
+        return None
+    parts = [part.strip() for part in clean_identity.split(TEXT_COLON_DELIM)]
+    if len(parts) != COUNT_THREE:
+        return None
+    try:
+        manufacturer = int(parts[INT_ZERO])
+        device_type = int(parts[INT_ONE])
+        device_id = int(parts[INT_TWO])
+    except ValueError:
+        return None
+    return (manufacturer, device_type, device_id)
+
+
+def _visibility_identity_text_from_device(visibility_device: Optional[Mapping[str, Any]]) -> str:
+    """
+    NAME
+        _visibility_identity_text_from_device - Return one passive visibility identity key from a visibility row payload.
+    """
+    if not isinstance(visibility_device, Mapping):
+        return TEXT_EMPTY
+    identity = visibility_device.get("identityKey")
+    return str(identity or TEXT_EMPTY).strip()
+
+
+def _passive_visibility_guess_lines(
+    *,
+    passive_device: DeviceRecord,
+    evidence_families: List[FamilyRecord],
+    supporting_families: List[FamilyRecord],
+) -> List[str]:
+    """
+    NAME
+        _passive_visibility_guess_lines - Build conservative labeled hypotheses from passive-only evidence.
+    """
+    guesses: List[str] = []
+    manufacturer_name = str(passive_device.manufacturer_name or TEXT_EMPTY).strip()
+    device_type_name = str(passive_device.device_type_name or TEXT_EMPTY).strip()
+    model_name = str(passive_device.model_name or TEXT_EMPTY).strip()
+    expected_status = str(passive_device.expected_status or TEXT_EMPTY).strip().lower()
+    presence_confidence = str(passive_device.presence_confidence or TEXT_EMPTY).strip().lower()
+    evidence_roles = {
+        str(family.role or TEXT_EMPTY).strip()
+        for family in evidence_families
+        if str(family.role or TEXT_EMPTY).strip()
+    }
+    if manufacturer_name or device_type_name:
+        guess_text = f"{TEXT_GUESS_PREFIX}likely manufacturer={manufacturer_name or EVIDENCE_SOURCE_NONE}"
+        if device_type_name:
+            guess_text += f", deviceType={device_type_name}"
+        guesses.append(guess_text)
+    if model_name and model_name != MODEL_UNKNOWN:
+        guesses.append(f"{TEXT_GUESS_PREFIX}likely model family={model_name}")
+    if expected_status == EXPECTED_STATUS_UNEXPECTED and presence_confidence in ("high", "medium"):
+        guesses.append(
+            f"{TEXT_GUESS_PREFIX}likely a real bus participant that is missing from the selected profile, not random noise."
+        )
+    if (
+        ROLE_DEVICE_EMITTED_PRIMARY_STATUS in evidence_roles
+        and ROLE_DEVICE_EMITTED_SECONDARY_STATUS in evidence_roles
+    ):
+        guesses.append(
+            f"{TEXT_GUESS_PREFIX}periodic primary and secondary status traffic suggests a device that is actively emitting structured status frames."
+        )
+    if ROLE_DEVICE_EMITTED_HEARTBEAT_HOUSEKEEPING in evidence_roles:
+        guesses.append(
+            f"{TEXT_GUESS_PREFIX}heartbeat/housekeeping traffic suggests the device is alive on the bus, but not necessarily healthy or correctly configured."
+        )
+    if not supporting_families and evidence_families:
+        guesses.append(
+            f"{TEXT_GUESS_PREFIX}current passive evidence is mostly device-emitted; topology position and attached mechanism still cannot be inferred from CAN traffic alone."
+        )
+    return guesses
 
 
 def _passive_visibility_family_detail_line(

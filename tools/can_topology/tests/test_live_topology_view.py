@@ -181,6 +181,7 @@ class LiveTopologyViewTests(unittest.TestCase):
         view._group_inspector_frame = None
         view._detail_device_frame = None
         view._manual_test_observations = {}
+        view._synthetic_selection_detail = {}
         view._connection_filter_vars = {
             key: _BoolVarStub(True) for key in live_view_module.CONNECTION_FILTERS_ORDER
         }
@@ -226,6 +227,20 @@ class LiveTopologyViewTests(unittest.TestCase):
 
         self.assertEqual([("pdp", False)], calls)
         self.assertFalse(variable.get())
+
+    def test_display_active_group_uses_configured_profile_fallback_when_runtime_membership_is_empty(self) -> None:
+        view = self._make_view()
+        view._configured_active_group_member_labels = ("FALCON 9", "SPARKMAX/NEO 25")
+        view._bridge_groups = []
+        view._runtime_groups = [{"name": "active-group", "members": []}]
+
+        active_group = view._display_active_group()
+
+        self.assertIsInstance(active_group, dict)
+        self.assertEqual(
+            ["FALCON 9", "SPARKMAX/NEO 25"],
+            live_view_module.group_member_labels(active_group, enabled_only=False),
+        )
 
     def test_override_action_uses_shared_action_gate(self) -> None:
         view = self._make_view()
@@ -327,6 +342,36 @@ class LiveTopologyViewTests(unittest.TestCase):
         self.assertEqual(
             "in-scope-stale",
             view._detail_vars[live_view_module.DETAIL_KEY_LIFECYCLE_STATE].get(),
+        )
+
+    def test_visibility_lens_selection_details_use_synthetic_payload_when_no_node_matches(self) -> None:
+        view = self._make_view()
+        self._attach_detail_vars(view)
+        view._selected_node = None
+        view.set_overlay_lens(live_view_module.TOPOLOGY_LENS_VISIBILITY)
+
+        view.set_synthetic_selection_detail(
+            {
+                live_view_module.DETAIL_KEY_LABEL: "UNPROFILED_DEVICE_50207",
+                live_view_module.DETAIL_KEY_CAN_ID: "7",
+                live_view_module.DETAIL_KEY_PRESENCE_STATUS: "unrecognized-passive",
+                live_view_module.DETAIL_KEY_PRESENCE_SOURCE: "passiveCan",
+                live_view_module.DETAIL_KEY_SELECTED: "passive-only",
+            }
+        )
+
+        self.assertEqual(
+            "UNPROFILED_DEVICE_50207",
+            view._detail_vars[live_view_module.DETAIL_KEY_LABEL].get(),
+        )
+        self.assertEqual("7", view._detail_vars[live_view_module.DETAIL_KEY_CAN_ID].get())
+        self.assertEqual(
+            "unrecognized-passive",
+            view._detail_vars[live_view_module.DETAIL_KEY_PRESENCE_STATUS].get(),
+        )
+        self.assertEqual(
+            "passive-only",
+            view._detail_vars[live_view_module.DETAIL_KEY_SELECTED].get(),
         )
 
     def test_evidence_lens_selection_details_use_interpreted_snapshot(self) -> None:

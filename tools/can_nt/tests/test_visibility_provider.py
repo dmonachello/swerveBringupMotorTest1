@@ -32,13 +32,16 @@ TEST_SOURCE_ID = "src0"
 TEST_SOURCE_LABEL = "analyzer0"
 TEST_EXPECTED_LABEL = "FALCON 9"
 TEST_EXPECTED_IDENTITY = "1:2:9"
+TEST_EXPECTED_DISCOVERED_LABEL = "UNPROFILED_DEVICE_10209"
 TEST_DISCOVERED_IDENTITY = "99:88:77"
-TEST_DISCOVERED_LABEL = "UNPROFILED_DEVICE_1"
+TEST_DISCOVERED_LABEL = "UNPROFILED_DEVICE_998877"
 TEST_RENAMED_LABEL = "rear-can-observer"
 TEST_OBSERVER_SOURCE = "src0"
 TEST_PIGEON_LABEL = "Pigeon 2"
 TEST_PIGEON_CANONICAL_IDENTITY = "4:4:19"
 TEST_PIGEON_RAW_ARB_ID = 0x15040013
+TEST_SECOND_DISCOVERED_IDENTITY = "99:88:78"
+TEST_SECOND_DISCOVERED_LABEL = "UNPROFILED_DEVICE_998878"
 
 
 class VisibilityProviderTests(unittest.TestCase):
@@ -88,6 +91,25 @@ class VisibilityProviderTests(unittest.TestCase):
         self.assertEqual(first, TEST_DISCOVERED_LABEL)
         self.assertEqual(second, TEST_DISCOVERED_LABEL)
 
+    def test_unconfigured_identity_label_is_repeatable_across_provider_instances(self) -> None:
+        first_provider = self._build_provider()
+        second_provider = self._build_provider()
+
+        first = first_provider.resolve_label(TEST_DISCOVERED_IDENTITY)
+        second = second_provider.resolve_label(TEST_DISCOVERED_IDENTITY)
+
+        self.assertEqual(TEST_DISCOVERED_LABEL, first)
+        self.assertEqual(TEST_DISCOVERED_LABEL, second)
+
+    def test_multiple_unconfigured_identities_use_stable_identity_based_labels(self) -> None:
+        provider = self._build_provider()
+
+        first = provider.resolve_label(TEST_DISCOVERED_IDENTITY)
+        second = provider.resolve_label(TEST_SECOND_DISCOVERED_IDENTITY)
+
+        self.assertEqual(TEST_DISCOVERED_LABEL, first)
+        self.assertEqual(TEST_SECOND_DISCOVERED_LABEL, second)
+
     def test_rename_discovered_label_persists_for_identity(self) -> None:
         provider = self._build_provider()
 
@@ -119,7 +141,7 @@ class VisibilityProviderTests(unittest.TestCase):
         snapshot = provider.snapshot(VIS_SCOPE_BOTH, TEST_NOW_MS)
         devices = snapshot[VIS_KEY_DEVICES]
 
-        self.assertEqual(discovered, TEST_DISCOVERED_LABEL)
+        self.assertEqual(discovered, TEST_EXPECTED_DISCOVERED_LABEL)
         self.assertEqual(len(devices), 1)
         self.assertEqual(devices[0][VIS_KEY_LABEL], TEST_EXPECTED_LABEL)
         self.assertFalse(devices[0][VIS_KEY_UNEXPECTED])
@@ -243,6 +265,74 @@ class VisibilityProviderTests(unittest.TestCase):
         self.assertEqual(1, len(devices))
         self.assertEqual(TEST_PIGEON_LABEL, devices[0][VIS_KEY_LABEL])
         self.assertEqual(TEST_PIGEON_CANONICAL_IDENTITY, devices[0][VIS_KEY_IDENTITY])
+
+    def test_supporting_identity_does_not_create_unexpected_device_row(self) -> None:
+        provider = self._build_provider()
+        frame = NormalizedFrame(
+            timestamp_s=1.25,
+            can_id=TEST_PIGEON_RAW_ARB_ID,
+            dlc=8,
+            data_hex="0000000000000000",
+            is_extended=True,
+            is_rtr=False,
+            manufacturer=4,
+            device_type=4,
+            api_class=13,
+            api_index=1,
+            device_id=19,
+            observer_source=TEST_OBSERVER_SOURCE,
+        )
+
+        provider.ingest_frame(
+            TEST_SOURCE_ID,
+            arb_id=TEST_PIGEON_RAW_ARB_ID,
+            ts_ms=TEST_SEEN_MS,
+            decoded_key=TEST_PIGEON_CANONICAL_IDENTITY,
+            label=TEST_PIGEON_LABEL,
+            normalized_frame=frame,
+            allow_unexpected_create=False,
+        )
+
+        snapshot = provider.snapshot(VIS_SCOPE_BOTH, TEST_NOW_MS)
+        devices = snapshot[VIS_KEY_DEVICES]
+
+        self.assertEqual(0, len(devices))
+
+    def test_supporting_identity_attaches_to_expected_device_without_creating_extra_row(self) -> None:
+        provider = self._build_provider()
+        provider.set_expected_devices([(TEST_PIGEON_LABEL, TEST_PIGEON_CANONICAL_IDENTITY)])
+        frame = NormalizedFrame(
+            timestamp_s=1.25,
+            can_id=TEST_PIGEON_RAW_ARB_ID,
+            dlc=8,
+            data_hex="0000000000000000",
+            is_extended=True,
+            is_rtr=False,
+            manufacturer=4,
+            device_type=4,
+            api_class=13,
+            api_index=1,
+            device_id=19,
+            observer_source=TEST_OBSERVER_SOURCE,
+        )
+
+        provider.ingest_frame(
+            TEST_SOURCE_ID,
+            arb_id=TEST_PIGEON_RAW_ARB_ID,
+            ts_ms=TEST_SEEN_MS,
+            decoded_key=TEST_PIGEON_CANONICAL_IDENTITY,
+            label=TEST_PIGEON_LABEL,
+            normalized_frame=frame,
+            allow_unexpected_create=False,
+        )
+
+        snapshot = provider.snapshot(VIS_SCOPE_BOTH, TEST_NOW_MS)
+        devices = snapshot[VIS_KEY_DEVICES]
+
+        self.assertEqual(1, len(devices))
+        self.assertEqual(TEST_PIGEON_LABEL, devices[0][VIS_KEY_LABEL])
+        self.assertEqual(TEST_PIGEON_CANONICAL_IDENTITY, devices[0][VIS_KEY_IDENTITY])
+        self.assertFalse(devices[0][VIS_KEY_UNEXPECTED])
 
 
 if __name__ == "__main__":

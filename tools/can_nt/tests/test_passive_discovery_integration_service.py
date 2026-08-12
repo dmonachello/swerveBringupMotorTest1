@@ -567,6 +567,126 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
         self.assertIn("countsForPresence=no", text)
         self.assertIn("No fresh heartbeat family.", text)
 
+    def test_build_passive_visibility_deep_dive_text_matches_unrecognized_row_by_identity(self) -> None:
+        primary_key = FamilyKey(5, 2, 7, 46, 2)
+        heartbeat_key = FamilyKey(5, 2, 7, 47, 0)
+        passive_result = RunResult(
+            run_metadata={},
+            device_records=(
+                DeviceRecord(
+                    identity=DeviceIdentity(5, 2, 7, "", ""),
+                    expected_status="unexpected",
+                    manufacturer_name="REV",
+                    device_type_name="SPARK MAX",
+                    model_name="SPARK MAX",
+                    profile_label="",
+                    presence_confidence="high",
+                    presence_score=91,
+                    inventory_confidence="medium",
+                    inventory_score=70,
+                    health_confidence="medium",
+                    health_score=72,
+                    health="ok",
+                    evidence_sources=("passive_can",),
+                    evidence_family_keys=(primary_key, heartbeat_key),
+                    evidence_family_summaries=("api=46/2 primary_status 50.0Hz",),
+                    evidence_gaps=("No profile mapping is defined for this device.",),
+                    notes=("Observed passive traffic for unexpected device.",),
+                ),
+            ),
+            family_records=(
+                FamilyRecord(
+                    key=primary_key,
+                    metrics=FamilyMetrics(150, 50.0, 0.02, 0.001, 2, 0, 1.0, 4.0, True, True, True, False, False, True),
+                    role="DEVICE_EMITTED_PRIMARY_STATUS",
+                    confidence="HIGH",
+                    model_hint="SPARK MAX",
+                    observed_can_ids=("0x0205B887",),
+                    sample_payloads=("0011",),
+                ),
+                FamilyRecord(
+                    key=heartbeat_key,
+                    metrics=FamilyMetrics(12, 4.0, 0.25, 0.01, 1, 0, 1.0, 4.0, True, True, False, True, False, True),
+                    role="DEVICE_EMITTED_SECONDARY_STATUS",
+                    confidence="HIGH",
+                    model_hint="SPARK MAX",
+                    observed_can_ids=("0x0205BC07",),
+                    sample_payloads=("0022",),
+                ),
+            ),
+            unknown_frames=(),
+            warnings=(),
+        )
+
+        text = build_passive_visibility_deep_dive_text(
+            label="UNPROFILED_DEVICE_50207",
+            passive_result=passive_result,
+            visibility_device={"metrics": {}},
+            visibility_identity_text="5:2:7",
+            visibility_last_seen_text="0.0s",
+            visibility_packet_count_text="13699",
+            visibility_packet_rate_text="105.3/s",
+        )
+
+        self.assertIn("Shared Passive CAN Deep Dive", text)
+        self.assertIn("expected=unexpected", text)
+        self.assertIn("passiveScore=91/100", text)
+        self.assertIn("evidenceFamilies=2", text)
+        self.assertIn("role=DEVICE_EMITTED_PRIMARY_STATUS", text)
+        self.assertIn("role=DEVICE_EMITTED_SECONDARY_STATUS", text)
+        self.assertIn("No profile mapping is defined for this device.", text)
+        self.assertIn("Guesses", text)
+        self.assertIn("Guess: likely manufacturer=REV, deviceType=SPARK MAX", text)
+        self.assertIn("Guess: likely model family=SPARK MAX", text)
+        self.assertIn("Guess: likely a real bus participant that is missing from the selected profile, not random noise.", text)
+
+    def test_build_passive_device_detail_snapshot_matches_unrecognized_row_by_identity(self) -> None:
+        passive_result = RunResult(
+            run_metadata={},
+            device_records=(
+                DeviceRecord(
+                    identity=DeviceIdentity(5, 2, 7, "", ""),
+                    expected_status="unexpected",
+                    manufacturer_name="REV",
+                    device_type_name="SPARK MAX",
+                    model_name="SPARK MAX",
+                    profile_label="",
+                    presence_confidence="high",
+                    presence_score=92,
+                    inventory_confidence="medium",
+                    inventory_score=70,
+                    health_confidence="medium",
+                    health_score=72,
+                    health="ok",
+                    evidence_sources=("passive_can",),
+                    evidence_family_keys=(),
+                    evidence_family_summaries=(),
+                    evidence_gaps=(),
+                    notes=(),
+                ),
+            ),
+            family_records=(),
+            unknown_frames=(),
+            warnings=(),
+        )
+
+        snapshot = build_passive_device_detail_snapshot(
+            "UNPROFILED_DEVICE_50207",
+            passive_result=passive_result,
+            visibility_device={
+                "identityKey": "5:2:7",
+                "metrics": {
+                    "src0": {
+                        "lastSeenMs": 1500.0,
+                    }
+                },
+            },
+            now_s=2.0,
+        )
+
+        self.assertEqual("0.92", snapshot["presence"])
+        self.assertEqual("high", snapshot["presenceStatus"])
+
     def test_build_runtime_probe_snapshot_formats_cached_probe_attachment(self) -> None:
         runtime_device = {
             "instantiated": True,

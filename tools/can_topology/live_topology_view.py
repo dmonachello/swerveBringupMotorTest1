@@ -67,6 +67,7 @@ from tools.common.profile_constants import (
     KEY_DEFAULT_PROFILE,
     KEY_DEVICE_TYPE,
     KEY_DEVICES,
+    KEY_ENABLED,
     KEY_ID,
     KEY_INTERFACE,
     KEY_LABEL,
@@ -120,6 +121,8 @@ from tools.common.topology_draw import (
     render_topology_canvas_common,
 )
 from tools.common.group_contract import (
+    GROUP_KEY_MEMBERS,
+    GROUP_KEY_NAME,
     find_group_by_name,
     group_member_labels,
     group_member_map,
@@ -418,6 +421,7 @@ ACTION_STATE_ALLOWED = HostActionAccessState(
 )
 ACTIVE_GROUP_PRIMARY_YES = "PRIMARY"
 ACTIVE_GROUP_SELECTED_YES = "selected"
+SYNTHETIC_SELECTION_LENS_VISIBILITY = TOPOLOGY_LENS_VISIBILITY
 ACTIVE_GROUP_SELECTED_NO = "not selected"
 ACTIVE_GROUP_PRESENT_PREFIX = "presence="
 ACTIVE_GROUP_FULL_PROBE_PREFIX = "fullProbe="
@@ -1086,6 +1090,7 @@ class LiveTopologyView(ttk.Frame):
         self._dio_links: List[Tuple[int, int]] = []
         self._bridge_groups: List[Dict[str, object]] = []
         self._runtime_groups: List[Dict[str, object]] = []
+        self._configured_active_group_member_labels: Tuple[str, ...] = tuple()
         self._controlled_lifecycle_active = False
         self._show_groups = True
         self._runtime_fingerprint: Optional[Tuple[object, ...]] = None
@@ -1096,6 +1101,7 @@ class LiveTopologyView(ttk.Frame):
         self._runtime_event_notice_text = EMPTY_STRING
         self._runtime_event_notice_level = "warn"
         self._manual_test_observations: Dict[str, Dict[str, object]] = {}
+        self._synthetic_selection_detail: Dict[str, str] = {}
         self._on_node_right_click_cb = on_node_right_click
         self._on_group_right_click_cb = on_group_right_click
         self._on_active_group_member_toggled_cb = on_active_group_member_toggled
@@ -1785,8 +1791,28 @@ class LiveTopologyView(ttk.Frame):
                 None,
             )
         self._selected_node = selected_node
+        if selected_node is not None or not clean_label:
+            self._synthetic_selection_detail = {}
         self._update_details()
         self._notify_selection_changed()
+        self._redraw()
+
+    def set_synthetic_selection_detail(self, detail: Optional[Dict[str, str]]) -> None:
+        """
+        NAME
+            set_synthetic_selection_detail - Apply one synthetic inspector detail payload when no topology node exists.
+        """
+        normalized: Dict[str, str] = {}
+        if isinstance(detail, dict):
+            for key, value in detail.items():
+                clean_key = str(key or EMPTY_STRING).strip()
+                if not clean_key:
+                    continue
+                normalized[clean_key] = str(value or EMPTY_STRING).strip()
+        if normalized == self._synthetic_selection_detail:
+            return
+        self._synthetic_selection_detail = normalized
+        self._update_details()
         self._redraw()
 
     def _active_connection_filters(self) -> set[str]:
@@ -2149,6 +2175,38 @@ class LiveTopologyView(ttk.Frame):
         """
         return merge_effective_groups(self._bridge_groups, self._runtime_groups)
 
+    def _display_active_group(self) -> Optional[Dict[str, object]]:
+        """
+        NAME
+            _display_active_group - Return the runtime/config effective active-group payload for side-panel rendering.
+
+        DESCRIPTION
+            A full restart can temporarily yield an empty runtime active-group
+            even when the selected profile still defines the intended manual
+            membership. Keep that configured membership visible until a later
+            runtime refresh proves a different robot-backed membership.
+        """
+        active_group = self._effective_group_by_name(ACTIVE_GROUP_NAME)
+        if group_member_labels(active_group, enabled_only=False):
+            return active_group
+        configured_labels = tuple(
+            getattr(self, "_configured_active_group_member_labels", tuple())
+        )
+        if not configured_labels:
+            return active_group
+        fallback_group = dict(active_group) if isinstance(active_group, dict) else {}
+        fallback_group[GROUP_KEY_NAME] = str(
+            fallback_group.get(GROUP_KEY_NAME, ACTIVE_GROUP_NAME) or ACTIVE_GROUP_NAME
+        ).strip() or ACTIVE_GROUP_NAME
+        fallback_group[GROUP_KEY_MEMBERS] = [
+            {
+                KEY_LABEL: label,
+                KEY_ENABLED: True,
+            }
+            for label in configured_labels
+        ]
+        return fallback_group
+
     def set_runtime_notice(self, text: str, level: str = "warn") -> None:
         """
         NAME
@@ -2242,6 +2300,22 @@ class LiveTopologyView(ttk.Frame):
         self._active_group_edit_action_state = (
             state if isinstance(state, HostActionAccessState) else ACTION_STATE_ALLOWED
         )
+        if getattr(self, "_active_group_rows_frame", None) is not None:
+            self._update_active_group_summary()
+
+    def set_configured_active_group_member_labels(self, labels: List[str]) -> None:
+        """
+        NAME
+            set_configured_active_group_member_labels - Apply configured profile active-group labels as the empty-runtime fallback.
+        """
+        normalized = tuple(
+            str(label or EMPTY_STRING).strip()
+            for label in list(labels or [])
+            if str(label or EMPTY_STRING).strip()
+        )
+        if normalized == tuple(getattr(self, "_configured_active_group_member_labels", tuple())):
+            return
+        self._configured_active_group_member_labels = normalized
         if getattr(self, "_active_group_rows_frame", None) is not None:
             self._update_active_group_summary()
 
@@ -2632,6 +2706,15 @@ class LiveTopologyView(ttk.Frame):
         self._show_device_inspector()
         node = self._selected_node
         if node is None:
+            synthetic_detail = self.__dict__.get("_synthetic_selection_detail", {})
+            if (
+                self._overlay_lens == SYNTHETIC_SELECTION_LENS_VISIBILITY
+                and isinstance(synthetic_detail, dict)
+                and synthetic_detail
+            ):
+                for key in self._detail_vars:
+                    self._detail_vars[key].set(str(synthetic_detail.get(key, "--") or "--"))
+                return
             for key in self._detail_vars:
                 self._detail_vars[key].set("--")
             return
@@ -3001,7 +3084,7 @@ class LiveTopologyView(ttk.Frame):
         """
         if self._active_group_summary_var is None:
             return
-        active_group = self._effective_group_by_name(ACTIVE_GROUP_NAME)
+        active_group = self._display_active_group()
         if not isinstance(active_group, dict):
             self._set_active_group_status_text(ACTIVE_GROUP_STATUS_NONE_TEXT)
             self._active_group_summary_var.set(ACTIVE_GROUP_NONE_TEXT)

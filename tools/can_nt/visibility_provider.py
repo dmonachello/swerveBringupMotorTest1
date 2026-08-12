@@ -14,6 +14,7 @@ DESCRIPTION
 
 from dataclasses import dataclass, field
 from collections import deque
+import hashlib
 import threading
 import math
 from typing import Deque, Dict, Iterable, List, Optional, Tuple
@@ -144,6 +145,13 @@ class DeviceState:
 DISCOVERED_LABEL_PREFIX = "UNPROFILED_DEVICE_"
 DISCOVERED_LABEL_START = 1
 DISCOVERED_LABEL_STEP = 1
+DISCOVERED_LABEL_PARTS = 3
+DISCOVERED_LABEL_BASE = 10
+DISCOVERED_LABEL_HASH_BYTES = 4
+DISCOVERED_LABEL_ENCODING = "utf-8"
+DISCOVERED_LABEL_HASH_FALLBACK_MODULUS = 1000000
+DISCOVERED_LABEL_MANUFACTURER_MULTIPLIER = 10000
+DISCOVERED_LABEL_DEVICE_TYPE_MULTIPLIER = 100
 RATE_DECAY_TIME_CONSTANT_MS = 3000.0
 RATE_DECAY_MIN_VALUE = 0.05
 
@@ -276,6 +284,7 @@ class VisibilityProvider:
         decoded_key: Optional[str] = None,
         label: Optional[str] = None,
         normalized_frame: Optional[NormalizedFrame] = None,
+        allow_unexpected_create: bool = True,
     ) -> None:
         """
         NAME
@@ -300,7 +309,11 @@ class VisibilityProvider:
                     key = _device_key_from_arb(arb_id)
             if not key:
                 return
-            state = self._state_for_identity(key, label)
+            state = self._state_for_identity(key, label, allow_unexpected_create=allow_unexpected_create)
+            if state is None:
+                if normalized_frame is not None:
+                    self._recent_frames.append(normalized_frame)
+                return
             metric = state.metrics.get(source_id)
             if metric is None:
                 metric = MetricState()
@@ -339,7 +352,7 @@ class VisibilityProvider:
             Unconfigured observed identities are assigned stable temporary labels.
         """
         with self._lock:
-            state = self._state_for_identity(identity_key, suggested_label)
+            state = self._state_for_identity(identity_key, suggested_label, allow_unexpected_create=True)
             return state.label
 
     def rename_discovered_label(self, old_label: str, new_label: str) -> bool:
@@ -361,7 +374,13 @@ class VisibilityProvider:
             self._relabel_state(old_key, new_clean)
             return True
 
-    def _state_for_identity(self, identity_key: str, suggested_label: Optional[str]) -> DeviceState:
+    def _state_for_identity(
+        self,
+        identity_key: str,
+        suggested_label: Optional[str],
+        *,
+        allow_unexpected_create: bool,
+    ) -> Optional[DeviceState]:
         """
         NAME
             _state_for_identity - Resolve or create the state tracked for one observed identity.
@@ -377,8 +396,10 @@ class VisibilityProvider:
             state = self._devices[candidate_key]
             self._identity_to_label[identity_key] = candidate_key
             return state
+        if not allow_unexpected_create:
+            return None
         if not clean_label:
-            clean_label = self._allocate_discovered_label()
+            clean_label = self._allocate_discovered_label(identity_key)
             candidate_key = clean_label.lower()
         state = DeviceState(
             key=candidate_key,
@@ -391,16 +412,45 @@ class VisibilityProvider:
         self._identity_to_label[identity_key] = candidate_key
         return state
 
-    def _allocate_discovered_label(self) -> str:
+    def _allocate_discovered_label(self, identity_key: str) -> str:
         """
         NAME
-            _allocate_discovered_label - Generate the next unique temporary discovered-device label.
+            _allocate_discovered_label - Generate a stable temporary discovered-device label.
         """
+        candidate_number = self._stable_discovered_label_number(identity_key)
         while True:
-            label = f"{DISCOVERED_LABEL_PREFIX}{self._next_discovered_label}"
-            self._next_discovered_label += DISCOVERED_LABEL_STEP
+            label = f"{DISCOVERED_LABEL_PREFIX}{candidate_number}"
             if label.lower() not in self._devices:
                 return label
+            candidate_number += DISCOVERED_LABEL_STEP
+
+    def _stable_discovered_label_number(self, identity_key: str) -> int:
+        """
+        NAME
+            _stable_discovered_label_number - Derive a stable numeric suffix for one identity.
+        """
+        parts = str(identity_key).split(VIS_KEY_SEPARATOR)
+        if len(parts) == DISCOVERED_LABEL_PARTS:
+            try:
+                manufacturer = int(parts[0], DISCOVERED_LABEL_BASE)
+                device_type = int(parts[1], DISCOVERED_LABEL_BASE)
+                device_id = int(parts[2], DISCOVERED_LABEL_BASE)
+                candidate = (
+                    manufacturer * DISCOVERED_LABEL_MANUFACTURER_MULTIPLIER
+                    + device_type * DISCOVERED_LABEL_DEVICE_TYPE_MULTIPLIER
+                    + device_id
+                )
+                return max(DISCOVERED_LABEL_START, candidate)
+            except Exception:
+                pass
+        digest = hashlib.sha256(identity_key.encode(DISCOVERED_LABEL_ENCODING)).digest()
+        candidate = int.from_bytes(
+            digest[:DISCOVERED_LABEL_HASH_BYTES],
+            byteorder="big",
+            signed=False,
+        )
+        candidate = (candidate % DISCOVERED_LABEL_HASH_FALLBACK_MODULUS) + DISCOVERED_LABEL_START
+        return max(DISCOVERED_LABEL_START, candidate)
 
     def _relabel_state(self, old_label_key: str, new_label: str) -> None:
         """

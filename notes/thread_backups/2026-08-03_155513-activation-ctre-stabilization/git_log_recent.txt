@@ -1,0 +1,30 @@
+33165d3 (HEAD -> main, tag: checkpoint-2026-08-03-ui-runtime-dsl-docs, origin/main, origin/HEAD) Checkpoint UI runtime and DSL docs updates
+893e436 (tag: cancoder-pigeon2-checkpoint-2026-08-01) Finish CANCoder and Pigeon 2 bringup support
+e2e8b1f Add UI runtime rules V2 draft
+fb70f0d Use runtime lifecycle kind for singleton UI locking
+f344642 (tag: checkpoint-2026-07-29-ui-runtime-workflows) Align UI runtime workflow state and regression lockstep
+774b8d0 (tag: checkpoint-2026-07-27-ui-runtime) Checkpoint UI/runtime rules and lifecycle work
+313c6d4 (tag: ui-state-and-doc-cleanup-2026-07-23) Unify host UI state and archive historical docs
+a492fcd Refine PC-side description in README
+9bfa5b6 (tag: reliability-hardening-2026-07-22) Harden bringup manual duty ownership
+4d5468a Harden REV lifecycle teardown and tests boundary cleanup
+30fb274 (tag: reliability-hardening-2026-07-21) Add local thread backup artifacts
+b8811b6 Merge shared state and control contract refactor
+038123d (recovery/2026-07-18-dirty-tree) Complete shared state and control contract refactor
+4000e09 Remove topology default-profile fallback
+16aa886 Centralize shared topology scene state
+595c7b9 Introduce shared host UI context state
+116d7b3 Add July 18 recovery notes and workspace snapshot artifacts
+e4abff3 Update build metadata after recovery verification
+867d7d4 Refresh generated command and build metadata artifacts
+5e531ad Freeze shared evidence fault snapshots for passive diagnostics
+619489f Harden PDP reads and extend DSL signal loss semantics
+de8db26 Align scope terminology across host and robot command surfaces
+027728f Add Obsidian docs maintenance pipeline and generated MOCs
+1ca44d3 Centralize shared host UI profile, runnable, and active-group state
+361fb2e Checkpoint current CAN diagnostics and UI state before centralized control refactor
+11030e5 Update README to accurately reflect current codebase structure and capabilities
+85d12f9 (tag: can-fault-finder-checkpoint-2026-07-11) Stabilize CAN fault finder infrastructure evidence
+03e102c Integrate passive discovery evidence UI and harden topology workflow
+d1bfc83 (tag: passive-discovery-evidence-ui-2026-07-10, tag: passive-can-discovery-checkpoint-2026-07-09) Refresh build metadata for passive discovery checkpoint
+581ff9f Checkpoint passive discovery PoC library before integration

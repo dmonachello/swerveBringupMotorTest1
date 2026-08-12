@@ -72,6 +72,11 @@ from tools.passive_discovery_poc.models import (
     FamilyRecord,
     NormalizedFrame,
 )
+from tools.passive_discovery_poc.traffic_classification import (
+    CTRE_DEVICE_DEFINING_TRAFFIC_RULES,
+    CTRE_DIAGNOSTIC_ENUMERATION_API_CLASS,
+    DeviceIdentityRule,
+)
 
 
 def analyze_frames(
@@ -171,6 +176,11 @@ def _classify_family_role(key: FamilyKey, metrics: FamilyMetrics) -> Tuple[str, 
     ):
         return (ROLE_CONTROLLER_EMITTED_COMMAND, PRESENCE_HIGH)
     if (
+        key.manufacturer == CTRE_MANUFACTURER
+        and key.api_class == CTRE_DIAGNOSTIC_ENUMERATION_API_CLASS
+    ):
+        return (ROLE_UNKNOWN, PRESENCE_LOW)
+    if (
         key.manufacturer == ROBORIO_MANUFACTURER
         and key.device_type == DEVICE_TYPE_ROBORIO
         and key.api_class == ROBORIO_STATUS_API_CLASS
@@ -213,6 +223,10 @@ def _classify_family_role(key: FamilyKey, metrics: FamilyMetrics) -> Tuple[str, 
         ):
             return (ROLE_UNKNOWN, PRESENCE_LOW)
         return (ROLE_UNKNOWN, PRESENCE_LOW)
+    if _family_key_matches_identity_rules(key, CTRE_DEVICE_DEFINING_TRAFFIC_RULES):
+        if metrics.is_recurring:
+            return (ROLE_DEVICE_EMITTED_PRIMARY_STATUS, PRESENCE_HIGH)
+        return (ROLE_UNKNOWN, PRESENCE_LOW)
     if (
         key.device_type == DEVICE_TYPE_BROADCAST
         or key.device_id == 0
@@ -225,6 +239,25 @@ def _classify_family_role(key: FamilyKey, metrics: FamilyMetrics) -> Tuple[str, 
     if metrics.is_heartbeat_rate and metrics.is_recurring:
         return (ROLE_DEVICE_EMITTED_HEARTBEAT_HOUSEKEEPING, PRESENCE_MEDIUM)
     return (ROLE_UNKNOWN, PRESENCE_LOW)
+
+
+def _family_key_matches_identity_rules(
+    key: FamilyKey,
+    rules: Tuple[DeviceIdentityRule, ...],
+) -> bool:
+    """
+    NAME
+        _family_key_matches_identity_rules - Match family keys against shared identity rules.
+    """
+    return any(
+        rule.matches(
+            manufacturer=key.manufacturer,
+            device_type=key.device_type,
+            api_class=key.api_class,
+            api_index=key.api_index,
+        )
+        for rule in rules
+    )
 
 
 def _build_device_records(

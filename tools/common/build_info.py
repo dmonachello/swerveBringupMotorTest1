@@ -11,14 +11,14 @@ from hashlib import sha256
 from pathlib import Path
 from time import time
 
-BUILD_GIT_DESCRIBE = "cancoder-pigeon2-checkpoint-2026-08-01-dirty"
-BUILD_REVISION = "272"
-BUILD_WORKSPACE_REVISION = "453"
-BUILD_CODE_REVISION = "f648ad38aca2"
-BUILD_GIT_SHA = "893e436"
+BUILD_GIT_DESCRIBE = "checkpoint-2026-08-03-ui-runtime-dsl-docs-dirty"
+BUILD_REVISION = "273"
+BUILD_WORKSPACE_REVISION = "466"
+BUILD_CODE_REVISION = "7b6d98e414a5"
+BUILD_GIT_SHA = "33165d3"
 BUILD_GIT_BRANCH = "main"
 BUILD_GIT_DIRTY = "dirty"
-BUILD_TIMESTAMP = "2026-08-01T15:20:27-04:00"
+BUILD_TIMESTAMP = "2026-08-03T11:20:00-04:00"
 
 BUILD_LABEL_REVISION = "build-revision"
 BUILD_LABEL_WORKSPACE_REVISION = "workspace-revision"

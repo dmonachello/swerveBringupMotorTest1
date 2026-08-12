@@ -113,6 +113,10 @@ try:
     )
     from tools.can_nt.bridge_cli import BridgeCli
     from tools.can_nt.bridge_session import BridgeSession
+    from tools.passive_discovery_poc.traffic_classification import (
+        IDENTITY_DISPOSITION_DEFINITE,
+        classify_observed_frame,
+    )
 except ModuleNotFoundError:
     if _ROOT not in sys.path:
         sys.path.insert(0, _ROOT)
@@ -197,6 +201,10 @@ except ModuleNotFoundError:
     )
     from tools.can_nt.bridge_cli import BridgeCli
     from tools.can_nt.bridge_session import BridgeSession
+    from tools.passive_discovery_poc.traffic_classification import (
+        IDENTITY_DISPOSITION_DEFINITE,
+        classify_observed_frame,
+    )
 
 # Constants (version output).
 VERSION_APP_NAME = APP_CAN_BRIDGE_NAME
@@ -249,6 +257,13 @@ FRAME_KIND_CONTROL = "control"
 EMPTY_BYTES = b""
 PAIR_STATS_COUNT_INIT = 0.0
 PAIR_STATS_COUNT_INC = 1.0
+NON_DEVICE_FAMILY_FIRST = "first"
+NON_DEVICE_FAMILY_LAST = "last"
+NON_DEVICE_FAMILY_COUNT = "count"
+NON_DEVICE_FAMILY_KEY = "familyKey"
+NON_DEVICE_FAMILY_FIRST_SEEN_S = "firstSeenS"
+NON_DEVICE_FAMILY_LAST_SEEN_S = "lastSeenS"
+NON_DEVICE_FAMILY_PERIOD_MS = "periodMs"
 INT_ONE = 1
 INT_ZERO = 0
 FLOAT_ZERO = 0.0
@@ -327,6 +342,55 @@ def _decode_device_key(arb_id: int) -> Tuple[int, int, int]:
     """
     decoded = decode_shared_frc_ext_id(int(arb_id))
     return decoded.manufacturer, decoded.device_type, decoded.device_id
+
+
+def _record_non_device_traffic_family(
+    families: Dict[str, Dict[str, Any]],
+    payload: Dict[str, Any],
+    timestamp_s: float,
+) -> None:
+    """
+    NAME
+        _record_non_device_traffic_family - Update one observed non-device traffic family accumulator.
+    """
+    family_key = str(payload.get(NON_DEVICE_FAMILY_KEY, EMPTY_STRING)).strip()
+    if not family_key:
+        return
+    entry = families.get(family_key)
+    if entry is None:
+        entry = dict(payload)
+        entry[NON_DEVICE_FAMILY_FIRST] = float(timestamp_s)
+        entry[NON_DEVICE_FAMILY_LAST] = float(timestamp_s)
+        entry[NON_DEVICE_FAMILY_COUNT] = INT_ONE
+        families[family_key] = entry
+        return
+    entry[NON_DEVICE_FAMILY_LAST] = float(timestamp_s)
+    entry[NON_DEVICE_FAMILY_COUNT] = int(entry.get(NON_DEVICE_FAMILY_COUNT, INT_ZERO)) + INT_ONE
+
+
+def _non_device_traffic_dump_rows(
+    families: Dict[str, Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """
+    NAME
+        _non_device_traffic_dump_rows - Build stable dump rows for non-device traffic families.
+    """
+    rows: List[Dict[str, Any]] = []
+    for family_key in sorted(families.keys()):
+        entry = families[family_key]
+        first_seen = float(entry.get(NON_DEVICE_FAMILY_FIRST, FLOAT_ZERO) or FLOAT_ZERO)
+        last_seen = float(entry.get(NON_DEVICE_FAMILY_LAST, first_seen) or first_seen)
+        count = int(entry.get(NON_DEVICE_FAMILY_COUNT, INT_ZERO) or INT_ZERO)
+        duration = max(FLOAT_ZERO, last_seen - first_seen)
+        fps = (float(count) / duration) if duration > FLOAT_ZERO else FLOAT_ZERO
+        period_ms = (VIS_MS_PER_SEC / fps) if fps > FLOAT_ZERO else None
+        row = dict(entry)
+        row[NON_DEVICE_FAMILY_FIRST_SEEN_S] = first_seen
+        row[NON_DEVICE_FAMILY_LAST_SEEN_S] = last_seen
+        row[NON_DEVICE_FAMILY_COUNT] = count
+        row[NON_DEVICE_FAMILY_PERIOD_MS] = period_ms
+        rows.append(row)
+    return rows
 
 
 def _resolve_profile_context_name_from_runtime_state(
@@ -424,6 +488,31 @@ def _visibility_key_from_ids(mfg: int, dtype: int, device_id: int) -> str:
     )
 
 
+def _resolve_visibility_label_for_key(
+    key: Tuple[int, int, int],
+    can_to_label: Dict[Tuple[int, int, int], str],
+    visibility_provider: VisibilityProvider,
+    *,
+    allow_unexpected_create: bool,
+) -> str:
+    """
+    NAME
+        _resolve_visibility_label_for_key - Resolve a label without unwanted row creation.
+
+    DESCRIPTION
+        Definite device traffic may allocate an unprofiled visibility label.
+        Supporting or non-device traffic needs a printable label only and must
+        not mutate the visibility provider by allocating an unexpected row.
+    """
+    label = can_to_label.get(key)
+    identity_key = _visibility_key_from_ids(key[0], key[1], key[2])
+    if allow_unexpected_create:
+        return visibility_provider.resolve_label(identity_key, label)
+    if label:
+        return label
+    return identity_key
+
+
 def _build_visibility_expected(devices: List[Dict[str, Any]]) -> List[Tuple[str, str]]:
     """
     NAME
@@ -459,6 +548,7 @@ def _maybe_handle_dumps(
     devices: List[Dict[str, Any]],
     seen_labels: set[str],
     seen_can_keys: set[Tuple[int, int, int]],
+    non_device_traffic_families: Dict[str, Dict[str, Any]],
 ) -> bool:
     """
     NAME
@@ -478,7 +568,8 @@ def _maybe_handle_dumps(
         state: SnifferState carrying observed pairs and timestamps.
         devices: Profile device list for context.
         seen_labels: Observed device labels for reporting.
-        seen_can_keys: Observed (mfg,type,id) tuples for profile generation.
+        seen_can_keys: Observed canonical (mfg,type,id) tuples for profile generation.
+        non_device_traffic_families: Observed non-device traffic family metadata.
 
     RETURNS
         True when a dump was produced and the caller should exit.
@@ -508,6 +599,7 @@ def _maybe_handle_dumps(
             profile_name,
             seen_keys,
             args.dump_profile_include_unknown,
+            _non_device_traffic_dump_rows(non_device_traffic_families),
         )
         print(f"Dumped profile to {args.dump_profile}")
         return True
@@ -519,6 +611,7 @@ def _maybe_handle_dumps(
             args.channel,
             args.bitrate,
             state.pair_stats,
+            _non_device_traffic_dump_rows(non_device_traffic_families),
             source="can_nt_bridge",
             robot_ip=args.rio,
         )
@@ -616,6 +709,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     can_to_label, id_to_labels = _build_device_maps(devices)
     seen_can_keys: set[Tuple[int, int, int]] = set()
     seen_labels: set[str] = set()
+    non_device_traffic_families: Dict[str, Dict[str, Any]] = {}
     console_unknown_labels: Dict[int, str] = {}
     console_unknown_counter = 0
 
@@ -776,6 +870,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         expected_ids.update(new_expected)
         seen_can_keys.clear()
         seen_labels.clear()
+        non_device_traffic_families.clear()
         console_unknown_labels.clear()
         console_unknown_counter = 0
         analyzer.expected_ids = set(new_expected or [])
@@ -1067,14 +1162,21 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     if bus is not None and can is not None:
         tx_thread = start_tx_if_requested(args, bus, can, tx_stop)
 
-    def _resolve_device_label(key: Tuple[int, int, int]) -> str:
+    def _resolve_device_label(
+        key: Tuple[int, int, int],
+        *,
+        allow_unexpected_create: bool,
+    ) -> str:
         """
         NAME
             _resolve_device_label - Resolve a label for a CAN device key.
         """
-        label = can_to_label.get(key)
-        identity_key = _visibility_key_from_ids(key[0], key[1], key[2])
-        return visibility_provider.resolve_label(identity_key, label)
+        return _resolve_visibility_label_for_key(
+            key,
+            can_to_label,
+            visibility_provider,
+            allow_unexpected_create=allow_unexpected_create,
+        )
 
     def _handle_frame_item(item: FrameItem) -> None:
         """
@@ -1099,9 +1201,35 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             is_rtr=is_rtr,
             observer_source=item.source_id,
         )
+        raw_mfg = None
+        raw_dtype = None
+        raw_did = None
+        try:
+            raw_mfg, raw_dtype, raw_did = _decode_device_key(arb_id)
+        except Exception:
+            raw_mfg, raw_dtype, raw_did = None, None, None
+        observed = None
         decoded_key = None
         label = None
-        if (
+        allow_unexpected_create = True
+        if raw_mfg is not None and raw_dtype is not None and raw_did is not None:
+            observed = classify_observed_frame(normalized_frame, (raw_mfg, raw_dtype, raw_did))
+            if observed.identity_disposition != IDENTITY_DISPOSITION_DEFINITE:
+                allow_unexpected_create = False
+            if observed.canonical_identity is not None:
+                canonical_key = observed.canonical_identity
+                decoded_key = _visibility_key_from_ids(canonical_key[0], canonical_key[1], canonical_key[2])
+                label = _resolve_device_label(
+                    canonical_key,
+                    allow_unexpected_create=allow_unexpected_create,
+                )
+            elif observed.contributes_to_device_identity:
+                decoded_key = _visibility_key_from_ids(raw_mfg, raw_dtype, raw_did)
+                label = _resolve_device_label(
+                    (raw_mfg, raw_dtype, raw_did),
+                    allow_unexpected_create=allow_unexpected_create,
+                )
+        elif (
             normalized_frame.manufacturer is not None
             and normalized_frame.device_type is not None
             and normalized_frame.device_id is not None
@@ -1112,15 +1240,10 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 int(normalized_frame.device_id),
             )
             decoded_key = _visibility_key_from_ids(canonical_key[0], canonical_key[1], canonical_key[2])
-            label = _resolve_device_label(canonical_key)
-        else:
-            try:
-                mfg, dtype, did = _decode_device_key(arb_id)
-                decoded_key = _visibility_key_from_ids(mfg, dtype, did)
-                label = _resolve_device_label((mfg, dtype, did))
-            except Exception:
-                decoded_key = None
-                label = None
+            label = _resolve_device_label(
+                canonical_key,
+                allow_unexpected_create=allow_unexpected_create,
+            )
 
         visibility_provider.ingest_frame(
             item.source_id,
@@ -1129,6 +1252,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             decoded_key=decoded_key,
             label=label,
             normalized_frame=normalized_frame,
+            allow_unexpected_create=allow_unexpected_create,
         )
 
         if item.source_id != primary_source_id:
@@ -1142,12 +1266,25 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
 
         mfg, dtype, did = _decode_device_key(arb_id)
         _, _, api_class, api_index, _ = decode_frc_ext_id_full(arb_id)
-        key = (mfg, dtype, did)
-        seen_can_keys.add(key)
-        label = _resolve_device_label(key)
-        seen_labels.add(label)
-        state.last_seen[label] = ts_s
-        state.msg_count[label] = state.msg_count.get(label, INT_ZERO) + INT_ONE
+        if observed is None:
+            observed = classify_observed_frame(normalized_frame, (mfg, dtype, did))
+        if observed.contributes_to_device_identity and observed.canonical_identity is not None:
+            key = observed.canonical_identity
+            seen_can_keys.add(key)
+            label = _resolve_device_label(key, allow_unexpected_create=True)
+            seen_labels.add(label)
+            state.last_seen[label] = ts_s
+            state.msg_count[label] = state.msg_count.get(label, INT_ZERO) + INT_ONE
+        else:
+            _record_non_device_traffic_family(
+                non_device_traffic_families,
+                observed.as_non_device_payload(),
+                ts_s,
+            )
+            label = _resolve_device_label(
+                (mfg, dtype, did),
+                allow_unexpected_create=False,
+            )
 
         is_status, is_control = classify_frame(
             arb_id=arb_id,
@@ -1156,10 +1293,11 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             api_class=api_class,
             api_index=api_index,
         )
-        if is_status:
-            state.status_last_seen[label] = ts_s
-        if is_control:
-            state.control_last_seen[label] = ts_s
+        if observed.contributes_to_device_identity:
+            if is_status:
+                state.status_last_seen[label] = ts_s
+            if is_control:
+                state.control_last_seen[label] = ts_s
 
         print_label_match = (
             not args.print_label
@@ -1209,17 +1347,18 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 )
             )
 
-        pair_key = (label, api_class, api_index)
-        stats = state.pair_stats.get(pair_key)
-        if stats is None:
-            stats = {
-                PAIR_STATS_FIRST: ts_s,
-                PAIR_STATS_LAST: ts_s,
-                PAIR_STATS_COUNT: PAIR_STATS_COUNT_INIT,
-            }
-            state.pair_stats[pair_key] = stats
-        stats[PAIR_STATS_LAST] = ts_s
-        stats[PAIR_STATS_COUNT] += PAIR_STATS_COUNT_INC
+        if observed.contributes_to_device_identity:
+            pair_key = (label, api_class, api_index)
+            stats = state.pair_stats.get(pair_key)
+            if stats is None:
+                stats = {
+                    PAIR_STATS_FIRST: ts_s,
+                    PAIR_STATS_LAST: ts_s,
+                    PAIR_STATS_COUNT: PAIR_STATS_COUNT_INIT,
+                }
+                state.pair_stats[pair_key] = stats
+            stats[PAIR_STATS_LAST] = ts_s
+            stats[PAIR_STATS_COUNT] += PAIR_STATS_COUNT_INC
 
         state.total_frames += INT_ONE
         state.period_frames += INT_ONE
@@ -1289,7 +1428,16 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                         if _apply_profile_context(resolved_context):
                             print(f"Profile context -> {resolved_context}")
 
-                if _maybe_handle_dumps(args, now, start, state, devices, seen_labels, seen_can_keys):
+                if _maybe_handle_dumps(
+                    args,
+                    now,
+                    start,
+                    state,
+                    devices,
+                    seen_labels,
+                    seen_can_keys,
+                    non_device_traffic_families,
+                ):
                     return 0
 
                 if (
