@@ -23,6 +23,7 @@ from tools.can_nt.bringup_ui import (
     CMD_RUNTIME_ACTIVATE,
     CMD_RUNTIME_DEACTIVATE,
     CMD_SHOW_LIFECYCLE_STATE,
+    BUTTON_SAVE_CONFIG,
     EVIDENCE_PROBE_TEXT,
     GROUP_ACTIVE_NAME,
     GROUP_SOURCE_SELECTED_TEST,
@@ -61,6 +62,9 @@ from tools.can_nt.bringup_ui import (
     _action_sections,
     _format_runtime_probe_score,
     _merge_host_ui_actions,
+    VIS_TAG_GUESSED_LABEL,
+    VIS_TAG_GUESSED_MODEL,
+    VIS_TAG_GUESSED_TYPE,
 )
 from tools.can_nt.ui_theme import UI_THEME_DEFAULT, UI_THEME_FIELD_CONSOLE_DARK
 from tools.can_topology.live_topology_view import (
@@ -98,6 +102,20 @@ from tools.can_nt.host_ui_actions import (
 )
 from tools.can_nt.host_ui_state_service import (
     MANUAL_DUTY_BLOCKED_BINDING_ACTIVE_TEXT,
+)
+from tools.common.profile_constants import (
+    INTERFACE_CAN,
+    KEY_DEVICE_TYPE,
+    KEY_DEVICES,
+    KEY_ID,
+    KEY_INTERFACE,
+    KEY_LABEL,
+    KEY_MANUFACTURER,
+    KEY_MODEL,
+    KEY_PROFILE_DEVICES,
+    KEY_PROFILES,
+    KEY_TAGS,
+    KEY_TYPE,
 )
 
 
@@ -758,6 +776,173 @@ class BringupUiActionMetadataTests(unittest.TestCase):
             ui._refresh_profile_devices("test_minimal_25_9")
 
         self.assertIs(preserved_snapshot, ui._evidence_enrichment_snapshot)
+
+    def test_build_pending_unrecognized_device_definition_marks_guessed_fields(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._current_passive_result = lambda: object()
+        ui._all_known_config_device_labels = lambda: ["FALCON 9"]
+
+        passive_device = SimpleNamespace(device_type_name="talon fx")
+        with patch(
+            "tools.can_nt.bringup_ui.index_run_result_by_identity",
+            return_value={(4, 2, 9): passive_device},
+        ):
+            created = ui._build_pending_unrecognized_device_definition("FALCON 9", (4, 2, 9))
+
+        self.assertEqual("FALCON 9_2", created[KEY_LABEL])
+        self.assertEqual(INTERFACE_CAN, created[KEY_INTERFACE])
+        self.assertEqual(4, created[KEY_MANUFACTURER])
+        self.assertEqual(2, created[KEY_DEVICE_TYPE])
+        self.assertEqual(9, created[KEY_ID])
+        self.assertEqual("talon fx", created[KEY_MODEL])
+        self.assertEqual("motor", created[KEY_TYPE])
+        self.assertEqual(
+            [VIS_TAG_GUESSED_LABEL, VIS_TAG_GUESSED_MODEL, VIS_TAG_GUESSED_TYPE],
+            created[KEY_TAGS],
+        )
+
+    def test_identity_triplet_for_visibility_item_falls_back_to_passive_label_resolution(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._latest_passive_result = object()
+        ui._current_passive_result = lambda: object()
+        passive_device = SimpleNamespace(
+            identity=SimpleNamespace(manufacturer=5, device_type=2, device_id=25)
+        )
+
+        with patch(
+            "tools.can_nt.bringup_ui.resolve_passive_visibility_device_record",
+            return_value=passive_device,
+        ):
+            identity = ui._identity_triplet_for_visibility_item("UNPROFILED_DEVICE_50225", "")
+
+        self.assertEqual((5, 2, 25), identity)
+
+    def test_create_device_definition_from_visibility_item_uses_captured_row_values(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        captured = []
+        ui._visibility_row_meta = {
+            "row-1": {
+                "label": "UNPROFILED_DEVICE_50207",
+                "identity": "5:2:7",
+            }
+        }
+        ui._create_device_definition_from_visibility_row = lambda label, identity: captured.append(
+            (label, identity)
+        )
+
+        ui._create_device_definition_from_visibility_item("row-1")
+
+        self.assertEqual([("UNPROFILED_DEVICE_50207", "5:2:7")], captured)
+
+    def test_refresh_profile_devices_overlays_pending_definitions(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._visibility_provider = None
+        ui._visibility_last_update = 0.0
+        ui._evidence_engine_status = {
+            "engineLabel": "MIXED",
+            "sections": {
+                "profileInventory": "NEW",
+                "passive": "NEW",
+            },
+        }
+        ui._evidence_engine_banner_var = _StringVarStub("")
+        ui._evidence_enrichment_snapshot = {}
+        ui._evidence_enrichment_profile_name = PROFILE_NONE
+        ui._evidence_enrichment_profile_fingerprint = ()
+        ui._pending_profile_device_definitions = {
+            "test_minimal_25_9": {
+                "new motor": {
+                    KEY_LABEL: "new motor",
+                    KEY_MANUFACTURER: 5,
+                    KEY_DEVICE_TYPE: 2,
+                    KEY_ID: 25,
+                }
+            }
+        }
+
+        with patch(
+            "tools.can_nt.bringup_ui.load_profile_device_catalog",
+            return_value={
+                "falcon 9": {
+                    KEY_LABEL: "FALCON 9",
+                    KEY_MANUFACTURER: 4,
+                    KEY_DEVICE_TYPE: 2,
+                    KEY_ID: 9,
+                }
+            },
+        ):
+            ui._refresh_profile_devices("test_minimal_25_9")
+
+        self.assertIn("falcon 9", ui._profile_devices)
+        self.assertIn("new motor", ui._profile_devices)
+
+    def test_save_config_from_ui_persists_pending_device_definitions(self) -> None:
+        class _EditSessionStub:
+            def __init__(self, payload) -> None:
+                self._payload = payload
+                self.marked_dirty = False
+
+            def to_payload(self):
+                return self._payload
+
+            def mark_dirty(self) -> None:
+                self.marked_dirty = True
+
+        ui = BringupControlUI.__new__(BringupControlUI)
+        saved_payloads = []
+        outputs = []
+        ui._pending_profile_device_definitions = {
+            "test_minimal_25_9": {
+                "new motor": {
+                    KEY_LABEL: "new motor",
+                    KEY_INTERFACE: INTERFACE_CAN,
+                    KEY_MANUFACTURER: 5,
+                    KEY_DEVICE_TYPE: 2,
+                    KEY_ID: 25,
+                    KEY_MODEL: "spark max",
+                    KEY_TYPE: "motor",
+                    KEY_TAGS: [VIS_TAG_GUESSED_LABEL],
+                }
+            }
+        }
+        session = _EditSessionStub(
+            {
+                KEY_PROFILES: {
+                    "test_minimal_25_9": {
+                        KEY_PROFILE_DEVICES: ["FALCON 9"],
+                    }
+                },
+                KEY_DEVICES: [
+                    {
+                        KEY_LABEL: "FALCON 9",
+                        KEY_INTERFACE: INTERFACE_CAN,
+                        KEY_MANUFACTURER: 4,
+                        KEY_DEVICE_TYPE: 2,
+                        KEY_ID: 9,
+                    }
+                ],
+            }
+        )
+        ui._begin_local_profiles_edit = lambda: session
+        ui._persist_local_profiles_edit = lambda edit: saved_payloads.append(dict(edit.to_payload()))
+        ui._append_output = outputs.append
+        ui._default_profiles_path = lambda: Path("config.json")
+        ui._selected_profile_name = lambda: "test_minimal_25_9"
+        ui._apply_profile_selection = lambda profile_name, reload_views: None
+        ui._poll_visibility_snapshot = lambda _now: None
+        ui._visibility_last_update = 0.0
+
+        ui._save_config_from_ui()
+
+        self.assertTrue(session.marked_dirty)
+        self.assertEqual({}, ui._pending_profile_device_definitions)
+        self.assertEqual(
+            ["FALCON 9", "new motor"],
+            session.to_payload()[KEY_PROFILES]["test_minimal_25_9"][KEY_PROFILE_DEVICES],
+        )
+        self.assertEqual("new motor", session.to_payload()[KEY_DEVICES][1][KEY_LABEL])
+        self.assertIn("config.json", outputs[-1])
+        self.assertEqual(1, len(saved_payloads))
 
     def test_set_evidence_engine_section_label_updates_live_view_title_when_overall_status_changes(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
@@ -1846,6 +2031,104 @@ class BringupUiActionMetadataTests(unittest.TestCase):
             ui._apply_visibility_selection("SPARKMAX/NEO 25")
 
         self.assertIn("Shared Passive CAN Deep Dive", ui._visibility_passive_detail_text.content)
+
+    def test_apply_visibility_selection_selects_visibility_topology_node(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._latest_visibility_snapshot = {"devices": []}
+        ui._visibility_passive_detail_text = _TextStub()
+        ui._latest_passive_result = object()
+        selection_calls = []
+        synthetic_calls = []
+        ui._visibility_live_view = type(
+            "VisibilityLiveViewStub",
+            (),
+            {
+                "select_node_by_label": lambda _self, label: selection_calls.append(label),
+                "set_synthetic_selection_detail": lambda _self, detail: synthetic_calls.append(detail),
+            },
+        )()
+        ui._profile_devices = {"sparkmax/neo 25": {"label": "SPARKMAX/NEO 25"}}
+
+        with patch(
+            "tools.can_nt.bringup_ui.build_passive_visibility_deep_dive_text",
+            return_value="Shared Passive CAN Deep Dive\nmock",
+        ):
+            ui._apply_visibility_selection("SPARKMAX/NEO 25")
+
+        self.assertEqual(["SPARKMAX/NEO 25"], selection_calls)
+        self.assertEqual([None], synthetic_calls)
+
+    def test_apply_visibility_selection_clears_visibility_topology_node_when_label_is_empty(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._latest_visibility_snapshot = {"devices": []}
+        ui._visibility_passive_detail_text = _TextStub()
+        selection_calls = []
+        synthetic_calls = []
+        ui._visibility_live_view = type(
+            "VisibilityLiveViewStub",
+            (),
+            {
+                "select_node_by_label": lambda _self, label: selection_calls.append(label),
+                "set_synthetic_selection_detail": lambda _self, detail: synthetic_calls.append(detail),
+            },
+        )()
+
+        ui._apply_visibility_selection("")
+
+        self.assertEqual([None], selection_calls)
+        self.assertEqual([None], synthetic_calls)
+
+    def test_apply_visibility_selection_builds_synthetic_selection_for_unrecognized_row(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._latest_visibility_snapshot = {
+            "devices": [
+                {
+                    "label": "UNPROFILED_DEVICE_50207",
+                    "identityKey": "5:2:7",
+                    "metrics": {
+                        "src0": {
+                            "lastSeenMs": (time.time() * 1000.0) - 500.0,
+                            "framesPerSec": 104.7,
+                            "msgCount": 3353,
+                        }
+                    },
+                }
+            ]
+        }
+        ui._visibility_passive_detail_text = _TextStub()
+        ui._latest_passive_result = object()
+        selection_calls = []
+        synthetic_calls = []
+        ui._visibility_live_view = type(
+            "VisibilityLiveViewStub",
+            (),
+            {
+                "select_node_by_label": lambda _self, label: selection_calls.append(label),
+                "set_synthetic_selection_detail": lambda _self, detail: synthetic_calls.append(detail),
+            },
+        )()
+        ui._profile_devices = {}
+
+        with patch(
+            "tools.can_nt.bringup_ui.build_passive_visibility_deep_dive_text",
+            return_value="Shared Passive CAN Deep Dive\nmock",
+        ), patch(
+            "tools.can_nt.bringup_ui.build_passive_device_detail_snapshot",
+            return_value={
+                "presence": "0.92",
+                "presenceStatus": "high",
+                "presenceAge": "0.1s ago",
+                "presenceSource": "passiveCan",
+            },
+        ):
+            ui._apply_visibility_selection("UNPROFILED_DEVICE_50207")
+
+        self.assertEqual(["UNPROFILED_DEVICE_50207"], selection_calls)
+        self.assertEqual(1, len(synthetic_calls))
+        self.assertEqual("UNPROFILED_DEVICE_50207", synthetic_calls[0]["label"])
+        self.assertEqual("7", synthetic_calls[0]["can_id"])
+        self.assertEqual("high", synthetic_calls[0]["presence_status"])
+        self.assertEqual("passive-only", synthetic_calls[0]["selected"])
 
     def test_set_visibility_passive_detail_text_preserves_scroll_position(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
@@ -3850,6 +4133,205 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertEqual([True], load_calls)
         self.assertFalse(send_mock.called)
         self.assertEqual([TEST_SCOPE_DETAIL_REQUIRED_UNAVAILABLE], lines)
+
+    def test_selected_test_membership_change_requires_scope_swap_allows_superset_membership(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._scope_context_kind = lambda: GROUP_SOURCE_SELECTED_TEST
+        ui._controlled_lifecycle_active_known = True
+        ui._runtime_active_group_members = lambda: [
+            {"label": "FALCON 9", "enabled": True},
+            {"label": "controller0", "enabled": True},
+            {"label": "SPARKMAX/NEO 25", "enabled": True},
+        ]
+        ui._selected_test_required_rows = lambda: [
+            {"label": "FALCON 9", "enabled": True},
+            {"label": "controller0", "enabled": True},
+        ]
+
+        self.assertFalse(ui._selected_test_membership_change_requires_scope_swap())
+
+    def test_selected_test_membership_change_requires_scope_swap_when_required_member_missing(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._scope_context_kind = lambda: GROUP_SOURCE_SELECTED_TEST
+        ui._controlled_lifecycle_active_known = True
+        ui._runtime_active_group_members = lambda: [
+            {"label": "FALCON 9", "enabled": True},
+        ]
+        ui._selected_test_required_rows = lambda: [
+            {"label": "FALCON 9", "enabled": True},
+            {"label": "controller0", "enabled": True},
+        ]
+
+        self.assertTrue(ui._selected_test_membership_change_requires_scope_swap())
+
+    def test_selected_test_required_membership_loaded_to_robot_allows_superset_membership(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._tcp_connected = True
+        ui._runtime_active_group_members = lambda: [
+            {"label": "FALCON 9", "enabled": True},
+            {"label": "controller0", "enabled": True},
+            {"label": "SPARKMAX/NEO 25", "enabled": True},
+        ]
+        ui._selected_test_required_rows = lambda: [
+            {"label": "FALCON 9", "enabled": True},
+            {"label": "controller0", "enabled": True},
+        ]
+
+        self.assertTrue(ui._selected_test_required_membership_loaded_to_robot())
+
+    def test_selected_test_required_membership_loaded_to_robot_returns_false_when_required_member_missing(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._tcp_connected = True
+        ui._runtime_active_group_members = lambda: [
+            {"label": "FALCON 9", "enabled": True},
+        ]
+        ui._selected_test_required_rows = lambda: [
+            {"label": "FALCON 9", "enabled": True},
+            {"label": "controller0", "enabled": True},
+        ]
+
+        self.assertFalse(ui._selected_test_required_membership_loaded_to_robot())
+
+    def test_selected_test_required_membership_loaded_to_robot_returns_none_when_disconnected(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._tcp_connected = False
+        ui._runtime_active_group_members = lambda: [
+            {"label": "FALCON 9", "enabled": True},
+        ]
+        ui._selected_test_required_rows = lambda: [
+            {"label": "FALCON 9", "enabled": True},
+        ]
+
+        self.assertIsNone(ui._selected_test_required_membership_loaded_to_robot())
+
+    def test_apply_live_runtime_notice_from_ack_runtime_activate_starts_pending_runtime_confirmation(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._pending_runtime_active_expected = None
+        ui._pending_controlled_lifecycle_expected = None
+        ui._pending_scope_member_labels_expected = tuple()
+        ui._scope_transition_started_at = 0.0
+        ui._clear_runtime_event_notice = lambda: None
+        ui._iter_live_views = lambda: []
+
+        ui._apply_live_runtime_notice_from_ack("runtimeActivate", "ok", "")
+
+        self.assertTrue(ui._scope_transition_pending())
+        self.assertTrue(ui._pending_runtime_active_expected)
+        self.assertIsNone(ui._pending_controlled_lifecycle_expected)
+        self.assertEqual(tuple(), ui._pending_scope_member_labels_expected)
+
+    def test_apply_live_runtime_notice_from_ack_runtime_deactivate_starts_pending_runtime_deactivation(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._pending_runtime_active_expected = None
+        ui._pending_controlled_lifecycle_expected = None
+        ui._pending_scope_member_labels_expected = tuple()
+        ui._scope_transition_started_at = 0.0
+        ui._clear_runtime_event_notice = lambda: None
+        ui._iter_live_views = lambda: []
+
+        ui._apply_live_runtime_notice_from_ack("runtimeDeactivate", "ok", "")
+
+        self.assertTrue(ui._scope_transition_pending())
+        self.assertFalse(ui._pending_runtime_active_expected)
+        self.assertIsNone(ui._pending_controlled_lifecycle_expected)
+        self.assertEqual(tuple(), ui._pending_scope_member_labels_expected)
+
+    def test_apply_live_runtime_notice_from_ack_lifecycle_activate_starts_membership_confirmation(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._pending_runtime_active_expected = None
+        ui._pending_controlled_lifecycle_expected = None
+        ui._pending_scope_member_labels_expected = tuple()
+        ui._scope_transition_started_at = 0.0
+        ui._clear_runtime_event_notice = lambda: None
+        ui._iter_live_views = lambda: []
+        ui._current_scope_expected_member_labels = lambda: ["FALCON 9", "controller0"]
+
+        ui._apply_live_runtime_notice_from_ack("lifecycleActivate", "ok", "")
+
+        self.assertTrue(ui._scope_transition_pending())
+        self.assertIsNone(ui._pending_runtime_active_expected)
+        self.assertTrue(ui._pending_controlled_lifecycle_expected)
+        self.assertEqual(("controller0", "falcon 9"), ui._pending_scope_member_labels_expected)
+
+    def test_apply_live_runtime_notice_from_ack_lifecycle_deactivate_active_starts_deactivation_confirmation(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._pending_runtime_active_expected = None
+        ui._pending_controlled_lifecycle_expected = None
+        ui._pending_scope_member_labels_expected = ("falcon 9",)
+        ui._scope_transition_started_at = 0.0
+        ui._clear_runtime_event_notice = lambda: None
+        ui._iter_live_views = lambda: []
+
+        ui._apply_live_runtime_notice_from_ack("lifecycleDeactivateActive", "ok", "")
+
+        self.assertTrue(ui._scope_transition_pending())
+        self.assertIsNone(ui._pending_runtime_active_expected)
+        self.assertFalse(ui._pending_controlled_lifecycle_expected)
+        self.assertEqual(tuple(), ui._pending_scope_member_labels_expected)
+
+    def test_apply_live_runtime_notice_from_ack_selected_test_deactivate_starts_deactivation_confirmation(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._pending_runtime_active_expected = None
+        ui._pending_controlled_lifecycle_expected = None
+        ui._pending_scope_member_labels_expected = ("falcon 9",)
+        ui._scope_transition_started_at = 0.0
+        ui._clear_runtime_event_notice = lambda: None
+        ui._iter_live_views = lambda: []
+
+        ui._apply_live_runtime_notice_from_ack("deactivateSelectedTestDevices", "ok", "")
+
+        self.assertTrue(ui._scope_transition_pending())
+        self.assertIsNone(ui._pending_runtime_active_expected)
+        self.assertFalse(ui._pending_controlled_lifecycle_expected)
+        self.assertEqual(tuple(), ui._pending_scope_member_labels_expected)
+
+    def test_scope_transition_wait_does_not_clear_runtime_activation_without_membership_confirmation(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._pending_runtime_active_expected = True
+        ui._pending_controlled_lifecycle_expected = None
+        ui._pending_scope_member_labels_expected = ("falcon 9",)
+        ui._scope_transition_started_at = time.time()
+        ui._latest_runtime_devices = {}
+        ui._scope_context_kind = lambda: GROUP_SOURCE_SELECTED_TEST
+        ui._runtime_active_group_members = lambda: []
+
+        ui._maybe_complete_scope_transition_wait({"runtimeActive": True})
+
+        self.assertTrue(ui._scope_transition_pending())
+        self.assertIsNone(ui._pending_runtime_active_expected)
+        self.assertEqual(("falcon 9",), ui._pending_scope_member_labels_expected)
+
+    def test_scope_transition_wait_clears_runtime_activation_after_membership_confirmation(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._pending_runtime_active_expected = True
+        ui._pending_controlled_lifecycle_expected = None
+        ui._pending_scope_member_labels_expected = ("falcon 9",)
+        ui._scope_transition_started_at = time.time()
+        ui._latest_runtime_devices = {
+            "falcon 9": {
+                "label": "FALCON 9",
+                "lifecycleState": "controlled-active",
+                "instantiated": True,
+                "testable": True,
+                "activeGroupLabel": "active-group",
+            },
+            "sparkmax/neo 25": {
+                "label": "SPARKMAX/NEO 25",
+                "lifecycleState": "controlled-active",
+                "instantiated": True,
+                "testable": True,
+                "activeGroupLabel": "active-group",
+            },
+        }
+        ui._scope_context_kind = lambda: GROUP_SOURCE_SELECTED_TEST
+        ui._runtime_active_group_members = lambda: [{"label": "FALCON 9", "enabled": True}]
+        ui._scope_is_currently_active = lambda: True
+
+        ui._maybe_complete_scope_transition_wait({"runtimeActive": True})
+
+        self.assertFalse(ui._scope_transition_pending())
+        self.assertIsNone(ui._pending_runtime_active_expected)
+        self.assertEqual(tuple(), ui._pending_scope_member_labels_expected)
 
     def test_runtime_deactivate_from_ui_uses_runtime_deactivate_path(self) -> None:
         class _Tracker:
@@ -6057,6 +6539,11 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._tcp_connected = True
         ui._append_output_lines = []
         ui._append_output = ui._append_output_lines.append
+        ui._scope_control_state = lambda: type(
+            "ScopeControlStateStub",
+            (),
+            {"active_group_editable": True, "blocked_reason": ""},
+        )()
         ui._request_runtime_state_refresh = lambda: None
         ui.after_idle = lambda callback: callback()
         ui._tracker = type(
@@ -6082,6 +6569,14 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._runtime_state_seen = False
         ui._append_output_lines = []
         ui._append_output = ui._append_output_lines.append
+        ui._scope_control_state = lambda: type(
+            "ScopeControlStateStub",
+            (),
+            {
+                "active_group_editable": False,
+                "blocked_reason": "Runtime state not loaded yet. Wait for refresh before editing active-group.",
+            },
+        )()
         refresh_calls = []
         ui._request_runtime_state_refresh = lambda: refresh_calls.append("refresh")
         ui.after_idle = lambda callback: callback()
@@ -6108,6 +6603,11 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._tcp_connected = True
         ui._runtime_state_seen = True
         ui._append_output = lambda _line: None
+        ui._scope_control_state = lambda: type(
+            "ScopeControlStateStub",
+            (),
+            {"active_group_editable": True, "blocked_reason": ""},
+        )()
         refresh_calls = []
         ui._request_runtime_state_refresh = lambda: refresh_calls.append("refresh")
         ui.after_idle = lambda callback: callback()

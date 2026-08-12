@@ -122,6 +122,36 @@ Purpose: Capture the current shared meaning for runtime report and Evidence-tab 
 
 - A sticky-only condition should not be collapsed into the same operator-facing wording as an active fault.
 
+## CAN Visibility Selection
+
+Purpose: Describe the current Selection-pane behavior in the CAN Visibility tab.
+
+- Defined visibility rows still use topology-node-backed selection when a matching profile node exists.
+
+- Unrecognized visibility rows now populate the `Selection` pane with a synthetic passive-only detail view when no topology node matches.
+
+- That synthetic detail view may show passive observer facts such as label, observed CAN ID, passive source, and last-seen timing.
+
+- When the shared passive analyzer can resolve an unrecognized row by passive identity, the synthetic Selection view should reuse that shared passive presence result instead of showing a placeholder passive score/status.
+
+- Runtime-owned fields such as scope state, group membership, instantiation, and overrides remain `--` when the device is not mapped into the profile/runtime model.
+
+- The `Shared Passive CAN Deep Dive` pane may show a `Guesses` section for unrecognized passive devices.
+
+- Every item in that section must be labeled as a guess and must stay conservative: manufacturer/device-type family and profile-missing hypotheses are allowed, but topology position, attached mechanism, and exact hardware model beyond available evidence are not treated as fact.
+
+- Right-clicking an `Unrecognized Nodes` row now offers `Create Device Definition...`.
+
+- That action never creates anything implicitly and always requires an explicit confirmation dialog before staging a device definition.
+
+- The confirmation dialog shows the proposed canonical fields and marks guessed fields with `*`.
+
+- Confirming that dialog adds the device only to Bringup Control's in-memory selected-profile config for the current UI session.
+
+- The new device should then refresh into `Defined Nodes` immediately in that same UI session even though nothing has been written to disk yet.
+
+- Persisting those pending profile edits now requires an explicit `Save Config` action in Bringup Control; `Create Device Definition...` does not write to disk by itself.
+
   
 
 ## Scope Terminology

@@ -5508,6 +5508,7 @@ class TopologyEditor(tk.Tk):
             if self._is_registry_device_node(node)
         }
         reserved_keys: set[int] = set()
+        matched_device_labels: set[str] = set()
         topology_nodes = topology.get(KEY_TOPOLOGY_NODES)
         if isinstance(topology_nodes, list):
             for entry in topology_nodes:
@@ -5531,6 +5532,7 @@ class TopologyEditor(tk.Tk):
                         infrastructure_match = self._node_from_device_label(device_ref_text)
                         if infrastructure_match is None or not self._is_infrastructure_node(infrastructure_match):
                             continue
+                        matched_device_labels.add(device_ref)
                         infrastructure_match.key = key
                         if isinstance(layout_dict.get(KEY_TOPOLOGY_BUS), int):
                             infrastructure_match.bus_index = int(layout_dict.get(KEY_TOPOLOGY_BUS))
@@ -5549,6 +5551,7 @@ class TopologyEditor(tk.Tk):
                         self._nodes.append(infrastructure_match)
                         reserved_keys.add(key)
                         continue
+                    matched_device_labels.add(device_ref)
                     reserved_keys.add(key)
                     match.key = key
                     if isinstance(layout_dict.get(KEY_TOPOLOGY_BUS), int):
@@ -5589,6 +5592,15 @@ class TopologyEditor(tk.Tk):
                 self._nodes.append(node)
                 node.topology_y_relative_explicit = KEY_TOPOLOGY_Y_RELATIVE in layout_dict
                 reserved_keys.add(key)
+
+        next_key = max([node.key for node in self._nodes], default=0) + 1
+        for node in self._device_nodes():
+            label_key = str(node.label or TEXT_EMPTY).strip().lower()
+            if not label_key or label_key in matched_device_labels:
+                continue
+            if node.key < next_key:
+                node.key = next_key
+                next_key += 1
 
         self._next_key = max([node.key for node in self._nodes], default=0) + 1
 

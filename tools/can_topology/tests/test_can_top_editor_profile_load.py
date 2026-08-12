@@ -2447,6 +2447,83 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
 
         self.assertEqual([node.key for node in editor._nodes], [1, 2])
 
+    def test_apply_topology_snapshot_rekeys_new_profile_devices_not_in_saved_topology(self) -> None:
+        editor = TopologyEditor.__new__(TopologyEditor)
+        editor._nodes = [
+            Node(key=1, category="roborio", label="roborio", can_id=0, x=0.0, bus_index=0),
+            Node(key=2, category="pdp", label="pdp", can_id=20, x=20.0, bus_index=0),
+            Node(key=3, category="neos", label="SPARKMAX/NEO 25", can_id=25, x=40.0, bus_index=0),
+            Node(key=4, category="devices", label="lmtSw0", can_id=-1, interface=INTERFACE_DIO, x=60.0, bus_index=0),
+            Node(key=5, category="falcons", label="FALCON 9", can_id=9, x=80.0, bus_index=0),
+            Node(key=6, category="pigeons", label="pigeon 2", can_id=19, x=100.0, bus_index=0),
+            Node(key=7, category="cancoders", label="cancoder", can_id=18, x=120.0, bus_index=0),
+            Node(key=8, category="neos", label="UNPROFILED_DEVICE_50207", can_id=7, x=140.0, bus_index=0),
+        ]
+        editor._connection_filter_vars = {
+            "can": _BoolVarStub(True),
+            "power": _BoolVarStub(True),
+            "dio": _BoolVarStub(True),
+            "pwm": _BoolVarStub(True),
+            "analog": _BoolVarStub(True),
+            "virtual": _BoolVarStub(True),
+        }
+        editor._ensure_bus_connectors = lambda _count: None
+        editor._ensure_bus_connector_sides = lambda _count: None
+        editor._editor_category_for_topology_node = lambda entry: "devices"
+        editor._normalize_tags = lambda value: []
+        editor._mark_neighbors_current = lambda: None
+        editor._prune_attachment_links = lambda: False
+        editor._prune_power_links = lambda: False
+        editor._prune_dio_wiring_links = lambda: False
+        editor._ensure_dio_wiring_links = lambda: False
+        editor._rebuild_attachment_links_from_registry = lambda: None
+        editor._restore_missing_cannect_bus_links = lambda: None
+        editor._restore_legacy_cannect_free_y_mode = lambda: None
+        editor._fix_cannect_conflicts = lambda notify=False: None
+        editor._apply_cannect_free_float = lambda: None
+        editor._resolve_overlaps = lambda: None
+        editor._device_nodes = TopologyEditor._device_nodes.__get__(editor, TopologyEditor)
+        editor._is_registry_device_node = TopologyEditor._is_registry_device_node.__get__(editor, TopologyEditor)
+        editor._is_infrastructure_node = TopologyEditor._is_infrastructure_node.__get__(editor, TopologyEditor)
+        editor._bus_offsets = [0.0]
+        editor._bus_lefts = []
+        editor._bus_rights = []
+        editor._bus_connectors = []
+        editor._bus_connector_sides = []
+        editor._bus_spacing = 160.0
+        editor._pan_y = 0.0
+        editor._zoom = 1.0
+        editor._ethernet_links = []
+        editor._can_bus_links = []
+        editor._cannect_device_links = []
+        editor._attachment_links = []
+        editor._dio_wiring_links = []
+        editor._power_links = []
+        editor._neighbor_links = []
+        editor._neighbor_ports = []
+
+        editor._apply_topology_snapshot(
+            {
+                "nodes": [
+                    {"key": 1, "objectType": "device", "deviceRef": "roborio", "layout": {"bus": 0, "row": 0, "x": 0.0}},
+                    {"key": 2, "objectType": "device", "deviceRef": "pdp", "layout": {"bus": 0, "row": 0, "x": 20.0}},
+                    {"key": 4, "objectType": "device", "deviceRef": "SPARKMAX/NEO 25", "layout": {"bus": 0, "row": 0, "x": 40.0}},
+                    {"key": 5, "objectType": "device", "deviceRef": "lmtSw0", "layout": {"bus": 0, "row": 1, "x": 60.0}},
+                    {"key": 6, "objectType": "device", "deviceRef": "FALCON 9", "layout": {"bus": 0, "row": 0, "x": 80.0}},
+                    {"key": 8, "objectType": "device", "deviceRef": "pigeon 2", "layout": {"bus": 0, "row": 0, "x": 100.0}},
+                    {"key": 9, "objectType": "device", "deviceRef": "cancoder", "layout": {"bus": 0, "row": 0, "x": 120.0}},
+                ],
+                "edges": [],
+                "view": {},
+            }
+        )
+
+        keys_by_label = {node.label: node.key for node in editor._nodes if node.node_type != "callout"}
+        self.assertEqual(8, keys_by_label["pigeon 2"])
+        self.assertEqual(9, keys_by_label["cancoder"])
+        self.assertGreater(keys_by_label["UNPROFILED_DEVICE_50207"], 9)
+        self.assertEqual(len(keys_by_label), len({node.key for node in editor._nodes if node.node_type != "callout"}))
+
     def test_generated_profile_payload_validates_after_registry_update(self) -> None:
         editor = TopologyEditor.__new__(TopologyEditor)
         editor._device_registry = {}

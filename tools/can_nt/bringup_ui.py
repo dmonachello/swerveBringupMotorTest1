@@ -72,6 +72,7 @@ from .passive_discovery_integration_service import (
     index_run_result_by_identity,
     load_profile_device_catalog,
     normalize_evidence_engine_status,
+    resolve_passive_visibility_device_record,
     section_engine_label,
     INTERPRET_KEY_CONFLICTED,
     INTERPRET_KEY_CONSOLE,
@@ -269,10 +270,19 @@ from tools.common.tests_domain import collect_available_tests
 from tools.common.config_lifecycle import LocalConfigQueryService
 from tools.common.profiles import list_profile_names
 from tools.common.profile_constants import (
+    INTERFACE_CAN,
     KEY_DEVICE_TYPE,
+    KEY_DEVICES,
     KEY_ID,
+    KEY_INTERFACE,
     KEY_LABEL as PROFILE_KEY_LABEL,
     KEY_MANUFACTURER,
+    KEY_MODEL,
+    KEY_PROFILE_DEVICES,
+    KEY_PROFILES,
+    KEY_TAGS,
+    TYPE_ENCODER_EXTERNAL,
+    TYPE_MOTOR,
 )
 from tools.common.profile_constants import KEY_ENABLED
 from tools.common.profile_constants import KEY_TYPE
@@ -550,6 +560,7 @@ BUTTON_LIFECYCLE_DEACTIVATE = "Lifecycle Deactivate"
 BUTTON_ACTIVATE_GROUP = "Activate Group"
 BUTTON_DEACTIVATE_GROUP = "Deactivate Group"
 BUTTON_PUSH_CONFIG = "Push Config"
+BUTTON_SAVE_CONFIG = "Save Config"
 BUTTON_DOWNLOAD_CONFIG = "Download Current Config"
 BUTTON_RUNTIME_ACTIVATE = "Runtime Activate"
 BUTTON_RUNTIME_DEACTIVATE = "Runtime Deactivate"
@@ -715,12 +726,65 @@ VIS_UNEXPECTED_KEY = "unexpected"
 VIS_ROW_META_LABEL = "label"
 VIS_ROW_META_UNEXPECTED = "unexpected"
 VIS_ROW_META_RAW_IDS = "rawIds"
+VIS_ROW_META_IDENTITY = "identity"
+VIS_SELECTION_STATUS_UNRECOGNIZED = "unrecognized-passive"
+VIS_SELECTION_REASON_UNRECOGNIZED = (
+    "Passive-only unrecognized device; no topology/runtime mapping yet."
+)
+VIS_SELECTION_SELECTED_PASSIVE_ONLY = "passive-only"
+VIS_IDENTITY_SEPARATOR = ":"
 VIS_RENAME_DIALOG_TITLE = "Rename Discovered Device"
 VIS_RENAME_EMPTY_TEXT = "Device label cannot be empty."
 VIS_RENAME_DUPLICATE_TEXT = "Device label already exists."
 VIS_RENAME_FAILED_TEXT = "Rename failed."
 VIS_RENAME_PROMPT_FMT = "Rename discovered device {label}:"
 VIS_RENAME_SUCCESS_FMT = "Renamed discovered device: {old_label} -> {new_label}"
+VIS_CREATE_DEVICE_MENU_LABEL = "Create Device Definition..."
+VIS_CREATE_DEVICE_DIALOG_TITLE = "Create Device Definition"
+VIS_CREATE_DEVICE_NO_PROFILE_TEXT = "Create device definition blocked: select a profile first."
+VIS_CREATE_DEVICE_IDENTITY_MISSING_TEXT = (
+    "Create device definition blocked: passive identity is unavailable for the selected row."
+)
+VIS_CREATE_DEVICE_DUPLICATE_TEXT = "Create device definition blocked: device label already exists."
+VIS_CREATE_DEVICE_CONFIRM_FMT = (
+    "Create one in-memory device definition for profile '{profile}'?\n\n"
+    "Nothing will be written to disk until you use Save Config.\n\n"
+    "Fields marked with * are guessed.\n\n"
+    "label: {label}\n"
+    "deviceInterface: {interface}\n"
+    "manufacturer: {manufacturer}\n"
+    "deviceType: {device_type}\n"
+    "id: {device_id}\n"
+    "model: {model}\n"
+    "type: {logical_type}"
+)
+VIS_CREATE_DEVICE_OUTPUT_FMT = (
+    "Created in-memory device definition for profile '{profile}': {label}. "
+    "Use Save Config to persist it."
+)
+VIS_SAVE_CONFIG_NO_PENDING_TEXT = "Save Config skipped: no pending in-memory profile edits."
+VIS_SAVE_CONFIG_SAVED_FMT = "Saved pending profile edits to {path}."
+VIS_SAVE_CONFIG_FAILED_FMT = "Save Config failed: {error}"
+VIS_TAG_GUESSED_PREFIX = "guessed:"
+VIS_TAG_GUESSED_LABEL = "guessed:label"
+VIS_TAG_GUESSED_MODEL = "guessed:model"
+VIS_TAG_GUESSED_TYPE = "guessed:type"
+VIS_DIALOG_FIELD_GUESS_SUFFIX = "*"
+VIS_LABEL_SUFFIX_SEPARATOR = "_"
+VIS_LABEL_SUFFIX_START = 2
+VIS_DEVICE_TYPE_CAN_MOTOR = 2
+VIS_DEVICE_TYPE_CAN_GYRO = 4
+VIS_DEVICE_TYPE_CAN_ENCODER = 7
+VIS_DEVICE_TYPE_CAN_POWER = 8
+VIS_MODEL_EMPTY = ""
+VIS_LOGICAL_TYPE_EMPTY = ""
+VIS_PASSIVE_TYPE_TOKEN_SPARK = "spark"
+VIS_PASSIVE_TYPE_TOKEN_TALON = "talon"
+VIS_PASSIVE_TYPE_TOKEN_FALCON = "falcon"
+VIS_PASSIVE_TYPE_TOKEN_KRAKEN = "kraken"
+VIS_PASSIVE_TYPE_TOKEN_MOTOR = "motor"
+VIS_PASSIVE_TYPE_TOKEN_CANCODER = "cancoder"
+VIS_PASSIVE_TYPE_TOKEN_ENCODER = "encoder"
 VIS_DEFINED_SECTION_LABEL = "Defined Nodes"
 VIS_UNRECOGNIZED_SECTION_LABEL = "Unrecognized Nodes"
 VIS_CTRE_RAW_SECTION_LABEL = "CTRE Raw Decode"
@@ -2265,6 +2329,7 @@ class BringupControlUI(tk.Tk):
         self._manual_motion_checks: Dict[str, Dict[str, Any]] = {}
         self._manual_test_observations: Dict[str, Dict[str, Any]] = {}
         self._profile_devices: Dict[str, Dict[str, Any]] = {}
+        self._pending_profile_device_definitions: Dict[str, Dict[str, Dict[str, Any]]] = {}
         self._profile_active_group_member_labels: Tuple[str, ...] = tuple()
         self._test_profile_devices: Dict[str, Dict[str, Any]] = {}
         self._remembered_manual_active_group_members: List[Dict[str, Any]] = []
@@ -2347,6 +2412,8 @@ class BringupControlUI(tk.Tk):
             command=self._set_show_wall_clock_pref,
         )
         prefs_menu.add_separator()
+        prefs_menu.add_command(label=BUTTON_SAVE_CONFIG, command=self._save_config_from_ui)
+        prefs_menu.add_separator()
         for _section, items in _action_sections():
             for _label, command in items:
                 if not command:
@@ -2409,6 +2476,9 @@ class BringupControlUI(tk.Tk):
         ttk.Button(
             header, text=BUTTON_PUSH_CONFIG, command=self._push_config_from_ui
         ).pack(side="left", padx=(10, 0))
+        ttk.Button(
+            header, text=BUTTON_SAVE_CONFIG, command=self._save_config_from_ui
+        ).pack(side="left", padx=(6, 0))
         ttk.Button(
             header, text=BUTTON_DOWNLOAD_CONFIG, command=self._download_current_config_from_ui
         ).pack(side="left", padx=(6, 0))
@@ -3177,6 +3247,7 @@ class BringupControlUI(tk.Tk):
         self._visibility_unrecognized_table = self._build_visibility_table_widget(unrecognized_frame)
         self._visibility_unrecognized_table.bind("<Double-1>", self._on_visibility_row_double_click)
         self._visibility_unrecognized_table.bind("<<TreeviewSelect>>", self._on_visibility_row_selected)
+        self._visibility_unrecognized_table.bind("<Button-3>", self._on_visibility_unrecognized_right_click)
 
         ctre_raw_frame = ttk.LabelFrame(
             table_panel,
@@ -4674,6 +4745,219 @@ class BringupControlUI(tk.Tk):
         self._refresh_test_library_view(name)
         self._sync_diagnostic_profile_context(reload_views=reload_views)
 
+    def _pending_profile_device_map(self, profile_name: object) -> Dict[str, Dict[str, Any]]:
+        """
+        NAME
+            _pending_profile_device_map - Return pending in-memory device definitions for one profile.
+        """
+        name = _normalize_profile_name(profile_name)
+        pending = self.__dict__.get("_pending_profile_device_definitions", {})
+        if not isinstance(pending, dict) or not name or name == PROFILE_NONE:
+            return {}
+        profile_pending = pending.get(name, {})
+        if not isinstance(profile_pending, dict):
+            return {}
+        return {
+            str(label).strip().lower(): dict(device)
+            for label, device in profile_pending.items()
+            if isinstance(label, str) and label.strip() and isinstance(device, dict)
+        }
+
+    def _overlay_pending_profile_device_definitions(
+        self,
+        profile_name: object,
+        mapping: Dict[str, Dict[str, Any]],
+    ) -> Dict[str, Dict[str, Any]]:
+        """
+        NAME
+            _overlay_pending_profile_device_definitions - Overlay one profile's pending in-memory device definitions.
+        """
+        merged = {
+            str(label).strip().lower(): dict(device)
+            for label, device in mapping.items()
+            if isinstance(label, str) and label.strip() and isinstance(device, dict)
+        }
+        merged.update(self._pending_profile_device_map(profile_name))
+        return merged
+
+    def _parse_visibility_identity_triplet(
+        self, identity_text: object
+    ) -> Optional[Tuple[int, int, int]]:
+        """
+        NAME
+            _parse_visibility_identity_triplet - Parse one visibility identity key into manufacturer, device type, and id.
+        """
+        clean_identity = str(identity_text or NT_VALUE_EMPTY).strip()
+        if not clean_identity:
+            return None
+        parts = [part.strip() for part in clean_identity.split(VIS_IDENTITY_SEPARATOR)]
+        if len(parts) < 3:
+            return None
+        try:
+            return (int(parts[0]), int(parts[1]), int(parts[2]))
+        except Exception:
+            return None
+
+    def _identity_triplet_for_visibility_item(
+        self,
+        label: str,
+        identity_text: str,
+    ) -> Optional[Tuple[int, int, int]]:
+        """
+        NAME
+            _identity_triplet_for_visibility_item - Resolve one visibility row to manufacturer, device type, and id.
+        """
+        parsed = self._parse_visibility_identity_triplet(identity_text)
+        if parsed is not None:
+            return parsed
+        passive_device = resolve_passive_visibility_device_record(
+            label=label,
+            passive_result=self.__dict__.get("_latest_passive_result"),
+            visibility_identity_text=identity_text,
+        )
+        if passive_device is None:
+            passive_device = resolve_passive_visibility_device_record(
+                label=label,
+                passive_result=self._current_passive_result(),
+                visibility_identity_text=identity_text,
+            )
+        if passive_device is None:
+            return None
+        identity = getattr(passive_device, "identity", None)
+        if identity is None:
+            return None
+        try:
+            return (
+                int(getattr(identity, "manufacturer")),
+                int(getattr(identity, "device_type")),
+                int(getattr(identity, "device_id")),
+            )
+        except Exception:
+            return None
+
+    def _logical_type_for_passive_guess(
+        self,
+        device_type: int,
+        passive_type_name: str,
+    ) -> str:
+        """
+        NAME
+            _logical_type_for_passive_guess - Resolve one conservative logical device type for a passive unrecognized row.
+        """
+        clean_name = str(passive_type_name or VIS_MODEL_EMPTY).strip().lower()
+        if device_type == VIS_DEVICE_TYPE_CAN_MOTOR:
+            return TYPE_MOTOR
+        if device_type == VIS_DEVICE_TYPE_CAN_ENCODER:
+            return TYPE_ENCODER_EXTERNAL
+        if (
+            VIS_PASSIVE_TYPE_TOKEN_SPARK in clean_name
+            or VIS_PASSIVE_TYPE_TOKEN_TALON in clean_name
+            or VIS_PASSIVE_TYPE_TOKEN_FALCON in clean_name
+            or VIS_PASSIVE_TYPE_TOKEN_KRAKEN in clean_name
+            or VIS_PASSIVE_TYPE_TOKEN_MOTOR in clean_name
+        ):
+            return TYPE_MOTOR
+        if (
+            VIS_PASSIVE_TYPE_TOKEN_CANCODER in clean_name
+            or VIS_PASSIVE_TYPE_TOKEN_ENCODER in clean_name
+        ):
+            return TYPE_ENCODER_EXTERNAL
+        return VIS_LOGICAL_TYPE_EMPTY
+
+    def _all_known_config_device_labels(self) -> List[str]:
+        """
+        NAME
+            _all_known_config_device_labels - Return current canonical plus pending device labels.
+        """
+        labels: List[str] = []
+        seen: set[str] = set()
+        try:
+            payload = self._load_local_profiles_payload()
+        except Exception:
+            payload = {}
+        devices = payload.get(KEY_DEVICES) if isinstance(payload, dict) else []
+        if isinstance(devices, list):
+            for entry in devices:
+                if not isinstance(entry, dict):
+                    continue
+                label = str(entry.get(PROFILE_KEY_LABEL, NT_VALUE_EMPTY)).strip()
+                label_key = label.lower()
+                if not label or label_key in seen:
+                    continue
+                seen.add(label_key)
+                labels.append(label)
+        pending = self.__dict__.get("_pending_profile_device_definitions", {})
+        if isinstance(pending, dict):
+            for profile_pending in pending.values():
+                if not isinstance(profile_pending, dict):
+                    continue
+                for entry in profile_pending.values():
+                    if not isinstance(entry, dict):
+                        continue
+                    label = str(entry.get(PROFILE_KEY_LABEL, NT_VALUE_EMPTY)).strip()
+                    label_key = label.lower()
+                    if not label or label_key in seen:
+                        continue
+                    seen.add(label_key)
+                    labels.append(label)
+        return labels
+
+    def _unique_guessed_device_label(self, base_label: object) -> str:
+        """
+        NAME
+            _unique_guessed_device_label - Return a non-conflicting label for one guessed device definition.
+        """
+        clean_label = str(base_label or NT_VALUE_EMPTY).strip()
+        if not clean_label:
+            clean_label = VIS_UNRECOGNIZED_SECTION_LABEL
+        existing = {str(label).strip().lower() for label in self._all_known_config_device_labels()}
+        if clean_label.lower() not in existing:
+            return clean_label
+        suffix = VIS_LABEL_SUFFIX_START
+        while True:
+            candidate = (
+                clean_label
+                + VIS_LABEL_SUFFIX_SEPARATOR
+                + str(suffix)
+            )
+            if candidate.lower() not in existing:
+                return candidate
+            suffix += 1
+
+    def _build_pending_unrecognized_device_definition(
+        self,
+        label: str,
+        identity: Tuple[int, int, int],
+    ) -> Dict[str, Any]:
+        """
+        NAME
+            _build_pending_unrecognized_device_definition - Build one in-memory device definition proposal from one passive unrecognized row.
+        """
+        manufacturer, device_type, device_id = identity
+        passive_result = self._current_passive_result()
+        passive_rows = index_run_result_by_identity(passive_result)
+        passive_device = passive_rows.get(identity)
+        passive_type_name = str(
+            getattr(passive_device, "device_type_name", VIS_MODEL_EMPTY) or VIS_MODEL_EMPTY
+        ).strip()
+        resolved_label = self._unique_guessed_device_label(label)
+        logical_type = self._logical_type_for_passive_guess(device_type, passive_type_name)
+        tags = [VIS_TAG_GUESSED_LABEL]
+        if passive_type_name:
+            tags.append(VIS_TAG_GUESSED_MODEL)
+        if logical_type:
+            tags.append(VIS_TAG_GUESSED_TYPE)
+        return {
+            PROFILE_KEY_LABEL: resolved_label,
+            KEY_INTERFACE: INTERFACE_CAN,
+            KEY_MANUFACTURER: manufacturer,
+            KEY_DEVICE_TYPE: device_type,
+            KEY_ID: device_id,
+            KEY_MODEL: passive_type_name or VIS_MODEL_EMPTY,
+            KEY_TYPE: logical_type or VIS_LOGICAL_TYPE_EMPTY,
+            KEY_TAGS: tags,
+        }
+
     def _refresh_profile_devices(self, profile_name: object) -> None:
         """
         NAME
@@ -4741,8 +5025,8 @@ class BringupControlUI(tk.Tk):
                 if not label:
                     continue
                 mapping[label.lower()] = device
-        self._profile_devices = mapping
-        current_fingerprint = _catalog_fingerprint(mapping)
+        self._profile_devices = self._overlay_pending_profile_device_definitions(name, mapping)
+        current_fingerprint = _catalog_fingerprint(self._profile_devices)
         if previous_profile_name != name or previous_fingerprint != current_fingerprint:
             self._evidence_enrichment_snapshot = default_enrichment_run_snapshot()
         self._evidence_enrichment_profile_name = name
@@ -4782,7 +5066,7 @@ class BringupControlUI(tk.Tk):
             )
         if self._visibility_provider is not None:
             self._visibility_provider.set_expected_devices(
-                _build_visibility_expected_devices(list(mapping.values()))
+                _build_visibility_expected_devices(list(self._profile_devices.values()))
             )
             self._visibility_last_update = 0.0
 
@@ -4809,6 +5093,9 @@ class BringupControlUI(tk.Tk):
         except Exception:
             labels = tuple()
         self._profile_active_group_member_labels = labels
+        for live_view in self._iter_live_views():
+            if hasattr(live_view, "set_configured_active_group_member_labels"):
+                live_view.set_configured_active_group_member_labels(list(labels))
 
     def _set_evidence_engine_section_label(self, section_key: str, label: str) -> None:
         """
@@ -5852,6 +6139,7 @@ class BringupControlUI(tk.Tk):
                 VIS_ROW_META_LABEL: label,
                 VIS_ROW_META_UNEXPECTED: unexpected,
                 VIS_ROW_META_RAW_IDS: raw_ids,
+                VIS_ROW_META_IDENTITY: self._format_visibility_identity(device),
             }
             if label == self._visibility_selected_label:
                 if unexpected == self._visibility_selected_unexpected:
@@ -7483,7 +7771,12 @@ class BringupControlUI(tk.Tk):
             _apply_visibility_selection - Update the CAN Visibility deep-dive panel for one selected row.
         """
         clean_label = str(label or NT_VALUE_EMPTY).strip()
+        visibility_live_view = self.__dict__.get("_visibility_live_view")
         if not clean_label:
+            if visibility_live_view is not None and hasattr(visibility_live_view, "select_node_by_label"):
+                visibility_live_view.select_node_by_label(None)
+            if visibility_live_view is not None and hasattr(visibility_live_view, "set_synthetic_selection_detail"):
+                visibility_live_view.set_synthetic_selection_detail(None)
             self._set_visibility_passive_detail_text(EVIDENCE_SOURCE_NONE)
             return
         visibility_device = None
@@ -7516,6 +7809,85 @@ class BringupControlUI(tk.Tk):
                 visibility_packet_rate_text=self._format_visibility_packet_rate(metrics),
             )
         )
+        if visibility_live_view is not None and hasattr(visibility_live_view, "select_node_by_label"):
+            visibility_live_view.select_node_by_label(clean_label)
+        if visibility_live_view is not None and hasattr(visibility_live_view, "set_synthetic_selection_detail"):
+            if clean_label.lower() not in dict(self.__dict__.get("_profile_devices", {})):
+                visibility_live_view.set_synthetic_selection_detail(
+                    self._visibility_unrecognized_selection_detail(
+                        clean_label,
+                        visibility_device if isinstance(visibility_device, dict) else {},
+                        metrics if isinstance(metrics, dict) else {},
+                    )
+                )
+            else:
+                visibility_live_view.set_synthetic_selection_detail(None)
+
+    def _visibility_identity_can_id_text(self, identity_text: object) -> str:
+        """
+        NAME
+            _visibility_identity_can_id_text - Return the device-id segment from one passive identity key when available.
+        """
+        clean_identity = str(identity_text or NT_VALUE_EMPTY).strip()
+        if not clean_identity:
+            return NT_VALUE_EMPTY
+        parts = [part.strip() for part in clean_identity.split(VIS_IDENTITY_SEPARATOR)]
+        if len(parts) < 3:
+            return NT_VALUE_EMPTY
+        return str(parts[-1] or NT_VALUE_EMPTY).strip()
+
+    def _visibility_unrecognized_selection_detail(
+        self,
+        label: str,
+        visibility_device: Dict[str, Any],
+        metrics: Dict[str, Any],
+    ) -> Dict[str, str]:
+        """
+        NAME
+            _visibility_unrecognized_selection_detail - Build one synthetic Selection-pane payload for an unrecognized passive row.
+        """
+        passive_snapshot = build_passive_device_detail_snapshot(
+            label,
+            passive_result=self.__dict__.get("_latest_passive_result"),
+            visibility_device=visibility_device,
+            now_s=time.time(),
+        )
+        identity_text = self._format_visibility_identity(visibility_device)
+        return {
+            "label": str(label or NT_VALUE_EMPTY).strip() or "--",
+            "can_id": self._visibility_identity_can_id_text(identity_text) or "--",
+            "presence": passive_snapshot.get("presence", "--") or "--",
+            "presence_status": passive_snapshot.get("presenceStatus", VIS_SELECTION_STATUS_UNRECOGNIZED) or VIS_SELECTION_STATUS_UNRECOGNIZED,
+            "presence_age": passive_snapshot.get("presenceAge", "--") or "--",
+            "presence_source": passive_snapshot.get("presenceSource", "--") or "--",
+            "full_probe_bucket": "--",
+            "full_probe_age": "--",
+            "full_probe_score": "--",
+            "full_probe_status": "--",
+            "full_probe_message": identity_text or "--",
+            "group_member": "--",
+            "scope_active": "--",
+            "instantiated": "--",
+            "lifecycle_state": VIS_SELECTION_STATUS_UNRECOGNIZED,
+            "testable": "--",
+            "override_active": "--",
+            "override_originated": "--",
+            "override_failure": "--",
+            "not_testable_reason": VIS_SELECTION_REASON_UNRECOGNIZED,
+            "last_seen": self._format_visibility_last_seen(metrics),
+            "current_a": "--",
+            "current_avg_a": "--",
+            "current_peak_a": "--",
+            "current_nonzero": "--",
+            "current_samples": "--",
+            "cmd_duty": "--",
+            "applied_duty": "--",
+            "vel_rpm": "--",
+            "position_rot": "--",
+            "position_delta_rot": "--",
+            "temp_c": "--",
+            "selected": VIS_SELECTION_SELECTED_PASSIVE_ONLY,
+        }
 
     def _format_visibility_rate_value(self, value: object) -> str:
         """
@@ -7593,6 +7965,129 @@ class BringupControlUI(tk.Tk):
         )
         self._visibility_last_update = 0.0
         self._poll_visibility_snapshot(time.time())
+
+    def _on_visibility_unrecognized_right_click(self, event: tk.Event) -> None:
+        """
+        NAME
+            _on_visibility_unrecognized_right_click - Open the explicit create-device action for one unrecognized visibility row.
+        """
+        widget = event.widget
+        if not isinstance(widget, ttk.Treeview):
+            return
+        row_id = widget.identify_row(event.y)
+        if not row_id:
+            return
+        widget.selection_set(row_id)
+        widget.focus(row_id)
+        meta = self._visibility_row_meta.get(row_id, {})
+        label = str(meta.get(VIS_ROW_META_LABEL, NT_VALUE_EMPTY)).strip()
+        identity_text = str(meta.get(VIS_ROW_META_IDENTITY, NT_VALUE_EMPTY)).strip()
+        menu = tk.Menu(self, tearoff=False)
+        menu.add_command(
+            label=VIS_CREATE_DEVICE_MENU_LABEL,
+            command=lambda captured_label=label, captured_identity=identity_text: self._create_device_definition_from_visibility_row(
+                captured_label,
+                captured_identity,
+            ),
+        )
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+
+    def _create_device_definition_from_visibility_item(self, item_id: str) -> None:
+        """
+        NAME
+            _create_device_definition_from_visibility_item - Confirm and stage one in-memory device definition from one unrecognized row.
+        """
+        meta = self._visibility_row_meta.get(item_id, {})
+        self._create_device_definition_from_visibility_row(
+            str(meta.get(VIS_ROW_META_LABEL, NT_VALUE_EMPTY)).strip(),
+            str(meta.get(VIS_ROW_META_IDENTITY, NT_VALUE_EMPTY)).strip(),
+        )
+
+    def _create_device_definition_from_visibility_row(
+        self,
+        label: str,
+        identity_text: str,
+    ) -> None:
+        """
+        NAME
+            _create_device_definition_from_visibility_row - Confirm and stage one in-memory device definition from captured visibility-row data.
+        """
+        profile_name = self._selected_real_profile()
+        if not profile_name:
+            self._append_output(VIS_CREATE_DEVICE_NO_PROFILE_TEXT)
+            return
+        identity = self._identity_triplet_for_visibility_item(label, identity_text)
+        if not identity:
+            self._append_output(VIS_CREATE_DEVICE_IDENTITY_MISSING_TEXT)
+            return
+        device_definition = self._build_pending_unrecognized_device_definition(label, identity)
+        display = self._format_device_definition_confirmation(device_definition)
+        if not messagebox.askyesno(
+            VIS_CREATE_DEVICE_DIALOG_TITLE,
+            VIS_CREATE_DEVICE_CONFIRM_FMT.format(
+                profile=profile_name,
+                label=display[PROFILE_KEY_LABEL],
+                interface=display[KEY_INTERFACE],
+                manufacturer=display[KEY_MANUFACTURER],
+                device_type=display[KEY_DEVICE_TYPE],
+                device_id=display[KEY_ID],
+                model=display[KEY_MODEL],
+                logical_type=display[KEY_TYPE],
+            ),
+            parent=self,
+            default=messagebox.NO,
+        ):
+            return
+        pending = self.__dict__.setdefault("_pending_profile_device_definitions", {})
+        if not isinstance(pending, dict):
+            pending = {}
+            self._pending_profile_device_definitions = pending
+        profile_pending = pending.setdefault(profile_name, {})
+        if not isinstance(profile_pending, dict):
+            profile_pending = {}
+            pending[profile_name] = profile_pending
+        profile_pending[str(device_definition.get(PROFILE_KEY_LABEL, NT_VALUE_EMPTY)).strip().lower()] = dict(
+            device_definition
+        )
+        self._append_output(
+            VIS_CREATE_DEVICE_OUTPUT_FMT.format(
+                profile=profile_name,
+                label=str(device_definition.get(PROFILE_KEY_LABEL, NT_VALUE_EMPTY)).strip(),
+            )
+        )
+        self._refresh_profile_devices(profile_name)
+        self._refresh_test_library_view(profile_name)
+        self._visibility_last_update = 0.0
+        self._poll_visibility_snapshot(time.time())
+
+    def _format_device_definition_confirmation(
+        self, device_definition: Dict[str, Any]
+    ) -> Dict[str, str]:
+        """
+        NAME
+            _format_device_definition_confirmation - Format one pending device-definition proposal for confirmation display.
+        """
+        tags = device_definition.get(KEY_TAGS, [])
+        guessed = set(tags) if isinstance(tags, list) else set()
+
+        def _render(key: str, guess_tag: str) -> str:
+            value = str(device_definition.get(key, NT_VALUE_EMPTY)).strip() or NT_VALUE_EMPTY
+            if guess_tag in guessed:
+                return value + VIS_DIALOG_FIELD_GUESS_SUFFIX
+            return value
+
+        return {
+            PROFILE_KEY_LABEL: _render(PROFILE_KEY_LABEL, VIS_TAG_GUESSED_LABEL),
+            KEY_INTERFACE: str(device_definition.get(KEY_INTERFACE, NT_VALUE_EMPTY)).strip() or NT_VALUE_EMPTY,
+            KEY_MANUFACTURER: str(device_definition.get(KEY_MANUFACTURER, NT_VALUE_EMPTY)).strip() or NT_VALUE_EMPTY,
+            KEY_DEVICE_TYPE: str(device_definition.get(KEY_DEVICE_TYPE, NT_VALUE_EMPTY)).strip() or NT_VALUE_EMPTY,
+            KEY_ID: str(device_definition.get(KEY_ID, NT_VALUE_EMPTY)).strip() or NT_VALUE_EMPTY,
+            KEY_MODEL: _render(KEY_MODEL, VIS_TAG_GUESSED_MODEL),
+            KEY_TYPE: _render(KEY_TYPE, VIS_TAG_GUESSED_TYPE),
+        }
 
     def _on_visibility_row_selected(self, event: tk.Event) -> None:
         """
@@ -8644,11 +9139,14 @@ class BringupControlUI(tk.Tk):
             self._refresh_test_library_available_devices()
             self._test_library_status_var.set(str(exc))
             return
-        self._test_profile_devices = {
+        self._test_profile_devices = self._overlay_pending_profile_device_definitions(
+            selected_profile,
+            {
             str(label).strip().lower(): entry
             for label, entry in test_profile_devices.items()
             if isinstance(label, str) and label.strip() and isinstance(entry, dict)
-        }
+            },
+        )
         authoritative_selected = self._selected_test_name()
         if authoritative_selected == PROFILE_NONE:
             authoritative_selected = str(
@@ -10798,6 +11296,68 @@ class BringupControlUI(tk.Tk):
             _persist_local_profiles_edit - Persist a mutable local config edit session through the shared repository.
         """
         ConfigRepository().sync(session)
+
+    def _save_config_from_ui(self) -> None:
+        """
+        NAME
+            _save_config_from_ui - Persist pending in-memory device-definition edits into canonical bringup config.
+        """
+        pending = self.__dict__.get("_pending_profile_device_definitions", {})
+        if not isinstance(pending, dict) or not pending:
+            self._append_output(VIS_SAVE_CONFIG_NO_PENDING_TEXT)
+            return
+        try:
+            session = self._begin_local_profiles_edit()
+            payload = session.to_payload()
+            profiles = payload.get(KEY_PROFILES)
+            if not isinstance(profiles, dict):
+                profiles = {}
+                payload[KEY_PROFILES] = profiles
+            devices = payload.get(KEY_DEVICES)
+            if not isinstance(devices, list):
+                devices = []
+                payload[KEY_DEVICES] = devices
+            existing_by_label = {
+                str(entry.get(PROFILE_KEY_LABEL, NT_VALUE_EMPTY)).strip().lower(): entry
+                for entry in devices
+                if isinstance(entry, dict) and str(entry.get(PROFILE_KEY_LABEL, NT_VALUE_EMPTY)).strip()
+            }
+            for profile_name, profile_pending in pending.items():
+                if not isinstance(profile_pending, dict):
+                    continue
+                profile_payload = profiles.get(profile_name)
+                if not isinstance(profile_payload, dict):
+                    profile_payload = {}
+                    profiles[profile_name] = profile_payload
+                profile_devices = profile_payload.get(KEY_PROFILE_DEVICES)
+                if not isinstance(profile_devices, list):
+                    profile_devices = []
+                    profile_payload[KEY_PROFILE_DEVICES] = profile_devices
+                for device in profile_pending.values():
+                    if not isinstance(device, dict):
+                        continue
+                    label = str(device.get(PROFILE_KEY_LABEL, NT_VALUE_EMPTY)).strip()
+                    if not label:
+                        continue
+                    label_key = label.lower()
+                    if label_key not in existing_by_label:
+                        copied = dict(device)
+                        devices.append(copied)
+                        existing_by_label[label_key] = copied
+                    if label not in profile_devices:
+                        profile_devices.append(label)
+            session.mark_dirty()
+            self._persist_local_profiles_edit(session)
+        except Exception as exc:
+            self._append_output(VIS_SAVE_CONFIG_FAILED_FMT.format(error=exc))
+            return
+        self._pending_profile_device_definitions = {}
+        self._append_output(
+            VIS_SAVE_CONFIG_SAVED_FMT.format(path=str(self._default_profiles_path()))
+        )
+        self._apply_profile_selection(self._selected_profile_name(), reload_views=True)
+        self._visibility_last_update = 0.0
+        self._poll_visibility_snapshot(time.time())
 
     def _dsl_import_from_ui(self) -> None:
         """
