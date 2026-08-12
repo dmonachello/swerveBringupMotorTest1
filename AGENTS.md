@@ -100,6 +100,24 @@ Purpose: Keep multiple test passes clean while preserving prior results.
 - After each pass, replace `SID_COMMENT:` with `TESTING_RESULTS:` to archive the run.
 - Leave `TESTING_RESULTS:` blocks in place; only `SID_COMMENT:` should be reused for the next pass.
 
+Reminder Notes Workflow
+Purpose: Keep repo-local reminders explicit and easy to clear once handled.
+
+- Reminder notes live under `notes/journal/`.
+- A journal note is treated as an active reminder only when it contains a top-level marker line:
+  - `REMINDER_STATUS: ACTIVE`
+- A reminder that has been downgraded to a normal note must no longer be treated as active:
+  - `REMINDER_STATUS: NOTE`
+- At the start of a new work session in this repo, scan `notes/journal/` for active reminder markers before substantial work.
+- When active reminders are found, briefly surface the matching note paths to the user before proceeding.
+- Treat user requests such as `what's next`, `whats next`, `what is next`, or `next reminder` as an alias for:
+  - scan active reminder notes
+  - report them read-only
+- Do not treat ordinary journal notes as reminders unless they carry the explicit marker.
+- Reminder scans are read-only unless the user explicitly asks to downgrade, clear, or otherwise change reminder status.
+- If the user asks to downgrade a reminder to a normal note, change the marker from `REMINDER_STATUS: ACTIVE` to `REMINDER_STATUS: NOTE`.
+- Use `python tools/reminder_notes.py list` to list active reminders and `python tools/reminder_notes.py downgrade <path>` to downgrade one.
+
 What to do first for any task that touches the Java-Python interface
 1) Inventory remaining NetworkTables usage when applicable:
 
