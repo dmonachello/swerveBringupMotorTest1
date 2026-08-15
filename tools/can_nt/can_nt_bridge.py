@@ -408,12 +408,21 @@ def _resolve_profile_context_name_from_runtime_state(
     fallback_name = _normalize_profile_name(fallback)
     if not isinstance(runtime_state, dict):
         return fallback_name
+    active_raw = runtime_state.get("activeRuntimeProfile")
+    selected_raw = runtime_state.get("selectedProfile")
     active_name = _normalize_profile_name(runtime_state.get("activeRuntimeProfile"))
     if active_name:
         return active_name
     selected_name = _normalize_profile_name(runtime_state.get("selectedProfile"))
     if selected_name:
         return selected_name
+    active_present = "activeRuntimeProfile" in runtime_state
+    selected_present = "selectedProfile" in runtime_state
+    if active_present or selected_present:
+        active_blank = not _normalize_profile_name(active_raw)
+        selected_blank = not _normalize_profile_name(selected_raw)
+        if active_blank and selected_blank:
+            return EMPTY_STRING
     return fallback_name
 
 
@@ -848,7 +857,29 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         """
         nonlocal console_unknown_counter, profile_context_name, profile_context_error_name
         resolved_name = _normalize_profile_name(profile_name)
-        if not resolved_name or resolved_name == profile_context_name and devices:
+        if not resolved_name:
+            if not profile_context_name and not devices:
+                return False
+            profile_context_error_name = EMPTY_STRING
+            profile_context_name = EMPTY_STRING
+            devices.clear()
+            can_to_label.clear()
+            id_to_labels.clear()
+            expected_ids.clear()
+            seen_can_keys.clear()
+            seen_labels.clear()
+            non_device_traffic_families.clear()
+            console_unknown_labels.clear()
+            console_unknown_counter = 0
+            analyzer.expected_ids = set()
+            visibility_provider.set_expected_devices([])
+            state.last_seen.clear()
+            state.status_last_seen.clear()
+            state.control_last_seen.clear()
+            state.msg_count.clear()
+            state.last_status.clear()
+            return True
+        if resolved_name == profile_context_name and devices:
             return False
         try:
             new_devices, new_expected = get_profile(resolved_name)

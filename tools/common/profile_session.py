@@ -62,7 +62,7 @@ def decide_host_profile_sync(
         Returns a shared decision so CLI and UI follow the same policy after a
         live robot connection is established:
         - no robot profile: no-op
-        - empty host context: adopt robot profile
+        - empty host context: adopt robot profile only when it exists locally
         - same host/robot context: no-op
         - robot profile missing locally: warn only
         - otherwise: prompt before adopting the robot profile
@@ -75,6 +75,8 @@ def decide_host_profile_sync(
     if not robot_name:
         return HostProfileSyncDecision(SYNC_ACTION_NONE, host_name, robot_name)
     if not host_name:
+        if robot_name not in known_profiles:
+            return HostProfileSyncDecision(SYNC_ACTION_MISSING_LOCAL, host_name, robot_name)
         return HostProfileSyncDecision(SYNC_ACTION_ADOPT, host_name, robot_name)
     if host_name == robot_name:
         return HostProfileSyncDecision(SYNC_ACTION_NONE, host_name, robot_name)

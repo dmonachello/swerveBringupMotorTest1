@@ -26,6 +26,10 @@ class ProfileSessionPolicyTests(unittest.TestCase):
         decision = decide_host_profile_sync("", "robot_profile", ["robot_profile"])
         self.assertEqual(SYNC_ACTION_ADOPT, decision.action)
 
+    def test_decide_host_profile_sync_marks_missing_local_when_host_empty_and_robot_unknown(self) -> None:
+        decision = decide_host_profile_sync("", "robot_profile", ["other_profile"])
+        self.assertEqual(SYNC_ACTION_MISSING_LOCAL, decision.action)
+
     def test_decide_host_profile_sync_prompts_on_mismatch(self) -> None:
         decision = decide_host_profile_sync("local_profile", "robot_profile", ["local_profile", "robot_profile"])
         self.assertEqual(SYNC_ACTION_PROMPT, decision.action)

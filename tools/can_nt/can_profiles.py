@@ -12,7 +12,8 @@ DESCRIPTION
     and provides CAN device entries for the diagnostics tool.
 """
 
-from typing import Any, Dict, List, Set, Tuple
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from tools.common.config_api.repository import ConfigRepository
 from tools.common.profile_constants import (
@@ -44,6 +45,7 @@ DEFAULT_PROFILE_NAME = "robot"
 _LOAD_ERROR: str = ""
 _DATA_VERSION: str = ""
 _DATA_HASH: str = ""
+_PROFILES_PATH_OVERRIDE: Optional[Path] = None
 
 KEY_PREFER_STATUS = "prefer_status"
 EMPTY_STRING = ""
@@ -65,6 +67,33 @@ MSG_DEVICE_LIST_EMPTY = "Devices registry is empty"
 MSG_UNKNOWN_PROFILE = "Unknown profile: {profile}. Available: {profiles}"
 
 
+def set_profiles_path_override(path: Optional[Path]) -> None:
+    """
+    NAME
+        set_profiles_path_override - Set or clear the process-local profiles source path override.
+    """
+    global _PROFILES_PATH_OVERRIDE
+    _PROFILES_PATH_OVERRIDE = path.resolve() if isinstance(path, Path) else None
+
+
+def get_profiles_path_override() -> Optional[Path]:
+    """
+    NAME
+        get_profiles_path_override - Return the active process-local profiles source path override.
+    """
+    return _PROFILES_PATH_OVERRIDE
+
+
+def current_profiles_path() -> Path:
+    """
+    NAME
+        current_profiles_path - Return the active profiles source path for host-side loaders.
+    """
+    if isinstance(_PROFILES_PATH_OVERRIDE, Path):
+        return _PROFILES_PATH_OVERRIDE
+    return ConfigRepository().canonical_path()
+
+
 def _load_profiles() -> Tuple[str, Dict[str, List[Dict[str, Any]]]]:
     """
     NAME
@@ -79,7 +108,7 @@ def _load_profiles() -> Tuple[str, Dict[str, List[Dict[str, Any]]]]:
     _LOAD_ERROR = EMPTY_STRING
     _DATA_VERSION = EMPTY_STRING
     _DATA_HASH = EMPTY_STRING
-    path = ConfigRepository().canonical_path()
+    path = current_profiles_path()
     if not path.exists():
         _LOAD_ERROR = MSG_LOAD_MISSING.format(path=path)
         return (_fallback_default(), _fallback_profiles())

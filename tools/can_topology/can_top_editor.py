@@ -58,6 +58,14 @@ MENU_LABEL_ADD_DIO_DEVICE = "Add DIO Device..."
 MENU_LABEL_ADD_XBOX_CONTROLLER = "Add Xbox Controller..."
 MENU_LABEL_SET_CANNECT_PORT = "Set CANnect Port..."
 MENU_LABEL_POPULATE_NEIGHBORS = "Populate Neighbors from Layout"
+MENU_LABEL_OPEN_CONFIG = "Open Config..."
+MENU_LABEL_RELOAD_CANONICAL = "Reload Canonical"
+MENU_LABEL_SAVE_CONFIG = "Save Config"
+MENU_LABEL_SAVE_CONFIG_AS = "Save Config As..."
+MENU_LABEL_SAVE_PROFILE_AS = "Save Profile As..."
+MENU_LABEL_SAVE_SELECTION_AS = "Save Selection As..."
+MENU_LABEL_SAVE_TO_DEPLOY = "Save to Deploy"
+MENU_LABEL_WRITE_MINIMAL_DIAGRAM = "Write Minimal Diagram Metadata..."
 DIALOG_TITLE_ADD_DIO = "Add DIO Device"
 DIALOG_TITLE_ADD_XBOX_CONTROLLER = "Add Xbox Controller"
 DIALOG_TITLE_EDIT_XBOX_CONTROLLER = "Edit Xbox Controller"
@@ -130,6 +138,11 @@ MSG_NEIGHBORS_STALE_SAVE = (
     "Choose No to save the existing stale neighbor metadata.\n"
     "Choose Cancel to stop the save."
 )
+ERR_NO_SOURCE_CONFIG_TITLE = "No Source Config"
+ERR_NO_SOURCE_CONFIG_TEXT = "Open a config first or use Save Config As..."
+TITLE_SAVE_BRINGUP_CONFIG = "Save Bringup Config"
+MSG_SAVED_CONFIG_FMT = "Updated {path} with profile '{profile}'."
+MSG_SAVED_DEPLOY_FMT = "Updated deploy config from profile '{profile}'."
 NEIGHBOR_STATUS_NOT_POPULATED = "Neighbors: not populated"
 NEIGHBOR_STATUS_CURRENT = "Neighbors: current"
 NEIGHBOR_STATUS_STALE = "Neighbors: stale"
@@ -202,6 +215,17 @@ MSG_INVENTORY_DELETE_REFERENCED = (
     "{profiles}\n\n"
     "Delete it from the entire system config anyway?"
 )
+BUTTON_REMOVE_FROM_PROFILE = "Remove From Profile"
+BUTTON_DELETE_FROM_APP = "Delete From App Entirely"
+TITLE_REMOVE_FROM_PROFILE = "Remove From Profile"
+TITLE_DELETE_FROM_APP = "Delete From App Entirely"
+MSG_REMOVE_NODE_SELECT = "Select a node to remove from the current profile."
+MSG_REMOVE_SELECTION_SELECT = "Select devices or callouts to remove from the current profile."
+MSG_REMOVE_SELECTION_CONFIRM = "Remove selected devices/callouts from the current profile?"
+MSG_REMOVE_PROFILE_NOT_PRESENT = "'{}' is not in the current profile."
+MSG_REMOVE_PROFILE_CONFIRM = "Remove '{}' from the current profile?"
+MSG_DELETE_APP_SELECT_SINGLE = "Select a single device definition to delete from the app entirely."
+MSG_DELETE_APP_UNSUPPORTED = "Only shared device definitions can be deleted from the app entirely."
 MSG_CONTROLLER_ADD_NONE = "No Xbox controllers were added."
 DETAIL_INTERFACE_USB = "USB"
 MSG_INVALID_DIO_CHANNEL = "Invalid DIO channel for {}."
@@ -1094,7 +1118,10 @@ class TopologyEditor(tk.Tk):
         ttk.Button(button_row, text="Edit Selected", command=self._on_edit_selected).pack(
             fill="x", pady=2
         )
-        ttk.Button(button_row, text="Remove Selected", command=self._on_remove_selected).pack(
+        ttk.Button(button_row, text=BUTTON_REMOVE_FROM_PROFILE, command=self._on_remove_selected).pack(
+            fill="x", pady=2
+        )
+        ttk.Button(button_row, text=BUTTON_DELETE_FROM_APP, command=self._on_delete_from_app_selected).pack(
             fill="x", pady=2
         )
         ttk.Button(button_row, text="Tidy All", command=self._tidy_all).pack(fill="x", pady=2)
@@ -1168,13 +1195,15 @@ class TopologyEditor(tk.Tk):
         menu = tk.Menu(self)
         file_menu = tk.Menu(menu, tearoff=False)
         file_menu.add_command(label="New", command=self._new_diagram)
-        file_menu.add_command(label="Open Profile...", command=self._open_profile)
-        file_menu.add_command(label="Reload Canonical", command=self._reload_canonical_profile)
-        file_menu.add_command(label="Save Profile As...", command=self._save_profile_as)
-        file_menu.add_command(label="Save Selection As...", command=self._save_selection_as)
-        file_menu.add_command(label="Save to Deploy", command=self._on_save_to_deploy)
+        file_menu.add_command(label=MENU_LABEL_OPEN_CONFIG, command=self._open_profile)
+        file_menu.add_command(label=MENU_LABEL_RELOAD_CANONICAL, command=self._reload_canonical_profile)
+        file_menu.add_command(label=MENU_LABEL_SAVE_CONFIG, command=self._save_config)
+        file_menu.add_command(label=MENU_LABEL_SAVE_CONFIG_AS, command=self._save_config_as)
+        file_menu.add_command(label=MENU_LABEL_SAVE_PROFILE_AS, command=self._save_profile_as)
+        file_menu.add_command(label=MENU_LABEL_SAVE_SELECTION_AS, command=self._save_selection_as)
+        file_menu.add_command(label=MENU_LABEL_SAVE_TO_DEPLOY, command=self._on_save_to_deploy)
         file_menu.add_command(
-            label="Write Minimal Diagram Metadata...",
+            label=MENU_LABEL_WRITE_MINIMAL_DIAGRAM,
             command=self._write_minimal_diagram_metadata,
         )
         file_menu.add_command(label="Export PDF...", command=self._on_export_pdf)
@@ -3052,6 +3081,13 @@ class TopologyEditor(tk.Tk):
             "profiles": {
                 profile_name: self._profile_from_nodes(),
             },
+            KEY_TOPOLOGY: {
+                KEY_TOPOLOGY_VERSION: TOPOLOGY_VERSION,
+                KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
+                KEY_TOPOLOGY_PROFILES: {
+                    profile_name: self._topology_snapshot(),
+                },
+            },
             "diagram": {
                 "profiles": {
                     profile_name: self._diagram_snapshot(),
@@ -3128,6 +3164,13 @@ class TopologyEditor(tk.Tk):
             "profiles": {
                 profile_name: self._profile_from_nodes_list(selected_devices),
             },
+            KEY_TOPOLOGY: {
+                KEY_TOPOLOGY_VERSION: TOPOLOGY_VERSION,
+                KEY_TOPOLOGY_SOURCE: TOPOLOGY_SOURCE_LOCAL,
+                KEY_TOPOLOGY_PROFILES: {
+                    profile_name: self._topology_snapshot_from_nodes(selected_nodes),
+                },
+            },
             "diagram": {
                 "profiles": {
                     profile_name: self._diagram_snapshot_from_nodes(selected_nodes),
@@ -3194,6 +3237,40 @@ class TopologyEditor(tk.Tk):
         self._set_profile_names(self._profile_names + [profile_name])
         messagebox.showinfo("Saved", f"Wrote selection profile to {path}")
 
+    def _save_config(self) -> None:
+        """
+        NAME
+            _save_config - Write the full current config back to the loaded source path.
+        """
+        source_path = self._profile_source_path
+        if not source_path:
+            messagebox.showerror(ERR_NO_SOURCE_CONFIG_TITLE, ERR_NO_SOURCE_CONFIG_TEXT)
+            return
+        self._save_profile_to_path(
+            Path(source_path),
+            prompt_replace=False,
+            update_source=True,
+        )
+
+    def _save_config_as(self) -> None:
+        """
+        NAME
+            _save_config_as - Write the full current config to a new path and make it the active source.
+        """
+        path = filedialog.asksaveasfilename(
+            title=TITLE_SAVE_BRINGUP_CONFIG,
+            defaultextension=".json",
+            filetypes=[("JSON", "*.json"), ("All files", "*.*")],
+        )
+        if not path:
+            return
+        self._save_profile_to_path(
+            Path(path),
+            prompt_replace=False,
+            update_source=True,
+            seed_path=Path(self._profile_source_path) if self._profile_source_path else None,
+        )
+
     def _on_save_to_deploy(self) -> None:
         """
         NAME
@@ -3228,6 +3305,7 @@ class TopologyEditor(tk.Tk):
         path: Path,
         prompt_replace: bool,
         update_source: bool,
+        seed_path: Optional[Path] = None,
     ) -> None:
         """
         NAME
@@ -3237,6 +3315,7 @@ class TopologyEditor(tk.Tk):
             path: Target JSON file path.
             prompt_replace: Whether to prompt before replacing an existing profile.
             update_source: Whether to update the current source path to this file.
+            seed_path: Optional existing full-config source to clone when the target file does not exist yet.
         """
         profile_name = self.entry_profile.get().strip()
         if not profile_name:
@@ -3260,6 +3339,12 @@ class TopologyEditor(tk.Tk):
                 data = self._load_config_payload(path)
             except Exception as exc:
                 messagebox.showerror("Error", f"Failed to read {path}: {exc}")
+                return
+        elif isinstance(seed_path, Path) and seed_path.exists():
+            try:
+                data = self._load_config_payload(seed_path)
+            except Exception as exc:
+                messagebox.showerror("Error", f"Failed to read {seed_path}: {exc}")
                 return
         if not isinstance(data, dict):
             data = {}
@@ -3345,7 +3430,10 @@ class TopologyEditor(tk.Tk):
         self._set_profile_names(sorted(updated_profiles.keys()) if isinstance(updated_profiles, dict) else [])
         self._refresh_profile_choices(keep_selection=False)
         self._refresh_default_checkbox()
-        messagebox.showinfo("Saved", f"Updated {path} with profile '{profile_name}'.")
+        message = MSG_SAVED_CONFIG_FMT.format(path=path, profile=profile_name)
+        if path.resolve() == self._deploy_profiles_path().resolve():
+            message = MSG_SAVED_DEPLOY_FMT.format(profile=profile_name)
+        messagebox.showinfo("Saved", message)
 
     def _prune_topology_entry_device_refs(
         self,
@@ -6504,6 +6592,54 @@ class TopologyEditor(tk.Tk):
             if str(entry.get(KEY_LABEL, TEXT_EMPTY)).strip() != label_text
         ]
 
+    def _remove_device_label_from_current_profile(self, label: str) -> bool:
+        """
+        NAME
+            _remove_device_label_from_current_profile - Remove one shared device label from the active profile only.
+        """
+        label_text = str(label).strip()
+        if not label_text:
+            return False
+        node_keys = {
+            int(node.key)
+            for node in self._profile_device_nodes()
+            if str(node.label or TEXT_EMPTY).strip() == label_text
+        }
+        in_non_topology = label_text in self._non_topology_profile_labels
+        if not node_keys and not in_non_topology:
+            messagebox.showinfo(
+                TITLE_REMOVE_FROM_PROFILE,
+                MSG_REMOVE_PROFILE_NOT_PRESENT.format(label_text),
+            )
+            return True
+        proceed = messagebox.askyesno(
+            TITLE_REMOVE_FROM_PROFILE,
+            MSG_REMOVE_PROFILE_CONFIRM.format(label_text),
+        )
+        if not proceed:
+            return True
+        self._push_undo()
+        if node_keys:
+            self._nodes = [node for node in self._nodes if int(node.key) not in node_keys]
+        if in_non_topology:
+            self._non_topology_profile_labels = [
+                existing for existing in self._non_topology_profile_labels if existing != label_text
+            ]
+        self._selected_inventory_label = None
+        if any(key in set(self._selected_nodes) for key in node_keys):
+            self._clear_selection()
+        self._prune_current_profile_bridge_config_label(label_text)
+        self._prune_attachment_links()
+        self._prune_power_links()
+        self._prune_dio_wiring_links()
+        self._dirty = True
+        self._refresh_list()
+        self._update_details_panel(None)
+        self._update_selection_overlays()
+        self._mark_neighbors_stale()
+        self._redraw_canvas()
+        return True
+
     def _remove_selected_inventory_item(self) -> bool:
         """
         NAME
@@ -6513,32 +6649,12 @@ class TopologyEditor(tk.Tk):
         entry = self._inventory_entry_for_label(label)
         if not isinstance(entry, dict):
             return False
-        if not self._is_xbox_controller_entry(entry):
-            return self._delete_inventory_entry_globally(label)
-        if label not in self._non_topology_profile_labels:
-            messagebox.showinfo("Remove", f"'{label}' is not in the current profile.")
-            return True
-        proceed = messagebox.askyesno(
-            "Remove",
-            f"Remove '{label}' from the current profile?",
-        )
-        if not proceed:
-            return True
-        self._non_topology_profile_labels = [
-            existing for existing in self._non_topology_profile_labels if existing != label
-        ]
-        self._prune_current_profile_bridge_config_label(label)
-        self._selected_inventory_label = None
-        self._dirty = True
-        self._refresh_list()
-        self._update_details_panel(None)
-        self._update_selection_overlays()
-        return True
+        return self._remove_device_label_from_current_profile(label)
 
-    def _delete_inventory_entry_globally(self, label: str) -> bool:
+    def _delete_device_label_from_app(self, label: str) -> bool:
         """
         NAME
-            _delete_inventory_entry_globally - Remove one inventory-only device from the shared config.
+            _delete_device_label_from_app - Delete one shared device label from app-wide config and current editor state.
         """
         label_text = str(label).strip()
         if not label_text:
@@ -6546,7 +6662,7 @@ class TopologyEditor(tk.Tk):
         refs = [name for name in self._profile_references_for_label(label_text) if str(name).strip()]
         if refs:
             proceed = messagebox.askyesno(
-                "Remove",
+                TITLE_DELETE_FROM_APP,
                 MSG_INVENTORY_DELETE_REFERENCED.format(
                     label=label_text,
                     profiles=NEWLINE.join(refs),
@@ -6554,23 +6670,45 @@ class TopologyEditor(tk.Tk):
             )
         else:
             proceed = messagebox.askyesno(
-                "Remove",
+                TITLE_DELETE_FROM_APP,
                 MSG_INVENTORY_DELETE_CONFIRM.format(label_text),
             )
         if not proceed:
             return True
+        self._push_undo()
         self._remove_registry_entry_by_label(label_text)
         self._pending_global_device_deletions.add(label_text)
+        self._nodes = [
+            node
+            for node in self._nodes
+            if not (
+                self._is_registry_device_node(node)
+                and str(node.label or TEXT_EMPTY).strip() == label_text
+            )
+        ]
         self._non_topology_profile_labels = [
             existing for existing in self._non_topology_profile_labels if existing != label_text
         ]
         self._prune_bridge_config_label(label_text)
+        self._prune_attachment_links()
+        self._prune_power_links()
+        self._prune_dio_wiring_links()
         self._selected_inventory_label = None
+        self._clear_selection()
         self._dirty = True
         self._refresh_list()
         self._update_details_panel(None)
         self._update_selection_overlays()
+        self._mark_neighbors_stale()
+        self._redraw_canvas()
         return True
+
+    def _delete_inventory_entry_globally(self, label: str) -> bool:
+        """
+        NAME
+            _delete_inventory_entry_globally - Delete one shared-config device definition from the app entirely.
+        """
+        return self._delete_device_label_from_app(label)
 
     def _next_analyzer_label(self) -> str:
         """
@@ -7657,21 +7795,22 @@ class TopologyEditor(tk.Tk):
     def _on_remove(self) -> None:
         """
         NAME
-            _on_remove - Remove the selected node.
+            _on_remove - Remove the selected node from the current profile.
         """
         node = self._get_selected_node()
         if node is None:
-            messagebox.showinfo("Remove", "Select a node to remove.")
+            messagebox.showinfo(TITLE_REMOVE_FROM_PROFILE, MSG_REMOVE_NODE_SELECT)
             return
         removed_label = (node.label or TEXT_EMPTY).strip()
         self._push_undo()
         self._nodes = [n for n in self._nodes if n.key != node.key]
         self._selected_key = None
         if removed_label:
-            self._prune_bridge_config_label(removed_label)
+            self._prune_current_profile_bridge_config_label(removed_label)
         self._prune_attachment_links()
         self._prune_power_links()
         self._prune_dio_wiring_links()
+        self._dirty = True
         self._refresh_list()
         self._update_details_panel(None)
         self._mark_neighbors_stale()
@@ -7702,12 +7841,12 @@ class TopologyEditor(tk.Tk):
     def _on_remove_selected(self) -> None:
         """
         NAME
-            _on_remove_selected - Remove selected nodes and callouts.
+            _on_remove_selected - Remove selected nodes and callouts from the current profile.
         """
         if self._selected_inventory_label and not self._selected_nodes and not self._selected_buses:
             if self._remove_selected_inventory_item():
                 return
-            messagebox.showinfo("Remove", MSG_INVENTORY_EDIT_UNSUPPORTED)
+            messagebox.showinfo(TITLE_REMOVE_FROM_PROFILE, MSG_INVENTORY_EDIT_UNSUPPORTED)
             return
         if self._selected_buses and not self._selected_nodes:
             if not self._remove_selected_buses():
@@ -7718,9 +7857,9 @@ class TopologyEditor(tk.Tk):
             self._redraw_canvas()
             return
         if not self._selected_nodes:
-            messagebox.showinfo("Remove", "Select nodes or callouts to remove.")
+            messagebox.showinfo(TITLE_REMOVE_FROM_PROFILE, MSG_REMOVE_SELECTION_SELECT)
             return
-        if not messagebox.askyesno("Remove", "Remove selected nodes/callouts?"):
+        if not messagebox.askyesno(TITLE_REMOVE_FROM_PROFILE, MSG_REMOVE_SELECTION_CONFIRM):
             return
         removed_labels = [
             (n.label or TEXT_EMPTY).strip()
@@ -7735,10 +7874,34 @@ class TopologyEditor(tk.Tk):
         self._prune_attachment_links()
         self._prune_power_links()
         self._prune_dio_wiring_links()
+        self._dirty = True
         self._refresh_list()
         self._update_details_panel(None)
         self._mark_neighbors_stale()
         self._redraw_canvas()
+
+    def _on_delete_from_app_selected(self) -> None:
+        """
+        NAME
+            _on_delete_from_app_selected - Delete one selected shared device definition from the app entirely.
+        """
+        if self._selected_inventory_label and not self._selected_nodes and not self._selected_buses:
+            if self._delete_inventory_entry_globally(self._selected_inventory_label):
+                return
+            messagebox.showinfo(TITLE_DELETE_FROM_APP, MSG_DELETE_APP_UNSUPPORTED)
+            return
+        if self._selected_buses or not self._selected_nodes or len(self._selected_nodes) != COUNT_ONE:
+            messagebox.showinfo(TITLE_DELETE_FROM_APP, MSG_DELETE_APP_SELECT_SINGLE)
+            return
+        node = self._get_selected_node()
+        if node is None or not self._is_registry_device_node(node):
+            messagebox.showinfo(TITLE_DELETE_FROM_APP, MSG_DELETE_APP_UNSUPPORTED)
+            return
+        label = str(node.label or TEXT_EMPTY).strip()
+        if not label:
+            messagebox.showinfo(TITLE_DELETE_FROM_APP, MSG_DELETE_APP_UNSUPPORTED)
+            return
+        self._delete_device_label_from_app(label)
 
     def _remove_selected_buses(self) -> bool:
         """
@@ -10315,15 +10478,7 @@ class TopologyEditor(tk.Tk):
         NAME
             _save_shortcut - Save using the default flow for the editor.
         """
-        if self._profile_source_path:
-            try:
-                path = Path(self._profile_source_path)
-            except Exception:
-                path = None
-            if path:
-                self._save_profile_to_path(path, prompt_replace=False, update_source=True)
-                return
-        self._on_save_to_deploy()
+        self._save_config()
 
     def _toggle_node_selection(self, key: int) -> None:
         """
@@ -11432,7 +11587,7 @@ class TopologyEditor(tk.Tk):
                 "- Ctrl+C: Copy selection.\n"
                 "- Ctrl+D: Duplicate selection.\n"
                 "- Ctrl+V: Paste.\n"
-                "- Delete / Backspace: Remove selected nodes/callouts.\n"
+                "- Delete / Backspace: Remove selected devices/callouts from the current profile.\n"
                 "- Ctrl+Z: Undo.\n"
                 "\n"
                 "Layout:\n"
@@ -11450,7 +11605,7 @@ class TopologyEditor(tk.Tk):
                 "- Ctrl+Shift+G: Toggle smart guides.\n"
                 "\n"
                 "Save:\n"
-                "- Ctrl+S: Save to deploy.\n"
+                "- Ctrl+S: Save Config to the currently loaded config path.\n"
             ),
             "Layout Tips": (
                 "Purpose: Keep diagrams tidy and readable.\n"

@@ -140,6 +140,26 @@ Purpose: Describe the current Selection-pane behavior in the CAN Visibility tab.
 
 - Every item in that section must be labeled as a guess and must stay conservative: manufacturer/device-type family and profile-missing hypotheses are allowed, but topology position, attached mechanism, and exact hardware model beyond available evidence are not treated as fact.
 
+- Unrecognized passive devices use structured default labels derived from passive identity when available:
+  - manufacturer token
+  - device-type token
+  - CAN ID
+
+- Example default label:
+  - `REV_MOTORCONTROLLER_07`
+
+- Double-clicking an `Unrecognized Nodes` row offers `Rename Discovered Device` for passive/discovery labeling before config promotion.
+
+- Double-clicking a `Defined Nodes` row offers `Rename Defined Device` for the current local config session.
+
+- Rename is still local to the discovery/passive UI state at that point; it does not write to `bringup_system.json` by itself.
+
+- Renaming from `Defined Nodes` updates the current local config session immediately, including profile membership references that point at that device label, but still does not write to disk until `Save Config`.
+
+- The rename flow rejects empty labels and duplicate labels before applying the passive/discovery rename.
+
+- The defined-device rename flow also rejects empty labels and duplicate labels before applying the in-memory config rename.
+
 - Right-clicking an `Unrecognized Nodes` row now offers `Create Device Definition...`.
 
 - That action never creates anything implicitly and always requires an explicit confirmation dialog before staging a device definition.
@@ -151,6 +171,77 @@ Purpose: Describe the current Selection-pane behavior in the CAN Visibility tab.
 - The new device should then refresh into `Defined Nodes` immediately in that same UI session even though nothing has been written to disk yet.
 
 - Persisting those pending profile edits now requires an explicit `Save Config` action in Bringup Control; `Create Device Definition...` does not write to disk by itself.
+
+- Bringup Control now exposes `File -> New Blank Config...`, `Open Config...`, `Save Config`, and `Save Config As...` for the local config-editing session.
+
+- `New Blank Config...` supports both:
+  - an in-memory unsaved config session
+  - an immediately file-backed blank config
+
+- A freshly created blank config session is truly empty:
+  - no predefined profile
+  - no predefined `default_profile`
+  - no predefined device inventory row beyond the empty top-level containers
+
+- `New Blank Config...` is also a scratch-session reset for passive CAN visibility/discovery memory:
+  - previously observed `Defined Nodes` / `Unrecognized Nodes` rows are cleared
+  - cached passive identity/discovered-label state is cleared
+  - cached passive raw-frame history is cleared
+  - bridge-side profile-derived CAN label context is cleared, so newly observed passive rows do not immediately reuse the prior config's device labels while the local profile context remains `(none)`
+
+- If discovery-based device creation needs a profile and the current local config session does not have a usable default profile, Bringup Control auto-creates and selects `default` for local authoring.
+
+- `Open Config...` switches the host UI's local config session to the selected `bringup_system.json` path for profile browsing and local edits only; it does not push config to the robot or activate runtime by itself.
+
+- `Save Config` writes pending local profile/device edits to the currently loaded config path when the session is file-backed.
+
+- If the local config session exists only in memory, `Save Config` routes through a save-path choice first.
+
+- `Save Config As...` writes the full current local config payload to a new path and keeps the UI session anchored to that new path after the save completes.
+
+- If the user attempts `Open Config...`, `New Blank Config...`, or closes Bringup Control while local config edits are unsaved, the UI prompts with save/discard/cancel instead of silently dropping discovery-created work.
+
+- If `Push Config` is requested while the local config session exists only in memory or still has unsaved local config edits, the UI saves that local config first and only then pushes the resulting file-backed artifact.
+
+- `Refresh` reloads the currently loaded local config path rather than silently snapping back to the canonical deploy file.
+
+## Topology Editor Device Deletion
+
+Purpose: Describe the current deletion behavior in the topology editor.
+
+- The topology editor now distinguishes profile-scoped removal from app-wide deletion.
+
+- `Remove From Profile` is the default removal action for selected topology devices and profile-scoped inventory items.
+
+- `Delete` / `Backspace` in the topology editor is profile-scoped and removes selected devices/callouts from the current profile instead of deleting the shared device definition from the app.
+
+- `Remove From Profile` removes the device from the active profile being edited and prunes active-profile topology/editor references.
+
+- `Remove From Profile` does not delete the shared device definition and does not remove the device from other profiles.
+
+- `Delete From App Entirely` is a separate explicit action for shared device definitions.
+
+- `Delete From App Entirely` removes the shared device definition from app config, removes it from all profiles on save, and prunes related saved-topology and label-based editor references.
+
+- `Delete From App Entirely` is intended for a single shared device definition at a time and is not the default meaning of canvas deletion.
+
+## Topology Editor Config Save Paths
+
+Purpose: Describe the current file-save behavior in the topology editor.
+
+- `Open Config...` loads a full multi-profile `bringup_system.json` from the selected path and makes that file the active source path for later saves.
+
+- `Save Config` writes the full current multi-profile config back to the active source path that was loaded by `Open Config...` or startup default loading.
+
+- `Save Config As...` writes the full current multi-profile config to a new path and then makes that new file the active source path.
+
+- `Save Profile As...` exports a standalone one-profile config file rather than rewriting the full currently loaded multi-profile config.
+
+- Topology-editor-written exports now include canonical root `topology.profiles.<profile>` data so Bringup Control Live Topology and the topology editor can both read the saved graph from the same file.
+
+- Exported files may still retain legacy `diagram.profiles.<profile>` data for compatibility while legacy read fallback remains in place.
+
+- `Save to Deploy` remains an explicit write to the canonical deploy config path.
 
   
 

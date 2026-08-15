@@ -179,6 +179,9 @@ from tools.can_nt.host_ui_state_service import (
     resolve_topology_scene_state,
     should_clear_runtime_event_notice,
 )
+from tools.can_nt.can_profiles import (
+    get_profiles_path_override,
+)
 from tools.can_nt.ui_theme import (
     UI_THEME_DEFAULT,
     UiThemePalette,
@@ -789,10 +792,23 @@ def _load_profiles_payload() -> Tuple[Optional[Dict[str, object]], str]:
     RETURNS
         (payload, error_message).
     """
+    override_path = get_profiles_path_override()
+    if override_path is not None:
+        return _load_profiles_payload_from_path(override_path)
     payload = _load_profiles_payload_from_store()
     if payload is not None:
         return payload, EMPTY_STRING
     path = ConfigRepository().canonical_path()
+    return _load_profiles_payload_from_path(path)
+
+
+def _load_profiles_payload_from_path(
+    path,
+) -> Tuple[Optional[Dict[str, object]], str]:
+    """
+    NAME
+        _load_profiles_payload_from_path - Load one explicit bringup_system.json payload.
+    """
     if not path.exists():
         return None, f"Profiles file not found at {path}"
     try:

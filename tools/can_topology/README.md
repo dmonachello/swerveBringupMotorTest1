@@ -43,23 +43,28 @@ Checks:
 - Attachment references must point at known device labels.
 
 ## Workflow
+
 Purpose: Describe the shortest path from sketch to JSON.
+
 1. Click `Add` and enter device details.
 2. Drag boxes to arrange them on the bus line.
 3. Set the profile name (dropdown lists profiles from the loaded file).
-4. File -> Save Profile As...
-5. File -> Save Selection As... writes only selected nodes/callouts.
-6. Or use File -> `Save to Deploy` to append/replace in `src/main/deploy/bringup_system.json`.
-7. Save Selection As... never overwrites an existing file; it auto-suffixes `_1`, `_2`, etc.
-8. File -> `Reload Canonical` reloads `src/main/deploy/bringup_system.json` into the editor.
-9. Profiles menu: Import Profile... (external file -> canonical, with diagram metadata if present).
-10. Profiles menu: Export Profile... (single profile to external file).
-11. Profiles menu: Rename Profile... (non-default only).
-12. Profiles menu: Delete Profile... (non-default only; last profile protected).
-13. Destructive profile actions write a timestamped backup alongside the active file.
-6. Use `Set As Default` to update `default_profile` on save.
-7. Use File -> `Export PDF...` to write a printable PDF (requires `reportlab`).
-8. Use File -> `Print Diagram...` to print without a manual export step.
+4. File -> `Save Config` writes the full current multi-profile config back to the path it was loaded from.
+5. File -> `Save Config As...` writes the full current multi-profile config to a new path and keeps that path as the active source.
+6. File -> `Save Profile As...` exports a standalone one-profile config JSON.
+7. File -> `Save Selection As...` writes only selected nodes/callouts.
+8. File -> `Save to Deploy` writes the current config state into `src/main/deploy/bringup_system.json`.
+9. Save Selection As... never overwrites an existing file; it auto-suffixes `_1`, `_2`, etc.
+10. File -> `Reload Canonical` reloads `src/main/deploy/bringup_system.json` into the editor.
+11. Profiles menu: Import Profile... (external file -> canonical, with diagram metadata if present).
+12. Profiles menu: Export Profile... (single profile to external file).
+13. Profiles menu: Rename Profile... (non-default only).
+14. Profiles menu: Delete Profile... (non-default only; last profile protected).
+15. Destructive profile actions write a timestamped backup alongside the active file.
+16. Use `Set As Default` to update `default_profile` on save.
+17. Use File -> `Export PDF...` to write a printable PDF (requires `reportlab`).
+18. Use File -> `Print Diagram...` to print without a manual export step.
+
 Optional: Apply the updated devices/profiles tables payload without redeploy using the Bridge CLI `profiles push <path>`.
 
 ## Details Panel
@@ -84,7 +89,7 @@ Purpose: Document the viewport and drag behavior the editor must preserve.
 Purpose: Start with your existing profile if present.
 - On startup, the editor reads `src/main/deploy/bringup_system.json` and loads its
   `default_profile` automatically.
-- Use File -> Open Profile... to pick a different profile.
+- Use File -> Open Config... to load a different `bringup_system.json`, then pick a profile from that config.
 - If `data_hash` is missing or mismatched, the editor can still open the file for repair.
 
 
@@ -95,7 +100,7 @@ Purpose: Keep the previous editor available for reference without accidental use
 
 ## Notes
 Purpose: Document limitations up front.
-- Diagram positions are saved under `diagram.profiles.<profileName>` only.
+- Topology-editor-written config files now include canonical root `topology.profiles.<profileName>` data for UI/editor interoperability.
 - Nodes snap to the nearest bus segment and appear above or below the bus line (row 0/1).
 - The canvas supports horizontal and vertical scrolling for large layouts.
 - Box width shrinks when space is tight to reduce overlap.
@@ -115,8 +120,7 @@ Purpose: Document limitations up front.
 - Left list and right canvas are separated by a draggable splitter.
 - Help -> Help... provides a topic list (overview, layout tips, profiles, shortcuts).
 - Tags are freeform labels saved on device entries and diagram metadata.
-- Diagram layout metadata is saved under `diagram.profiles.<profileName>` and
-  ignored by the robot and PC tools.
+- Exported files currently keep legacy `diagram.profiles.<profileName>` data alongside canonical root `topology.profiles.<profileName>` for compatibility during transition.
 - Use `Add Callout` to create a text label with a leader line to a bus or node.
 - Callouts are stored as nodes and follow the same drag/selection rules as devices.
 - Select a node and use the Scale controls to resize that node's box; scale is saved
@@ -146,7 +150,7 @@ Purpose: Keep shortcuts documented in one place.
 - `Ctrl+C`: copy selection.
 - `Ctrl+D`: duplicate selection.
 - `Ctrl+V`: paste.
-- `Delete` / `Backspace`: remove selected nodes/callouts.
+- `Delete` / `Backspace`: remove selected devices/callouts from the current profile.
 - `Ctrl+Z`: undo.
 - `Ctrl+L`: tidy selection within bus bounds.
 - `Ctrl+Shift+L`: reset layout (per-bus even spacing, preserves bus/row).

@@ -5,6 +5,7 @@ NAME
 
 from __future__ import annotations
 
+from copy import deepcopy
 import time
 import unittest
 from pathlib import Path
@@ -18,6 +19,9 @@ from tools.can_nt.bringup_ui import (
     ACTIVATION_MEMBERSHIP_MODE_DEFAULT,
     ACTIVE_GROUP_WAITING_TEXT,
     ATTACHMENT_TYPE_ACTIVE_PRESENCE_PROBE,
+    BUTTON_NEW_BLANK_CONFIG,
+    BUTTON_OPEN_CONFIG,
+    BUTTON_SAVE_CONFIG_AS,
     BringupControlUI,
     CMD_PRINT_CAN_DIAG,
     CMD_RUNTIME_ACTIVATE,
@@ -41,6 +45,7 @@ from tools.can_nt.bringup_ui import (
     MANUAL_DUTY_BLOCKED_WAITING_TEXT,
     MANUAL_DUTY_ARG_DUTY,
     MANUAL_GROUP_DUTY_CMD_SET,
+    PROFILE_KEY_LABEL,
     PROFILE_NONE,
     RUNNABLE_SCOPE_DETAIL_SELECT_PROFILE,
     RUNNABLE_SCOPE_PANEL_DISCONNECTED_DETAIL,
@@ -105,6 +110,7 @@ from tools.can_nt.host_ui_state_service import (
 )
 from tools.common.profile_constants import (
     INTERFACE_CAN,
+    KEY_DEFAULT_PROFILE,
     KEY_DEVICE_TYPE,
     KEY_DEVICES,
     KEY_ID,
@@ -134,6 +140,11 @@ class _ProfileBoxStub:
         if key == "values":
             return self._values
         raise KeyError(key)
+
+    def __setitem__(self, key: str, value) -> None:
+        if key != "values":
+            raise KeyError(key)
+        self._values = tuple(value)
 
 
 class _StringVarStub:
@@ -877,19 +888,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertIn("new motor", ui._profile_devices)
 
     def test_save_config_from_ui_persists_pending_device_definitions(self) -> None:
-        class _EditSessionStub:
-            def __init__(self, payload) -> None:
-                self._payload = payload
-                self.marked_dirty = False
-
-            def to_payload(self):
-                return self._payload
-
-            def mark_dirty(self) -> None:
-                self.marked_dirty = True
-
         ui = BringupControlUI.__new__(BringupControlUI)
-        saved_payloads = []
         outputs = []
         ui._pending_profile_device_definitions = {
             "test_minimal_25_9": {
@@ -905,28 +904,29 @@ class BringupUiActionMetadataTests(unittest.TestCase):
                 }
             }
         }
-        session = _EditSessionStub(
-            {
-                KEY_PROFILES: {
-                    "test_minimal_25_9": {
-                        KEY_PROFILE_DEVICES: ["FALCON 9"],
-                    }
-                },
-                KEY_DEVICES: [
-                    {
-                        KEY_LABEL: "FALCON 9",
-                        KEY_INTERFACE: INTERFACE_CAN,
-                        KEY_MANUFACTURER: 4,
-                        KEY_DEVICE_TYPE: 2,
-                        KEY_ID: 9,
-                    }
-                ],
-            }
-        )
-        ui._begin_local_profiles_edit = lambda: session
-        ui._persist_local_profiles_edit = lambda edit: saved_payloads.append(dict(edit.to_payload()))
+        ui._config_session_in_memory_only = False
+        ui._config_session_dirty = False
+        ui._local_profiles_payload_override = None
+        ui._load_local_profiles_payload = lambda: {
+            KEY_PROFILES: {
+                "test_minimal_25_9": {
+                    KEY_PROFILE_DEVICES: ["FALCON 9"],
+                }
+            },
+            KEY_DEVICES: [
+                {
+                    KEY_LABEL: "FALCON 9",
+                    KEY_INTERFACE: INTERFACE_CAN,
+                    KEY_MANUFACTURER: 4,
+                    KEY_DEVICE_TYPE: 2,
+                    KEY_ID: 9,
+                }
+            ],
+        }
+        saved_payloads = []
+        ui._save_payload_to_config_path = lambda payload, path: saved_payloads.append(deepcopy(payload)) or path
         ui._append_output = outputs.append
-        ui._default_profiles_path = lambda: Path("config.json")
+        ui._current_profiles_path = lambda: Path("config.json")
         ui._selected_profile_name = lambda: "test_minimal_25_9"
         ui._apply_profile_selection = lambda profile_name, reload_views: None
         ui._poll_visibility_snapshot = lambda _now: None
@@ -934,15 +934,550 @@ class BringupUiActionMetadataTests(unittest.TestCase):
 
         ui._save_config_from_ui()
 
-        self.assertTrue(session.marked_dirty)
         self.assertEqual({}, ui._pending_profile_device_definitions)
         self.assertEqual(
             ["FALCON 9", "new motor"],
-            session.to_payload()[KEY_PROFILES]["test_minimal_25_9"][KEY_PROFILE_DEVICES],
+            saved_payloads[0][KEY_PROFILES]["test_minimal_25_9"][KEY_PROFILE_DEVICES],
         )
-        self.assertEqual("new motor", session.to_payload()[KEY_DEVICES][1][KEY_LABEL])
+        self.assertEqual("new motor", saved_payloads[0][KEY_DEVICES][1][KEY_LABEL])
         self.assertIn("config.json", outputs[-1])
         self.assertEqual(1, len(saved_payloads))
+
+    def test_new_blank_config_from_ui_starts_in_memory_empty_session(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._profile_box = _ProfileBoxStub(PROFILE_NONE, values=(PROFILE_NONE,))
+        ui._ui_auto_select_default_profile = True
+        ui._profile_names_from_payload = BringupControlUI._profile_names_from_payload.__get__(ui, BringupControlUI)
+        ui._selectable_profiles_from_payload = BringupControlUI._selectable_profiles_from_payload.__get__(ui, BringupControlUI)
+        ui._default_profile_name_from_payload = BringupControlUI._default_profile_name_from_payload.__get__(ui, BringupControlUI)
+        ui._selected_profile_name = BringupControlUI._selected_profile_name.__get__(ui, BringupControlUI)
+        applied = []
+        ui._apply_profile_selection = lambda name, reload_views: applied.append((name, reload_views))
+        ui._append_output = lambda _line: None
+        ui._confirm_local_config_session_switch = lambda: True
+        reset_calls = []
+        ui._reset_scratch_visibility_state = lambda: reset_calls.append(True)
+
+        with patch("tools.can_nt.bringup_ui.messagebox.askyesnocancel", return_value=True) as mock_prompt:
+            ui._new_blank_config_from_ui()
+
+        self.assertEqual("New Blank Config", mock_prompt.call_args.args[0])
+        self.assertEqual([True], reset_calls)
+        self.assertTrue(ui._config_session_in_memory_only)
+        self.assertTrue(ui._config_session_dirty)
+        self.assertTrue(ui._suppress_host_profile_context_sync)
+        self.assertEqual(PROFILE_NONE, ui._profile_box.get())
+        self.assertEqual([], ui._profile_names_from_payload(ui._local_profiles_payload_override))
+        self.assertEqual([(PROFILE_NONE, True)], applied)
+
+    def test_blank_config_session_does_not_adopt_robot_profile_context(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._profile_box = _ProfileBoxStub(PROFILE_NONE, values=(PROFILE_NONE,))
+        ui._suppress_host_profile_context_sync = True
+        ui._pending_robot_profile_selection = PROFILE_NONE
+        ui._robot_selected_profile = "test_minimal_25_9"
+        ui._last_profile_mismatch_prompt = None
+        applied = []
+        ui._apply_profile_selection = lambda name, reload_views: applied.append((name, reload_views))
+
+        with patch("tools.can_nt.bringup_ui.messagebox.askyesno") as mock_prompt:
+            with patch("tools.can_nt.bringup_ui.messagebox.showwarning") as mock_warning:
+                ui._maybe_prompt_host_profile_context_sync()
+
+        self.assertEqual(PROFILE_NONE, ui._profile_box.get())
+        self.assertEqual([], applied)
+        mock_prompt.assert_not_called()
+        mock_warning.assert_not_called()
+
+    def test_reset_scratch_visibility_state_clears_cached_visibility_state(self) -> None:
+        class _VisibilityProviderStub:
+            def __init__(self) -> None:
+                self.calls = 0
+                self.allow_calls = []
+
+            def reset_observed_state(self) -> None:
+                self.calls += 1
+
+            def set_allow_suggested_labels_for_unexpected(self, allowed: bool) -> None:
+                self.allow_calls.append(allowed)
+
+        ui = BringupControlUI.__new__(BringupControlUI)
+        provider = _VisibilityProviderStub()
+        ui._visibility_provider = provider
+        ui._latest_visibility_snapshot = {"devices": [object()]}
+        ui._latest_visibility_summary = {"sources": 1}
+        ui._latest_passive_result = object()
+        ui._visibility_sources = [{"id": "passive"}]
+        ui._visibility_columns = ["passive"]
+        ui._visibility_row_meta = {"row-1": {"label": "motor"}}
+        ui._visibility_selected_label = "motor"
+        ui._visibility_selected_unexpected = True
+        cleared = []
+        summary_updates = []
+        evidence_refresh = []
+        ui._clear_visibility_panels = lambda: cleared.append(True)
+        ui._update_visibility_summary = lambda summary: summary_updates.append(summary)
+        ui._refresh_evidence_view = lambda: evidence_refresh.append(True)
+
+        ui._reset_scratch_visibility_state()
+
+        self.assertEqual(1, provider.calls)
+        self.assertEqual([False], provider.allow_calls)
+        self.assertEqual({}, ui._latest_visibility_snapshot)
+        self.assertEqual({}, ui._latest_visibility_summary)
+        self.assertIsNone(ui._latest_passive_result)
+        self.assertEqual([], ui._visibility_sources)
+        self.assertEqual([], ui._visibility_columns)
+        self.assertEqual({}, ui._visibility_row_meta)
+        self.assertEqual("", ui._visibility_selected_label)
+        self.assertFalse(ui._visibility_selected_unexpected)
+        self.assertEqual([True], cleared)
+        self.assertEqual([{}], summary_updates)
+        self.assertEqual([True], evidence_refresh)
+
+    def test_blank_profiles_payload_is_truly_empty(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+
+        payload = ui._blank_profiles_payload()
+
+        self.assertEqual([], payload[KEY_DEVICES])
+        self.assertEqual({}, payload[KEY_PROFILES])
+        self.assertNotIn(KEY_DEFAULT_PROFILE, payload)
+
+    def test_open_config_from_ui_switches_session_to_selected_file(self) -> None:
+        opened_path = Path("C:/tmp/alt_bringup_system.json")
+        canonical_path = Path("C:/repo/src/main/deploy/bringup_system.json")
+        payload = {
+            KEY_DEFAULT_PROFILE: "beta",
+            KEY_PROFILES: {
+                "alpha": {},
+                "beta": {},
+            },
+        }
+        repository = SimpleNamespace(
+            load_path=lambda path: SimpleNamespace(to_payload=lambda: payload),
+            canonical_path=lambda: canonical_path,
+        )
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._config_path_override = None
+        ui._profile_box = _ProfileBoxStub(PROFILE_NONE, values=(PROFILE_NONE,))
+        ui._append_output = lambda _line: None
+        ui._ui_auto_select_default_profile = True
+        ui._current_profiles_path = BringupControlUI._current_profiles_path.__get__(ui, BringupControlUI)
+        ui._profile_names_from_payload = BringupControlUI._profile_names_from_payload.__get__(ui, BringupControlUI)
+        ui._selectable_profiles_from_payload = BringupControlUI._selectable_profiles_from_payload.__get__(ui, BringupControlUI)
+        ui._default_profile_name_from_payload = BringupControlUI._default_profile_name_from_payload.__get__(ui, BringupControlUI)
+        ui._selected_profile_name = BringupControlUI._selected_profile_name.__get__(ui, BringupControlUI)
+        applied = []
+        ui._apply_profile_selection = lambda name, reload_views: applied.append((name, reload_views))
+
+        with patch("tools.can_nt.bringup_ui.filedialog.askopenfilename", return_value=str(opened_path)) as mock_dialog:
+            with patch("tools.can_nt.bringup_ui.ConfigRepository", return_value=repository):
+                with patch("tools.can_nt.bringup_ui.set_profiles_path_override") as set_override_mock:
+                    with patch("tools.can_nt.bringup_ui.reload_profiles", return_value=(True, "")):
+                        ui._open_config_from_ui()
+
+        self.assertEqual(BUTTON_OPEN_CONFIG, mock_dialog.call_args.kwargs["title"])
+        self.assertEqual(opened_path.resolve(), ui._config_path_override)
+        self.assertEqual((PROFILE_NONE, "alpha", "beta"), ui._profile_box.cget("values"))
+        self.assertEqual("beta", ui._profile_box.get())
+        self.assertEqual("beta", ui._last_selected_profile)
+        self.assertEqual([("beta", True)], applied)
+        set_override_mock.assert_called_once_with(opened_path.resolve())
+
+    def test_save_config_as_from_ui_persists_current_payload_and_keeps_new_path(self) -> None:
+        canonical_path = Path("C:/repo/src/main/deploy/bringup_system.json")
+        save_as_path = Path("C:/tmp/copied_bringup_system.json")
+        payload = {
+            KEY_PROFILES: {
+                "alpha": {
+                    KEY_PROFILE_DEVICES: ["Motor 1"],
+                }
+            },
+            KEY_DEVICES: [
+                {
+                    PROFILE_KEY_LABEL: "Motor 1",
+                    KEY_INTERFACE: INTERFACE_CAN,
+                    KEY_MANUFACTURER: 5,
+                    KEY_DEVICE_TYPE: 2,
+                    KEY_ID: 1,
+                }
+            ],
+        }
+        saved_sessions = []
+
+        def _session_for_payload(path, payload_value):
+            return SimpleNamespace(path=path, payload=payload_value)
+
+        def _save(session, *, path):
+            saved_sessions.append((session, path))
+
+        repository = SimpleNamespace(
+            session_for_payload=_session_for_payload,
+            save=_save,
+            canonical_path=lambda: canonical_path,
+        )
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._config_path_override = None
+        ui._append_output = lambda _line: None
+        ui._current_profiles_path = BringupControlUI._current_profiles_path.__get__(ui, BringupControlUI)
+        ui._load_local_profiles_payload = lambda: payload
+        refreshed = []
+        ui._refresh_profiles = lambda: refreshed.append(True)
+        ui._save_payload_to_config_path = lambda payload_value, path: saved_sessions.append(
+            (SimpleNamespace(payload=payload_value), path)
+        ) or path
+
+        with patch("tools.can_nt.bringup_ui.filedialog.asksaveasfilename", return_value=str(save_as_path)) as mock_dialog:
+            ui._save_config_as_from_ui()
+
+        self.assertEqual(BUTTON_SAVE_CONFIG_AS, mock_dialog.call_args.kwargs["title"])
+        self.assertEqual(1, len(saved_sessions))
+        self.assertEqual(save_as_path, saved_sessions[0][1])
+        self.assertEqual(payload, saved_sessions[0][0].payload)
+        self.assertEqual([True], refreshed)
+
+    def test_refresh_profiles_uses_current_override_payload(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._profile_box = _ProfileBoxStub("missing", values=("missing",))
+        ui._ui_auto_select_default_profile = True
+        ui._config_path_override = Path("C:/tmp/alt_bringup_system.json")
+        ui._current_profiles_path = BringupControlUI._current_profiles_path.__get__(ui, BringupControlUI)
+        ui._load_local_profiles_payload = lambda: {
+            KEY_DEFAULT_PROFILE: "beta",
+            KEY_PROFILES: {
+                "alpha": {},
+                "beta": {},
+            },
+        }
+        ui._profile_names_from_payload = BringupControlUI._profile_names_from_payload.__get__(ui, BringupControlUI)
+        ui._selectable_profiles_from_payload = BringupControlUI._selectable_profiles_from_payload.__get__(ui, BringupControlUI)
+        ui._default_profile_name_from_payload = BringupControlUI._default_profile_name_from_payload.__get__(ui, BringupControlUI)
+        ui._selected_profile_name = BringupControlUI._selected_profile_name.__get__(ui, BringupControlUI)
+        applied = []
+        ui._apply_profile_selection = lambda name, reload_views: applied.append((name, reload_views))
+
+        with patch("tools.can_nt.bringup_ui.ConfigRepository", return_value=SimpleNamespace(canonical_path=lambda: Path("C:/repo/src/main/deploy/bringup_system.json"))):
+            with patch("tools.can_nt.bringup_ui.set_profiles_path_override") as set_override_mock:
+                with patch("tools.can_nt.bringup_ui.reload_profiles", return_value=(True, "")):
+                    ui._refresh_profiles()
+
+        self.assertEqual((PROFILE_NONE, "alpha", "beta"), ui._profile_box.cget("values"))
+        self.assertEqual("beta", ui._profile_box.get())
+        self.assertEqual("beta", ui._last_selected_profile)
+        self.assertEqual([("beta", True)], applied)
+        set_override_mock.assert_called_once_with(Path("C:/tmp/alt_bringup_system.json").resolve())
+
+    def test_apply_local_config_session_preserves_current_selected_profile(self) -> None:
+        payload = {
+            KEY_DEFAULT_PROFILE: "beta",
+            KEY_PROFILES: {
+                "alpha": {
+                    KEY_PROFILE_DEVICES: ["Motor A"],
+                },
+                "beta": {
+                    KEY_PROFILE_DEVICES: [],
+                },
+            },
+            KEY_DEVICES: [
+                {
+                    PROFILE_KEY_LABEL: "Motor A",
+                    KEY_INTERFACE: INTERFACE_CAN,
+                    KEY_MANUFACTURER: 4,
+                    KEY_DEVICE_TYPE: 2,
+                    KEY_ID: 1,
+                }
+            ],
+        }
+        canonical_path = Path("C:/repo/src/main/deploy/bringup_system.json")
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._config_path_override = None
+        ui._local_profiles_payload_override = None
+        ui._config_session_dirty = False
+        ui._config_session_in_memory_only = False
+        ui._pending_profile_device_definitions = {}
+        ui._profile_box = _ProfileBoxStub("alpha", values=(PROFILE_NONE, "alpha", "beta"))
+        ui._ui_auto_select_default_profile = True
+        ui._append_output = lambda _line: None
+        ui._profile_names_from_payload = BringupControlUI._profile_names_from_payload.__get__(ui, BringupControlUI)
+        ui._selectable_profiles_from_payload = BringupControlUI._selectable_profiles_from_payload.__get__(ui, BringupControlUI)
+        ui._default_profile_name_from_payload = BringupControlUI._default_profile_name_from_payload.__get__(ui, BringupControlUI)
+        ui._selected_profile_name = BringupControlUI._selected_profile_name.__get__(ui, BringupControlUI)
+        applied = []
+        ui._apply_profile_selection = lambda name, reload_views: applied.append((name, reload_views))
+
+        with patch(
+            "tools.can_nt.bringup_ui.ConfigRepository",
+            return_value=SimpleNamespace(canonical_path=lambda: canonical_path),
+        ):
+            with patch("tools.can_nt.bringup_ui.set_profiles_path_override") as set_override_mock:
+                with patch("tools.can_nt.bringup_ui.reload_profiles", return_value=(True, "")):
+                    ui._apply_local_config_session(
+                        payload,
+                        Path("C:/tmp/bringup_system.json"),
+                        dirty=True,
+                        in_memory_only=False,
+                    )
+
+        self.assertEqual((PROFILE_NONE, "alpha", "beta"), ui._profile_box.cget("values"))
+        self.assertEqual("alpha", ui._profile_box.get())
+        self.assertEqual("alpha", ui._last_selected_profile)
+        self.assertEqual([("alpha", True)], applied)
+        set_override_mock.assert_called_once_with(Path("C:/tmp/bringup_system.json").resolve())
+
+    def test_ensure_default_profile_for_local_config_session_creates_default_profile(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._profile_box = _ProfileBoxStub(PROFILE_NONE, values=(PROFILE_NONE,))
+        ui._append_output = lambda _line: None
+        ui._load_local_profiles_payload = lambda: {
+            KEY_DEVICES: [],
+            KEY_PROFILES: {},
+        }
+        ui._profile_names_from_payload = BringupControlUI._profile_names_from_payload.__get__(ui, BringupControlUI)
+        profile_name = ui._ensure_default_profile_for_local_config_session()
+
+        self.assertEqual("default", profile_name)
+        self.assertTrue(ui._config_session_dirty)
+        self.assertEqual("default", ui._local_profiles_payload_override[KEY_DEFAULT_PROFILE])
+        self.assertIn("default", ui._local_profiles_payload_override[KEY_PROFILES])
+
+    def test_refresh_tests_for_profile_uses_current_materialized_local_payload(self) -> None:
+        payload = {
+            KEY_PROFILES: {
+                "home": {
+                    "devices": ["Alt Motor"],
+                    "dslTestSet": "pit",
+                }
+            },
+            KEY_DEVICES: [
+                {
+                    KEY_LABEL: "Alt Motor",
+                    KEY_INTERFACE: INTERFACE_CAN,
+                    KEY_MANUFACTURER: 5,
+                    KEY_DEVICE_TYPE: 2,
+                    KEY_ID: 25,
+                    KEY_TYPE: "motor",
+                }
+            ],
+            "dslTests": {
+                "schemaVersion": 1,
+                "defaultSet": "default",
+                "testSets": {
+                    "default": ["spin_default"],
+                    "pit": ["pit_smoke", "pit_limit"],
+                },
+                "testsByName": {
+                    "spin_default": {"source": "", "sourceHash": "", "normalized": {}},
+                    "pit_smoke": {"source": "", "sourceHash": "", "normalized": {}},
+                    "pit_limit": {"source": "", "sourceHash": "", "normalized": {}},
+                },
+            },
+        }
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._config_path_override = Path("C:/tmp/fromScratch.json")
+        ui._local_profiles_payload_override = payload
+        ui._config_session_in_memory_only = False
+        ui._current_materialized_profiles_payload = lambda: payload
+        ui._sync_test_dropdown_values = lambda tests: setattr(ui, "_synced_tests", list(tests))
+
+        ui._refresh_tests_for_profile("home")
+
+        self.assertEqual(["pit_smoke", "pit_limit"], ui._synced_tests)
+
+    def test_selected_test_declared_required_devices_uses_current_materialized_local_payload(self) -> None:
+        payload = {
+            "dslTests": {
+                "schemaVersion": 1,
+                "defaultSet": "default",
+                "testSets": {
+                    "default": ["alt_test"],
+                },
+                "testsByName": {
+                    "alt_test": {
+                        "source": "",
+                        "sourceHash": "",
+                        "normalized": {
+                            "name": "alt_test",
+                            "devices": [
+                                {"name": "Alt Motor"},
+                                {"name": "controller0"},
+                            ],
+                        },
+                    },
+                },
+            },
+        }
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._current_materialized_profiles_payload = lambda: payload
+        ui._selected_test_source_name = ""
+
+        required = ui._selected_test_declared_required_devices("alt_test")
+
+        self.assertEqual(["Alt Motor", "controller0"], required)
+
+    def test_refresh_profile_devices_uses_current_materialized_local_payload(self) -> None:
+        class _VisibilityProviderStub:
+            def __init__(self) -> None:
+                self.allow_calls = []
+                self.expected_calls = []
+
+            def set_allow_suggested_labels_for_unexpected(self, allowed: bool) -> None:
+                self.allow_calls.append(allowed)
+
+            def set_expected_devices(self, devices) -> None:
+                self.expected_calls.append(list(devices))
+
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._visibility_provider = _VisibilityProviderStub()
+        ui._refresh_profile_active_group_members = lambda _name: None
+        ui._set_evidence_engine_section_label = lambda *_args, **_kwargs: None
+        ui._current_materialized_profiles_payload = lambda: {
+            KEY_DEVICES: [
+                {
+                    KEY_LABEL: "FALCON 9",
+                    KEY_MANUFACTURER: 4,
+                    KEY_DEVICE_TYPE: 2,
+                    KEY_ID: 9,
+                }
+            ],
+            KEY_PROFILES: {
+                "default": {
+                    KEY_PROFILE_DEVICES: ["FALCON 9"],
+                }
+            },
+            KEY_DEFAULT_PROFILE: "default",
+        }
+        ui._overlay_pending_profile_device_definitions = BringupControlUI._overlay_pending_profile_device_definitions.__get__(ui, BringupControlUI)
+        ui._pending_profile_device_map = BringupControlUI._pending_profile_device_map.__get__(ui, BringupControlUI)
+        ui._pending_profile_device_definitions = {}
+
+        ui._refresh_profile_devices("default")
+
+        self.assertEqual(["FALCON 9"], [device["label"] for device in ui._profile_devices.values()])
+        self.assertEqual([True], ui._visibility_provider.allow_calls)
+        self.assertEqual([[("FALCON 9", "4:2:9")]], ui._visibility_provider.expected_calls)
+
+    def test_push_config_from_ui_saves_in_memory_session_before_push(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._tcp_connected = True
+        ui._tracker = type("TrackerStub", (), {"is_pending": staticmethod(lambda: False)})()
+        ui._selected_real_profile = lambda: "default"
+        ui._has_pending_local_config_changes = lambda: True
+        ui._config_session_in_memory_only = True
+        save_calls = []
+        ui._save_config_from_ui = lambda: save_calls.append(True) or True
+        ui._current_profiles_path = lambda: Path("C:/tmp/bringup_system.json")
+        ui._session = object()
+        ui.update_idletasks = lambda: None
+        ui._append_profiles_apply_stage_lines = lambda _payload: None
+        ui._refresh_profiles = lambda: None
+        output_lines: list[str] = []
+        ui._append_output = output_lines.append
+
+        with patch(
+            "tools.can_nt.bringup_ui.push_config",
+            return_value=StatusResult(code=SS__CONFIG__SAVED, message="Config pushed to robot."),
+        ):
+            ui._push_config_from_ui()
+
+        self.assertEqual([True], save_calls)
+        self.assertTrue(any("profile=default" in line for line in output_lines))
+
+    def test_visibility_row_double_click_renames_discovered_device(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        output_lines = []
+        ui._append_output = output_lines.append
+        ui._all_known_config_device_labels = lambda: ["existing label"]
+        ui._profile_devices = {}
+        ui._visibility_provider = type(
+            "VisibilityProviderStub",
+            (),
+            {
+                "rename_discovered_label": staticmethod(lambda old_label, new_label: (old_label, new_label) == ("old label", "renamed label")),
+            },
+        )()
+        ui._visibility_last_update = 0.0
+        polled = []
+        ui._poll_visibility_snapshot = lambda _now: polled.append(True)
+        ui._visibility_row_meta = {
+            "row-1": {
+                "label": "old label",
+                "unexpected": True,
+            }
+        }
+
+        class _WidgetStub:
+            def selection(self):
+                return ("row-1",)
+
+        event = type("EventStub", (), {"widget": _WidgetStub()})()
+
+        with patch("tools.can_nt.bringup_ui.simpledialog.askstring", return_value="renamed label"):
+            with patch("tools.can_nt.bringup_ui.ttk.Treeview", _WidgetStub):
+                ui._on_visibility_row_double_click(event)
+
+        self.assertEqual([True], polled)
+        self.assertTrue(any("old label -> renamed label" in line for line in output_lines))
+
+    def test_visibility_row_double_click_renames_defined_device_in_local_config_session(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        output_lines = []
+        ui._append_output = output_lines.append
+        ui._visibility_provider = object()
+        ui._all_known_config_device_labels = lambda: ["old label"]
+        ui._current_materialized_profiles_payload = lambda: {
+            KEY_DEVICES: [
+                {
+                    KEY_LABEL: "old label",
+                    KEY_MANUFACTURER: 4,
+                    KEY_DEVICE_TYPE: 2,
+                    KEY_ID: 9,
+                }
+            ],
+            KEY_PROFILES: {
+                "default": {
+                    KEY_PROFILE_DEVICES: ["old label"],
+                }
+            },
+            KEY_DEFAULT_PROFILE: "default",
+        }
+        ui._has_file_backed_local_config_session = lambda: False
+        ui._current_profiles_path = lambda: Path("C:/tmp/bringup_system.json")
+        applied_sessions = []
+        ui._apply_local_config_session = (
+            lambda payload, path, *, dirty, in_memory_only, output_line="": applied_sessions.append(
+                (deepcopy(payload), path, dirty, in_memory_only, output_line)
+            )
+        )
+        ui._visibility_last_update = 0.0
+        polled = []
+        ui._poll_visibility_snapshot = lambda _now: polled.append(True)
+        ui._visibility_row_meta = {
+            "row-1": {
+                "label": "old label",
+                "unexpected": False,
+            }
+        }
+
+        class _WidgetStub:
+            def selection(self):
+                return ("row-1",)
+
+        event = type("EventStub", (), {"widget": _WidgetStub()})()
+
+        with patch("tools.can_nt.bringup_ui.simpledialog.askstring", return_value="renamed label"):
+            with patch("tools.can_nt.bringup_ui.ttk.Treeview", _WidgetStub):
+                ui._on_visibility_row_double_click(event)
+
+        self.assertEqual([True], polled)
+        self.assertEqual(1, len(applied_sessions))
+        payload, path, dirty, in_memory_only, output_line = applied_sessions[0]
+        self.assertIsNone(path)
+        self.assertTrue(dirty)
+        self.assertTrue(in_memory_only)
+        self.assertEqual("renamed label", payload[KEY_DEVICES][0][KEY_LABEL])
+        self.assertEqual(["renamed label"], payload[KEY_PROFILES]["default"][KEY_PROFILE_DEVICES])
+        self.assertIn("old label -> renamed label", output_line)
 
     def test_set_evidence_engine_section_label_updates_live_view_title_when_overall_status_changes(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
@@ -4475,6 +5010,26 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertEqual("test_minimal_25_9", ui._profile_box.get())
         self.assertEqual("test_minimal_25_9", ui._last_selected_profile)
         self.assertEqual([("test_minimal_25_9", True)], applied)
+        mock_prompt.assert_not_called()
+
+    def test_ui_warns_when_robot_profile_is_missing_from_open_local_config(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._robot_selected_profile = "robot_2026_swerve"
+        ui._profile_box = _ProfileBoxStub(
+            "default",
+            values=("default",),
+        )
+        ui._last_selected_profile = "default"
+        ui._last_profile_mismatch_prompt = None
+        applied = []
+        ui._apply_profile_selection = lambda name, reload_views: applied.append((name, reload_views))
+
+        with patch("tools.can_nt.bringup_ui.messagebox.showwarning") as mock_warning:
+            with patch("tools.can_nt.bringup_ui.messagebox.askyesno") as mock_prompt:
+                ui._maybe_prompt_host_profile_context_sync()
+
+        self.assertEqual([], applied)
+        mock_warning.assert_called_once()
         mock_prompt.assert_not_called()
 
     def test_profile_selection_is_deferred_until_transport_is_ready(self) -> None:

@@ -32,16 +32,18 @@ TEST_SOURCE_ID = "src0"
 TEST_SOURCE_LABEL = "analyzer0"
 TEST_EXPECTED_LABEL = "FALCON 9"
 TEST_EXPECTED_IDENTITY = "1:2:9"
-TEST_EXPECTED_DISCOVERED_LABEL = "UNPROFILED_DEVICE_10209"
+TEST_EXPECTED_DISCOVERED_LABEL = "NI_MOTORCONTROLLER_09"
 TEST_DISCOVERED_IDENTITY = "99:88:77"
-TEST_DISCOVERED_LABEL = "UNPROFILED_DEVICE_998877"
+TEST_DISCOVERED_LABEL = "MFG99_DEVICETYPE88_77"
 TEST_RENAMED_LABEL = "rear-can-observer"
 TEST_OBSERVER_SOURCE = "src0"
 TEST_PIGEON_LABEL = "Pigeon 2"
 TEST_PIGEON_CANONICAL_IDENTITY = "4:4:19"
 TEST_PIGEON_RAW_ARB_ID = 0x15040013
 TEST_SECOND_DISCOVERED_IDENTITY = "99:88:78"
-TEST_SECOND_DISCOVERED_LABEL = "UNPROFILED_DEVICE_998878"
+TEST_SECOND_DISCOVERED_LABEL = "MFG99_DEVICETYPE88_78"
+TEST_REV_DISCOVERED_IDENTITY = "5:2:7"
+TEST_REV_DISCOVERED_LABEL = "REV_MOTORCONTROLLER_07"
 
 
 class VisibilityProviderTests(unittest.TestCase):
@@ -101,6 +103,32 @@ class VisibilityProviderTests(unittest.TestCase):
         self.assertEqual(TEST_DISCOVERED_LABEL, first)
         self.assertEqual(TEST_DISCOVERED_LABEL, second)
 
+    def test_unconfigured_identity_uses_structured_label_from_identity(self) -> None:
+        provider = self._build_provider()
+
+        label = provider.resolve_label(TEST_REV_DISCOVERED_IDENTITY)
+
+        self.assertEqual(TEST_REV_DISCOVERED_LABEL, label)
+
+    def test_unexpected_identity_can_ignore_suggested_label_when_disabled(self) -> None:
+        provider = self._build_provider()
+        provider.set_allow_suggested_labels_for_unexpected(False)
+
+        provider.ingest_frame(
+            TEST_SOURCE_ID,
+            arb_id=0x02042C49,
+            ts_ms=TEST_SEEN_MS,
+            decoded_key=TEST_EXPECTED_IDENTITY,
+            label=TEST_EXPECTED_LABEL,
+        )
+
+        snapshot = provider.snapshot(VIS_SCOPE_BOTH, TEST_NOW_MS)
+        devices = snapshot[VIS_KEY_DEVICES]
+
+        self.assertEqual(1, len(devices))
+        self.assertEqual(TEST_EXPECTED_DISCOVERED_LABEL, devices[0][VIS_KEY_LABEL])
+        self.assertTrue(devices[0][VIS_KEY_UNEXPECTED])
+
     def test_multiple_unconfigured_identities_use_stable_identity_based_labels(self) -> None:
         provider = self._build_provider()
 
@@ -145,6 +173,58 @@ class VisibilityProviderTests(unittest.TestCase):
         self.assertEqual(len(devices), 1)
         self.assertEqual(devices[0][VIS_KEY_LABEL], TEST_EXPECTED_LABEL)
         self.assertFalse(devices[0][VIS_KEY_UNEXPECTED])
+
+    def test_clearing_expected_devices_reclassifies_observed_row_as_unexpected(self) -> None:
+        provider = self._build_provider()
+        provider.set_expected_devices([(TEST_EXPECTED_LABEL, TEST_EXPECTED_IDENTITY)])
+
+        provider.ingest_frame(
+            TEST_SOURCE_ID,
+            arb_id=0x02042C49,
+            ts_ms=TEST_SEEN_MS,
+            decoded_key=TEST_EXPECTED_IDENTITY,
+            label=TEST_EXPECTED_LABEL,
+        )
+        provider.set_expected_devices([])
+
+        snapshot = provider.snapshot(VIS_SCOPE_BOTH, TEST_NOW_MS)
+        devices = snapshot[VIS_KEY_DEVICES]
+
+        self.assertEqual(1, len(devices))
+        self.assertEqual(TEST_EXPECTED_LABEL, devices[0][VIS_KEY_LABEL])
+        self.assertTrue(devices[0][VIS_KEY_UNEXPECTED])
+
+    def test_reset_observed_state_clears_devices_and_recent_frames(self) -> None:
+        provider = self._build_provider()
+        provider.set_expected_devices([(TEST_EXPECTED_LABEL, TEST_EXPECTED_IDENTITY)])
+        frame = NormalizedFrame(
+            timestamp_s=1.25,
+            can_id=0x02042C49,
+            dlc=8,
+            data_hex="0000000000000000",
+            is_extended=True,
+            is_rtr=False,
+            manufacturer=4,
+            device_type=2,
+            api_class=11,
+            api_index=1,
+            device_id=9,
+            observer_source=TEST_OBSERVER_SOURCE,
+        )
+        provider.ingest_frame(
+            TEST_SOURCE_ID,
+            arb_id=0x02042C49,
+            ts_ms=TEST_SEEN_MS,
+            decoded_key=TEST_EXPECTED_IDENTITY,
+            label=TEST_EXPECTED_LABEL,
+            normalized_frame=frame,
+        )
+
+        provider.reset_observed_state()
+
+        snapshot = provider.snapshot(VIS_SCOPE_BOTH, TEST_NOW_MS)
+        self.assertEqual([], snapshot[VIS_KEY_DEVICES])
+        self.assertEqual([], provider.recent_frames())
 
     def test_rate_uses_recent_tick_window_and_decays_to_zero_without_new_frames(self) -> None:
         provider = self._build_provider()

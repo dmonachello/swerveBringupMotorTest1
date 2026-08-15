@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
 from tools.can_topology import live_topology_view as live_view_module
 from tools.can_nt.ui_theme import (
@@ -1467,6 +1469,28 @@ class LiveTopologyViewTests(unittest.TestCase):
             self.assertEqual(1, view._update_details_calls)
         finally:
             live_view_module._load_profiles_payload = original_load_payload
+
+    def test_load_profiles_payload_uses_shared_override_path_before_store_or_canonical(self) -> None:
+        payload = {"profiles": {"default": {"devices": []}}}
+        override_path = Path("C:/tmp/fromScratch.json")
+
+        with patch(
+            "tools.can_topology.live_topology_view.get_profiles_path_override",
+            return_value=override_path,
+        ):
+            with patch(
+                "tools.can_topology.live_topology_view._load_profiles_payload_from_path",
+                return_value=(payload, ""),
+            ) as load_path_mock:
+                with patch(
+                    "tools.can_topology.live_topology_view._load_profiles_payload_from_store",
+                    side_effect=AssertionError("store loader should not run when override path exists"),
+                ):
+                    loaded_payload, error = live_view_module._load_profiles_payload()
+
+        self.assertEqual(payload, loaded_payload)
+        self.assertEqual("", error)
+        load_path_mock.assert_called_once_with(override_path)
 
     def test_effective_groups_preserve_static_members_when_runtime_group_only_has_counts(self) -> None:
         view = self._make_view()

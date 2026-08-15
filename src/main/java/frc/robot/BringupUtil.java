@@ -3071,7 +3071,35 @@ public final class BringupUtil {
     if (def == null) {
       return "";
     }
-    return safeText(def.model);
+    String model = safeText(def.model);
+    if (!model.isBlank()) {
+      String normalizedModel = normalizeMotorSpecModel(model);
+      if (MOTOR_SPECS.containsKey(normalizedModel)) {
+        return normalizedModel;
+      }
+    }
+    String vendor = resolveVendorName(def);
+    String type = resolveDeviceTypeLabel(def);
+    if (DEVICE_VENDOR_REV.equalsIgnoreCase(vendor)) {
+      if (DEVICE_TYPE_NEO_550.equalsIgnoreCase(type)) {
+        return MOTOR_SPEC_REV_NEO_550;
+      }
+      if (DEVICE_TYPE_FLEX.equalsIgnoreCase(type)) {
+        return MOTOR_SPEC_REV_VORTEX;
+      }
+      if (DEVICE_TYPE_NEO.equalsIgnoreCase(type)) {
+        return MOTOR_SPEC_REV_NEO;
+      }
+    }
+    if (DEVICE_VENDOR_CTRE.equalsIgnoreCase(vendor)) {
+      if (DEVICE_TYPE_FALCON.equalsIgnoreCase(type)) {
+        return MOTOR_SPEC_CTRE_FALCON_500;
+      }
+      if (DEVICE_TYPE_KRAKEN.equalsIgnoreCase(type)) {
+        return MOTOR_SPEC_CTRE_KRAKEN_X60;
+      }
+    }
+    return model;
   }
 
   private static String deviceKey(String vendor, String type, int id) {

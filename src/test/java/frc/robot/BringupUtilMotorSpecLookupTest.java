@@ -22,4 +22,12 @@ class BringupUtilMotorSpecLookupTest {
     assertNotNull(spec);
     assertEquals("CTRE Falcon 500", spec.model);
   }
+
+  @Test
+  void getMotorSpecForDeviceAcceptsCanonicalRevNeoOverride() {
+    BringupUtil.MotorSpec spec = BringupUtil.getMotorSpecForDevice("REV_MOTORCONTROLLER_25", "REV NEO");
+
+    assertNotNull(spec);
+    assertEquals("REV NEO", spec.model);
+  }
 }

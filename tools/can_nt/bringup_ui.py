@@ -22,6 +22,7 @@ import tkinter as tk
 import uuid
 import re
 import unicodedata
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
@@ -295,22 +296,28 @@ from tools.common.group_contract import (
 from tools.common.topology_render import shape_kind_for_category
 from tools.common.robot_test_dsl import (
     compile_source,
+    config_library_test_runnable_map,
     copy_external_library_test_into_root_payload,
     create_blank_test_in_root_payload,
     copy_test_into_root_payload,
+    device_catalog,
     delete_external_library_test,
     delete_test_from_root_payload,
     DslServiceError,
+    external_library_test_runnable_map,
     import_test_into_config_library,
     import_test_into_external_library,
     import_test_into_root_payload,
     list_external_library_test_names,
+    profile_test_runnable_map,
     read_external_library_test_source,
     rename_external_library_test,
     rename_test_in_root_payload,
     render_validation_text,
+    resolve_global_library_test_names,
     resolve_profile_test_names,
     resolve_profile_device_dsl_type,
+    resolve_profile_test_set_name,
     resolve_runnable_profile_test_names,
     signal_catalog as robot_test_dsl_signal_catalog,
     store_from_root_payload as robot_test_dsl_store_from_root_payload,
@@ -339,8 +346,14 @@ from tools.common.profile_session import (
     decide_host_profile_sync,
     normalize_profile_name as normalize_profile_name_shared,
 )
-from .can_profiles import get_profile, get_profiles_load_error, list_profiles, reload_profiles
-from .can_profiles import get_default_profile
+from .can_profiles import (
+    get_default_profile,
+    get_profile,
+    get_profiles_load_error,
+    list_profiles,
+    reload_profiles,
+    set_profiles_path_override,
+)
 from tools.config.schema_store import ConfigSchemaStore
 from tools.can_topology.live_topology_view import (
     LiveTopologyView,
@@ -561,6 +574,9 @@ BUTTON_ACTIVATE_GROUP = "Activate Group"
 BUTTON_DEACTIVATE_GROUP = "Deactivate Group"
 BUTTON_PUSH_CONFIG = "Push Config"
 BUTTON_SAVE_CONFIG = "Save Config"
+BUTTON_NEW_BLANK_CONFIG = "New Blank Config..."
+BUTTON_OPEN_CONFIG = "Open Config..."
+BUTTON_SAVE_CONFIG_AS = "Save Config As..."
 BUTTON_DOWNLOAD_CONFIG = "Download Current Config"
 BUTTON_RUNTIME_ACTIVATE = "Runtime Activate"
 BUTTON_RUNTIME_DEACTIVATE = "Runtime Deactivate"
@@ -610,6 +626,44 @@ OUTPUT_OWNER_REQUIRED = "Owning control client required. Use Reconnect UI Sessio
 SCOPE_TRANSITION_WAIT_TIMEOUT_SEC = 3.0
 DOWNLOAD_FILENAME = "bringup_system.downloaded.json"
 CONFIG_FILE_TYPES = (("JSON files", "*.json"), ("All files", "*.*"))
+CONFIG_FILE_DEFAULT_EXTENSION = ".json"
+CONFIG_DISCOVERY_DEFAULT_PROFILE = "default"
+CONFIG_SESSION_UNSAVED_LABEL = "(unsaved)"
+CONFIG_NEW_BLANK_TITLE = "New Blank Config"
+CONFIG_NEW_BLANK_PROMPT = (
+    "Create a blank config session in memory first?\n\n"
+    "Yes: start in memory and save later.\n"
+    "No: choose a file path now.\n"
+    "Cancel: do nothing."
+)
+CONFIG_NEW_BLANK_CANCELLED = "New Blank Config cancelled."
+CONFIG_NEW_BLANK_CREATED_IN_MEMORY = "Started new blank config in memory."
+CONFIG_NEW_BLANK_CREATED_FMT = "Started new blank config: {path}"
+HOST_PROFILE_SYNC_NOT_SUPPRESSED = False
+HOST_PROFILE_SYNC_SUPPRESSED_FOR_BLANK_SESSION = True
+CONFIG_DIRTY_TITLE = "Unsaved Config Changes"
+CONFIG_DIRTY_PROMPT = (
+    "This config session has unsaved local edits, including discovered-device work.\n\n"
+    "Yes: save changes.\n"
+    "No: discard changes.\n"
+    "Cancel: stay here."
+)
+CONFIG_DIRTY_SAVE_FAILED = "Config change requires a successful save before continuing."
+CONFIG_CREATE_DEFAULT_PROFILE_FMT = "Auto-created default profile '{profile}' for local config authoring."
+CONFIG_PUSH_SAVE_FIRST_CANCELLED = "Push Config cancelled: save path selection was cancelled."
+CONFIG_PUSH_SAVE_FIRST_FAILED = "Push Config cancelled: local config was not saved."
+CONFIG_LABEL_CONFLICT_TITLE = "Discovered Device Label Conflict"
+CONFIG_LABEL_CONFLICT_PROMPT_FMT = (
+    "A device label conflict was found for '{label}'.\n\n"
+    "Yes: use the existing device definition.\n"
+    "No: rename the new discovered device.\n"
+    "Cancel: stop without creating anything."
+)
+CONFIG_LABEL_RENAME_TITLE = "Rename Discovered Device"
+CONFIG_LABEL_RENAME_PROMPT_FMT = "New device label for discovered device '{label}':"
+CONFIG_LABEL_RENAME_CANCELLED = "Create device definition cancelled during rename."
+CONFIG_LABEL_RENAME_DUPLICATE = "Create device definition blocked: device label already exists."
+CONFIG_LABEL_RENAME_EMPTY = "Create device definition blocked: device label cannot be empty."
 PROFILES_APPLY_STAGE_KEYS = (
     ("transfer check", "transferCheck"),
     ("content validation", "contentValidation"),
@@ -734,11 +788,16 @@ VIS_SELECTION_REASON_UNRECOGNIZED = (
 VIS_SELECTION_SELECTED_PASSIVE_ONLY = "passive-only"
 VIS_IDENTITY_SEPARATOR = ":"
 VIS_RENAME_DIALOG_TITLE = "Rename Discovered Device"
+VIS_RENAME_DEFINED_DIALOG_TITLE = "Rename Defined Device"
 VIS_RENAME_EMPTY_TEXT = "Device label cannot be empty."
 VIS_RENAME_DUPLICATE_TEXT = "Device label already exists."
 VIS_RENAME_FAILED_TEXT = "Rename failed."
 VIS_RENAME_PROMPT_FMT = "Rename discovered device {label}:"
 VIS_RENAME_SUCCESS_FMT = "Renamed discovered device: {old_label} -> {new_label}"
+VIS_RENAME_DEFINED_PROMPT_FMT = "Rename defined device {label}:"
+VIS_RENAME_DEFINED_SUCCESS_FMT = (
+    "Renamed in-memory defined device: {old_label} -> {new_label}. Use Save Config to persist it."
+)
 VIS_CREATE_DEVICE_MENU_LABEL = "Create Device Definition..."
 VIS_CREATE_DEVICE_DIALOG_TITLE = "Create Device Definition"
 VIS_CREATE_DEVICE_NO_PROFILE_TEXT = "Create device definition blocked: select a profile first."
@@ -765,6 +824,18 @@ VIS_CREATE_DEVICE_OUTPUT_FMT = (
 VIS_SAVE_CONFIG_NO_PENDING_TEXT = "Save Config skipped: no pending in-memory profile edits."
 VIS_SAVE_CONFIG_SAVED_FMT = "Saved pending profile edits to {path}."
 VIS_SAVE_CONFIG_FAILED_FMT = "Save Config failed: {error}"
+CONFIG_OPEN_CANCELLED = "Open Config cancelled."
+CONFIG_OPEN_FAILED_FMT = "Open Config failed: {error}"
+CONFIG_OPENED_FMT = "Opened config: {path}"
+CONFIG_SAVE_AS_CANCELLED = "Save Config As cancelled."
+CONFIG_SAVE_AS_SAVED_FMT = "Saved current config to {path}."
+CONFIG_SAVE_AS_FAILED_FMT = "Save Config As failed: {error}"
+PROFILE_CONTEXT_MISSING_LOCAL_TITLE = "Robot Profile Missing In Local Config"
+PROFILE_CONTEXT_MISSING_LOCAL_FMT = (
+    "Robot selected profile '{robot}' is not available in the currently open local config session.\n\n"
+    "Local UI profile: '{host}'.\n\n"
+    "Open the matching config or switch the robot/UI to a shared profile name."
+)
 VIS_TAG_GUESSED_PREFIX = "guessed:"
 VIS_TAG_GUESSED_LABEL = "guessed:label"
 VIS_TAG_GUESSED_MODEL = "guessed:model"
@@ -1702,12 +1773,20 @@ def _selectable_profiles() -> List[str]:
         return [PROFILE_NONE] + (_load_profiles() or [])
 
 
-def _startup_selected_profile(profile_names: List[str], auto_select_default: bool) -> str:
+def _startup_selected_profile(
+    profile_names: List[str],
+    auto_select_default: bool,
+    default_profile_name: object = None,
+) -> str:
     """
     NAME
         _startup_selected_profile - Resolve the startup-selected profile for the UI.
     """
-    default_profile = get_default_profile()
+    default_profile = (
+        str(default_profile_name).strip()
+        if isinstance(default_profile_name, str) and str(default_profile_name).strip()
+        else get_default_profile()
+    )
     if (
         auto_select_default
         and isinstance(default_profile, str)
@@ -2335,6 +2414,10 @@ class BringupControlUI(tk.Tk):
         self._remembered_manual_active_group_members: List[Dict[str, Any]] = []
         self._tests_active_group_rows: List[Dict[str, Any]] = []
         self._tests_active_group_membership_key: Tuple[str, ...] = tuple()
+        self._config_path_override: Optional[Path] = None
+        self._local_profiles_payload_override: Optional[Dict[str, object]] = None
+        self._config_session_dirty = False
+        self._config_session_in_memory_only = False
         self._group_owner_mode = GROUP_SOURCE_MANUAL
         self._last_right_tab_text = NT_VALUE_EMPTY
         self._pending_tests_boundary_transition: Optional[Tuple[str, str]] = None
@@ -2343,6 +2426,7 @@ class BringupControlUI(tk.Tk):
         self._pending_robot_profile_selection = PROFILE_NONE
         self._last_profile_context = PROFILE_NONE
         self._last_profile_mismatch_prompt: Optional[Tuple[str, str]] = None
+        self._suppress_host_profile_context_sync = HOST_PROFILE_SYNC_NOT_SUPPRESSED
         self._last_test_result_signature: Optional[Tuple[int, str, str]] = None
         self._ui_command_prefs = _load_ui_command_prefs()
         self._ui_auto_select_default_profile = _load_ui_auto_select_default_pref()
@@ -2378,6 +2462,11 @@ class BringupControlUI(tk.Tk):
             _build_menu - Create the main menubar with a Help menu.
         """
         menubar = tk.Menu(self)
+        file_menu = tk.Menu(menubar, tearoff=False)
+        file_menu.add_command(label=BUTTON_NEW_BLANK_CONFIG, command=self._new_blank_config_from_ui)
+        file_menu.add_command(label=BUTTON_OPEN_CONFIG, command=self._open_config_from_ui)
+        file_menu.add_command(label=BUTTON_SAVE_CONFIG, command=self._save_config_from_ui)
+        file_menu.add_command(label=BUTTON_SAVE_CONFIG_AS, command=self._save_config_as_from_ui)
         prefs_menu = tk.Menu(menubar, tearoff=False)
         self._ui_theme_var = tk.StringVar(value=self._ui_theme_name)
         theme_menu = tk.Menu(prefs_menu, tearoff=False)
@@ -2438,8 +2527,10 @@ class BringupControlUI(tk.Tk):
         )
         help_menu.add_separator()
         help_menu.add_command(label="About", command=self._show_about)
+        menubar.add_cascade(label="File", menu=file_menu)
         menubar.add_cascade(label="Preferences", menu=prefs_menu)
         menubar.add_cascade(label="Help", menu=help_menu)
+        self._file_menu = file_menu
         self._menubar = menubar
         self._prefs_menu = prefs_menu
         self._theme_menu = theme_menu
@@ -2457,10 +2548,16 @@ class BringupControlUI(tk.Tk):
             side="left"
         )
 
-        profile_names = _load_profiles() or []
-        profiles = _selectable_profiles()
+        try:
+            profile_payload = self._load_local_profiles_payload()
+        except Exception:
+            profile_payload = {}
+        profile_names = self._profile_names_from_payload(profile_payload)
+        profiles = self._selectable_profiles_from_payload(profile_payload)
         active_profile = _startup_selected_profile(
-            profile_names, self._ui_auto_select_default_profile
+            profile_names,
+            self._ui_auto_select_default_profile,
+            default_profile_name=self._default_profile_name_from_payload(profile_payload),
         )
         tests = _load_tests(active_profile) or [PROFILE_NONE]
 
@@ -3236,6 +3333,7 @@ class BringupControlUI(tk.Tk):
         defined_frame = ttk.LabelFrame(table_panel, text=VIS_DEFINED_SECTION_LABEL, padding=VIS_PAD_TABLE)
         table_panel.add(defined_frame, weight=3)
         self._visibility_table = self._build_visibility_table_widget(defined_frame)
+        self._visibility_table.bind("<Double-1>", self._on_visibility_row_double_click)
         self._visibility_table.bind("<<TreeviewSelect>>", self._on_visibility_row_selected)
 
         unrecognized_frame = ttk.LabelFrame(
@@ -3319,6 +3417,29 @@ class BringupControlUI(tk.Tk):
             )
         self._populate_ctre_raw_table([])
         self._set_visibility_passive_detail_text(EVIDENCE_SOURCE_NONE)
+
+    def _reset_scratch_visibility_state(self) -> None:
+        """
+        NAME
+            _reset_scratch_visibility_state - Clear passive observer memory for scratch-config starts.
+        """
+        provider = self.__dict__.get("_visibility_provider")
+        if provider is not None:
+            if hasattr(provider, "set_allow_suggested_labels_for_unexpected"):
+                provider.set_allow_suggested_labels_for_unexpected(False)
+            if hasattr(provider, "reset_observed_state"):
+                provider.reset_observed_state()
+        self._latest_visibility_snapshot = {}
+        self._latest_visibility_summary = {}
+        self._latest_passive_result = None
+        self._visibility_sources = []
+        self._visibility_columns = []
+        self._visibility_row_meta = {}
+        self._visibility_selected_label = NT_VALUE_EMPTY
+        self._visibility_selected_unexpected = False
+        self._clear_visibility_panels()
+        self._update_visibility_summary({})
+        self._refresh_evidence_view()
 
     def _set_visibility_passive_detail_text(self, text_value: str) -> None:
         """
@@ -4051,7 +4172,7 @@ class BringupControlUI(tk.Tk):
         if not clean_name or clean_name == PROFILE_NONE:
             return []
         try:
-            payload = LocalConfigQueryService().load_canonical_payload()
+            payload = self._current_materialized_profiles_payload()
             store = robot_test_dsl_store_from_root_payload(payload)
         except Exception:
             return []
@@ -4683,6 +4804,9 @@ class BringupControlUI(tk.Tk):
         name = _normalize_profile_name(profile_name)
         if name == PROFILE_NONE or not hasattr(self, "_profile_box"):
             return
+        available_profiles = tuple(str(value) for value in self._profile_box.cget("values"))
+        if name not in available_profiles:
+            return
         self._profile_box.set(name)
         self._last_selected_profile = name
         self._apply_profile_selection(name, reload_views=reload_views)
@@ -4692,6 +4816,8 @@ class BringupControlUI(tk.Tk):
         NAME
             _maybe_prompt_host_profile_context_sync - Offer to align local UI context to the robot-selected profile.
         """
+        if bool(self.__dict__.get("_suppress_host_profile_context_sync", HOST_PROFILE_SYNC_NOT_SUPPRESSED)):
+            return
         if _normalize_profile_name(self.__dict__.get("_pending_robot_profile_selection", PROFILE_NONE)) != PROFILE_NONE:
             return
         if not hasattr(self, "_profile_box"):
@@ -4712,6 +4838,14 @@ class BringupControlUI(tk.Tk):
             return
         if decision.action == SYNC_ACTION_MISSING_LOCAL:
             self._last_profile_mismatch_prompt = mismatch_key
+            messagebox.showwarning(
+                PROFILE_CONTEXT_MISSING_LOCAL_TITLE,
+                PROFILE_CONTEXT_MISSING_LOCAL_FMT.format(
+                    robot=robot_selected,
+                    host=local_selected,
+                ),
+                parent=self,
+            )
             return
         if decision.action == SYNC_ACTION_ADOPT:
             self._last_profile_mismatch_prompt = mismatch_key
@@ -4744,6 +4878,113 @@ class BringupControlUI(tk.Tk):
         self._refresh_tests_for_profile(name)
         self._refresh_test_library_view(name)
         self._sync_diagnostic_profile_context(reload_views=reload_views)
+
+    def _uses_noncanonical_local_config_session(self) -> bool:
+        """
+        NAME
+            _uses_noncanonical_local_config_session - Return whether the UI is bound to a non-canonical local config session.
+        """
+        return bool(self.__dict__.get("_config_session_in_memory_only", False)) or isinstance(
+            self.__dict__.get("_local_profiles_payload_override"),
+            dict,
+        ) or self.__dict__.get("_config_path_override") is not None
+
+    def _local_runnable_test_names(self, profile_name: object) -> List[str]:
+        """
+        NAME
+            _local_runnable_test_names - Resolve runnable test names for one profile from the active local config session.
+        """
+        name = _normalize_profile_name(profile_name)
+        if name == PROFILE_NONE:
+            return []
+        if not self._uses_noncanonical_local_config_session():
+            try:
+                return LocalConfigQueryService().test_names_for_profile(name)
+            except Exception:
+                return []
+        payload = self._current_materialized_profiles_payload()
+        if not isinstance(payload.get(KEY_DSL_TESTS), dict):
+            return []
+        return resolve_runnable_profile_test_names(payload, name)
+
+    def _local_test_library_state(self, profile_name: object) -> Dict[str, Any]:
+        """
+        NAME
+            _local_test_library_state - Resolve Tests-tab library state for the active local config session.
+        """
+        selected_profile = _normalize_profile_name(profile_name)
+        if not self._uses_noncanonical_local_config_session():
+            query = LocalConfigQueryService()
+            return {
+                "global_names": list_external_library_test_names(),
+                "global_runnable_map": (
+                    query.external_library_test_runnable_map(selected_profile)
+                    if selected_profile != PROFILE_NONE
+                    else {}
+                ),
+                "config_names": query.global_test_names(),
+                "profile_names": (
+                    query.profile_test_names(selected_profile)
+                    if selected_profile != PROFILE_NONE
+                    else []
+                ),
+                "config_runnable_map": (
+                    query.config_library_test_runnable_map(selected_profile)
+                    if selected_profile != PROFILE_NONE
+                    else {}
+                ),
+                "runnable_map": (
+                    query.profile_test_runnable_map(selected_profile)
+                    if selected_profile != PROFILE_NONE
+                    else {}
+                ),
+                "test_profile_devices": (
+                    query.profile_device_catalog(selected_profile)
+                    if selected_profile != PROFILE_NONE
+                    else {}
+                ),
+                "profile_set_name": (
+                    query.profile_test_set_name(selected_profile)
+                    if selected_profile != PROFILE_NONE
+                    else ""
+                ),
+            }
+        payload = self._current_materialized_profiles_payload()
+        dsl_present = isinstance(payload.get(KEY_DSL_TESTS), dict)
+        return {
+            "global_names": list_external_library_test_names(),
+            "global_runnable_map": (
+                external_library_test_runnable_map(payload, selected_profile)
+                if selected_profile != PROFILE_NONE and dsl_present
+                else {}
+            ),
+            "config_names": resolve_global_library_test_names(payload) if dsl_present else [],
+            "profile_names": (
+                resolve_profile_test_names(payload, selected_profile)
+                if selected_profile != PROFILE_NONE and dsl_present
+                else []
+            ),
+            "config_runnable_map": (
+                config_library_test_runnable_map(payload, selected_profile)
+                if selected_profile != PROFILE_NONE and dsl_present
+                else {}
+            ),
+            "runnable_map": (
+                profile_test_runnable_map(payload, selected_profile)
+                if selected_profile != PROFILE_NONE and dsl_present
+                else {}
+            ),
+            "test_profile_devices": (
+                device_catalog(payload, selected_profile)
+                if selected_profile != PROFILE_NONE
+                else {}
+            ),
+            "profile_set_name": (
+                resolve_profile_test_set_name(payload, selected_profile)
+                if selected_profile != PROFILE_NONE and dsl_present
+                else ""
+            ),
+        }
 
     def _pending_profile_device_map(self, profile_name: object) -> Dict[str, Dict[str, Any]]:
         """
@@ -4924,6 +5165,68 @@ class BringupControlUI(tk.Tk):
                 return candidate
             suffix += 1
 
+    def _guessed_device_label(self, base_label: object) -> str:
+        """
+        NAME
+            _guessed_device_label - Return the initial guessed label for one discovered device before conflict resolution.
+        """
+        clean_label = str(base_label or NT_VALUE_EMPTY).strip()
+        if not clean_label:
+            return VIS_UNRECOGNIZED_SECTION_LABEL
+        return clean_label
+
+    def _resolve_discovered_device_label_conflict(
+        self,
+        device_definition: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        """
+        NAME
+            _resolve_discovered_device_label_conflict - Resolve one discovered-device label collision by reusing, renaming, or cancelling.
+        """
+        label = str(device_definition.get(PROFILE_KEY_LABEL, NT_VALUE_EMPTY)).strip()
+        if not label:
+            return None
+        existing_labels = {
+            str(existing_label).strip().lower(): str(existing_label).strip()
+            for existing_label in self._all_known_config_device_labels()
+            if str(existing_label).strip()
+        }
+        existing_label = existing_labels.get(label.lower())
+        if not existing_label:
+            return dict(device_definition)
+        choice = messagebox.askyesnocancel(
+            CONFIG_LABEL_CONFLICT_TITLE,
+            CONFIG_LABEL_CONFLICT_PROMPT_FMT.format(label=label),
+            parent=self,
+            default=messagebox.CANCEL,
+        )
+        if choice is None:
+            self._append_output(CONFIG_LABEL_RENAME_CANCELLED)
+            return None
+        if choice:
+            resolved = dict(device_definition)
+            resolved[PROFILE_KEY_LABEL] = existing_label
+            return resolved
+        renamed = simpledialog.askstring(
+            CONFIG_LABEL_RENAME_TITLE,
+            CONFIG_LABEL_RENAME_PROMPT_FMT.format(label=label),
+            parent=self,
+            initialvalue=self._unique_guessed_device_label(label),
+        )
+        if renamed is None:
+            self._append_output(CONFIG_LABEL_RENAME_CANCELLED)
+            return None
+        renamed_text = str(renamed).strip()
+        if not renamed_text:
+            self._append_output(CONFIG_LABEL_RENAME_EMPTY)
+            return None
+        if renamed_text.lower() in existing_labels:
+            self._append_output(CONFIG_LABEL_RENAME_DUPLICATE)
+            return None
+        resolved = dict(device_definition)
+        resolved[PROFILE_KEY_LABEL] = renamed_text
+        return resolved
+
     def _build_pending_unrecognized_device_definition(
         self,
         label: str,
@@ -4940,7 +5243,7 @@ class BringupControlUI(tk.Tk):
         passive_type_name = str(
             getattr(passive_device, "device_type_name", VIS_MODEL_EMPTY) or VIS_MODEL_EMPTY
         ).strip()
-        resolved_label = self._unique_guessed_device_label(label)
+        resolved_label = self._guessed_device_label(label)
         logical_type = self._logical_type_for_passive_guess(device_type, passive_type_name)
         tags = [VIS_TAG_GUESSED_LABEL]
         if passive_type_name:
@@ -4963,6 +5266,40 @@ class BringupControlUI(tk.Tk):
         NAME
             _refresh_profile_devices - Refresh label->device mapping for the profile.
         """
+        def _catalog_from_payload(
+            payload: Dict[str, Any],
+            selected_profile_name: str,
+        ) -> Dict[str, Dict[str, Any]]:
+            if not isinstance(payload, dict) or not selected_profile_name:
+                return {}
+            devices_section = payload.get(KEY_DEVICES)
+            profiles_section = payload.get(KEY_PROFILES)
+            if not isinstance(devices_section, list) or not isinstance(profiles_section, dict):
+                return {}
+            profile_payload = profiles_section.get(selected_profile_name)
+            if not isinstance(profile_payload, dict):
+                return {}
+            selected_labels = profile_payload.get(KEY_PROFILE_DEVICES)
+            if not isinstance(selected_labels, list):
+                return {}
+            labels_lower = {
+                str(label).strip().lower()
+                for label in selected_labels
+                if isinstance(label, str) and str(label).strip()
+            }
+            mapping: Dict[str, Dict[str, Any]] = {}
+            for device in devices_section:
+                if not isinstance(device, dict):
+                    continue
+                label = str(device.get(DEVICE_KEY_LABEL, NT_VALUE_EMPTY)).strip()
+                if not label:
+                    continue
+                label_key = label.lower()
+                if label_key not in labels_lower:
+                    continue
+                mapping[label_key] = dict(device)
+            return mapping
+
         def _catalog_fingerprint(mapping: Dict[str, Dict[str, Any]]) -> Tuple[Tuple[Any, ...], ...]:
             rows: List[Tuple[Any, ...]] = []
             for key, device in sorted(mapping.items()):
@@ -4998,16 +5335,27 @@ class BringupControlUI(tk.Tk):
             self._set_evidence_engine_section_label(SECTION_TOPOLOGY_VIEW, ENGINE_LABEL_NEW)
             self._set_evidence_engine_section_label(SECTION_INTERPRETATION, ENGINE_LABEL_NEW)
             if self._visibility_provider is not None:
+                if hasattr(self._visibility_provider, "set_allow_suggested_labels_for_unexpected"):
+                    self._visibility_provider.set_allow_suggested_labels_for_unexpected(False)
                 self._visibility_provider.set_expected_devices([])
             return
         mapping: Dict[str, Dict[str, Any]] = {}
         loaded_from_passive_discovery = False
         try:
-            mapping = load_profile_device_catalog(name)
-            loaded_from_passive_discovery = True
+            mapping = _catalog_from_payload(self._current_materialized_profiles_payload(), name)
+        except Exception:
+            mapping = {}
+        try:
+            if not mapping:
+                mapping = load_profile_device_catalog(name)
+                loaded_from_passive_discovery = True
         except Exception:
             try:
-                devices, _expected = get_profile(name)
+                if mapping:
+                    devices = list(mapping.values())
+                    _expected = set()
+                else:
+                    devices, _expected = get_profile(name)
             except Exception:
                 self._profile_devices = {}
                 if previous_profile_name != name:
@@ -5016,15 +5364,18 @@ class BringupControlUI(tk.Tk):
                 self._evidence_enrichment_profile_fingerprint = ()
                 self._set_evidence_engine_section_label(SECTION_PROFILE_INVENTORY, ENGINE_LABEL_LEGACY)
                 if self._visibility_provider is not None:
+                    if hasattr(self._visibility_provider, "set_allow_suggested_labels_for_unexpected"):
+                        self._visibility_provider.set_allow_suggested_labels_for_unexpected(True)
                     self._visibility_provider.set_expected_devices([])
                 return
-            for device in devices:
-                if not isinstance(device, dict):
-                    continue
-                label = str(device.get(DEVICE_KEY_LABEL, NT_VALUE_EMPTY)).strip()
-                if not label:
-                    continue
-                mapping[label.lower()] = device
+            if not mapping:
+                for device in devices:
+                    if not isinstance(device, dict):
+                        continue
+                    label = str(device.get(DEVICE_KEY_LABEL, NT_VALUE_EMPTY)).strip()
+                    if not label:
+                        continue
+                    mapping[label.lower()] = device
         self._profile_devices = self._overlay_pending_profile_device_definitions(name, mapping)
         current_fingerprint = _catalog_fingerprint(self._profile_devices)
         if previous_profile_name != name or previous_fingerprint != current_fingerprint:
@@ -5065,6 +5416,8 @@ class BringupControlUI(tk.Tk):
                 ENGINE_LABEL_NEW,
             )
         if self._visibility_provider is not None:
+            if hasattr(self._visibility_provider, "set_allow_suggested_labels_for_unexpected"):
+                self._visibility_provider.set_allow_suggested_labels_for_unexpected(True)
             self._visibility_provider.set_expected_devices(
                 _build_visibility_expected_devices(list(self._profile_devices.values()))
             )
@@ -7928,7 +8281,7 @@ class BringupControlUI(tk.Tk):
     def _on_visibility_row_double_click(self, _event: tk.Event) -> None:
         """
         NAME
-            _on_visibility_row_double_click - Prompt to rename a discovered unexpected visibility row.
+            _on_visibility_row_double_click - Prompt to rename a visibility row from either section.
         """
         widget = _event.widget
         if not isinstance(widget, ttk.Treeview) or self._visibility_provider is None:
@@ -7937,8 +8290,16 @@ class BringupControlUI(tk.Tk):
         if not selection:
             return
         meta = self._visibility_row_meta.get(selection[0], {})
-        if not bool(meta.get(VIS_ROW_META_UNEXPECTED, False)):
+        if bool(meta.get(VIS_ROW_META_UNEXPECTED, False)):
+            self._rename_unrecognized_visibility_row(meta)
             return
+        self._rename_defined_visibility_row(meta)
+
+    def _rename_unrecognized_visibility_row(self, meta: Dict[str, object]) -> None:
+        """
+        NAME
+            _rename_unrecognized_visibility_row - Rename one passive unrecognized visibility row.
+        """
         old_label = str(meta.get(VIS_ROW_META_LABEL, NT_VALUE_EMPTY)).strip()
         if not old_label:
             return
@@ -7962,6 +8323,75 @@ class BringupControlUI(tk.Tk):
             return
         self._append_output(
             VIS_RENAME_SUCCESS_FMT.format(old_label=old_label, new_label=clean_label)
+        )
+        self._visibility_last_update = 0.0
+        self._poll_visibility_snapshot(time.time())
+
+    def _rename_defined_visibility_row(self, meta: Dict[str, object]) -> None:
+        """
+        NAME
+            _rename_defined_visibility_row - Rename one defined visibility row in the current local config session.
+        """
+        old_label = str(meta.get(VIS_ROW_META_LABEL, NT_VALUE_EMPTY)).strip()
+        if not old_label:
+            return
+        new_label = simpledialog.askstring(
+            VIS_RENAME_DEFINED_DIALOG_TITLE,
+            VIS_RENAME_DEFINED_PROMPT_FMT.format(label=old_label),
+            parent=self,
+            initialvalue=old_label,
+        )
+        if new_label is None:
+            return
+        clean_label = new_label.strip()
+        if not clean_label:
+            messagebox.showerror(VIS_RENAME_DEFINED_DIALOG_TITLE, VIS_RENAME_EMPTY_TEXT, parent=self)
+            return
+        existing_labels = {
+            str(label).strip().lower()
+            for label in self._all_known_config_device_labels()
+            if str(label).strip()
+        }
+        if clean_label.lower() != old_label.lower() and clean_label.lower() in existing_labels:
+            messagebox.showerror(VIS_RENAME_DEFINED_DIALOG_TITLE, VIS_RENAME_DUPLICATE_TEXT, parent=self)
+            return
+        if clean_label.lower() == old_label.lower():
+            return
+        payload = self._current_materialized_profiles_payload()
+        devices = payload.get(KEY_DEVICES)
+        profiles = payload.get(KEY_PROFILES)
+        if not isinstance(devices, list) or not isinstance(profiles, dict):
+            return
+        renamed_any = False
+        for device in devices:
+            if not isinstance(device, dict):
+                continue
+            device_label = str(device.get(PROFILE_KEY_LABEL, NT_VALUE_EMPTY)).strip()
+            if device_label.lower() != old_label.lower():
+                continue
+            device[PROFILE_KEY_LABEL] = clean_label
+            renamed_any = True
+        if not renamed_any:
+            return
+        for profile_payload in profiles.values():
+            if not isinstance(profile_payload, dict):
+                continue
+            profile_devices = profile_payload.get(KEY_PROFILE_DEVICES)
+            if not isinstance(profile_devices, list):
+                continue
+            for index, existing_label in enumerate(list(profile_devices)):
+                if str(existing_label).strip().lower() == old_label.lower():
+                    profile_devices[index] = clean_label
+        current_path = self._current_profiles_path() if self._has_file_backed_local_config_session() else None
+        self._apply_local_config_session(
+            payload,
+            current_path,
+            dirty=True,
+            in_memory_only=not self._has_file_backed_local_config_session(),
+            output_line=VIS_RENAME_DEFINED_SUCCESS_FMT.format(
+                old_label=old_label,
+                new_label=clean_label,
+            ),
         )
         self._visibility_last_update = 0.0
         self._poll_visibility_snapshot(time.time())
@@ -8017,13 +8447,18 @@ class BringupControlUI(tk.Tk):
         """
         profile_name = self._selected_real_profile()
         if not profile_name:
-            self._append_output(VIS_CREATE_DEVICE_NO_PROFILE_TEXT)
-            return
+            profile_name = self._ensure_default_profile_for_local_config_session()
+            if profile_name:
+                self._profile_box.set(profile_name)
+                self._last_selected_profile = profile_name
         identity = self._identity_triplet_for_visibility_item(label, identity_text)
         if not identity:
             self._append_output(VIS_CREATE_DEVICE_IDENTITY_MISSING_TEXT)
             return
         device_definition = self._build_pending_unrecognized_device_definition(label, identity)
+        device_definition = self._resolve_discovered_device_label_conflict(device_definition)
+        if not isinstance(device_definition, dict):
+            return
         display = self._format_device_definition_confirmation(device_definition)
         if not messagebox.askyesno(
             VIS_CREATE_DEVICE_DIALOG_TITLE,
@@ -8049,6 +8484,7 @@ class BringupControlUI(tk.Tk):
         if not isinstance(profile_pending, dict):
             profile_pending = {}
             pending[profile_name] = profile_pending
+        self._config_session_dirty = True
         profile_pending[str(device_definition.get(PROFILE_KEY_LABEL, NT_VALUE_EMPTY)).strip().lower()] = dict(
             device_definition
         )
@@ -9012,6 +9448,11 @@ class BringupControlUI(tk.Tk):
             "  This updates robot config and selects the currently chosen profile.",
             "  It does not activate runtime by default.",
             "",
+            "File Menu:",
+            "  Open Config... switches the local editing session to another bringup_system.json.",
+            "  Save Config writes pending local edits to the current local config path.",
+            "  Save Config As... writes the full current config payload to a new path and keeps using it.",
+            "",
             "Runtime Activate:",
             "  Instantiates the selected profile through the shared robot runtime.",
             "  Use this when non-Test surfaces need live runtime-owned device handles",
@@ -9036,24 +9477,31 @@ class BringupControlUI(tk.Tk):
             "  The main UI now uses a group-based model instead of incremental Add Motor/Add All actions.",
             "",
             "Refresh:",
-            "  Reloads bringup_system.json and updates the dropdown list.",
+            "  Reloads the current local config path and updates the dropdown list.",
         ]
         return "\n".join(lines)
 
     def _refresh_profiles(self) -> None:
         """
         NAME
-            _refresh_profiles - Reload profile names from bringup_system.json.
+            _refresh_profiles - Reload profile names from the current local config path.
         """
-        profile_names = _load_profiles() or []
-        profiles = _selectable_profiles()
+        self._sync_shared_profiles_path_override()
+        payload = self._load_local_profiles_payload()
+        self._suppress_host_profile_context_sync = self._is_blank_local_config_payload(payload)
+        profile_names = self._profile_names_from_payload(payload)
+        profiles = self._selectable_profiles_from_payload(payload)
         current = self._selected_profile_name()
         self._profile_box["values"] = profiles
         if current in profiles:
             self._profile_box.set(current)
         else:
             self._profile_box.set(
-                _startup_selected_profile(profile_names, self._ui_auto_select_default_profile)
+                _startup_selected_profile(
+                    profile_names,
+                    self._ui_auto_select_default_profile,
+                    default_profile_name=self._default_profile_name_from_payload(payload),
+                )
             )
         self._last_selected_profile = self._selected_profile_name()
         self._apply_profile_selection(self._selected_profile_name(), reload_views=True)
@@ -9072,7 +9520,7 @@ class BringupControlUI(tk.Tk):
             _refresh_tests_for_profile - Refresh tests dropdown for a profile.
         """
         name = _normalize_profile_name(profile_name)
-        tests = _load_tests(name) or [PROFILE_NONE]
+        tests = self._local_runnable_test_names(name) or [PROFILE_NONE]
         self._sync_test_dropdown_values(tests)
 
     def _test_selection_boxes(self) -> List[ttk.Combobox]:
@@ -9098,39 +9546,15 @@ class BringupControlUI(tk.Tk):
             self._selected_profile_name() if profile_name is None else _normalize_profile_name(profile_name)
         )
         try:
-            query = LocalConfigQueryService()
-            global_names = list_external_library_test_names()
-            global_runnable_map = (
-                query.external_library_test_runnable_map(selected_profile)
-                if selected_profile != PROFILE_NONE
-                else {}
-            )
-            config_names = query.global_test_names()
-            profile_names = (
-                query.profile_test_names(selected_profile)
-                if selected_profile != PROFILE_NONE
-                else []
-            )
-            config_runnable_map = (
-                query.config_library_test_runnable_map(selected_profile)
-                if selected_profile != PROFILE_NONE
-                else {}
-            )
-            runnable_map = (
-                query.profile_test_runnable_map(selected_profile)
-                if selected_profile != PROFILE_NONE
-                else {}
-            )
-            test_profile_devices = (
-                query.profile_device_catalog(selected_profile)
-                if selected_profile != PROFILE_NONE
-                else {}
-            )
-            profile_set_name = (
-                query.profile_test_set_name(selected_profile)
-                if selected_profile != PROFILE_NONE
-                else ""
-            )
+            state = self._local_test_library_state(selected_profile)
+            global_names = list(state.get("global_names", []))
+            global_runnable_map = dict(state.get("global_runnable_map", {}))
+            config_names = list(state.get("config_names", []))
+            profile_names = list(state.get("profile_names", []))
+            config_runnable_map = dict(state.get("config_runnable_map", {}))
+            runnable_map = dict(state.get("runnable_map", {}))
+            test_profile_devices = dict(state.get("test_profile_devices", {}))
+            profile_set_name = str(state.get("profile_set_name", "") or "")
         except Exception as exc:
             self._test_profile_devices = {}
             self._replace_test_library_list(self._test_library_global_list, [], "")
@@ -11258,6 +11682,27 @@ class BringupControlUI(tk.Tk):
         name = self._selected_profile_name()
         return "" if name == PROFILE_NONE else name
 
+    def _current_profiles_path(self) -> Path:
+        """
+        NAME
+            _current_profiles_path - Return the currently loaded config path or the canonical default.
+        """
+        override = self.__dict__.get("_config_path_override")
+        if isinstance(override, Path):
+            return override
+        return ConfigRepository().canonical_path()
+
+    def _sync_shared_profiles_path_override(self) -> None:
+        """
+        NAME
+            _sync_shared_profiles_path_override - Align shared host-side profile loaders to the current UI config path.
+        """
+        repository = ConfigRepository()
+        current_path = self._current_profiles_path().resolve()
+        canonical_path = repository.canonical_path().resolve()
+        set_profiles_path_override(None if current_path == canonical_path else current_path)
+        reload_profiles()
+
     def _default_profiles_path(self) -> Path:
         """
         NAME
@@ -11265,99 +11710,487 @@ class BringupControlUI(tk.Tk):
         """
         return ConfigRepository().canonical_path()
 
+    def _profile_names_from_payload(self, payload: Dict[str, object]) -> List[str]:
+        """
+        NAME
+            _profile_names_from_payload - Return sorted profile names from one config payload.
+        """
+        profiles = payload.get(KEY_PROFILES) if isinstance(payload, dict) else None
+        if not isinstance(profiles, dict):
+            return []
+        return sorted(
+            str(name).strip()
+            for name in profiles.keys()
+            if isinstance(name, str) and str(name).strip()
+        )
+
+    def _selectable_profiles_from_payload(self, payload: Dict[str, object]) -> List[str]:
+        """
+        NAME
+            _selectable_profiles_from_payload - Return profile dropdown values for one config payload.
+        """
+        return [PROFILE_NONE] + self._profile_names_from_payload(payload)
+
+    def _default_profile_name_from_payload(self, payload: Dict[str, object]) -> str:
+        """
+        NAME
+            _default_profile_name_from_payload - Return the payload default profile name when present.
+        """
+        value = payload.get(KEY_DEFAULT_PROFILE) if isinstance(payload, dict) else None
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        return ""
+
+    def _is_blank_local_config_payload(self, payload: Dict[str, object]) -> bool:
+        """
+        NAME
+            _is_blank_local_config_payload - Return whether one payload is a truly blank local config session.
+        """
+        profiles = payload.get(KEY_PROFILES) if isinstance(payload, dict) else None
+        if not isinstance(profiles, dict) or profiles:
+            return False
+        return not self._default_profile_name_from_payload(payload)
+
     def _load_local_profiles_payload(self) -> Dict[str, object]:
         """
         NAME
-            _load_local_profiles_payload - Load the canonical local bringup_system.json payload.
+            _load_local_profiles_payload - Load the currently selected local bringup_system.json payload.
         """
-        return ConfigRepository().load_canonical().to_payload()
+        override_payload = self.__dict__.get("_local_profiles_payload_override")
+        if isinstance(override_payload, dict):
+            return override_payload
+        path = self._current_profiles_path()
+        repository = ConfigRepository()
+        if path.resolve() == repository.canonical_path().resolve():
+            return repository.load_canonical().to_payload()
+        return repository.load_path(path).to_payload()
 
     def _begin_local_profiles_edit(self) -> ConfigEditSession:
         """
         NAME
-            _begin_local_profiles_edit - Open a mutable edit session for canonical local bringup config.
+            _begin_local_profiles_edit - Open a mutable edit session for the currently selected local bringup config.
         """
-        return ConfigRepository().begin_canonical_edit()
+        path = self._current_profiles_path()
+        repository = ConfigRepository()
+        override_payload = self.__dict__.get("_local_profiles_payload_override")
+        if isinstance(override_payload, dict):
+            return repository.session_for_payload(path, deepcopy(override_payload))
+        if path.resolve() == repository.canonical_path().resolve():
+            return repository.begin_canonical_edit()
+        return repository.begin_path_edit(path)
+
+    def _has_file_backed_local_config_session(self) -> bool:
+        """
+        NAME
+            _has_file_backed_local_config_session - Return whether the current local config session already has a disk path.
+        """
+        return not bool(self.__dict__.get("_config_session_in_memory_only", False))
+
+    def _clear_local_config_session_overrides(self) -> None:
+        """
+        NAME
+            _clear_local_config_session_overrides - Clear unsaved local-config session override state after load or save.
+        """
+        self._local_profiles_payload_override = None
+        self._config_session_dirty = False
+        self._config_session_in_memory_only = False
+
+    def _blank_profiles_payload(self) -> Dict[str, object]:
+        """
+        NAME
+            _blank_profiles_payload - Build one truly empty blank config payload for a new local session.
+        """
+        return {
+            KEY_DEVICES: [],
+            KEY_PROFILES: {},
+        }
+
+    def _has_pending_local_config_changes(self) -> bool:
+        """
+        NAME
+            _has_pending_local_config_changes - Return whether the local config session has unsaved work.
+        """
+        pending = self.__dict__.get("_pending_profile_device_definitions", {})
+        return bool(self.__dict__.get("_config_session_dirty", False)) or (
+            isinstance(pending, dict) and bool(pending)
+        )
+
+    def _apply_pending_profile_device_definitions_to_payload(
+        self,
+        payload: Dict[str, object],
+    ) -> Dict[str, object]:
+        """
+        NAME
+            _apply_pending_profile_device_definitions_to_payload - Merge staged in-memory discovered devices into one config payload.
+        """
+        merged = deepcopy(payload)
+        pending = self.__dict__.get("_pending_profile_device_definitions", {})
+        if not isinstance(pending, dict) or not pending:
+            return merged
+        profiles = merged.get(KEY_PROFILES)
+        if not isinstance(profiles, dict):
+            profiles = {}
+            merged[KEY_PROFILES] = profiles
+        devices = merged.get(KEY_DEVICES)
+        if not isinstance(devices, list):
+            devices = []
+            merged[KEY_DEVICES] = devices
+        existing_by_label = {
+            str(entry.get(PROFILE_KEY_LABEL, NT_VALUE_EMPTY)).strip().lower(): entry
+            for entry in devices
+            if isinstance(entry, dict) and str(entry.get(PROFILE_KEY_LABEL, NT_VALUE_EMPTY)).strip()
+        }
+        for profile_name, profile_pending in pending.items():
+            if not isinstance(profile_pending, dict):
+                continue
+            profile_payload = profiles.get(profile_name)
+            if not isinstance(profile_payload, dict):
+                profile_payload = {}
+                profiles[profile_name] = profile_payload
+            profile_devices = profile_payload.get(KEY_PROFILE_DEVICES)
+            if not isinstance(profile_devices, list):
+                profile_devices = []
+                profile_payload[KEY_PROFILE_DEVICES] = profile_devices
+            for device in profile_pending.values():
+                if not isinstance(device, dict):
+                    continue
+                label = str(device.get(PROFILE_KEY_LABEL, NT_VALUE_EMPTY)).strip()
+                if not label:
+                    continue
+                label_key = label.lower()
+                if label_key not in existing_by_label:
+                    copied = dict(device)
+                    devices.append(copied)
+                    existing_by_label[label_key] = copied
+                if label not in profile_devices:
+                    profile_devices.append(label)
+        return merged
+
+    def _current_materialized_profiles_payload(self) -> Dict[str, object]:
+        """
+        NAME
+            _current_materialized_profiles_payload - Return the full local config payload including staged discovery edits.
+        """
+        return self._apply_pending_profile_device_definitions_to_payload(
+            self._load_local_profiles_payload()
+        )
+
+    def _apply_local_config_session(
+        self,
+        payload: Dict[str, object],
+        path: Optional[Path],
+        *,
+        dirty: bool,
+        in_memory_only: bool,
+        output_line: str = NT_VALUE_EMPTY,
+    ) -> None:
+        """
+        NAME
+            _apply_local_config_session - Replace the active local config session and refresh profile-dependent UI state.
+        """
+        repository = ConfigRepository()
+        canonical_path = repository.canonical_path().resolve()
+        clean_path = path.resolve() if isinstance(path, Path) else None
+        current_selected_profile = _normalize_profile_name(self._selected_profile_name())
+        self._config_path_override = None if clean_path is None or clean_path == canonical_path else clean_path
+        self._local_profiles_payload_override = deepcopy(payload)
+        self._config_session_dirty = bool(dirty)
+        self._config_session_in_memory_only = bool(in_memory_only)
+        self._pending_profile_device_definitions = {}
+        self._suppress_host_profile_context_sync = self._is_blank_local_config_payload(payload)
+        self._last_profile_mismatch_prompt = None
+        self._pending_robot_profile_selection = PROFILE_NONE
+        self._sync_shared_profiles_path_override()
+        profile_names = self._profile_names_from_payload(payload)
+        profiles = self._selectable_profiles_from_payload(payload)
+        if current_selected_profile in profile_names:
+            selected_profile = current_selected_profile
+        else:
+            selected_profile = _startup_selected_profile(
+                profile_names,
+                self._ui_auto_select_default_profile,
+                default_profile_name=self._default_profile_name_from_payload(payload),
+            )
+        self._profile_box["values"] = profiles
+        self._profile_box.set(selected_profile)
+        self._last_selected_profile = self._selected_profile_name()
+        if output_line:
+            self._append_output(output_line)
+        self._apply_profile_selection(self._selected_profile_name(), reload_views=True)
+
+    def _ensure_default_profile_for_local_config_session(self) -> str:
+        """
+        NAME
+            _ensure_default_profile_for_local_config_session - Ensure one default profile exists for discovery-first local authoring.
+        """
+        payload = deepcopy(self._load_local_profiles_payload())
+        profiles = payload.get(KEY_PROFILES)
+        if not isinstance(profiles, dict):
+            profiles = {}
+            payload[KEY_PROFILES] = profiles
+        changed = False
+        default_name = self._default_profile_name_from_payload(payload)
+        if not default_name or default_name not in profiles:
+            default_name = CONFIG_DISCOVERY_DEFAULT_PROFILE
+            profile_payload = profiles.get(default_name)
+            if not isinstance(profile_payload, dict):
+                profile_payload = {}
+                profiles[default_name] = profile_payload
+            if not isinstance(profile_payload.get(KEY_PROFILE_DEVICES), list):
+                profile_payload[KEY_PROFILE_DEVICES] = []
+            payload[KEY_DEFAULT_PROFILE] = default_name
+            changed = True
+        else:
+            profile_payload = profiles.get(default_name)
+            if isinstance(profile_payload, dict) and not isinstance(profile_payload.get(KEY_PROFILE_DEVICES), list):
+                profile_payload[KEY_PROFILE_DEVICES] = []
+                changed = True
+        devices = payload.get(KEY_DEVICES)
+        if not isinstance(devices, list):
+            payload[KEY_DEVICES] = []
+            changed = True
+        if changed:
+            self._local_profiles_payload_override = payload
+            self._config_session_dirty = True
+            self._suppress_host_profile_context_sync = HOST_PROFILE_SYNC_NOT_SUPPRESSED
+            self._append_output(CONFIG_CREATE_DEFAULT_PROFILE_FMT.format(profile=default_name))
+            profile_names = self._profile_names_from_payload(payload)
+            self._profile_box["values"] = self._selectable_profiles_from_payload(payload)
+            if default_name in profile_names:
+                self._profile_box.set(default_name)
+                self._last_selected_profile = default_name
+        return default_name
 
     def _persist_local_profiles_payload(self, payload: Dict[str, object]) -> None:
         """
         NAME
-            _persist_local_profiles_payload - Persist a local bringup_system.json payload with shared sync semantics.
+            _persist_local_profiles_payload - Persist a local bringup_system.json payload with canonical sync or explicit-path save semantics.
         """
-        session = ConfigRepository().begin_canonical_edit()
+        if self.__dict__.get("_config_session_in_memory_only", False) or isinstance(
+            self.__dict__.get("_local_profiles_payload_override"), dict
+        ):
+            self._local_profiles_payload_override = deepcopy(payload)
+            self._config_session_dirty = True
+            return
+        repository = ConfigRepository()
+        path = self._current_profiles_path()
+        if path.resolve() == repository.canonical_path().resolve():
+            session = repository.begin_canonical_edit()
+            session.to_payload().clear()
+            session.to_payload().update(payload)
+            session.mark_dirty()
+            repository.sync(session)
+            return
+        session = repository.session_for_payload(path, payload)
         session.to_payload().clear()
         session.to_payload().update(payload)
         session.mark_dirty()
-        ConfigRepository().sync(session)
+        repository.save(session, path=path)
 
     def _persist_local_profiles_edit(self, session: ConfigEditSession) -> None:
         """
         NAME
-            _persist_local_profiles_edit - Persist a mutable local config edit session through the shared repository.
+            _persist_local_profiles_edit - Persist a mutable local config edit session through canonical sync or explicit-path save semantics.
         """
-        ConfigRepository().sync(session)
+        if self.__dict__.get("_config_session_in_memory_only", False) or isinstance(
+            self.__dict__.get("_local_profiles_payload_override"), dict
+        ):
+            self._local_profiles_payload_override = deepcopy(session.to_payload())
+            self._config_session_dirty = True
+            return
+        repository = ConfigRepository()
+        path = self._current_profiles_path()
+        if path.resolve() == repository.canonical_path().resolve():
+            repository.sync(session)
+            return
+        repository.save(session, path=path)
 
-    def _save_config_from_ui(self) -> None:
+    def _save_payload_to_config_path(self, payload: Dict[str, object], path: Path) -> Path:
         """
         NAME
-            _save_config_from_ui - Persist pending in-memory device-definition edits into canonical bringup config.
+            _save_payload_to_config_path - Persist one fully materialized config payload to disk and update the active local session.
         """
-        pending = self.__dict__.get("_pending_profile_device_definitions", {})
-        if not isinstance(pending, dict) or not pending:
-            self._append_output(VIS_SAVE_CONFIG_NO_PENDING_TEXT)
-            return
-        try:
-            session = self._begin_local_profiles_edit()
-            payload = session.to_payload()
-            profiles = payload.get(KEY_PROFILES)
-            if not isinstance(profiles, dict):
-                profiles = {}
-                payload[KEY_PROFILES] = profiles
-            devices = payload.get(KEY_DEVICES)
-            if not isinstance(devices, list):
-                devices = []
-                payload[KEY_DEVICES] = devices
-            existing_by_label = {
-                str(entry.get(PROFILE_KEY_LABEL, NT_VALUE_EMPTY)).strip().lower(): entry
-                for entry in devices
-                if isinstance(entry, dict) and str(entry.get(PROFILE_KEY_LABEL, NT_VALUE_EMPTY)).strip()
-            }
-            for profile_name, profile_pending in pending.items():
-                if not isinstance(profile_pending, dict):
-                    continue
-                profile_payload = profiles.get(profile_name)
-                if not isinstance(profile_payload, dict):
-                    profile_payload = {}
-                    profiles[profile_name] = profile_payload
-                profile_devices = profile_payload.get(KEY_PROFILE_DEVICES)
-                if not isinstance(profile_devices, list):
-                    profile_devices = []
-                    profile_payload[KEY_PROFILE_DEVICES] = profile_devices
-                for device in profile_pending.values():
-                    if not isinstance(device, dict):
-                        continue
-                    label = str(device.get(PROFILE_KEY_LABEL, NT_VALUE_EMPTY)).strip()
-                    if not label:
-                        continue
-                    label_key = label.lower()
-                    if label_key not in existing_by_label:
-                        copied = dict(device)
-                        devices.append(copied)
-                        existing_by_label[label_key] = copied
-                    if label not in profile_devices:
-                        profile_devices.append(label)
+        repository = ConfigRepository()
+        clean_path = path.expanduser().resolve()
+        if clean_path == repository.canonical_path().resolve():
+            session = repository.begin_canonical_edit()
+            session.to_payload().clear()
+            session.to_payload().update(payload)
             session.mark_dirty()
-            self._persist_local_profiles_edit(session)
+            repository.sync(session)
+        else:
+            session = repository.session_for_payload(clean_path, payload)
+            session.mark_dirty()
+            repository.save(session, path=clean_path)
+        self._clear_local_config_session_overrides()
+        self._pending_profile_device_definitions = {}
+        self._config_path_override = None if clean_path == repository.canonical_path().resolve() else clean_path
+        return clean_path
+
+    def _save_config_as_from_ui(self) -> bool:
+        """
+        NAME
+            _save_config_as_from_ui - Save the current config payload to an explicit alternate path and keep using that path.
+        """
+        initial_path = self._current_profiles_path()
+        initial_name = initial_path.name if self._has_file_backed_local_config_session() else "bringup_system.json"
+        try:
+            selected = filedialog.asksaveasfilename(
+                title=BUTTON_SAVE_CONFIG_AS,
+                initialdir=str(initial_path.parent),
+                initialfile=initial_name,
+                defaultextension=CONFIG_FILE_DEFAULT_EXTENSION,
+                filetypes=CONFIG_FILE_TYPES,
+            )
+            if not selected:
+                self._append_output(CONFIG_SAVE_AS_CANCELLED)
+                return False
+            payload = self._current_materialized_profiles_payload()
+            path = self._save_payload_to_config_path(payload, Path(selected))
+        except Exception as exc:
+            self._append_output(CONFIG_SAVE_AS_FAILED_FMT.format(error=exc))
+            return False
+        self._append_output(CONFIG_SAVE_AS_SAVED_FMT.format(path=str(path)))
+        self._refresh_profiles()
+        return True
+
+    def _save_config_from_ui(self) -> bool:
+        """
+        NAME
+            _save_config_from_ui - Persist staged local config edits into the current bringup config path.
+        """
+        if not self._has_pending_local_config_changes():
+            self._append_output(VIS_SAVE_CONFIG_NO_PENDING_TEXT)
+            return True
+        if not self._has_file_backed_local_config_session():
+            return self._save_config_as_from_ui()
+        try:
+            path = self._save_payload_to_config_path(
+                self._current_materialized_profiles_payload(),
+                self._current_profiles_path(),
+            )
         except Exception as exc:
             self._append_output(VIS_SAVE_CONFIG_FAILED_FMT.format(error=exc))
-            return
+            return False
         self._pending_profile_device_definitions = {}
-        self._append_output(
-            VIS_SAVE_CONFIG_SAVED_FMT.format(path=str(self._default_profiles_path()))
-        )
+        self._append_output(VIS_SAVE_CONFIG_SAVED_FMT.format(path=str(path)))
         self._apply_profile_selection(self._selected_profile_name(), reload_views=True)
         self._visibility_last_update = 0.0
         self._poll_visibility_snapshot(time.time())
+        return True
+
+    def _discard_pending_local_config_changes(self) -> None:
+        """
+        NAME
+            _discard_pending_local_config_changes - Drop unsaved local config overrides and staged discovery edits.
+        """
+        self._clear_local_config_session_overrides()
+        self._pending_profile_device_definitions = {}
+
+    def _confirm_local_config_session_switch(self) -> bool:
+        """
+        NAME
+            _confirm_local_config_session_switch - Prompt to save, discard, or cancel when leaving a dirty local config session.
+        """
+        if not self._has_pending_local_config_changes():
+            return True
+        answer = messagebox.askyesnocancel(
+            CONFIG_DIRTY_TITLE,
+            CONFIG_DIRTY_PROMPT,
+            parent=self,
+        )
+        if answer is None:
+            return False
+        if answer:
+            if not self._save_config_from_ui():
+                self._append_output(CONFIG_DIRTY_SAVE_FAILED)
+                return False
+            return True
+        self._discard_pending_local_config_changes()
+        return True
+
+    def _new_blank_config_from_ui(self) -> None:
+        """
+        NAME
+            _new_blank_config_from_ui - Start a new blank local config session in memory or at a chosen file path.
+        """
+        mode = messagebox.askyesnocancel(
+            CONFIG_NEW_BLANK_TITLE,
+            CONFIG_NEW_BLANK_PROMPT,
+            parent=self,
+        )
+        if mode is None:
+            self._append_output(CONFIG_NEW_BLANK_CANCELLED)
+            return
+        if not self._confirm_local_config_session_switch():
+            return
+        payload = self._blank_profiles_payload()
+        self._reset_scratch_visibility_state()
+        if mode:
+            self._apply_local_config_session(
+                payload,
+                None,
+                dirty=True,
+                in_memory_only=True,
+                output_line=CONFIG_NEW_BLANK_CREATED_IN_MEMORY,
+            )
+            return
+        selected = filedialog.asksaveasfilename(
+            title=BUTTON_NEW_BLANK_CONFIG,
+            initialdir=str(self._default_profiles_path().parent),
+            initialfile="bringup_system.json",
+            defaultextension=CONFIG_FILE_DEFAULT_EXTENSION,
+            filetypes=CONFIG_FILE_TYPES,
+        )
+        if not selected:
+            self._append_output(CONFIG_NEW_BLANK_CANCELLED)
+            return
+        try:
+            path = self._save_payload_to_config_path(payload, Path(selected))
+        except Exception as exc:
+            self._append_output(CONFIG_SAVE_AS_FAILED_FMT.format(error=exc))
+            return
+        self._apply_local_config_session(
+            payload,
+            path,
+            dirty=False,
+            in_memory_only=False,
+            output_line=CONFIG_NEW_BLANK_CREATED_FMT.format(path=str(path)),
+        )
+
+    def _open_config_from_ui(self) -> None:
+        """
+        NAME
+            _open_config_from_ui - Select and load an alternate bringup_system.json for the current UI session.
+        """
+        selected = filedialog.askopenfilename(
+            title=BUTTON_OPEN_CONFIG,
+            initialdir=str(self._current_profiles_path().parent),
+            filetypes=CONFIG_FILE_TYPES,
+        )
+        if not selected:
+            self._append_output(CONFIG_OPEN_CANCELLED)
+            return
+        if not self._confirm_local_config_session_switch():
+            return
+        try:
+            path = Path(selected).expanduser().resolve()
+            payload = ConfigRepository().load_path(path).to_payload()
+        except Exception as exc:
+            self._append_output(CONFIG_OPEN_FAILED_FMT.format(error=exc))
+            return
+        repository = ConfigRepository()
+        canonical_path = repository.canonical_path().resolve()
+        self._clear_local_config_session_overrides()
+        self._config_path_override = None if path == canonical_path else path
+        self._pending_profile_device_definitions = {}
+        self._apply_local_config_session(
+            payload,
+            path,
+            dirty=False,
+            in_memory_only=False,
+            output_line=CONFIG_OPENED_FMT.format(path=str(path)),
+        )
 
     def _dsl_import_from_ui(self) -> None:
         """
@@ -12055,7 +12888,9 @@ class BringupControlUI(tk.Tk):
         NAME
             _config_dialog_start - Return initial directory and filename for config dialogs.
         """
-        path = self._default_profiles_path()
+        path = self._current_profiles_path()
+        if not self._has_file_backed_local_config_session():
+            return (path.parent, "bringup_system.json")
         return (path.parent, path.name)
 
     def _run_blocking_status_operation(
@@ -12483,16 +13318,14 @@ class BringupControlUI(tk.Tk):
         if not profile_name:
             self._append_output(OUTPUT_NO_PROFILE)
             return
-        initial_dir, initial_file = self._config_dialog_start()
-        selected = filedialog.askopenfilename(
-            title=BUTTON_PUSH_CONFIG,
-            initialdir=str(initial_dir),
-            initialfile=initial_file,
-            filetypes=CONFIG_FILE_TYPES,
-        )
-        if not selected:
-            self._append_output(OUTPUT_PUSH_CANCELLED)
-            return
+        if self._has_pending_local_config_changes():
+            if not self._save_config_from_ui():
+                if self._config_session_in_memory_only:
+                    self._append_output(CONFIG_PUSH_SAVE_FIRST_CANCELLED)
+                else:
+                    self._append_output(CONFIG_PUSH_SAVE_FIRST_FAILED)
+                return
+        selected = str(self._current_profiles_path())
 
         def _operation() -> object:
             return push_config(
@@ -13770,6 +14603,8 @@ class BringupControlUI(tk.Tk):
         NAME
             _handle_close - Handle UI close and notify caller.
         """
+        if not self._confirm_local_config_session_switch():
+            return
         self._dismiss_manual_duty_popup(
             "Manual duty popup closed: UI shutdown.",
             stop_motor=True,

@@ -12,8 +12,8 @@ This spec is intentionally focused on delete and cleanup behavior. It does not r
 
 The topology editor should expose two distinct device-management actions:
 
-- remove from current profile
-- delete from shared config
+- remove from profile
+- delete from app entirely
 
 These actions must have different scope, different confirmation text, and different cleanup behavior.
 
@@ -91,7 +91,7 @@ This spec keeps that model.
 
 ## Proposed Actions
 
-### Remove From Current Profile
+### Remove From Profile
 
 Purpose: Remove a device from the active profile being edited without deleting the shared device definition.
 
@@ -112,9 +112,9 @@ This action must not:
 - prune other profiles’ `bridgeConfig` entries
 - silently convert into global deletion
 
-### Delete From Shared Config
+### Delete From App Entirely
 
-Purpose: Delete a device definition everywhere in `bringup_system.json`.
+Purpose: Delete a device definition everywhere in the app's persisted config.
 
 This action should be available when the selected object represents a shared-config device definition, including inventory-only devices.
 
@@ -183,12 +183,12 @@ Expected result:
 - the device still exists in shared inventory
 - the device remains available to other profiles
 
-### Workflow 2: Delete A Device Everywhere
+### Workflow 2: Delete A Device From The App Entirely
 
 The operator:
 
 - selects a device in the inventory or another shared-config device-management surface
-- chooses delete from shared config
+- chooses delete from app entirely
 - reviews any cross-profile warning
 - confirms deletion
 
@@ -204,8 +204,8 @@ Purpose: Make delete scope obvious before the user commits.
 
 The topology editor should use scope-specific labels such as:
 
-- `Remove From Current Profile`
-- `Delete From Shared Config`
+- `Remove From Profile`
+- `Delete From App Entirely`
 
 The editor should not use a single ambiguous `Delete` label for both behaviors unless the surrounding context makes scope explicit.
 

@@ -57,10 +57,33 @@ Live Topology (offline):
 - Load a runtime-state JSON file in the Live Topology tab.
 - Use Reload File to refresh the overlay when the file changes.
 
+Config file session:
+- File -> `New Blank Config...` starts a blank local config session in memory or at a file path you choose up front.
+- A newly created blank config session starts truly empty: no predefined profile, no predefined `default_profile`, and no predefined devices.
+- `New Blank Config...` also clears passive CAN visibility/discovery memory so a scratch session does not keep previously observed devices in the current UI process.
+- `New Blank Config...` also clears bridge-side profile-derived CAN label context, so newly observed passive devices do not immediately reuse names from the prior config while the profile remains `(none)`.
+- Unrecognized passive devices now get structured default labels derived from packet identity when available, using manufacturer + device type + CAN ID.
+  Example: `REV_MOTORCONTROLLER_07`.
+- File -> `Open Config...` switches the local editing session to another `bringup_system.json`.
+- File -> `Save Config` writes pending local edits to the currently loaded config path.
+- File -> `Save Config As...` writes the current local config payload to a new path and keeps using that path.
+- Discovery-first authoring auto-creates a default profile named `default` only when the session needs one for discovery-created devices.
+- Double-click an `Unrecognized Nodes` row to rename the discovered device label before promoting it into config.
+- Double-click a `Defined Nodes` row to rename that device in the current local config session immediately; the rename is still only persisted after `Save Config`.
+- `Create Device Definition...` from `Unrecognized Nodes` stages discovered devices into shared config inventory plus the `default` profile until you save.
+- If you open another config, start a new blank config, close the UI, or push while local config edits are unsaved, the UI prompts to save or discard first.
+- `Refresh` reloads the currently loaded local config path instead of forcing the canonical deploy file.
+
 ### Topology Editor (Python/Tkinter)
+
 Purpose: Author and maintain device profiles and layouts.
+
 - Location: `tools/can_topology/` (entry: `can_top_editor.py`).
-- Edits `src/main/deploy/bringup_system.json` plus editor-only diagram metadata.
+- File -> `Open Config...` loads a full `bringup_system.json` from any path.
+- File -> `Save Config` writes the full current multi-profile config back to the path it was loaded from.
+- File -> `Save Config As...` writes the full current multi-profile config to a new path and keeps using that new file.
+- File -> `Save Profile As...` exports a standalone one-profile config JSON that includes canonical root `topology` data for the exported profile.
+- File -> `Save to Deploy` writes the current config state into `src/main/deploy/bringup_system.json`.
 - Supports tags, filters, layout tools, and bulk edits to keep diagrams organized.
 - Supports device nodes, infrastructure nodes, callouts, and label-based group overlays.
 - Link devices to CANnect nodes by dragging onto them or using Edit -> `Link Device to CANnect`.

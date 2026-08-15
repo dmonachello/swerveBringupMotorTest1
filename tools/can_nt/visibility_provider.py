@@ -14,7 +14,6 @@ DESCRIPTION
 
 from dataclasses import dataclass, field
 from collections import deque
-import hashlib
 import threading
 import math
 from typing import Deque, Dict, Iterable, List, Optional, Tuple
@@ -142,16 +141,35 @@ class DeviceState:
     raw_ids: Dict[int, RawIdState] = field(default_factory=dict)
 
 
-DISCOVERED_LABEL_PREFIX = "UNPROFILED_DEVICE_"
-DISCOVERED_LABEL_START = 1
-DISCOVERED_LABEL_STEP = 1
+DISCOVERED_LABEL_SEPARATOR = "_"
+DISCOVERED_LABEL_COLLISION_SUFFIX_SEPARATOR = "_"
+DISCOVERED_LABEL_COLLISION_SUFFIX_START = 2
 DISCOVERED_LABEL_PARTS = 3
 DISCOVERED_LABEL_BASE = 10
-DISCOVERED_LABEL_HASH_BYTES = 4
-DISCOVERED_LABEL_ENCODING = "utf-8"
-DISCOVERED_LABEL_HASH_FALLBACK_MODULUS = 1000000
-DISCOVERED_LABEL_MANUFACTURER_MULTIPLIER = 10000
-DISCOVERED_LABEL_DEVICE_TYPE_MULTIPLIER = 100
+DISCOVERED_LABEL_CAN_ID_WIDTH = 2
+DISCOVERED_LABEL_ARB_PREFIX = "UNKNOWN_ARBITRATION"
+DISCOVERED_LABEL_MANUFACTURER_UNKNOWN_PREFIX = "MFG"
+DISCOVERED_LABEL_DEVICE_TYPE_UNKNOWN_PREFIX = "DEVICETYPE"
+DISCOVERED_LABEL_MANUFACTURER_NI = "NI"
+DISCOVERED_LABEL_MANUFACTURER_CTRE = "CTRE"
+DISCOVERED_LABEL_MANUFACTURER_REV = "REV"
+DISCOVERED_LABEL_DEVICE_TYPE_ROBOTCONTROLLER = "ROBOTCONTROLLER"
+DISCOVERED_LABEL_DEVICE_TYPE_MOTORCONTROLLER = "MOTORCONTROLLER"
+DISCOVERED_LABEL_DEVICE_TYPE_GYRO = "GYRO"
+DISCOVERED_LABEL_DEVICE_TYPE_ENCODER = "ENCODER"
+DISCOVERED_LABEL_DEVICE_TYPE_POWER = "POWER"
+DISCOVERED_LABEL_MANUFACTURER_NAMES = {
+    1: DISCOVERED_LABEL_MANUFACTURER_NI,
+    4: DISCOVERED_LABEL_MANUFACTURER_CTRE,
+    5: DISCOVERED_LABEL_MANUFACTURER_REV,
+}
+DISCOVERED_LABEL_DEVICE_TYPE_NAMES = {
+    1: DISCOVERED_LABEL_DEVICE_TYPE_ROBOTCONTROLLER,
+    2: DISCOVERED_LABEL_DEVICE_TYPE_MOTORCONTROLLER,
+    4: DISCOVERED_LABEL_DEVICE_TYPE_GYRO,
+    7: DISCOVERED_LABEL_DEVICE_TYPE_ENCODER,
+    8: DISCOVERED_LABEL_DEVICE_TYPE_POWER,
+}
 RATE_DECAY_TIME_CONSTANT_MS = 3000.0
 RATE_DECAY_MIN_VALUE = 0.05
 
@@ -198,11 +216,11 @@ class VisibilityProvider:
         self._devices: Dict[str, DeviceState] = {}
         self._identity_to_label: Dict[str, str] = {}
         self._expected_labels: Dict[str, str] = {}
-        self._next_discovered_label = DISCOVERED_LABEL_START
         self._timeout_ms = int(timeout_ms)
         self._observed_retention_ms = int(observed_retention_ms)
         self._recent_frame_history_limit = max(VIS_INT_ONE, int(recent_frame_history_limit))
         self._recent_frames: Deque[NormalizedFrame] = deque(maxlen=self._recent_frame_history_limit)
+        self._allow_suggested_labels_for_unexpected = True
         self._lock = threading.Lock()
 
     def set_sources(self, sources: Iterable[SourceInfo]) -> None:
@@ -228,6 +246,7 @@ class VisibilityProvider:
         with self._lock:
             for state in self._devices.values():
                 state.expected = False
+                state.unexpected = state.last_seen_ms > VIS_INT_ZERO
             self._expected_labels = {}
             for label, identity_key in devices:
                 clean_label = str(label).strip()
@@ -258,6 +277,30 @@ class VisibilityProvider:
                 self._expected_labels[label_key] = clean_label
                 if clean_identity:
                     self._identity_to_label[clean_identity] = label_key
+
+    def reset_observed_state(self) -> None:
+        """
+        NAME
+            reset_observed_state - Clear all observed/passive device state while preserving source configuration.
+
+        DESCRIPTION
+            This is used by scratch-session workflows that want a true blank
+            starting point for passive visibility/discovery state as well as
+            local config state.
+        """
+        with self._lock:
+            self._devices = {}
+            self._identity_to_label = {}
+            self._expected_labels = {}
+            self._recent_frames.clear()
+
+    def set_allow_suggested_labels_for_unexpected(self, allowed: bool) -> None:
+        """
+        NAME
+            set_allow_suggested_labels_for_unexpected - Control whether unexpected rows may reuse suggested labels.
+        """
+        with self._lock:
+            self._allow_suggested_labels_for_unexpected = bool(allowed)
 
     def set_source_available(self, source_id: str, available: bool, ts_ms: int) -> None:
         """
@@ -391,6 +434,8 @@ class VisibilityProvider:
             if state is not None:
                 return state
         clean_label = str(suggested_label or VIS_EMPTY_STRING).strip()
+        if not self._allow_suggested_labels_for_unexpected:
+            clean_label = VIS_EMPTY_STRING
         candidate_key = clean_label.lower() if clean_label else VIS_EMPTY_STRING
         if candidate_key and candidate_key in self._devices:
             state = self._devices[candidate_key]
@@ -417,17 +462,24 @@ class VisibilityProvider:
         NAME
             _allocate_discovered_label - Generate a stable temporary discovered-device label.
         """
-        candidate_number = self._stable_discovered_label_number(identity_key)
+        base_label = self._base_discovered_label(identity_key)
+        if base_label.lower() not in self._devices:
+            return base_label
+        suffix = DISCOVERED_LABEL_COLLISION_SUFFIX_START
         while True:
-            label = f"{DISCOVERED_LABEL_PREFIX}{candidate_number}"
+            label = (
+                base_label
+                + DISCOVERED_LABEL_COLLISION_SUFFIX_SEPARATOR
+                + str(suffix)
+            )
             if label.lower() not in self._devices:
                 return label
-            candidate_number += DISCOVERED_LABEL_STEP
+            suffix += 1
 
-    def _stable_discovered_label_number(self, identity_key: str) -> int:
+    def _base_discovered_label(self, identity_key: str) -> str:
         """
         NAME
-            _stable_discovered_label_number - Derive a stable numeric suffix for one identity.
+            _base_discovered_label - Build the structured default discovered label for one identity.
         """
         parts = str(identity_key).split(VIS_KEY_SEPARATOR)
         if len(parts) == DISCOVERED_LABEL_PARTS:
@@ -435,22 +487,53 @@ class VisibilityProvider:
                 manufacturer = int(parts[0], DISCOVERED_LABEL_BASE)
                 device_type = int(parts[1], DISCOVERED_LABEL_BASE)
                 device_id = int(parts[2], DISCOVERED_LABEL_BASE)
-                candidate = (
-                    manufacturer * DISCOVERED_LABEL_MANUFACTURER_MULTIPLIER
-                    + device_type * DISCOVERED_LABEL_DEVICE_TYPE_MULTIPLIER
-                    + device_id
+                manufacturer_name = self._discovered_manufacturer_name(manufacturer)
+                device_type_name = self._discovered_device_type_name(device_type)
+                return (
+                    manufacturer_name
+                    + DISCOVERED_LABEL_SEPARATOR
+                    + device_type_name
+                    + DISCOVERED_LABEL_SEPARATOR
+                    + format(device_id, f"0{DISCOVERED_LABEL_CAN_ID_WIDTH}d")
                 )
-                return max(DISCOVERED_LABEL_START, candidate)
             except Exception:
-                pass
-        digest = hashlib.sha256(identity_key.encode(DISCOVERED_LABEL_ENCODING)).digest()
-        candidate = int.from_bytes(
-            digest[:DISCOVERED_LABEL_HASH_BYTES],
-            byteorder="big",
-            signed=False,
+                return self._arb_discovered_label(identity_key)
+        return self._arb_discovered_label(identity_key)
+
+    def _arb_discovered_label(self, identity_key: str) -> str:
+        """
+        NAME
+            _arb_discovered_label - Build the fallback discovered label for an arbitration-only identity.
+        """
+        arb_suffix = str(identity_key or VIS_EMPTY_STRING).strip()
+        if arb_suffix.lower().startswith(VIS_KEY_ARB_PREFIX):
+            arb_suffix = arb_suffix[len(VIS_KEY_ARB_PREFIX):]
+        arb_suffix = arb_suffix.replace(VIS_HEX_PREFIX, VIS_EMPTY_STRING).upper()
+        return (
+            DISCOVERED_LABEL_ARB_PREFIX
+            + DISCOVERED_LABEL_SEPARATOR
+            + (arb_suffix or "UNKNOWN")
         )
-        candidate = (candidate % DISCOVERED_LABEL_HASH_FALLBACK_MODULUS) + DISCOVERED_LABEL_START
-        return max(DISCOVERED_LABEL_START, candidate)
+
+    def _discovered_manufacturer_name(self, manufacturer: int) -> str:
+        """
+        NAME
+            _discovered_manufacturer_name - Return the manufacturer token for one discovered identity.
+        """
+        return DISCOVERED_LABEL_MANUFACTURER_NAMES.get(
+            int(manufacturer),
+            DISCOVERED_LABEL_MANUFACTURER_UNKNOWN_PREFIX + format(int(manufacturer), "02d"),
+        )
+
+    def _discovered_device_type_name(self, device_type: int) -> str:
+        """
+        NAME
+            _discovered_device_type_name - Return the device-type token for one discovered identity.
+        """
+        return DISCOVERED_LABEL_DEVICE_TYPE_NAMES.get(
+            int(device_type),
+            DISCOVERED_LABEL_DEVICE_TYPE_UNKNOWN_PREFIX + format(int(device_type), "02d"),
+        )
 
     def _relabel_state(self, old_label_key: str, new_label: str) -> None:
         """

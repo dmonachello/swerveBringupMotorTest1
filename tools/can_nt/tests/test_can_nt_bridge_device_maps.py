@@ -128,6 +128,26 @@ class CanNtBridgeDeviceMapTests(unittest.TestCase):
             "fallback_profile",
             _resolve_profile_context_name_from_runtime_state({}, "fallback_profile"),
         )
+        self.assertEqual(
+            "",
+            _resolve_profile_context_name_from_runtime_state(
+                {
+                    "activeRuntimeProfile": "(none)",
+                    "selectedProfile": "(none)",
+                },
+                "fallback_profile",
+            ),
+        )
+        self.assertEqual(
+            "",
+            _resolve_profile_context_name_from_runtime_state(
+                {
+                    "activeRuntimeProfile": "",
+                    "selectedProfile": "",
+                },
+                "fallback_profile",
+            ),
+        )
 
     def test_profile_context_poll_due_obeys_tracking_flag_and_interval(self) -> None:
         self.assertFalse(_profile_context_poll_due(False, 5.0, 0.0))

@@ -11,14 +11,14 @@ from hashlib import sha256
 from pathlib import Path
 from time import time
 
-BUILD_GIT_DESCRIBE = "checkpoint-2026-08-03-ui-runtime-dsl-docs-dirty"
-BUILD_REVISION = "273"
-BUILD_WORKSPACE_REVISION = "466"
-BUILD_CODE_REVISION = "7b6d98e414a5"
-BUILD_GIT_SHA = "33165d3"
+BUILD_GIT_DESCRIBE = "full-local-state-checkpoint-2026-08-12-1-g90a60d5-dirty"
+BUILD_REVISION = "276"
+BUILD_WORKSPACE_REVISION = "508"
+BUILD_CODE_REVISION = "de47074b1913"
+BUILD_GIT_SHA = "90a60d5"
 BUILD_GIT_BRANCH = "main"
 BUILD_GIT_DIRTY = "dirty"
-BUILD_TIMESTAMP = "2026-08-03T11:20:00-04:00"
+BUILD_TIMESTAMP = "2026-08-12T16:49:28-04:00"
 
 BUILD_LABEL_REVISION = "build-revision"
 BUILD_LABEL_WORKSPACE_REVISION = "workspace-revision"

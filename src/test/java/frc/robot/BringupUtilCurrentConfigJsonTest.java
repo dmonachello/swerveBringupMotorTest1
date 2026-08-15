@@ -9,6 +9,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -143,6 +144,25 @@ class BringupUtilCurrentConfigJsonTest {
     assertNull(entry);
   }
 
+  @Test
+  void buildDeviceEntryNormalizesGenericRevMotorControllerModelToRevNeoSpec() throws Exception {
+    Object deviceDefinition = newInstance(CLASS_DEVICE_DEFINITION);
+    setField(deviceDefinition, FIELD_DEVICE_LABEL, "REV_MOTORCONTROLLER_25");
+    setField(deviceDefinition, "id", 25);
+    setField(deviceDefinition, "manufacturer", 5);
+    setField(deviceDefinition, "deviceType", 2);
+    setField(deviceDefinition, "deviceInterface", "CAN");
+    setField(deviceDefinition, "model", "MotorController");
+    setField(deviceDefinition, "type", "motor");
+
+    Object entry = invokePrivateStaticMethod("buildDeviceEntry", deviceDefinition);
+    String motor = (String) getField(entry, "motor");
+    String type = (String) getField(entry, "type");
+
+    assertEquals("NEO", type);
+    assertEquals("REV NEO", motor);
+  }
+
   private void captureState() throws Exception {
     captured = true;
     savedDataVersion = (String) getStaticField(FIELD_CURRENT_DATA_VERSION);
@@ -198,6 +218,18 @@ class BringupUtilCurrentConfigJsonTest {
     Field field = target.getClass().getDeclaredField(name);
     field.setAccessible(true);
     field.set(target, value);
+  }
+
+  private static Object getField(Object target, String name) throws Exception {
+    Field field = target.getClass().getDeclaredField(name);
+    field.setAccessible(true);
+    return field.get(target);
+  }
+
+  private static Object invokePrivateStaticMethod(String name, Object arg) throws Exception {
+    Method method = BringupUtil.class.getDeclaredMethod(name, arg.getClass());
+    method.setAccessible(true);
+    return method.invoke(null, arg);
   }
 
   private static String normalizeKey(String value) {

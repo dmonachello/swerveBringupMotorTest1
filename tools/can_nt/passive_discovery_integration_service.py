@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from tools.can_nt.can_fault_inference import build_fault_diagnosis, render_fault_diagnosis
 from tools.common.config_api.repository import ConfigRepository
+from .can_profiles import current_profiles_path
 from tools.common.motor_runtime_verdict import (
     RESULT_ELECTRICAL,
     RESULT_ROTATING,
@@ -612,7 +613,7 @@ def default_profile_path() -> str:
     NAME
         default_profile_path - Return the canonical bringup profile path used by the host UI.
     """
-    return str(ConfigRepository().canonical_path())
+    return str(current_profiles_path())
 
 
 def default_evidence_engine_status() -> Dict[str, Any]:

@@ -293,7 +293,7 @@ Examples:
 Only canonical identities may:
 
 - become observed device rows
-- become `UNPROFILED_DEVICE_*` style candidates
+- become structured passive-identity label candidates such as `REV_MOTORCONTROLLER_07`
 - enter `--dump-profile` `devices[]`
 - enter `--dump-api-inventory` `devices[]`
 
@@ -365,7 +365,7 @@ Purpose: define how each affected surface should consume the shared result.
 
 - show canonical physical device identities in the device list
 - show non-device traffic in a separate traffic-family section or drilldown
-- do not create `UNPROFILED_DEVICE_*` rows from non-device traffic families
+- do not create structured passive-identity device rows from non-device traffic families
 
 ### `--dump-profile`
 
