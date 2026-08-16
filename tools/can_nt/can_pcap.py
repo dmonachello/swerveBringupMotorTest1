@@ -82,7 +82,6 @@ def handle_marker_keys(
     key_queue: "queue.Queue[tuple[str, float]]",
     marker_keys: set[str],
     pcap: PcapLogger,
-    tx_stop,
     state: SnifferState,
     print_banner,
 ) -> bool:
@@ -95,7 +94,6 @@ def handle_marker_keys(
         key_queue: Queue of (key, timestamp) events.
         marker_keys: Allowed marker keys.
         pcap: Active PcapLogger.
-        tx_stop: Event to stop TX playback.
         state: SnifferState with marker counters.
         print_banner: Callback to print marker help.
 
@@ -112,9 +110,6 @@ def handle_marker_keys(
         except queue.Empty:
             break
         if key not in marker_keys:
-            if key == " ":
-                tx_stop.set()
-                print("TX stopped by user.")
             continue
         if key == "h":
             print_banner()

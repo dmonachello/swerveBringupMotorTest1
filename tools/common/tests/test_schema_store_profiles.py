@@ -151,6 +151,38 @@ class ConfigSchemaStoreProfilesTests(unittest.TestCase):
 
         self.assertTrue(result.ok(), [issue.message for issue in result.errors()])
 
+    def test_topology_validation_rejects_missing_edge_endpoint(self) -> None:
+        payload = self._base_payload()
+        payload["topology"] = {
+            "profiles": {
+                "demo": {
+                    "nodes": [
+                        {
+                            "key": 7,
+                            "objectType": "device",
+                            "deviceRef": "lmtSw0",
+                        }
+                    ],
+                    "edges": [
+                        {
+                            "id": "edge_1",
+                            "fromNode": 7,
+                            "toNode": 99,
+                        }
+                    ],
+                }
+            }
+        }
+
+        result = self._validate(payload)
+
+        self.assertFalse(result.ok())
+        messages = [issue.message for issue in result.errors()]
+        self.assertIn(
+            "Profile demo topology edge edge_1: references missing node endpoint.",
+            messages,
+        )
+
     def test_profile_devices_type_error_names_profile(self) -> None:
         payload = self._base_payload()
         payload["profiles"]["demo"]["devices"] = "lmtSw0"

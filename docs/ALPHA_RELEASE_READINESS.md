@@ -169,8 +169,9 @@ Purpose: Reduce pit-time surprises and enforce safety constraints.
    - COM port detection (`--list-ports`, auto-detect, `--no-prompt` behavior).
    - Clear failure messages when CANable/slcan cannot open.
 1. Enforce "read-only by default" on PC tool:
-   - Any CAN transmit capability must be explicitly gated (e.g., `--tx-seq`
-     requires a separate allow flag).
+   - Any CAN transmit capability must remain isolated under `tools/can_tx_poc/`
+     and require explicit per-invocation authorization (for example,
+     `--tx-allow`).
    - Docs must clearly mark transmit as non-default and risky.
 1. Robot "PC tool absent" behavior:
    - No tight-loop error spam when NT keys are missing.

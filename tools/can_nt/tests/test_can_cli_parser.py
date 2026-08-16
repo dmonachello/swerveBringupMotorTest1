@@ -26,6 +26,12 @@ class CanCliParserTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             parser.parse_args(["--dump-nt", "keys.json"])
 
+    def test_live_can_transmit_options_are_not_supported(self) -> None:
+        parser = build_parser()
+
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["--tx-seq", "frames.txt", "--tx-allow"])
+
 
 if __name__ == "__main__":
     unittest.main()

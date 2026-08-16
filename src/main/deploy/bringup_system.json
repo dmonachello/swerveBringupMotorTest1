@@ -316,8 +316,8 @@
       "type": "motor"
     }
   ],
-  "data_version": "2026-08-12_162539",
-  "data_hash": "c2fd532c4f9355635cc2f9b7ee0aa0a8bc4c1dd758d6f65124206454a57b6cbd",
+  "data_version": "2026-08-16_140655",
+  "data_hash": "cc3c9d1d76d16ae657623bc62eff13b4d38ac6d093da82d4623e9cf9efac9a2f",
   "default_profile": "test_minimal_25_9",
   "bridgeConfig": {
     "schemaVersion": 2,
@@ -4231,8 +4231,8 @@
             "layout": {
               "bus": 0,
               "row": 0,
-              "x": 450.0,
-              "y": -121.53609625668449,
+              "x": 459.48930481283446,
+              "y": -93.06818181818181,
               "yRelative": true
             }
           },
@@ -4265,7 +4265,7 @@
             }
           },
           {
-            "key": 12,
+            "key": 11,
             "label": "can analyzer 1",
             "category": "analyzer",
             "objectType": "analyzer",
@@ -4289,7 +4289,7 @@
             "fromPort": "right",
             "toNode": 11,
             "toPort": "left",
-            "edgeType": "can_trunk"
+            "edgeType": "can_tap"
           },
           {
             "id": "edge_2",
@@ -4297,7 +4297,7 @@
             "fromPort": "right",
             "toNode": 8,
             "toPort": "left",
-            "edgeType": "can_trunk"
+            "edgeType": "can_tap"
           },
           {
             "id": "edge_3",

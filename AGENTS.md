@@ -21,7 +21,11 @@ Purpose: Explain why console output is throttled and how long reports are produc
 
 Hard rules
 
-- The Python side must be read-only on CAN. Never transmit CAN frames.
+- Supported Python diagnostics under `tools/can_nt/` must be read-only on CAN and
+  must never import or invoke transmission code.
+- The sole transmission exception is the isolated experimental
+  `tools/can_tx_poc/` package. It must require explicit per-invocation
+  authorization, remain off by default, and be used only on an isolated lab bus.
 - Keep a strict separation between local robot data (read directly on the roboRIO) and CAN-bus data coming from the PC tool through supported REST-driven or host-local diagnostics flows. Do not mix or conflate the two in logging, diagnostics, or APIs.
 - NetworkTables is retired for supported bringup flows. If a NetworkTables reference appears in current code, docs, or generated artifacts, treat it as historical, compatibility-only, or a regression unless explicitly justified.
 - Before changing any remaining NetworkTables references, inventory current Java/Python usage first and document whether the reference is active, compatibility-only, generated, or historical.
@@ -119,6 +123,7 @@ Purpose: Keep repo-local reminders explicit and easy to clear once handled.
 - Use `python tools/reminder_notes.py list` to list active reminders and `python tools/reminder_notes.py downgrade <path>` to downgrade one.
 
 What to do first for any task that touches the Java-Python interface
+
 1) Inventory remaining NetworkTables usage when applicable:
 
    - List every path written and read on the Java side.
@@ -269,7 +274,9 @@ Goal
 
 Hard rules
 
-- Do not transmit CAN frames from the PC tool. Reverse engineering is passive capture + analysis only.
+- Do not transmit CAN frames from supported PC diagnostics or reverse-engineering
+  workflows. Reverse engineering is passive capture + analysis only. The isolated
+  `tools/can_tx_poc/` lab replay package is not part of those workflows.
 - Do not assume vendor message layouts. Derive from observed arbitration IDs + controlled robot actions + diffs.
 - Prefer additive outputs: never remove existing logging/publishing; add new summaries and new keys.
 

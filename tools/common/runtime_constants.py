@@ -48,4 +48,3 @@ RUNTIME_DETAIL_ENABLED = "enabled"
 RUNTIME_DETAIL_DISABLED = "disabled"
 
 THREAD_NAME_TCP_READER = "tcp-reader"
-THREAD_NAME_TX_REPLAY = "tx-replay"

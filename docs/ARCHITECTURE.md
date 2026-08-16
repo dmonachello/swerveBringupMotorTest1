@@ -3,6 +3,7 @@
 Purpose: the system architecture defines structure, data flow, and stable contracts for the robot bringup harness and PC-side tools (CAN bridge, UI, CLI, topology tooling).
 
 ## System Overview
+
 Purpose: the system is a client/server architecture with a robot-side server and multiple clients.
 
 - Robot-side WPILib Java bringup harness runs motors/sensors and produces local health + reports (server).
@@ -16,11 +17,13 @@ Purpose: the system is a client/server architecture with a robot-side server and
 - The Xbox controller input is a local client of the robot server (same process, local transport).
 
 ## 1000-Foot View
+
 Purpose: the system has a high-level map of components, data sources, and safety boundaries.
 
 The system is a client/server architecture. The robot hosts the bringup server and is authoritative for actuation and local health. PC-side tools act as clients for commands, logs, and state/diagnostics, while remaining observational on CAN and supporting offline analysis. The Xbox controller is treated as a local client of the robot server.
 
 Key roles:
+
 - Robot server (roboRIO, Java): creates devices, runs tests, commands outputs, and reports local health using vendor APIs.
 - PC tool (Windows PC, Python): listens to CAN traffic via CANable, feeds host diagnostics, and records evidence (PCAP, inventory, diffs).
 - PC tool (Windows PC, Python): listens to the roboRIO TCP console stream (NetConsole) to extract warnings/errors.
@@ -29,6 +32,7 @@ Key roles:
 - Xbox controller input: local client interface feeding the robot server.
 
 Data sources and trust boundaries:
+
 - Robot-local telemetry comes only from vendor APIs on the roboRIO.
 - CAN-bus telemetry comes only from the PC tool host process.
 - REST command/output is a control/log channel, not a telemetry source.
@@ -42,25 +46,30 @@ Purpose: prevent confusion between host-local editing context and robot runtime 
 - Rule: host context MUST NOT change robot context unless an explicit robot REST command is executed (for example `profiles activate <name>`).
 
 ## Client/Server Boundary
+
 Purpose: define the ownership and responsibilities across the robot server and PC clients.
 
 Server (robot):
+
 - Owns all actuation, device creation, and test execution.
 - Owns authoritative local telemetry and safety checks.
 - Hosts the REST command server for UI/CLI clients.
 
 Clients (PC tools + local Xbox):
+
 - PC tools act as REST clients for commands and logs.
 - PC tools act as host-local providers for CAN-derived diagnostics.
 - Xbox controller is a local client feeding the server loop.
 
 Contracts across the boundary:
+
 - REST command protocol: session + command lifecycle endpoints for UI/CLI.
 - REST transport details and migration planning: `docs/FEATURE_SPEC_BRINGUP_PORT_FROM_REST_COMMAND_CHANNEL_POC.md`.
 - JSON config: `bringup_system.json` is the shared input (profiles + devices table + diagram + tests under bridgeConfig).
 - `bringup_system.json` is the system config file. Multiple config files may exist on disk, but the system loads one system config file at a time.
 
 ## Config Structure Model
+
 Purpose: make the shared inventory versus per-profile subset model explicit.
 
 - One system config file can contain multiple profiles.
@@ -75,6 +84,7 @@ Terminology:
 These are different states.
 
 ## Safety Rules (Client/Server)
+
 Purpose: keep networked control safe and deterministic.
 
 - The robot is the server and owns all actuation authority.
@@ -90,6 +100,7 @@ Purpose: keep networked control safe and deterministic.
 - REST is the supported robot command/log/state transport for host tools.
 
 Control flow summary:
+
 1. Operators author profiles and diagram metadata with the topology editor.
 2. Operators select a profile and tests via JSON files and controller inputs.
 3. Robot server instantiates devices and runs tests inside the 20ms loop.
@@ -99,6 +110,7 @@ Control flow summary:
 7. Xbox controller acts as a local client feeding commands into the server loop.
 
 Outputs:
+
 - Console reports with throttled, chunked printing (emitted over REST for UI/CLI and to local console).
 - Console report tables are fixed-width, right-justified, and dot-padded; values truncate to column width.
 - Robot JSON report (`bringup_report.json`).
@@ -106,10 +118,15 @@ Outputs:
 - Topology artifacts: `bringup_system.json` (profiles + diagram metadata) and optional Shuffleboard layouts.
 
 Safety invariants:
-- PC tool is read-only on CAN and must never transmit frames.
+
+- Supported PC diagnostics are read-only on CAN and must never transmit frames.
+- Experimental live replay is isolated under `tools/can_tx_poc/`, remains off by
+  default, requires explicit per-run authorization, and must never be imported by
+  the supported bridge.
 - Large console output is throttled to protect the 20ms control loop.
 
 ### Console Error/Warning Signals (TCP Console)
+
 Purpose: the robot console stream is a primary source of warnings and errors for DUTs.
 
 The roboRIO console can be consumed over the TCP console service, and the PC tool can
@@ -118,34 +135,41 @@ Use this channel to catch vendor SDK faults, watchdog warnings, and other runtim
 messages that are not on the CAN bus.
 
 Notes:
+
 - TCP console port: 1740.
 - Treat console-derived signals as supplemental to CAN and local API telemetry.
 - Console parsing should never block the 20ms loop; it belongs on the PC tool.
 
 Message format:
+
 - NetConsole TCP frames are 2-byte big-endian length-prefixed records.
 - Payloads contain binary metadata plus printable text; text is decoded as UTF-8 (errors ignored).
 - The parser splits payloads into lines and matches each line against regex rules.
 
 ## Layered Architecture (System-Wide)
+
 Purpose: describe the full-system layering model across robot code, PC tools, workflows, and operator surfaces.
 
 The project is best understood as two cooperating stacks (robot-side and PC-side) constrained by shared contracts. Across both sides, the system can be described in six layers:
 
 ### 1) Hardware and Transport Layer
+
 Purpose: define the physical devices and raw communication channels the software depends on.
 
 Includes:
+
 - Robot hardware: motors, encoders, CAN devices, power devices, gyro, roboRIO, controller input.
 - PC hardware: CANable and Windows host.
 - Raw transports: CAN bus, serial/slcan, TCP, and filesystem.
 
 Responsibilities:
+
 - Real-world I/O.
 - Physical device communication.
 - Socket, serial, and file transport.
 
 Examples:
+
 - roboRIO + Xbox controller.
 - CANable over COM/slcan.
 - REST command socket.
@@ -153,25 +177,30 @@ Examples:
 SID_COMMENT: NetworkTables is now retired for supported bringup control and diagnostics flows. Historical docs may still mention it where they describe earlier architecture phases.
 
 ### 2) Adapter and Protocol Layer
+
 Purpose: convert raw transport/vendor behavior into stable internal interfaces and parsed payloads.
 
 Robot-side examples:
+
 - Device wrappers over vendor SDKs.
 - Manufacturer grouping abstractions.
 - UI ingress parsing and protocol adaptation.
 
 PC-side examples:
+
 - CAN ID decoding.
 - TCP ACK/OUT parsing.
 - Profile/config loading.
 - Console-monitor parsing.
 
 Responsibilities:
+
 - Hide raw vendor and wire details.
 - Parse and normalize protocol payloads.
 - Present a more stable surface to domain logic.
 
 Examples:
+
 - `devices/ctre/...`, `devices/rev/...`
 - `manufacturers/...`
 - `BridgeUiIngressPolicy`
@@ -180,17 +209,20 @@ Examples:
 - `visibility_provider.py`
 
 ### 3) Domain Logic Layer
+
 Purpose: own the meaning of commands, profiles, tests, diagnostics, groups, and safety rules.
 
 This is where the product's real semantics live.
 
 Responsibilities:
+
 - Command-family behavior.
 - Profile/test/group/runtime semantics.
 - Safety rules such as stop latch, disabled gating, and ownership/lock behavior.
 - Diagnostics meaning such as visible vs missing vs stale.
 
 Robot-side examples:
+
 - `BringupCore`
 - `BridgeGroupManager`
 - `RobotLocalCommandRegistry`
@@ -204,25 +236,30 @@ Robot-side examples:
 - `BridgeUiRuntimeCommands` (legacy compatibility surface; active command semantics are moving into the unified robot-local executor)
 
 PC-side examples:
+
 - `bridge_ops.py`
 - `bridge_robot_control_facade.py`
 - profile/test validation logic
 - diagnostics normalization
 
 ### 4) Workflow and Application Service Layer
+
 Purpose: coordinate domain actions into repeatable operator workflows.
 
 This layer answers questions like:
+
 - How does a user bring up a brand new robot one component at a time?
 - How does a user edit config, validate it, sync it, deploy it, and verify behavior?
 - How does a user capture evidence after a failure?
 
 Responsibilities:
+
 - Sequence domain actions into supported workflows.
 - Reduce tool-by-tool ambiguity.
 - Make the product feel like a system of workflows, not just a set of features.
 
 Current examples are split across:
+
 - workflow docs
 - validate/sync scripts
 - CLI/UI command sequences
@@ -236,12 +273,15 @@ Current shared service examples:
 - `tools/common/diagnostics/normalize.py`
 
 Important note:
+
 - This is the layer the project still needs to strengthen the most in code. The primary example today is `docs/WORKFLOW_01_NEW_ROBOT_BRINGUP.md`.
 
 ### 5) Presentation and Operator Surface Layer
+
 Purpose: provide the user-facing surfaces for interaction, control, and visualization.
 
 Includes:
+
 - Bridge CLI.
 - Bringup Control UI.
 - Topology editor.
@@ -250,17 +290,21 @@ Includes:
 - Dashboards.
 
 Responsibilities:
+
 - Collect user intent.
 - Render results.
 - Present status, diagnostics, and workflow guidance.
 
 Rule:
+
 - Presentation surfaces should stay as thin as possible. They should ask for outcomes, not re-own business semantics.
 
 ### 6) Contract and Specification Layer
+
 Purpose: define the stable contracts that constrain both implementations and operator expectations.
 
 Includes:
+
 - REST command protocol.
 - Host diagnostics and runtime-state contracts.
 - Config/profile schema.
@@ -268,11 +312,13 @@ Includes:
 - Architecture, workflow, and readiness specs.
 
 Responsibilities:
+
 - Keep Java, Python, tests, and docs aligned.
 - Define what is stable and shared.
 - Provide the source of truth for cross-language/cross-process behavior.
 
 Examples:
+
 - `docs/TCP_UI_PROTOCOL.md`
 - `docs/NT_CONTRACT.md`
 - `docs/COMMAND_HANDLER_ARCHITECTURE.md`
@@ -280,9 +326,11 @@ Examples:
 - `docs/RELEASE_1_0_READINESS.md`
 
 ## Layered Design (Robot Server)
+
 Purpose: the robot server architecture uses internal layers with clear responsibilities.
 
 ### 1) Device-Specific Layer (lowest)
+
 Purpose: vendor SDK calls and device-specific behavior are isolated in this layer.
 
 - Each device type has a wrapper that only talks to vendor APIs.
@@ -290,10 +338,12 @@ Purpose: vendor SDK calls and device-specific behavior are isolated in this laye
 - No report formatting or NetworkTables work occurs here.
 
 Examples:
+
 - REV: `RevSparkMaxNeoDevice`, `RevSparkMaxNeo550Device`, `RevFlexVortexDevice`
 - CTRE: `CtreTalonFxDevice`, `CtreCANCoderDevice`, `CtreCANdleDevice`
 
 ### 2) Manufacturer Layer (middle)
+
 Purpose: vendor grouping centralizes shared logic across device types.
 
 - Owns lists of device wrappers for the vendor.
@@ -302,13 +352,16 @@ Purpose: vendor grouping centralizes shared logic across device types.
 - All manufacturer groups implement `ManufacturerGroup`.
 
 Examples:
+
 - `RevDeviceGroup`
 - `CtreDeviceGroup`
 
 ### Adding a Manufacturer
+
 Purpose: document the single edit point and the required implementation pattern.
 
 Steps:
+
 1. Implement a new `ManufacturerGroup` in `src/main/java/frc/robot/manufacturers/` (or vendor package).
 2. Register it in `src/main/java/frc/robot/manufacturers/ManufacturerRegistry.java`.
 3. Use standard `DeviceRegistration` + `DeviceTypeBucket` APIs inside the group.
@@ -319,6 +372,7 @@ new ManufacturerFactory("ACME", AcmeDeviceGroup::new)
 ```
 
 ### 3) Bringup Core + Test Orchestration (top)
+
 Purpose: input actions, testing, and reporting are orchestrated without vendor coupling.
 
 - `BringupCore` handles add/add-all, test selection/run-all, and local prints.
@@ -330,6 +384,7 @@ Purpose: input actions, testing, and reporting are orchestrated without vendor c
 - `BringupCommandRouter` remains legacy compatibility scaffolding and should not be treated as the primary extension path for new robot-local commands.
 
 ## Input + Bindings (Local Client)
+
 Purpose: controller bindings remain data-driven and stable for the local Xbox client.
 
 - `bringup_bindings.json` defines controllers (type/port/role) plus command bindings/axes.
@@ -338,6 +393,7 @@ Purpose: controller bindings remain data-driven and stable for the local Xbox cl
 - `RobotV2` submits newly active controller commands into the shared robot-local executor.
 
 ## Configuration Layer
+
 Purpose: JSON inputs define behavior and runtime configuration.
 
 - `bringup_system.json`: unified system config (profiles + diagram + bridgeConfig.byProfile). Active repo-owned copy lives in `src/main/deploy/`.
@@ -354,6 +410,7 @@ Important distinction:
 - a device may be instantiated without being selected or grouped
 
 ## PC Tools (clients)
+
 Purpose: PC-side tools cover CAN capture, operator surfaces, and offline analysis.
 
 - `tools/can_nt/can_nt_bridge.py` listens on CANable (SLCAN) and feeds host-owned visibility/reporting surfaces.
@@ -364,9 +421,22 @@ Purpose: PC-side tools cover CAN capture, operator surfaces, and offline analysi
 - PC tool output includes PCAP/PCAPNG capture, inventory JSON, and diffs.
 - Live Wireshark capture uses a Windows named pipe (`\\.\pipe\FRC_CAN`) via `--pcap-pipe`.
   - Details live in `tools/can_nt/README_CAN_NT.md` and the Wireshark section in `README.md`.
-- The PC tool must remain read-only on CAN (no frame transmission).
+- Supported PC diagnostics must remain read-only on CAN with no frame
+  transmission.
+
+## Experimental CAN Replay PoC
+
+Purpose: Isolate live transmission experiments from supported diagnostics.
+
+- `tools/can_tx_poc/` is the sole host-side transmission exception.
+- The PoC requires `--tx-allow` for each invocation and is disabled otherwise.
+- It opens its own explicitly selected CAN channel and does not share the bridge
+  runtime, parser, source configuration, or session state.
+- It is restricted to isolated lab buses and is not a supported bringup,
+  diagnostics, capture, or reverse-engineering workflow.
 
 ## PC Operator Surfaces
+
 Purpose: describe the operator-facing surfaces beyond the core CAN bridge.
 
 - Bringup Control UI (TCP): issues commands, displays log output, and can poll runtime state.
@@ -377,6 +447,7 @@ Purpose: describe the operator-facing surfaces beyond the core CAN bridge.
 - Live topology view: read-only diagram view with runtime overlays driven by robot state.
 
 ## Topology Tooling
+
 Purpose: document the profile authoring and diagram pipeline.
 
 - Topology editor (`tools/can_topology/`) edits profiles, tags, and diagram layout.
@@ -385,9 +456,11 @@ Purpose: document the profile authoring and diagram pipeline.
 - Live topology view reads the same profile JSON for overlays.
 
 ## Data Flow
+
 Purpose: data moves through defined stages from inputs to reports and operator surfaces.
 
 ### H) Initialization Flow (Robot)
+
 Purpose: document the one-time startup sequence and core object construction.
 
 1. `Main` calls `RobotBase.startRobot(RobotV2::new)` to launch the active harness.
@@ -403,6 +476,7 @@ Purpose: document the one-time startup sequence and core object construction.
    - Initializes selectable tests and test device lists.
 
 ### A) Startup + Configuration Load
+
 Purpose: profiles, bindings, and tests load in a predictable order.
 
 1. Robot starts (`Robot` or `RobotV2`) and applies the active CAN profile:
@@ -416,6 +490,7 @@ Purpose: profiles, bindings, and tests load in a predictable order.
    - `bringup_bindings.json` defines controller roles, bindings, and axes.
 
 ### B) Input -> Action -> Device Command
+
 Purpose: controller inputs translate into bringup actions each loop.
 
 1. Each loop, `BindingsManager` samples controller inputs.
@@ -428,6 +503,7 @@ Purpose: controller inputs translate into bringup actions each loop.
 5. `BringupCore` and related runtime services perform the actual add/report/test/profile work behind that host interface.
 
 ### C) Local Device Telemetry (Robot-only)
+
 Purpose: device health and snapshots are produced from vendor APIs and enrichments.
 
 1. Device wrappers read vendor APIs into `DeviceSnapshot` objects.
@@ -437,6 +513,7 @@ Purpose: device health and snapshots are produced from vendor APIs and enrichmen
 3. `BringupCore` formats and prints local summaries and JSON.
 
 ### D) Test Execution Loop
+
 Purpose: tests run in a loop and terminate on explicit conditions.
 
 1. Composite or joystick tests start from `BringupTestRegistry` configs.
@@ -446,15 +523,18 @@ Purpose: tests run in a loop and terminate on explicit conditions.
 3. When a condition triggers, the test stops motors and records PASS/FAIL.
 
 ### E) PC Tool Capture + Host Visibility Feed
+
 Purpose: CAN bus traffic becomes diagnostics through host-side classification and shared snapshots.
 
 1. `tools/can_nt/can_nt_bridge.py` reads frames from CANable (SLCAN).
 2. It writes optional PCAP/PCAPNG, and builds inventory statistics.
 3. It updates host-owned visibility and summary models:
    - Device presence, age, counts, and host capture health.
-4. The PC tool never transmits CAN frames (passive only).
+4. The supported PC tool never transmits CAN frames. The isolated experimental
+   replay PoC is outside this flow.
 
 ### F) Host Consumption of PC Diagnostics
+
 Purpose: host visibility consumes PC tool data safely and fails soft when absent.
 
 1. Host-owned visibility surfaces read shared in-process visibility and console snapshots.
@@ -462,6 +542,7 @@ Purpose: host visibility consumes PC tool data safely and fails soft when absent
 3. The system fails soft if the PC tool is absent (unavailable snapshots or stale runtime state).
 
 ### G) Reports + Outputs
+
 Purpose: outputs are produced as console reports, JSON, and capture artifacts.
 
 - Console prints: local health and test status (delivered over TCP for UI/CLI and to local console).
@@ -470,6 +551,7 @@ Purpose: outputs are produced as console reports, JSON, and capture artifacts.
 - Inventory and diff JSON files (PC tool).
 
 ### I) Topology Authoring + Diagram Pipeline
+
 Purpose: profiles and diagram metadata are authored offline and consumed at runtime.
 
 1. The topology editor updates profiles, tags, and diagram layout.
@@ -477,6 +559,7 @@ Purpose: profiles and diagram metadata are authored offline and consumed at runt
 3. Robot and CAN bridge consume profiles; diagram metadata is editor/UI-only.
 
 ### J) Operator Command Channel (REST)
+
 Purpose: operator clients send commands without blocking the 20ms loop.
 
 1. UI/CLI sends REST commands to the robot bringup server.
@@ -484,6 +567,7 @@ Purpose: operator clients send commands without blocking the 20ms loop.
 3. Host-owned diagnostics and visibility stay outside the robot command channel.
 
 ## Stable Contracts
+
 Purpose: stable interfaces are identified to prevent uncoordinated changes.
 
 - JSON schema for `bringup_system.json` (including bridgeConfig tests).
@@ -492,12 +576,15 @@ Purpose: stable interfaces are identified to prevent uncoordinated changes.
 - Host-local visibility and console snapshot shapes used by the supported UI/CLI surfaces.
 
 ## Data Integrity Rules
+
 Purpose: define how runtime and offline tools enforce profile integrity.
+
 - Runtime tools (roboRIO + CAN bridge) must hard-fail on `schema_version` (4), `data_version`, or `data_hash` mismatch.
 - Offline tools (topology editor) may open mismatched files for repair after prompting the user.
 - The topology editor always recomputes `data_hash` on save.
 
 ## Examples
+
 Purpose: concrete examples anchor the JSON patterns.
 
 Composite test (rotation + time):
@@ -532,6 +619,7 @@ Through-bore via SparkMax alternate encoder:
 ```
 
 ## What Stays Stable
+
 Purpose: outputs and contracts are highlighted as stability targets.
 
 - Console output ordering and field names.
@@ -540,6 +628,7 @@ Purpose: outputs and contracts are highlighted as stability targets.
 - Profile JSON schema.
 
 ## Tradeoffs
+
 Purpose: known design costs are acknowledged explicitly.
 
 - More classes than a monolith, but isolation is stronger and safer.
@@ -547,6 +636,7 @@ Purpose: known design costs are acknowledged explicitly.
 - Data-driven tests add JSON complexity, but reduce code churn and keep behavior stable.
 
 ## Future Extensions
+
 Purpose: future extensions are identified without breaking contracts.
 
 - Add decoder table for CAN reverse engineering outputs.

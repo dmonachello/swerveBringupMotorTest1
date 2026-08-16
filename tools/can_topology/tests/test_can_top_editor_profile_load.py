@@ -689,6 +689,60 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
 
         self.assertEqual(before_payload, after_payload)
 
+    def test_roundtrip_preserves_infrastructure_keys_used_by_edges(self) -> None:
+        profile_name = "robot_2026_swerve"
+        source_path = self._regression_fixture_path(profile_name, "bringup_system.json")
+        if not source_path.exists():
+            self.skipTest(f"Missing regression fixture: {source_path}")
+        original_messagebox = can_top_editor.messagebox
+        original_config_repository = can_top_editor.ConfigRepository
+        can_top_editor.messagebox = _MessageBoxStub
+        can_top_editor.ConfigRepository = None
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_path = Path(temp_dir) / "bringup_system.json"
+                shutil.copy2(source_path, temp_path)
+                editor = self._headless_editor(profile_name)
+                editor._load_profile_from_path(
+                    str(source_path),
+                    ask_profile=False,
+                    confirm_discard=False,
+                    selected_name=profile_name,
+                )
+                expected_keys = {
+                    node.label: node.key
+                    for node in editor._nodes
+                    if editor._is_infrastructure_node(node)
+                }
+
+                editor._save_profile_to_path(
+                    temp_path,
+                    prompt_replace=False,
+                    update_source=True,
+                )
+                reloaded = self._headless_editor(profile_name)
+                reloaded._load_profile_from_path(
+                    str(temp_path),
+                    ask_profile=False,
+                    confirm_discard=False,
+                    selected_name=profile_name,
+                )
+                actual_keys = {
+                    node.label: node.key
+                    for node in reloaded._nodes
+                    if reloaded._is_infrastructure_node(node)
+                }
+                topology = reloaded._topology_snapshot()
+        finally:
+            can_top_editor.messagebox = original_messagebox
+            can_top_editor.ConfigRepository = original_config_repository
+
+        self.assertEqual(expected_keys, actual_keys)
+        node_keys = {node["key"] for node in topology["nodes"]}
+        for edge in topology["edges"]:
+            self.assertIn(edge["fromNode"], node_keys)
+            self.assertIn(edge["toNode"], node_keys)
+
     def test_save_profile_preserves_dsl_test_set_metadata(self) -> None:
         profile_name = "test_minimal_25_9"
         payload = {

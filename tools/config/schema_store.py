@@ -273,6 +273,15 @@ MESSAGE_TOPOLOGY_NODE_DEVICE_REF_REQUIRED = (
 MESSAGE_TOPOLOGY_NODE_DEVICE_UNKNOWN = (
     "Profile {profile} topology node {key}: deviceRef not found: {label}"
 )
+MESSAGE_TOPOLOGY_NODE_KEY_DUPLICATE = (
+    "Profile {profile} topology node key is duplicated: {key}"
+)
+MESSAGE_TOPOLOGY_EDGE_ENDPOINT_INVALID = (
+    "Profile {profile} topology edge {edge}: endpoints must be integer node keys."
+)
+MESSAGE_TOPOLOGY_EDGE_ENDPOINT_UNKNOWN = (
+    "Profile {profile} topology edge {edge}: references missing node endpoint."
+)
 MESSAGE_PROFILE_DEVICES_TYPE_INVALID = "Profile {profile}: Invalid type for devices"
 MESSAGE_SALVAGE_PAYLOAD_RESET = "Dropped invalid {section} payload; starting empty."
 MESSAGE_SALVAGE_DEVICE_DROPPED = "Dropped invalid device '{label}': {reason}"
@@ -2161,9 +2170,23 @@ class ConfigSchemaStore:
         nodes = topology_profile.get(KEY_TOPOLOGY_NODES)
         if not isinstance(nodes, list):
             return
+        node_keys: Set[int] = set()
         for node in nodes:
             if not isinstance(node, dict):
                 continue
+            node_key = node.get(KEY_NODE_KEY)
+            if isinstance(node_key, int):
+                if node_key in node_keys:
+                    self._append_issue(
+                        issues,
+                        LOCATION_PROFILES,
+                        MESSAGE_TOPOLOGY_NODE_KEY_DUPLICATE.format(
+                            profile=profile_name,
+                            key=node_key,
+                        ),
+                        SEVERITY_ERROR,
+                    )
+                node_keys.add(node_key)
             node_type = get_object_type(node)
             if node_type != NODE_TYPE_DEVICE:
                 continue
@@ -2189,6 +2212,37 @@ class ConfigSchemaStore:
                         profile=profile_name,
                         key=node_key,
                         label=label_text,
+                    ),
+                    SEVERITY_ERROR,
+                )
+
+        edges = topology_profile.get(KEY_TOPOLOGY_EDGES)
+        if not isinstance(edges, list):
+            return
+        for edge in edges:
+            if not isinstance(edge, dict):
+                continue
+            edge_id = edge.get(KEY_ID, "?")
+            from_node = edge.get(KEY_FROM_NODE)
+            to_node = edge.get(KEY_TO_NODE)
+            if not isinstance(from_node, int) or not isinstance(to_node, int):
+                self._append_issue(
+                    issues,
+                    LOCATION_PROFILES,
+                    MESSAGE_TOPOLOGY_EDGE_ENDPOINT_INVALID.format(
+                        profile=profile_name,
+                        edge=edge_id,
+                    ),
+                    SEVERITY_ERROR,
+                )
+                continue
+            if from_node not in node_keys or to_node not in node_keys:
+                self._append_issue(
+                    issues,
+                    LOCATION_PROFILES,
+                    MESSAGE_TOPOLOGY_EDGE_ENDPOINT_UNKNOWN.format(
+                        profile=profile_name,
+                        edge=edge_id,
                     ),
                     SEVERITY_ERROR,
                 )

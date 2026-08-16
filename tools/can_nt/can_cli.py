@@ -341,32 +341,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
-        "--tx-seq",
-        default="",
-        help="Replay CAN frames from a captured sequence file.",
-    )
-    parser.add_argument(
-        "--tx-allow",
-        action="store_true",
-        help="Allow --tx-seq transmission (safety interlock).",
-    )
-    parser.add_argument(
-        "--tx-scale",
-        type=float,
-        default=1.0,
-        help="Scale the TX timing (1.0 = realtime).",
-    )
-    parser.add_argument(
-        "--tx-loop",
-        action="store_true",
-        help="Loop the TX sequence until stopped.",
-    )
-    parser.add_argument(
-        "--tx-verbose",
-        action="store_true",
-        help="Print TX progress (first few frames and every 100 frames).",
-    )
-    parser.add_argument(
         "--print-status",
         action="store_true",
         help="Print status frames as they are received.",

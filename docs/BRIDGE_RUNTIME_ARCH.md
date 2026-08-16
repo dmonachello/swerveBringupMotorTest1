@@ -19,14 +19,15 @@ Define the components that appear in runtime snapshots.
 Components are named subsystems with a coarse status string. They are distinct from OS threads.
 
 Components:
-- `cli` — The interactive CLI loop.
-- `sniffer` — The CAN sniffer loop that processes frames and publishes summaries.
-- `session` — The TCP bridge session to the robot.
-- `visibility` — Visibility tracking and matrix calculation.
-- `pcap` — PCAP/PCAPNG capture.
-- `console-monitor` — NetConsole/console ingest.
-- `sources` — Aggregate status for configured CAN sources.
-- `source:<id>` — Per-source status for each configured source.
+
+- `cli` â€” The interactive CLI loop.
+- `sniffer` â€” The CAN sniffer loop that processes frames and publishes summaries.
+- `session` â€” The TCP bridge session to the robot.
+- `visibility` â€” Visibility tracking and matrix calculation.
+- `pcap` â€” PCAP/PCAPNG capture.
+- `console-monitor` â€” NetConsole/console ingest.
+- `sources` â€” Aggregate status for configured CAN sources.
+- `source:<id>` â€” Per-source status for each configured source.
 
 **Thread Model**
 **Purpose**
@@ -35,26 +36,29 @@ Describe the threads and when they are created.
 Threads are created only when their subsystem is enabled.
 
 Threads:
-- `MainThread` — Process main thread. Runs CLI input loop or UI mainloop.
-- `sniffer` — Runs `_run_sniffer` when at least one source is enabled or console monitor is enabled.
-- `keyboard` — Windows key capture for marker/reload input. Starts only when the sniffer starts.
-- `source:<id>` — One reader thread per enabled CAN source. Reads frames and enqueues them.
-- `tcp-reader` — Reads inbound TCP ACK/OUT responses when the session connects to the robot.
-- `tx-replay` — Replays CAN frames when `--tx-seq` is enabled.
+
+- `MainThread` â€” Process main thread. Runs CLI input loop or UI mainloop.
+- `sniffer` â€” Runs `_run_sniffer` when at least one source is enabled or console monitor is enabled.
+- `keyboard` â€” Windows key capture for marker/reload input. Starts only when the sniffer starts.
+- `source:<id>` â€” One reader thread per enabled CAN source. Reads frames and enqueues them.
+- `tcp-reader` â€” Reads inbound TCP ACK/OUT responses when the session connects to the robot.
 
 **Lifecycle by Mode**
 **Purpose**
 Summarize which components and threads are expected by startup mode.
 
 `--no-can --no-nt --cli`:
+
 - Components: `cli` running, `sniffer` stopped, `session` disconnected, `pcap` disabled.
 - Threads: `MainThread` only.
 
 `--cli` with CAN sources enabled:
+
 - Components: `cli` running, `sniffer` running, `sources` enabled, `pcap` enabled or disabled per flags.
-- Threads: `MainThread`, `sniffer`, `keyboard`, `source:<id>` threads, optional `tx-replay`.
+- Threads: `MainThread`, `sniffer`, `keyboard`, and `source:<id>` threads.
 
 `--ui` (with NT available):
+
 - Components: `sniffer` running, `session` connected or disconnected, `visibility` enabled.
 - Threads: `MainThread` (UI), `sniffer`, `keyboard`, `source:<id>` threads, optional `tcp-reader`.
 
@@ -63,8 +67,9 @@ Summarize which components and threads are expected by startup mode.
 Define what `show runtime-components` reports.
 
 The command lists two sections:
-- `components` — Component names and statuses with optional detail text.
-- `threads` — OS thread names, id, daemon, and alive flags.
+
+- `components` â€” Component names and statuses with optional detail text.
+- `threads` â€” OS thread names, id, daemon, and alive flags.
 
 Example:
 ```
@@ -92,10 +97,12 @@ Clarify what the runtime state does and does not imply.
 - `tcp-reader` only appears after a successful TCP connection.
 
 **Tradeoffs**
+
 - The runtime snapshot is a coarse health view; it does not replace detailed diagnostics.
 - Thread naming favors operator clarity over internal object names.
 
 **Future Extensions**
+
 - Add per-thread CPU time and queue depth in the snapshot.
 - Add explicit component dependency graphs.
 - Add optional automatic self-tests for runtime subsystems.

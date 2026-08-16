@@ -54,7 +54,6 @@ try:
         print_summary,
     )
     from tools.can_nt.can_state import SnifferState
-    from tools.can_nt.can_tx import start_tx_if_requested
     from tools.can_nt.visibility_provider import VisibilityProvider, SourceInfo
     from tools.passive_discovery_poc.readers import build_normalized_frame
     from tools.can_nt.visibility_constants import (
@@ -142,7 +141,6 @@ except ModuleNotFoundError:
         print_summary,
     )
     from tools.can_nt.can_state import SnifferState
-    from tools.can_nt.can_tx import start_tx_if_requested
     from tools.can_nt.visibility_provider import VisibilityProvider, SourceInfo
     from tools.passive_discovery_poc.readers import build_normalized_frame
     from tools.can_nt.visibility_constants import (
@@ -759,10 +757,6 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     if args.diff_inventory:
         print_inventory_diff(args.diff_inventory[0], args.diff_inventory[1], args.diff_top)
         return 0
-    if args.tx_seq and not args.tx_allow:
-        print("ERROR: --tx-seq requires --tx-allow for safety.")
-        return 2
-
     bus = None
     can = None
     source_runtimes: List[SourceRuntime] = []
@@ -970,8 +964,6 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     reload_queue: queue.Queue[Tuple[str, float]] = queue.Queue()
     key_thread = None
     key_stop = threading.Event()
-    tx_stop = threading.Event()
-    tx_thread = None
 
     def _print_marker_banner() -> None:
         print("Marker keys: [1]=0.25 [2]=0.50 [3]=0.75 [4]=1.00 [0]=stop [m]=mark [q]=quit [h]=help")
@@ -1182,17 +1174,11 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         key_thread.start()
         if args.enable_markers and args.pcap:
             _print_marker_banner()
-        if args.tx_seq:
-            print("TX control: press [space] to stop transmission.")
 
     start = time.time()
     last_publish = 0.0
     last_summary = 0.0
     startup_summary_done = False
-    tx_thread = None
-    if bus is not None and can is not None:
-        tx_thread = start_tx_if_requested(args, bus, can, tx_stop)
-
     def _resolve_device_label(
         key: Tuple[int, int, int],
         *,
@@ -1414,7 +1400,6 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                     key_queue=key_queue,
                     marker_keys=marker_keys,
                     pcap=pcap,
-                    tx_stop=tx_stop,
                     state=state,
                     print_banner=_print_marker_banner,
                 ) or stop_requested
@@ -1560,7 +1545,6 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 print(f"WARNING: Failed to print summary on exit: {exc}")
 
             key_stop.set()
-            tx_stop.set()
             if pcap_enabled:
                 try:
                     pcap.stop()

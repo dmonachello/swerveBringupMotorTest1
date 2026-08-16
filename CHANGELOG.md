@@ -2,6 +2,25 @@
 
 All notable user-facing changes are documented in this file.
 
+## 2026-08-16
+
+### Added - 2026-08-16
+
+- Isolated experimental live CAN frame replay under `tools/can_tx_poc/` with a
+  mandatory per-invocation `--tx-allow` safety interlock. The supported CAN
+  bridge no longer exposes, imports, or controls transmission behavior.
+- Added a release stabilization review that records the current architecture,
+  prioritized release blockers, verification evidence, and the minimum path to
+  a release candidate.
+
+### Fixed - 2026-08-16
+
+- Fixed topology-editor save/reload behavior so infrastructure node keys remain
+  stable and existing topology edges do not become dangling references.
+- Repaired the canonical `test_minimal_25_9` analyzer node key and strengthened
+  shared configuration validation to reject duplicate topology keys and missing
+  edge endpoints.
+
 ## 2026-07-08
 
 ### Added - 2026-07-08

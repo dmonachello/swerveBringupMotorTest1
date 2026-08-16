@@ -5679,7 +5679,7 @@ class TopologyEditor(tk.Tk):
                 reserved_keys.add(key)
 
         next_key = max([node.key for node in self._nodes], default=0) + 1
-        for node in self._device_nodes():
+        for node in self._profile_device_nodes():
             label_key = str(node.label or TEXT_EMPTY).strip().lower()
             if not label_key or label_key in matched_device_labels:
                 continue
