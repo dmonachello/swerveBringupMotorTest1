@@ -39,7 +39,7 @@ Provide a quick lookup table for which surface exposes which feature and what th
 | Print state report | Yes | Partial | Yes | No | No | Yes | No | No | UI button plus CLI/status path |
 | Print health report | Yes | No | Yes | No | No | Yes | No | No | local vendor API health |
 | Print CAN bus report | Yes | No | Yes | No | No | Yes | No | No | robot-local CAN view |
-| Print NT diagnostics | Yes | No | Yes | No | Yes | Partial | Yes | No | depends on CAN tool publishing |
+| Print runtime/session diagnostics | Yes | Yes | Yes | No | No | Yes | No | No | REST/runtime-state and robot-local diagnostics |
 | Print inputs report | Yes | No | Yes | No | No | Yes | No | No | controller state and bindings |
 | Print bindings report | Yes | Yes | Yes | No | No | Partial | No | No | local/robot binding visibility |
 | Print CANcoder report | Yes | No | Yes | No | No | Yes | No | No | encoder report surface |
@@ -57,7 +57,7 @@ Provide a quick lookup table for which surface exposes which feature and what th
 | Sync deploy config | No | Partial | No | Partial | No | No | No | Yes | `validate_sync` and editor save flows |
 | Config push to robot | No | Yes | Yes | No | No | Yes | No | No | in-memory robot apply over TCP |
 | Passive CAN sniffing | No | No | No | No | Yes | No | Yes | No | read-only only |
-| Publish NT diagnostics | Partial | No | Partial | No | Yes | Partial | Yes | No | consumed by robot/UI |
+| Publish REST/runtime diagnostics | Yes | Yes | Yes | No | No | Yes | No | No | supported host/robot diagnostic contract |
 | PCAP capture | No | No | No | No | Yes | No | Yes | No | Wireshark-friendly capture |
 | API inventory / diff | No | No | No | No | Yes | No | Yes | No | reverse-engineering support |
 | Validate profiles | No | Partial | No | Partial | No | No | No | No | script plus save-time editor validation |
@@ -97,7 +97,7 @@ Prefer:
 Prefer:
 
 - passive CAN tool
-- NT diagnostics
+- REST/runtime diagnostics
 - visibility view
 
 ## Maintenance Rule

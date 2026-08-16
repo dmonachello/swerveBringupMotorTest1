@@ -2,6 +2,6 @@
 setlocal
 
 cd /d "%~dp0"
-python -m tools.can_nt.can_nt_bridge --ui --no-can --rio 172.22.11.2
+call tools\can_nt\run_can_nt.cmd --ui --no-can %*
 
 endlocal

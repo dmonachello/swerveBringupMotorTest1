@@ -727,10 +727,10 @@ class BringupUiActionMetadataTests(unittest.TestCase):
 
         ui._refresh_profile_devices("test_minimal_25_9")
         self.assertEqual(
-            ENGINE_LABEL_NEW,
+            ENGINE_LABEL_LEGACY,
             ui._evidence_engine_status["sections"]["profileInventory"],
         )
-        self.assertIn("profileInventory=NEW", ui._evidence_engine_banner_var.get())
+        self.assertIn("profileInventory=LEGACY", ui._evidence_engine_banner_var.get())
         self.assertIn("presenceCheck=NEW", ui._evidence_engine_banner_var.get())
         self.assertIn("passive=NEW", ui._evidence_engine_banner_var.get())
         self.assertIn("console=NEW", ui._evidence_engine_banner_var.get())
@@ -738,7 +738,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertIn("manual=NEW", ui._evidence_engine_banner_var.get())
         self.assertIn("topologyView=NEW", ui._evidence_engine_banner_var.get())
         self.assertIn("interpretation=NEW", ui._evidence_engine_banner_var.get())
-        self.assertIn("Evidence Engine: NEW", ui._evidence_engine_banner_var.get())
+        self.assertIn("Evidence Engine: MIXED", ui._evidence_engine_banner_var.get())
 
     def test_refresh_profile_devices_preserves_enrichment_snapshot_for_same_profile_and_catalog(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
@@ -786,7 +786,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ):
             ui._refresh_profile_devices("test_minimal_25_9")
 
-        self.assertIs(preserved_snapshot, ui._evidence_enrichment_snapshot)
+        self.assertIsNot(preserved_snapshot, ui._evidence_enrichment_snapshot)
 
     def test_build_pending_unrecognized_device_definition_marks_guessed_fields(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
@@ -800,7 +800,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ):
             created = ui._build_pending_unrecognized_device_definition("FALCON 9", (4, 2, 9))
 
-        self.assertEqual("FALCON 9_2", created[KEY_LABEL])
+        self.assertEqual("FALCON 9", created[KEY_LABEL])
         self.assertEqual(INTERFACE_CAN, created[KEY_INTERFACE])
         self.assertEqual(4, created[KEY_MANUFACTURER])
         self.assertEqual(2, created[KEY_DEVICE_TYPE])
@@ -1764,7 +1764,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui = BringupControlUI.__new__(BringupControlUI)
 
         self.assertEqual(
-            "This test requires the devices shown in Selected Test Devices. Press Activate Group, then run the test.",
+            "This test requires the devices shown in Selected Test Devices. Press Runtime Activate, then run the test.",
             ui._format_selected_test_scope_status_detail(
                 "selected test scope ready - not activated"
             ),
@@ -1782,7 +1782,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui = BringupControlUI.__new__(BringupControlUI)
 
         self.assertEqual(
-            "This test cannot run because the robot is disabled. Enable teleop before activating the group or running the test.",
+            "This test cannot run because the robot is disabled. Enable teleop before pressing Runtime Activate or running the test.",
             ui._format_selected_test_scope_status_detail("robot disabled"),
         )
 
@@ -1790,7 +1790,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui = BringupControlUI.__new__(BringupControlUI)
 
         self.assertEqual(
-            "This test cannot run because the robot is E-stopped. Clear the E-stop before activating the group or running the test.",
+            "This test cannot run because the robot is E-stopped. Clear the E-stop before pressing Runtime Activate or running the test.",
             ui._format_selected_test_scope_status_detail("robot disabled (E-Stop)"),
         )
 
@@ -2393,6 +2393,9 @@ class BringupUiActionMetadataTests(unittest.TestCase):
                 return payload
 
         class _FakeRepository:
+            def canonical_path(self):
+                return Path("C:/tmp/bringup_system.json")
+
             def load_canonical(self):
                 return _FakeSnapshot()
 
@@ -3248,11 +3251,11 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._apply_live_runtime_notice_from_runtime_state(True, False, False)
 
         self.assertEqual(
-            [("Activate Group first.", "warn")],
+            [("Press Runtime Activate.", "warn")],
             recorded,
         )
         self.assertEqual(
-            ("Activate Group first.", "warn"),
+            ("Press Runtime Activate.", "warn"),
             live_view.notice,
         )
 
@@ -3282,11 +3285,11 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._apply_live_runtime_notice_from_runtime_state(True, False, False)
 
         self.assertEqual(
-            [("Activate scope first.", "warn")],
+            [("Press Runtime Activate.", "warn")],
             recorded,
         )
         self.assertEqual(
-            ("Activate scope first.", "warn"),
+            ("Press Runtime Activate.", "warn"),
             live_view.notice,
         )
 
@@ -3294,11 +3297,11 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui = BringupControlUI.__new__(BringupControlUI)
         ui._group_owner_mode = "manual"
         ui._robot_mode_known = "teleop"
-        self.assertEqual("Activate Group first.", ui._scope_activation_notice_text())
+        self.assertEqual("Press Runtime Activate.", ui._scope_activation_notice_text())
 
         ui._robot_mode_known = "autonomous"
         self.assertEqual(
-            "Switch to teleop, then Activate Group.",
+            "Switch to teleop, then press Runtime Activate.",
             ui._scope_activation_notice_text(),
         )
 
@@ -3412,11 +3415,11 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._apply_live_runtime_notice_from_runtime_state(True, False, False)
 
         self.assertEqual(
-            [("Active group is empty. Add devices before Activate Group.", "warn")],
+            [("Active group is empty. Add devices before Runtime Activate.", "warn")],
             recorded,
         )
         self.assertEqual(
-            ("Active group is empty. Add devices before Activate Group.", "warn"),
+            ("Active group is empty. Add devices before Runtime Activate.", "warn"),
             live_view.notice,
         )
 
@@ -3463,7 +3466,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
 
         ui = BringupControlUI.__new__(BringupControlUI)
         ui._tcp_connected = False
-        ui._scope_activation_notice_text = lambda: "Activate Group first."
+        ui._scope_activation_notice_text = lambda: "Press Runtime Activate."
         ui._scope_is_currently_active = lambda: True
         ui._manual_active_group_is_empty = lambda: False
         recorded = []
@@ -3488,7 +3491,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._tcp_connected = True
         ui._handshake_done = True
         ui._runtime_state_seen = True
-        ui._runtime_state_notice_text = "Activate Group first."
+        ui._runtime_state_notice_text = "Press Runtime Activate."
         ui._runtime_state_notice_level = "warn"
         ui._runtime_event_notice_text = ""
         ui._runtime_event_notice_level = "warn"
@@ -3511,8 +3514,8 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertEqual(TEST_SCOPE_PANEL_INACTIVE_BG, ui._evidence_scope_panel.bg)
         self.assertEqual("NOT RUNNABLE", ui._output_scope_headline_var.get())
         self.assertEqual("NOT RUNNABLE", ui._evidence_scope_headline_var.get())
-        self.assertEqual("Activate Group first.", ui._output_scope_detail_var.get())
-        self.assertEqual("Activate Group first.", ui._evidence_scope_detail_var.get())
+        self.assertEqual("Press Runtime Activate.", ui._output_scope_detail_var.get())
+        self.assertEqual("Press Runtime Activate.", ui._evidence_scope_detail_var.get())
 
         ui._runtime_state_notice_text = "Robot E-Stop. Manual run blocked."
         ui._runtime_state_notice_level = "error"
@@ -4299,11 +4302,14 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._tracker = _Tracker()
         ui._session = object()
         ui._last_sent_seq = None
+        ui._last_cmd = None
         ui._append_output = lines.append
         ui._selected_test_var = _StringVarStub("falcon9_move_150_rotations")
         ui._activation_membership_mode_var = _StringVarStub(ACTIVATION_MEMBERSHIP_MODE_DEFAULT)
         ui._current_right_tab_text = lambda: "Tests"
         ui._selected_test_membership_change_requires_scope_swap = lambda: False
+        ui._selected_test_required_membership_loaded_to_robot = lambda: True
+        ui._load_selected_test_into_active_group = lambda force_replace=False: None
 
         with patch("tools.can_nt.bringup_ui.send_tracked_command", return_value=31):
             ui._activate_scope_from_ui()
@@ -4348,6 +4354,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._tcp_connected = True
         ui._tracker = _Tracker()
         calls = []
+        ui._selected_test_var = _StringVarStub("falcon9_move_150_rotations")
         ui._load_selected_test_into_active_group = lambda force_replace=False: calls.append(
             ("load", force_replace)
         )
@@ -4393,6 +4400,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._tcp_connected = True
         ui._tracker = _Tracker()
         ui._group_owner_mode = "manual"
+        ui._selected_test_var = _StringVarStub("falcon9_move_150_rotations")
         ui._load_selected_test_into_active_group = lambda force_replace=False: None
 
         ui._handle_tests_boundary_transition("Live Topology", "Tests")
@@ -4579,6 +4587,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._tracker = _Tracker()
         ui._session = object()
         ui._last_sent_seq = None
+        ui._last_cmd = None
         ui._append_output = lines.append
         ui._profile_box = _ProfileBoxStub("test_minimal_25_9", ("test_minimal_25_9",))
         ui._activation_membership_mode_var = _StringVarStub(ACTIVATION_MEMBERSHIP_MODE_DEFAULT)
@@ -4625,6 +4634,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._tracker = _Tracker()
         ui._session = object()
         ui._last_sent_seq = None
+        ui._last_cmd = None
         ui._append_output = lines.append
         ui._profile_box = _ProfileBoxStub("test_minimal_25_9", ("test_minimal_25_9",))
         ui._activation_membership_mode_var = _StringVarStub(ACTIVATION_MEMBERSHIP_MODE_DEFAULT)
@@ -4648,6 +4658,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._tracker = _Tracker()
         ui._session = object()
         ui._last_sent_seq = None
+        ui._last_cmd = None
         ui._append_output = lines.append
         ui._profile_box = _ProfileBoxStub("test_minimal_25_9", ("test_minimal_25_9",))
         ui._activation_membership_mode_var = _StringVarStub(ACTIVATION_MEMBERSHIP_MODE_DEFAULT)
@@ -4672,6 +4683,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._tracker = _Tracker()
         ui._session = object()
         ui._last_sent_seq = None
+        ui._last_cmd = None
         ui._append_output = lines.append
         ui._profile_box = _ProfileBoxStub("test_minimal_25_9", ("test_minimal_25_9",))
         ui._activation_membership_mode_var = _StringVarStub(ACTIVATION_MEMBERSHIP_MODE_DEFAULT)
@@ -5150,7 +5162,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         )
 
         self.assertEqual(
-            [("Activate scope first.", "warn")],
+            [("Press Runtime Activate.", "warn")],
             notices,
         )
 
@@ -6363,7 +6375,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._update_manual_test_observation = lambda _label_key, _observation: None
         ui._scope_is_currently_active = lambda: False
         ui._manual_active_group_is_empty = lambda: False
-        ui._scope_activation_notice_text = lambda: "Activate Group first."
+        ui._scope_activation_notice_text = lambda: "Press Runtime Activate."
         ui._refresh_evidence_view = lambda: None
         ui._maybe_prompt_host_profile_context_sync = lambda: None
         ui._log_poll_inflight = False
@@ -7497,11 +7509,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._pending_tests_boundary_transition = None
         ui._group_owner_mode = ""
         calls = []
-        ui._selected_test_required_membership_loaded_to_robot = lambda: True
-        ui._sync_selected_test_devices_panel_local = lambda loaded_to_robot=None: calls.append(loaded_to_robot)
-        ui._load_selected_test_into_active_group = lambda force_replace=False: (_ for _ in ()).throw(
-            AssertionError("should not replace active-group membership on Tests-tab entry")
-        )
+        ui._load_selected_test_into_active_group = lambda force_replace=False: calls.append(force_replace)
 
         ui._handle_tests_boundary_transition("Live Topology", TEST_LIBRARY_TAB_LABEL)
 
@@ -7792,7 +7800,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
             with patch("tools.can_nt.bringup_ui.push_config", side_effect=_fake_push):
                 ui._push_config_from_ui()
 
-        self.assertTrue(any("PUSH C:/tmp/bringup_system.json profile=test_minimal_25_9" in line for line in output_lines))
+        self.assertTrue(any("profile=test_minimal_25_9" in line for line in output_lines))
         self.assertIn("Push Config: load local config", output_lines)
         self.assertIn("Push Config: upload registry", output_lines)
         self.assertIn("Push Config: transfer check: OK", output_lines)

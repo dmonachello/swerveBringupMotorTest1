@@ -186,7 +186,7 @@ def _save_build_state(workspace_revision: int, code_revision: str) -> None:
     STATE_PATH.write_text(json.dumps(payload, indent=2) + NEWLINE, encoding=ENCODING_UTF8)
 
 
-def _compute_workspace_revision(code_revision: str) -> str:
+def _compute_workspace_revision(code_revision: str, persist: bool) -> str:
     """
     NAME
         _compute_workspace_revision - Return monotonic local workspace revision.
@@ -201,7 +201,8 @@ def _compute_workspace_revision(code_revision: str) -> str:
     if stored_code_revision == code_revision and stored_workspace >= VALUE_ONE:
         return str(stored_workspace)
     next_workspace = stored_workspace + VALUE_ONE if stored_workspace >= VALUE_ONE else VALUE_ONE
-    _save_build_state(next_workspace, code_revision)
+    if persist:
+        _save_build_state(next_workspace, code_revision)
     return str(next_workspace)
 
 
@@ -243,7 +244,7 @@ def _compute_code_revision() -> str:
     return digest.hexdigest()[:CODE_HASH_LENGTH]
 
 
-def _load_git_info() -> Dict[str, str]:
+def _load_git_info(persist_workspace_state: bool) -> Dict[str, str]:
     """
     NAME
         _load_git_info - Gather git-derived build metadata.
@@ -255,7 +256,7 @@ def _load_git_info() -> Dict[str, str]:
     timestamp = _git_value([ARG_LOG, ARG_LOG_LAST, ARG_FORMAT])
     dirty = _detect_dirty()
     code_revision = _compute_code_revision()
-    workspace_revision = _compute_workspace_revision(code_revision)
+    workspace_revision = _compute_workspace_revision(code_revision, persist_workspace_state)
     if not describe:
         describe = sha or VALUE_UNKNOWN
     return {
@@ -352,7 +353,7 @@ def main(argv: Iterable[str] | None = None) -> int:
     """
     args = list(argv) if argv is not None else []
     dry_run = FLAG_DRY_RUN in args
-    info = _load_git_info()
+    info = _load_git_info(persist_workspace_state=not dry_run)
     if info[FIELD_SHA] == VALUE_UNKNOWN and info[FIELD_DESCRIBE] == VALUE_UNKNOWN:
         return _print_error(MSG_ERR_GIT_UNAVAILABLE)
     _print_info(info, dry_run)

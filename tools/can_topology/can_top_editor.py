@@ -143,6 +143,10 @@ ERR_NO_SOURCE_CONFIG_TEXT = "Open a config first or use Save Config As..."
 TITLE_SAVE_BRINGUP_CONFIG = "Save Bringup Config"
 MSG_SAVED_CONFIG_FMT = "Updated {path} with profile '{profile}'."
 MSG_SAVED_DEPLOY_FMT = "Updated deploy config from profile '{profile}'."
+MSG_SAVE_DEGRADED_TITLE = "Saved With Warnings"
+MSG_SAVE_DEGRADED_FMT = "{message}\n\nWarnings:\n{warnings}"
+MSG_BACKUP_FAILED_FMT = "Backup failed for {path}: {error}"
+MSG_DEPLOY_SYNC_FAILED_FMT = "Deploy sync failed for {path}: {error}"
 NEIGHBOR_STATUS_NOT_POPULATED = "Neighbors: not populated"
 NEIGHBOR_STATUS_CURRENT = "Neighbors: current"
 NEIGHBOR_STATUS_STALE = "Neighbors: stale"
@@ -2063,19 +2067,20 @@ class TopologyEditor(tk.Tk):
             return
         self._load_profile_from_path(path, ask_profile=True, confirm_discard=True)
 
-    def _backup_profiles_file(self, path: Path) -> None:
+    def _backup_profiles_file(self, path: Path) -> Optional[str]:
         """
         NAME
             _backup_profiles_file - Write a timestamped backup copy.
         """
         if not path.exists():
-            return
+            return None
         stamp = timestamp_version()
         backup = path.with_name(f"{path.stem}.bak_{stamp}{path.suffix}")
         try:
             backup.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
-        except Exception:
-            return
+        except Exception as exc:
+            return MSG_BACKUP_FAILED_FMT.format(path=path, error=exc)
+        return None
 
     def _load_profiles_payload(self, path: Path) -> Optional[Dict[str, object]]:
         """
@@ -2914,9 +2919,19 @@ class TopologyEditor(tk.Tk):
             return ConfigRepository().deploy_path()
         return Path(__file__).resolve().parents[2] / "src" / "main" / "deploy" / "bringup_system.json"
 
+    def _active_profiles_path(self) -> Path:
+        """
+        NAME
+            _active_profiles_path - Return the current config source for profile browsing and load actions.
+        """
+        source_path = self.__dict__.get("_profile_source_path")
+        if isinstance(source_path, str) and source_path.strip():
+            return Path(source_path)
+        return self._default_profiles_path()
+
     def _read_profile_index(self) -> Tuple[List[str], Optional[str]]:
         try:
-            path = self._default_profiles_path()
+            path = self._active_profiles_path()
             if not path.exists():
                 return [], None
             data = self._load_config_payload(path)
@@ -2974,7 +2989,7 @@ class TopologyEditor(tk.Tk):
         if not name:
             messagebox.showerror("Invalid", "Select a profile first.")
             return
-        path = self._default_profiles_path()
+        path = self._active_profiles_path()
         if not path.exists():
             messagebox.showerror("Missing", f"No profiles file found at {path}.")
             return
@@ -3275,11 +3290,19 @@ class TopologyEditor(tk.Tk):
         """
         canonical = self._canonical_profiles_path()
         deploy = self._deploy_profiles_path()
-        self._save_profile_to_path(canonical, prompt_replace=True, update_source=True)
-        self._sync_profiles_to_deploy(canonical, deploy)
+        if self._save_profile_to_path(canonical, prompt_replace=True, update_source=True):
+            sync_warning = self._sync_profiles_to_deploy(canonical, deploy)
+            if sync_warning:
+                messagebox.showwarning(
+                    MSG_SAVE_DEGRADED_TITLE,
+                    MSG_SAVE_DEGRADED_FMT.format(
+                        message=MSG_SAVED_DEPLOY_FMT.format(profile=self._profile_name),
+                        warnings=sync_warning,
+                    ),
+                )
 
     @staticmethod
-    def _sync_profiles_to_deploy(source: Path, deploy: Path) -> None:
+    def _sync_profiles_to_deploy(source: Path, deploy: Path) -> Optional[str]:
         """
         NAME
             _sync_profiles_to_deploy - Copy canonical profiles into deploy path.
@@ -3293,9 +3316,9 @@ class TopologyEditor(tk.Tk):
             else:
                 deploy.parent.mkdir(parents=True, exist_ok=True)
                 deploy.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
-        except Exception:
-            # Best-effort sync; report via UI only if needed.
-            pass
+        except Exception as exc:
+            return MSG_DEPLOY_SYNC_FAILED_FMT.format(path=deploy, error=exc)
+        return None
 
     def _save_profile_to_path(
         self,
@@ -3303,7 +3326,7 @@ class TopologyEditor(tk.Tk):
         prompt_replace: bool,
         update_source: bool,
         seed_path: Optional[Path] = None,
-    ) -> None:
+    ) -> bool:
         """
         NAME
             _save_profile_to_path - Write profile+diagram data into a JSON file.
@@ -3317,32 +3340,36 @@ class TopologyEditor(tk.Tk):
         profile_name = self.entry_profile.get().strip()
         if not profile_name:
             messagebox.showerror("Invalid", "Profile name is required.")
-            return
+            return False
         validation_error = self._validate_nodes()
         if validation_error:
             messagebox.showerror("Invalid", validation_error)
-            return
+            return False
         if not self._confirm_can_id_collisions():
-            return
+            return False
         if not self._confirm_terminators():
-            return
+            return False
         if not self._confirm_dio_warnings():
-            return
+            return False
         if not self._confirm_neighbors_current_for_save():
-            return
+            return False
+        save_warnings: List[str] = []
+        backup_warning = self._backup_profiles_file(path)
+        if backup_warning:
+            save_warnings.append(backup_warning)
         data = {}
         if path.exists():
             try:
                 data = self._load_config_payload(path)
             except Exception as exc:
                 messagebox.showerror("Error", f"Failed to read {path}: {exc}")
-                return
+                return False
         elif isinstance(seed_path, Path) and seed_path.exists():
             try:
                 data = self._load_config_payload(seed_path)
             except Exception as exc:
                 messagebox.showerror("Error", f"Failed to read {seed_path}: {exc}")
-                return
+                return False
         if not isinstance(data, dict):
             data = {}
         if data.get("schema_version") != self._expected_schema_version():
@@ -3357,7 +3384,7 @@ class TopologyEditor(tk.Tk):
                 f"Profile '{profile_name}' exists. Replace it?",
             )
             if not replace:
-                return
+                return False
 
         if self._pending_global_device_deletions:
             pending = {
@@ -3418,7 +3445,7 @@ class TopologyEditor(tk.Tk):
         default_name = data.get("default_profile")
         self._default_profile_name = default_name if isinstance(default_name, str) else None
         if not self._write_profiles_payload(path, data, include_extras=True):
-            return
+            return False
         self._pending_global_device_deletions = set()
         self._dirty = False
         if update_source:
@@ -3430,7 +3457,17 @@ class TopologyEditor(tk.Tk):
         message = MSG_SAVED_CONFIG_FMT.format(path=path, profile=profile_name)
         if path.resolve() == self._deploy_profiles_path().resolve():
             message = MSG_SAVED_DEPLOY_FMT.format(profile=profile_name)
-        messagebox.showinfo("Saved", message)
+        if save_warnings:
+            messagebox.showwarning(
+                MSG_SAVE_DEGRADED_TITLE,
+                MSG_SAVE_DEGRADED_FMT.format(
+                    message=message,
+                    warnings="\n".join(save_warnings),
+                ),
+            )
+        else:
+            messagebox.showinfo("Saved", message)
+        return True
 
     def _prune_topology_entry_device_refs(
         self,

@@ -1,5 +1,5 @@
 FRC CAN Bringup Diagnostics (Python)
-Version: 1.0.0
+Version: 1.0.0-rc1
 
 What this is
 - Reads live FRC CAN traffic (via python-can)

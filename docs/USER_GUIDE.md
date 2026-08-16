@@ -220,9 +220,9 @@ Purpose: Contrast vendor-specific configuration with multi-vendor bringup.
 Purpose: Contrast visualization-only tools with bringup workflows.
 - Shuffleboard is a customizable driveteam-focused dashboard.
 - Glass is a dashboard and robot data visualization tool aimed at programmer debugging.
-- AdvantageScope is a data visualization tool for NetworkTables and WPILib/Driver Station logs. ?cite?turn6search1?
-- FRC Dashboard is an extendable, web-based driving interface for FRC robots. ?cite?turn3search1?
-- pynetworktables2js forwards NetworkTables key/value data over WebSocket for HTML/JavaScript dashboards. ?cite?turn3search3?
+- AdvantageScope is a data visualization tool for WPILib/Driver Station logs and related robot data workflows.
+- FRC Dashboard is a general driver-station/dashboard surface, not a bringup workflow replacement.
+- Historical NetworkTables dashboard bridges are outside the supported bringup path for this repo.
 - This system adds profile-driven planning, bringup actions, and passive CAN inventory/diffing in addition to visualization.
 
 ### Path Planning Tools

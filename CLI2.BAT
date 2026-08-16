@@ -1,5 +1,4 @@
-echo on
-..\AppData\Local\Programs\Python\Python313\python tools\can_nt\can_nt_bridge.py --cli --no-nt --no-can
-
-
-
+@echo off
+setlocal
+call tools\can_nt\run_can_nt.cmd --cli --no-can %*
+endlocal

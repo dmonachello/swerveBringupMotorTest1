@@ -10,8 +10,11 @@ APP_CAN_TOPOLOGY_NAME = "can_topology_editor"
 APP_ROBOT_NAME = "robot_bringup"
 
 
-def _version_string(major: int, minor: int, patch: int) -> str:
-    return f"{major}.{minor}.{patch}"
+VERSION_SUFFIX_RC1 = "-rc1"
+
+
+def _version_string(major: int, minor: int, patch: int, suffix: str = "") -> str:
+    return f"{major}.{minor}.{patch}{suffix}"
 
 
 VERSION_CAN_BRIDGE_MAJOR = 1
@@ -21,6 +24,7 @@ VERSION_CAN_BRIDGE = _version_string(
     VERSION_CAN_BRIDGE_MAJOR,
     VERSION_CAN_BRIDGE_MINOR,
     VERSION_CAN_BRIDGE_PATCH,
+    VERSION_SUFFIX_RC1,
 )
 
 VERSION_BRIDGE_CLI_MAJOR = 1
@@ -30,6 +34,7 @@ VERSION_BRIDGE_CLI = _version_string(
     VERSION_BRIDGE_CLI_MAJOR,
     VERSION_BRIDGE_CLI_MINOR,
     VERSION_BRIDGE_CLI_PATCH,
+    VERSION_SUFFIX_RC1,
 )
 
 VERSION_BRINGUP_UI_MAJOR = 1
@@ -39,6 +44,7 @@ VERSION_BRINGUP_UI = _version_string(
     VERSION_BRINGUP_UI_MAJOR,
     VERSION_BRINGUP_UI_MINOR,
     VERSION_BRINGUP_UI_PATCH,
+    VERSION_SUFFIX_RC1,
 )
 
 VERSION_CAN_TOPOLOGY_MAJOR = 1
@@ -48,6 +54,7 @@ VERSION_CAN_TOPOLOGY = _version_string(
     VERSION_CAN_TOPOLOGY_MAJOR,
     VERSION_CAN_TOPOLOGY_MINOR,
     VERSION_CAN_TOPOLOGY_PATCH,
+    VERSION_SUFFIX_RC1,
 )
 
 VERSION_ROBOT_MAJOR = 1
@@ -57,6 +64,7 @@ VERSION_ROBOT = _version_string(
     VERSION_ROBOT_MAJOR,
     VERSION_ROBOT_MINOR,
     VERSION_ROBOT_PATCH,
+    VERSION_SUFFIX_RC1,
 )
 
 VERSION_HEADER = "Version"

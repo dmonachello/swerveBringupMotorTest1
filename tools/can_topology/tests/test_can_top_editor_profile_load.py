@@ -314,6 +314,10 @@ class _MessageBoxStub:
         pass
 
     @staticmethod
+    def showwarning(*_args: object, **_kwargs: object) -> None:
+        pass
+
+    @staticmethod
     def showerror(*args: object, **_kwargs: object) -> None:
         message = args[1] if len(args) > 1 else "messagebox error"
         raise RuntimeError(str(message))
@@ -1629,6 +1633,100 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
         self.assertIn("inventory:cannect 3", editor.node_list.items)
         self.assertEqual(editor.node_list.items["inventory:cannect 3"][1], "cannect_direct")
         self.assertEqual(editor.node_list.items["inventory:cannect 3"][5], "beta")
+
+    def test_read_profile_index_uses_active_source_path(self) -> None:
+        editor = TopologyEditor.__new__(TopologyEditor)
+        editor._read_profile_index = TopologyEditor._read_profile_index.__get__(editor, TopologyEditor)
+        editor._active_profiles_path = TopologyEditor._active_profiles_path.__get__(editor, TopologyEditor)
+        editor._load_config_payload = TopologyEditor._load_config_payload.__get__(editor, TopologyEditor)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            canonical = Path(temp_dir) / "canonical.json"
+            alternate = Path(temp_dir) / "alternate.json"
+            write_profiles_payload(
+                canonical,
+                {"default_profile": "canonical", "profiles": {"canonical": {"devices": []}}},
+                stamp=False,
+            )
+            write_profiles_payload(
+                alternate,
+                {"default_profile": "alternate", "profiles": {"alternate": {"devices": []}}},
+                stamp=False,
+            )
+            editor._default_profiles_path = lambda: canonical
+            editor._profile_source_path = str(alternate)
+
+            names, default_name = editor._read_profile_index()
+
+        self.assertEqual(["alternate"], names)
+        self.assertEqual("alternate", default_name)
+
+    def test_load_selected_profile_uses_active_source_path(self) -> None:
+        editor = TopologyEditor.__new__(TopologyEditor)
+        editor._on_load_selected_profile = TopologyEditor._on_load_selected_profile.__get__(editor, TopologyEditor)
+        editor._active_profiles_path = TopologyEditor._active_profiles_path.__get__(editor, TopologyEditor)
+        editor._profile_pick_var = _StringVarStub()
+        editor._profile_pick_var.set("alternate")
+        captured: list[tuple[str, bool, bool, str]] = []
+        editor._load_profile_from_path = lambda path, ask_profile, confirm_discard, selected_name: captured.append(
+            (path, ask_profile, confirm_discard, selected_name)
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            canonical = Path(temp_dir) / "canonical.json"
+            alternate = Path(temp_dir) / "alternate.json"
+            write_profiles_payload(canonical, {"profiles": {"canonical": {"devices": []}}}, stamp=False)
+            write_profiles_payload(alternate, {"profiles": {"alternate": {"devices": []}}}, stamp=False)
+            editor._default_profiles_path = lambda: canonical
+            editor._profile_source_path = str(alternate)
+
+            editor._on_load_selected_profile()
+
+        self.assertEqual(
+            [(str(alternate), False, True, "alternate")],
+            captured,
+        )
+
+    def test_save_profile_to_path_warns_when_backup_fails(self) -> None:
+        profile_name = "test_minimal_25_9"
+        source_path = self._regression_fixture_path(profile_name, "bringup_system.json")
+        if not source_path.exists():
+            self.skipTest(f"Missing regression fixture: {source_path}")
+        warning_calls: list[tuple[object, ...]] = []
+        original_messagebox = can_top_editor.messagebox
+        can_top_editor.messagebox = type(
+            "_WarningMessageBoxStub",
+            (),
+            {
+                "showinfo": staticmethod(lambda *_args, **_kwargs: None),
+                "showwarning": staticmethod(lambda *args, **_kwargs: warning_calls.append(args)),
+                "showerror": staticmethod(lambda *args, **_kwargs: (_ for _ in ()).throw(RuntimeError(str(args)))),
+                "askyesno": staticmethod(lambda *_args, **_kwargs: True),
+            },
+        )
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_path = Path(temp_dir) / "bringup_system.json"
+                shutil.copy2(source_path, temp_path)
+                editor = self._headless_editor(profile_name)
+                editor._load_profile_from_path(
+                    str(temp_path),
+                    ask_profile=False,
+                    confirm_discard=False,
+                    selected_name=profile_name,
+                )
+                editor._backup_profiles_file = lambda _path: "Backup failed for test."
+
+                saved = editor._save_profile_to_path(
+                    temp_path,
+                    prompt_replace=False,
+                    update_source=True,
+                )
+        finally:
+            can_top_editor.messagebox = original_messagebox
+
+        self.assertTrue(saved)
+        self.assertEqual(1, len(warning_calls))
+        self.assertEqual(can_top_editor.MSG_SAVE_DEGRADED_TITLE, warning_calls[0][0])
+        self.assertIn("Backup failed for test.", warning_calls[0][1])
 
     def test_refresh_list_current_profile_scope_hides_out_of_profile_registry_rows(self) -> None:
         editor = self._headless_editor("inventory_scope_profile")

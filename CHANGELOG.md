@@ -20,6 +20,24 @@ All notable user-facing changes are documented in this file.
 - Repaired the canonical `test_minimal_25_9` analyzer node key and strengthened
   shared configuration validation to reject duplicate topology keys and missing
   edge endpoints.
+- Fixed topology-editor profile browsing so the lower `Profiles` dropdown and
+  its `Load` action now use the currently opened config source instead of
+  leaking profile names from the canonical deploy config.
+- Fixed topology-editor save reporting so backup and deploy-sync failures are no
+  longer silent; successful saves now surface degraded-persistence warnings to
+  the operator.
+- Fixed the maintained Bringup Control UI source test surface by aligning stale
+  activation/runtime expectations with the approved `Runtime Activate`
+  workflow and by hardening minimal-init code paths used by the focused tests.
+- Fixed Windows launcher/install packaging so the supported host path no longer
+  depends on user-specific Python executables, forwards extra arguments
+  correctly, uses environment-overridable roboRIO targeting, and installs one
+  pinned Python dependency set without retired NetworkTables packages.
+- Fixed release-facing docs and version metadata to match the current
+  stabilization state: historical TCP UI documentation is labeled as retired,
+  stale NetworkTables guidance was removed from supported entry docs, discovery-
+  first bootstrap is marked experimental, and shipped app versions now report
+  `1.0.0-rc1`.
 
 ## 2026-07-08
 

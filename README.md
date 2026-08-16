@@ -6,9 +6,7 @@ Provide a current top-level guide to the robot bringup harness, PC-side diagnost
 
 ## Status
 
-This project is a strong internal/alpha-quality bringup and diagnostics system.
-
-It is not yet a finished 1.0 product release.
+This project is in release-candidate stabilization for a first team-wide 1.0 release.
 
 Current direction:
 
@@ -16,7 +14,7 @@ Current direction:
 - reliability and shared-state behavior are actively being hardened
 - release/productization work is still in progress
 
-See [docs/RELEASE_1_0_READINESS.md](/abs/path/c:/Users/dmona/swerve3/docs/RELEASE_1_0_READINESS.md) for the current 1.0 gap analysis.
+See [docs/RELEASE_1_0_READINESS.md](docs/RELEASE_1_0_READINESS.md) for the current release checklist and [docs/RELEASE_STABILIZATION_REVIEW_2026-08-16.md](docs/RELEASE_STABILIZATION_REVIEW_2026-08-16.md) for the current blocker review.
 
 ## System Overview
 
@@ -43,7 +41,7 @@ Important data boundaries:
 - CAN-bus telemetry comes from the host-side passive CAN tool
 - REST command/log/state is a control and reporting channel, not a replacement for those telemetry sources
 
-See [docs/ARCHITECTURE.md](/abs/path/c:/Users/dmona/swerve3/docs/ARCHITECTURE.md) for the detailed architecture.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the detailed architecture.
 
 ## Main Surfaces
 
@@ -60,8 +58,8 @@ Purpose: list the operator-facing tools that matter today.
 
 Related docs:
 
-- [docs/OPERATOR_SURFACES.md](/abs/path/c:/Users/dmona/swerve3/docs/OPERATOR_SURFACES.md)
-- [docs/FEATURE_MATRIX.md](/abs/path/c:/Users/dmona/swerve3/docs/FEATURE_MATRIX.md)
+- [docs/OPERATOR_SURFACES.md](docs/OPERATOR_SURFACES.md)
+- [docs/FEATURE_MATRIX.md](docs/FEATURE_MATRIX.md)
 
 ## Main Files
 
@@ -108,9 +106,9 @@ Purpose: identify the primary code and config entry points.
 
 Purpose: give a practical current entry path without pretending the release is more finished than it is.
 
-1. Read [docs/SETUP.md](/abs/path/c:/Users/dmona/swerve3/docs/SETUP.md).
-2. Read [docs/USER_GUIDE.md](/abs/path/c:/Users/dmona/swerve3/docs/USER_GUIDE.md).
-3. Read [docs/ARCHITECTURE.md](/abs/path/c:/Users/dmona/swerve3/docs/ARCHITECTURE.md) if you need the system model.
+1. Read [docs/SETUP.md](docs/SETUP.md).
+2. Read [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
+3. Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) if you need the system model.
 4. Validate/sync config before using the robot workflow.
 5. Use either the Bringup Control UI or Bridge CLI as the main runtime surface.
 

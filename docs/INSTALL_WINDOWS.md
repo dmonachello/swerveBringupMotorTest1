@@ -18,10 +18,11 @@ Purpose: Explain what the installer configures.
 
 - Verifies Python + pip.
 - Installs required Python packages:
-  - `python-can`
-  - `pyserial`
-  - `reportlab`
-  - `prompt_toolkit` (CLI inline `?` prefill)
+  - `python-can==4.4.2`
+  - `pyserial==3.5`
+  - `reportlab==4.2.2`
+  - `prompt_toolkit==3.0.51`
+  - `lark==1.2.2`
 - Creates log folders:
   - `tools\can_nt\logs`
   - `tools\can_nt\captures`
@@ -33,6 +34,9 @@ Purpose: Quick commands to confirm the install works.
   - `python tools\can_topology\can_top_editor.py`
 - CAN listener:
   - `python tools\can_nt\can_nt_bridge.py --rio <roborio-ip>`
+- Optional launcher environment:
+  - `CAN_NT_PYTHON=C:\Path\To\Python\python.exe`
+  - `BRINGUP_RIO_HOST=roborio-####-frc.local`
 - Robot code:
   - Open the repo in VS Code with the WPILib extension installed, then deploy via GradleRIO.
 

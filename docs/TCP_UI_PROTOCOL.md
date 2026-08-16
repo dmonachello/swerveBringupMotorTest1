@@ -1,12 +1,14 @@
-# TCP UI Protocol (CLI/GUI Middle Layer)
+# TCP UI Protocol (Historical)
 
-Purpose: Define the exact message layer between the TCP stream and CLI command text.
+Purpose: Preserve the retired TCP UI command-channel contract for historical reference only.
+
+Supported bringup flows no longer use this transport. The current supported host/robot command path is the REST session layer used by `tools/can_nt/bridge_session.py` and started by `RobotV2`.
 
 ## Scope
 
 Purpose: State what this document covers and what it does not.
 
-- Covers the robot TCP UI command channel used by both GUI and CLI.
+- Covers the former robot TCP UI command channel used by earlier GUI and CLI revisions.
 - Covers framing, request/response schemas, state and session rules, and error behavior.
 - Covers real exchange transcripts based on the current implementation.
 - Does not redefine CLI grammar; CLI text-to-command mapping remains in `docs/BRIDGE_CLI_DESIGN.md`.

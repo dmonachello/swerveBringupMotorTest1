@@ -1,5 +1,15 @@
 # Application Note: Discovery-First Config Bootstrap
 
+## Status
+
+Purpose: State current release maturity for this workflow.
+
+This workflow remains experimental during release stabilization.
+
+- The bootstrap concept is real and useful for development.
+- The supporting PoC/spec/test surface is not yet complete enough to present as a fully supported release workflow.
+- Treat it as a developer/operator experiment until the release checklist explicitly promotes it.
+
 ## Purpose
 
 Explain the supported operator workflow for starting from a brand new blank config in Bringup Control and growing it into:

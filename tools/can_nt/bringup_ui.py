@@ -4009,9 +4009,7 @@ class BringupControlUI(tk.Tk):
             self._group_owner_mode = GROUP_SOURCE_MANUAL
             return
         self._group_owner_mode = GROUP_SOURCE_SELECTED_TEST
-        self._sync_selected_test_devices_panel_local(
-            loaded_to_robot=self._selected_test_required_membership_loaded_to_robot()
-        )
+        self._load_selected_test_into_active_group(force_replace=True)
 
     def _runtime_active_group_payload(self) -> Dict[str, Any]:
         """
@@ -4145,7 +4143,12 @@ class BringupControlUI(tk.Tk):
         NAME
             _selected_test_required_rows - Build ordered Tests-tab scope rows from robot-required devices with local fallback.
         """
-        selected_name = str(self._selected_test_var.get() or "").strip()
+        selected_test_var = self.__dict__.get("_selected_test_var")
+        selected_name = (
+            str(selected_test_var.get() or "").strip()
+            if selected_test_var is not None and hasattr(selected_test_var, "get")
+            else NT_VALUE_EMPTY
+        )
         selected_row = self._selected_test_row(selected_name)
         required_devices = list(selected_row.get("requiredDevices", [])) if isinstance(selected_row, dict) else []
         if not required_devices:
@@ -4253,7 +4256,7 @@ class BringupControlUI(tk.Tk):
         """
         rows = self._selected_test_required_rows()
         membership_key = self._tests_active_group_membership_key_for_rows(rows)
-        changed = membership_key != self._tests_active_group_membership_key
+        changed = membership_key != tuple(self.__dict__.get("_tests_active_group_membership_key", tuple()))
         if not force_replace and not changed:
             self._tests_active_group_rows = rows
             self._refresh_tests_active_group_panel()
@@ -11770,9 +11773,16 @@ class BringupControlUI(tk.Tk):
             return override_payload
         path = self._current_profiles_path()
         repository = ConfigRepository()
-        if path.resolve() == repository.canonical_path().resolve():
+        canonical_path_getter = getattr(repository, "canonical_path", None)
+        load_path_getter = getattr(repository, "load_path", None)
+        if (
+            callable(canonical_path_getter)
+            and path.resolve() == canonical_path_getter().resolve()
+        ):
             return repository.load_canonical().to_payload()
-        return repository.load_path(path).to_payload()
+        if callable(load_path_getter):
+            return load_path_getter(path).to_payload()
+        return repository.load_canonical().to_payload()
 
     def _begin_local_profiles_edit(self) -> ConfigEditSession:
         """

@@ -85,7 +85,13 @@ test {
 
 tasks.register('updateBuildInfo', Exec) {
     group = 'build setup'
-    description = 'Refresh generated build metadata from git before compiling or deploying.'
+    description = 'Check generated build metadata from git without rewriting tracked files.'
+    commandLine PYTHON_EXE, BUILD_INFO_SCRIPT, '--dry-run'
+}
+
+tasks.register('updateBuildInfoWrite', Exec) {
+    group = 'build setup'
+    description = 'Refresh generated build metadata from git.'
     commandLine PYTHON_EXE, BUILD_INFO_SCRIPT
 }
 
@@ -114,6 +120,10 @@ wpi.java.configureTestTasks(test)
 tasks.withType(JavaCompile) {
     dependsOn tasks.named('updateBuildInfo')
     options.compilerArgs.add '-XDstringConcat=inline'
+}
+
+tasks.named('deploy') {
+    dependsOn tasks.named('updateBuildInfoWrite')
 }
 
 tasks.register('emitRobotLocalCommandInventory', JavaExec) {
