@@ -156,6 +156,8 @@ Purpose: Describe the current Selection-pane behavior in the CAN Visibility tab.
 
 - Renaming from `Defined Nodes` updates the current local config session immediately, including profile membership references that point at that device label, but still does not write to disk until `Save Config`.
 
+- Renaming from `Defined Nodes` also updates saved topology `deviceRef` labels in the current local config session so the Visibility/Live Topology diagram stays aligned with the defined-device catalog after the next save.
+
 - The rename flow rejects empty labels and duplicate labels before applying the passive/discovery rename.
 
 - The defined-device rename flow also rejects empty labels and duplicate labels before applying the in-memory config rename.
@@ -194,6 +196,10 @@ Purpose: Describe the current Selection-pane behavior in the CAN Visibility tab.
 - `Open Config...` switches the host UI's local config session to the selected `bringup_system.json` path for profile browsing and local edits only; it does not push config to the robot or activate runtime by itself.
 
 - `Save Config` writes pending local profile/device edits to the currently loaded config path when the session is file-backed.
+
+- Before writing, `Save Config` repairs saved topology device nodes against the current profile/device catalog: it removes stale unknown `deviceRef` entries and adds missing profile devices so the diagram stays aligned with the current config.
+
+- That topology repair is persisted even when there are no ordinary pending local profile edits; `Save Config` is not treated as a no-op if metadata cleanup is still needed.
 
 - If the local config session exists only in memory, `Save Config` routes through a save-path choice first.
 

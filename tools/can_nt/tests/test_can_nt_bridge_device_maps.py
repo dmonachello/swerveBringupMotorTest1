@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from tools.can_nt.can_nt_bridge import (
+    _build_visibility_expected,
     _build_device_maps,
     _profile_context_poll_due,
     _resolve_visibility_label_for_key,
@@ -63,6 +64,33 @@ class CanNtBridgeDeviceMapTests(unittest.TestCase):
         self.assertEqual(can_to_label[(4, 2, 9)], "FALCON 9")
         self.assertEqual(id_to_labels[25], ["SPARKMAX/NEO 25"])
         self.assertEqual(id_to_labels[9], ["FALCON 9"])
+
+    def test_build_visibility_expected_excludes_non_can_devices(self) -> None:
+        expected = _build_visibility_expected(
+            [
+                {
+                    "label": "roborio",
+                    "deviceInterface": "CAN",
+                    "manufacturer": 1,
+                    "deviceType": 1,
+                    "id": 0,
+                },
+                {
+                    "label": "controller0",
+                    "deviceInterface": "USB",
+                    "manufacturer": 1,
+                    "deviceType": 1,
+                    "id": 0,
+                },
+                {
+                    "label": "lmtSw0",
+                    "deviceInterface": "DIO",
+                    "id": 0,
+                },
+            ]
+        )
+
+        self.assertEqual([("roborio", "1:1:0")], expected)
 
     def test_resolve_visibility_label_does_not_allocate_for_supporting_unknown(self) -> None:
         provider = _FakeVisibilityProvider()

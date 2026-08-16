@@ -1199,6 +1199,54 @@ class LiveTopologyViewTests(unittest.TestCase):
         self.assertEqual(nodes[1].node_type, "diagram")
         self.assertEqual(nodes[1].node_class, "infrastructure")
 
+    def test_base_fill_and_outline_distinguish_non_can_nodes(self) -> None:
+        view = self._make_view()
+        view._overlay_lens = live_view_module.TOPOLOGY_LENS_RUNTIME
+        view._presence_overrides = {}
+        view._runtime_state = {}
+        view._evidence_state = {}
+        view._visibility_state = {}
+        view._visibility_sources = {}
+        view._passive_detail_state = {}
+        can_node = live_view_module.LiveNode(
+            key=1,
+            category="falcons",
+            label="FALCON 9",
+            can_id=9,
+            bus_index=0,
+            row=0,
+            x=0.0,
+            vendor="CTRE",
+            interface="CAN",
+        )
+        non_can_node = live_view_module.LiveNode(
+            key=2,
+            category="devices",
+            label="controller0",
+            can_id=0,
+            bus_index=0,
+            row=0,
+            x=100.0,
+            interface="USB",
+        )
+
+        self.assertEqual(
+            live_view_module.NON_CAN_NODE_FILL,
+            view._base_fill(non_can_node, now_ms=0),
+        )
+        self.assertEqual(
+            live_view_module.NON_CAN_NODE_OUTLINE,
+            view._base_outline(non_can_node),
+        )
+        self.assertNotEqual(
+            live_view_module.NON_CAN_NODE_FILL,
+            view._base_fill(can_node, now_ms=0),
+        )
+        self.assertNotEqual(
+            live_view_module.NON_CAN_NODE_OUTLINE,
+            view._base_outline(can_node),
+        )
+
     def test_reload_profile_preserves_canonical_layout_y_in_live_nodes(self) -> None:
         view = self._make_view()
 
@@ -1311,6 +1359,118 @@ class LiveTopologyViewTests(unittest.TestCase):
             view.reload_profile("demo")
 
             self.assertEqual(1, view._update_details_calls)
+        finally:
+            live_view_module._load_profiles_payload = original_load_payload
+            live_view_module._load_device_registry = original_load_registry
+            live_view_module.parse_bridge_groups = original_parse_bridge_groups
+            view._redraw = original_redraw
+
+    def test_reload_profile_aligns_diagram_device_nodes_to_profile_membership(self) -> None:
+        view = self._make_view()
+
+        original_load_payload = live_view_module._load_profiles_payload
+        original_load_registry = live_view_module._load_device_registry
+        original_parse_bridge_groups = live_view_module.parse_bridge_groups
+        original_redraw = view._redraw
+
+        try:
+            payload = {
+                "default_profile": "demo",
+                "profiles": {
+                    "demo": {
+                        "devices": ["FALCON 9", "pigeon 2", "controller0"],
+                    }
+                },
+                "devices": [
+                    {"label": "FALCON 9", "deviceInterface": "CAN", "manufacturer": 4, "deviceType": 2, "id": 9},
+                    {"label": "pigeon 2", "deviceInterface": "CAN", "manufacturer": 4, "deviceType": 9, "id": 19},
+                    {"label": "controller0", "deviceInterface": "USB", "manufacturer": 1, "deviceType": 1, "id": 0},
+                ],
+                "topology": {
+                    "profiles": {
+                        "demo": {
+                            "nodes": [
+                                {
+                                    "key": 1,
+                                    "nodeType": "device",
+                                    "deviceRef": "FALCON 9",
+                                    "layout": {"bus": 0, "row": 0, "x": 0.0},
+                                },
+                                {
+                                    "key": 2,
+                                    "nodeType": "device",
+                                    "deviceRef": "CTRE_GYRO_19",
+                                    "layout": {"bus": 0, "row": 0, "x": 100.0},
+                                },
+                            ],
+                            "edges": [],
+                            "view": {},
+                        }
+                    }
+                },
+            }
+            live_view_module._load_profiles_payload = lambda: (payload, "")
+            live_view_module._load_device_registry = lambda _payload: {
+                "falcon 9": payload["devices"][0],
+                "pigeon 2": payload["devices"][1],
+                "controller0": payload["devices"][2],
+            }
+            live_view_module.parse_bridge_groups = lambda _payload, _profile: []
+            view._redraw = lambda *_args, **_kwargs: None
+
+            view.reload_profile("demo")
+
+            device_labels = [
+                node.label
+                for node in view._nodes
+                if getattr(node, "node_type", "device") == "device"
+            ]
+            self.assertEqual(["FALCON 9", "pigeon 2", "controller0"], device_labels)
+        finally:
+            live_view_module._load_profiles_payload = original_load_payload
+            live_view_module._load_device_registry = original_load_registry
+            live_view_module.parse_bridge_groups = original_parse_bridge_groups
+            view._redraw = original_redraw
+
+    def test_reload_profile_without_saved_topology_includes_non_can_profile_devices(self) -> None:
+        view = self._make_view()
+
+        original_load_payload = live_view_module._load_profiles_payload
+        original_load_registry = live_view_module._load_device_registry
+        original_parse_bridge_groups = live_view_module.parse_bridge_groups
+        original_redraw = view._redraw
+
+        try:
+            payload = {
+                "default_profile": "demo",
+                "profiles": {
+                    "demo": {
+                        "devices": ["FALCON 9", "pigeon 2", "controller0", "lmtSw0"],
+                    }
+                },
+                "devices": [
+                    {"label": "FALCON 9", "deviceInterface": "CAN", "manufacturer": 4, "deviceType": 2, "id": 9},
+                    {"label": "pigeon 2", "deviceInterface": "CAN", "manufacturer": 4, "deviceType": 9, "id": 19},
+                    {"label": "controller0", "deviceInterface": "USB", "manufacturer": 1, "deviceType": 1, "id": 0},
+                    {"label": "lmtSw0", "deviceInterface": "DIO", "type": "limitSwitch", "id": 0},
+                ],
+            }
+            live_view_module._load_profiles_payload = lambda: (payload, "")
+            live_view_module._load_device_registry = lambda _payload: {
+                "falcon 9": payload["devices"][0],
+                "pigeon 2": payload["devices"][1],
+                "controller0": payload["devices"][2],
+                "lmtsw0": payload["devices"][3],
+            }
+            live_view_module.parse_bridge_groups = lambda _payload, _profile: []
+            view._redraw = lambda *_args, **_kwargs: None
+
+            view.reload_profile("demo")
+
+            self.assertEqual(
+                ["FALCON 9", "pigeon 2", "controller0", "lmtSw0"],
+                [node.label for node in view._nodes if getattr(node, "node_type", "device") == "device"],
+            )
         finally:
             live_view_module._load_profiles_payload = original_load_payload
             live_view_module._load_device_registry = original_load_registry

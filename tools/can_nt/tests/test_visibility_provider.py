@@ -44,6 +44,8 @@ TEST_SECOND_DISCOVERED_IDENTITY = "99:88:78"
 TEST_SECOND_DISCOVERED_LABEL = "MFG99_DEVICETYPE88_78"
 TEST_REV_DISCOVERED_IDENTITY = "5:2:7"
 TEST_REV_DISCOVERED_LABEL = "REV_MOTORCONTROLLER_07"
+TEST_ROBORIO_IDENTITY = "1:1:0"
+TEST_CONTROLLER_LABEL = "controller0"
 
 
 class VisibilityProviderTests(unittest.TestCase):
@@ -173,6 +175,29 @@ class VisibilityProviderTests(unittest.TestCase):
         self.assertEqual(len(devices), 1)
         self.assertEqual(devices[0][VIS_KEY_LABEL], TEST_EXPECTED_LABEL)
         self.assertFalse(devices[0][VIS_KEY_UNEXPECTED])
+
+    def test_suggested_label_collision_does_not_rebind_can_identity_to_existing_nonmatching_label(self) -> None:
+        provider = self._build_provider()
+        provider.set_expected_devices([(TEST_CONTROLLER_LABEL, "")])
+
+        provider.ingest_frame(
+            TEST_SOURCE_ID,
+            arb_id=0x02040000,
+            ts_ms=TEST_SEEN_MS,
+            decoded_key=TEST_ROBORIO_IDENTITY,
+            label=TEST_CONTROLLER_LABEL,
+        )
+
+        snapshot = provider.snapshot(VIS_SCOPE_BOTH, TEST_NOW_MS)
+        devices = snapshot[VIS_KEY_DEVICES]
+        by_identity = {str(device.get(VIS_KEY_IDENTITY, "")): device for device in devices}
+        by_label = {str(device.get(VIS_KEY_LABEL, "")): device for device in devices}
+
+        self.assertIn(TEST_CONTROLLER_LABEL, by_label)
+        self.assertFalse(by_label[TEST_CONTROLLER_LABEL][VIS_KEY_UNEXPECTED])
+        self.assertIn(TEST_ROBORIO_IDENTITY, by_identity)
+        self.assertTrue(by_identity[TEST_ROBORIO_IDENTITY][VIS_KEY_UNEXPECTED])
+        self.assertNotEqual(TEST_CONTROLLER_LABEL, by_identity[TEST_ROBORIO_IDENTITY][VIS_KEY_LABEL])
 
     def test_clearing_expected_devices_reclassifies_observed_row_as_unexpected(self) -> None:
         provider = self._build_provider()

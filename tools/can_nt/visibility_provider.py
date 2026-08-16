@@ -439,8 +439,11 @@ class VisibilityProvider:
         candidate_key = clean_label.lower() if clean_label else VIS_EMPTY_STRING
         if candidate_key and candidate_key in self._devices:
             state = self._devices[candidate_key]
-            self._identity_to_label[identity_key] = candidate_key
-            return state
+            if str(state.identity_key or VIS_EMPTY_STRING).strip() == str(identity_key or VIS_EMPTY_STRING).strip():
+                self._identity_to_label[identity_key] = candidate_key
+                return state
+            clean_label = VIS_EMPTY_STRING
+            candidate_key = VIS_EMPTY_STRING
         if not allow_unexpected_create:
             return None
         if not clean_label:

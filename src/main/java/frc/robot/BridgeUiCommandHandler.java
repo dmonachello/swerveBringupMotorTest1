@@ -351,7 +351,7 @@ public class BridgeUiCommandHandler {
   private static final String TEXT_BUILD_HEADER = "Build:";
   private static final String TEXT_TESTS_INFO_PROFILE = "Profile: ";
   private static final String TEXT_TESTS_INFO_SOURCE = "Source: ";
-  private static final String TEXT_SOURCES_HEADER = "=== Sources ===";
+  private static final String TEXT_SOURCES_HEADER = "=== Robot Stored Sources ===";
   private static final String TEXT_SOURCES_FOOTER = "===============";
   private static final String TEXT_SOURCES_ENTRY = "  %s: %s (exists=%s)";
   private static final String TEXT_REMOTE_CMD_DETAIL_FMT = "Remote command: %s (seq=%d, client=%s)";

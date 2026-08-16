@@ -15,6 +15,7 @@ class BridgeUiReportCommandsTest {
   private static final String CMD_DUMP_REPORT = "dumpReport";
   private static final String CMD_SHOW_STATUS = "showStatus";
   private static final String CMD_SHOW_VERSION = "showVersion";
+  private static final String CMD_SHOW_SOURCES = "showSources";
 
   private static final String KEY_JSON = "json";
 
@@ -22,6 +23,7 @@ class BridgeUiReportCommandsTest {
   private static final String MSG_DUMP_WRITE_PREFIX = "Wrote CAN report JSON to ";
   private static final String MSG_DUMP_WRITE_FAIL = "Failed to write CAN report JSON.";
   private static final String REPORT_PATH = "logs/report.json";
+  private static final String SOURCES_TEXT = "=== Robot Stored Sources ===";
 
   @Test
   void diagnosticsUnavailableBlocksSummaryAndCan() {
@@ -64,6 +66,20 @@ class BridgeUiReportCommandsTest {
     assertTrue(result.ok);
     assertTrue(deps.applyShowCalled);
     assertEquals(deps.versionText, deps.lastShowText);
+  }
+
+  @Test
+  void showSourcesRoutesThroughApplyShowResult() {
+    TestDeps deps = new TestDeps();
+    BridgeUiReportCommands commands = new BridgeUiReportCommands(deps);
+    JsonObject args = new JsonObject();
+    args.addProperty(KEY_JSON, false);
+
+    BridgeUiCommandResult result = commands.execute(ingress(CMD_SHOW_SOURCES, args), 0.0, false);
+
+    assertTrue(result.ok);
+    assertTrue(deps.applyShowCalled);
+    assertEquals(SOURCES_TEXT, deps.lastShowText);
   }
 
   @Test
@@ -242,7 +258,7 @@ class BridgeUiReportCommandsTest {
 
     @Override
     public String buildSourcesText() {
-      return "sources";
+      return SOURCES_TEXT;
     }
 
     @Override

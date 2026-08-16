@@ -3503,7 +3503,8 @@ class TopologyEditor(tk.Tk):
                 for node in kept_nodes
                 if not (
                     isinstance(node, dict)
-                    and str(node.get("nodeType", TEXT_EMPTY)).strip().lower() == NODE_TYPE_CALLOUT
+                    and str(node.get("nodeType", node.get("objectType", TEXT_EMPTY))).strip().lower()
+                    == NODE_TYPE_CALLOUT
                     and node.get("targetNodeKey") in removed_keys
                 )
             ]

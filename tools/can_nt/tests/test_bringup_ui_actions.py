@@ -110,18 +110,28 @@ from tools.can_nt.host_ui_state_service import (
 )
 from tools.common.profile_constants import (
     INTERFACE_CAN,
+    KEY_BUS,
     KEY_DEFAULT_PROFILE,
+    KEY_DEVICE_REF,
     KEY_DEVICE_TYPE,
     KEY_DEVICES,
     KEY_ID,
     KEY_INTERFACE,
+    KEY_LAYOUT,
     KEY_LABEL,
     KEY_MANUFACTURER,
     KEY_MODEL,
+    KEY_NODE_KEY,
+    KEY_OBJECT_TYPE,
     KEY_PROFILE_DEVICES,
     KEY_PROFILES,
     KEY_TAGS,
+    KEY_TOPOLOGY,
+    KEY_TOPOLOGY_NODES,
+    KEY_TOPOLOGY_PROFILES,
     KEY_TYPE,
+    LAYOUT_KEY_ROW,
+    LAYOUT_KEY_X,
 )
 
 
@@ -913,6 +923,24 @@ class BringupUiActionMetadataTests(unittest.TestCase):
                     KEY_PROFILE_DEVICES: ["FALCON 9"],
                 }
             },
+            KEY_TOPOLOGY: {
+                KEY_TOPOLOGY_PROFILES: {
+                    "test_minimal_25_9": {
+                        KEY_TOPOLOGY_NODES: [
+                            {
+                                KEY_NODE_KEY: 1,
+                                KEY_OBJECT_TYPE: "device",
+                                KEY_DEVICE_REF: "FALCON 9",
+                                KEY_LAYOUT: {
+                                    KEY_BUS: 0,
+                                    LAYOUT_KEY_ROW: 0,
+                                    LAYOUT_KEY_X: 120.0,
+                                },
+                            }
+                        ],
+                    }
+                }
+            },
             KEY_DEVICES: [
                 {
                     KEY_LABEL: "FALCON 9",
@@ -942,6 +970,197 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertEqual("new motor", saved_payloads[0][KEY_DEVICES][1][KEY_LABEL])
         self.assertIn("config.json", outputs[-1])
         self.assertEqual(1, len(saved_payloads))
+
+    def test_save_payload_to_config_path_repairs_missing_topology_nodes_from_profile_membership(self) -> None:
+        class _SessionStub:
+            def __init__(self, path: Path, payload: dict) -> None:
+                self.path = path
+                self.payload = deepcopy(payload)
+                self.dirty = False
+
+            def to_payload(self) -> dict:
+                return self.payload
+
+            def mark_dirty(self) -> None:
+                self.dirty = True
+
+        class _RepositoryStub:
+            def __init__(self) -> None:
+                self.saved_path = None
+                self.saved_session = None
+
+            def canonical_path(self) -> Path:
+                return Path("canonical.json").resolve()
+
+            def session_for_payload(self, path: Path, payload: dict) -> _SessionStub:
+                return _SessionStub(path, payload)
+
+            def save(self, session: _SessionStub, path: Path) -> None:
+                self.saved_session = session
+                self.saved_path = path
+
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._clear_local_config_session_overrides = lambda: None
+        ui._pending_profile_device_definitions = {"stale": {}}
+        ui._config_path_override = Path("old.json")
+        repository = _RepositoryStub()
+        payload = {
+            KEY_PROFILES: {
+                "test_minimal_25_9": {
+                    KEY_PROFILE_DEVICES: ["FALCON 9", "pigeon 2", "controller0"],
+                }
+            },
+            KEY_TOPOLOGY: {
+                KEY_TOPOLOGY_PROFILES: {
+                    "test_minimal_25_9": {
+                        KEY_TOPOLOGY_NODES: [
+                            {
+                                KEY_NODE_KEY: 1,
+                                KEY_OBJECT_TYPE: "device",
+                                KEY_DEVICE_REF: "FALCON 9",
+                                KEY_LAYOUT: {
+                                    KEY_BUS: 0,
+                                    LAYOUT_KEY_ROW: 0,
+                                    LAYOUT_KEY_X: 120.0,
+                                },
+                            },
+                            {
+                                KEY_NODE_KEY: 2,
+                                KEY_OBJECT_TYPE: "device",
+                                KEY_DEVICE_REF: "CTRE_GYRO_19",
+                                KEY_LAYOUT: {
+                                    KEY_BUS: 0,
+                                    LAYOUT_KEY_ROW: 0,
+                                    LAYOUT_KEY_X: 240.0,
+                                },
+                            },
+                        ],
+                    }
+                }
+            },
+            KEY_DEVICES: [
+                {
+                    KEY_LABEL: "FALCON 9",
+                    KEY_INTERFACE: INTERFACE_CAN,
+                    KEY_MANUFACTURER: 4,
+                    KEY_DEVICE_TYPE: 2,
+                    KEY_ID: 9,
+                },
+                {
+                    KEY_LABEL: "pigeon 2",
+                    KEY_INTERFACE: INTERFACE_CAN,
+                    KEY_MANUFACTURER: 4,
+                    KEY_DEVICE_TYPE: 9,
+                    KEY_ID: 19,
+                },
+                {
+                    KEY_LABEL: "controller0",
+                    KEY_INTERFACE: "USB",
+                    KEY_MANUFACTURER: 1,
+                    KEY_DEVICE_TYPE: 1,
+                    KEY_ID: 0,
+                },
+            ],
+        }
+
+        with patch("tools.can_nt.bringup_ui.ConfigRepository", return_value=repository):
+            saved_path = ui._save_payload_to_config_path(payload, Path("config.json"))
+
+        self.assertEqual(Path("config.json").resolve(), saved_path)
+        self.assertEqual(Path("config.json").resolve(), repository.saved_path)
+        self.assertIsNotNone(repository.saved_session)
+        self.assertTrue(repository.saved_session.dirty)
+        self.assertEqual(
+            ["FALCON 9", "pigeon 2", "controller0"],
+            [
+                node[KEY_DEVICE_REF]
+                for node in repository.saved_session.payload[KEY_TOPOLOGY][KEY_TOPOLOGY_PROFILES]["test_minimal_25_9"][
+                    KEY_TOPOLOGY_NODES
+                ]
+            ],
+        )
+        self.assertEqual({}, ui._pending_profile_device_definitions)
+        self.assertEqual(Path("config.json").resolve(), ui._config_path_override)
+
+    def test_save_config_from_ui_persists_topology_repair_without_pending_profile_edits(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        outputs = []
+        saved_payloads = []
+        payload = {
+            KEY_PROFILES: {
+                "test_minimal_25_9": {
+                    KEY_PROFILE_DEVICES: ["FALCON 9", "pigeon 2", "controller0"],
+                }
+            },
+            KEY_TOPOLOGY: {
+                KEY_TOPOLOGY_PROFILES: {
+                    "test_minimal_25_9": {
+                        KEY_TOPOLOGY_NODES: [
+                            {
+                                KEY_NODE_KEY: 1,
+                                KEY_OBJECT_TYPE: "device",
+                                KEY_DEVICE_REF: "FALCON 9",
+                                KEY_LAYOUT: {
+                                    KEY_BUS: 0,
+                                    LAYOUT_KEY_ROW: 0,
+                                    LAYOUT_KEY_X: 120.0,
+                                },
+                            },
+                            {
+                                KEY_NODE_KEY: 2,
+                                KEY_OBJECT_TYPE: "device",
+                                KEY_DEVICE_REF: "CTRE_GYRO_19",
+                                KEY_LAYOUT: {
+                                    KEY_BUS: 0,
+                                    LAYOUT_KEY_ROW: 0,
+                                    LAYOUT_KEY_X: 240.0,
+                                },
+                            },
+                        ],
+                    }
+                }
+            },
+            KEY_DEVICES: [
+                {
+                    KEY_LABEL: "FALCON 9",
+                    KEY_INTERFACE: INTERFACE_CAN,
+                    KEY_MANUFACTURER: 4,
+                    KEY_DEVICE_TYPE: 2,
+                    KEY_ID: 9,
+                },
+                {
+                    KEY_LABEL: "pigeon 2",
+                    KEY_INTERFACE: INTERFACE_CAN,
+                    KEY_MANUFACTURER: 4,
+                    KEY_DEVICE_TYPE: 9,
+                    KEY_ID: 19,
+                },
+                {
+                    KEY_LABEL: "controller0",
+                    KEY_INTERFACE: "USB",
+                    KEY_MANUFACTURER: 1,
+                    KEY_DEVICE_TYPE: 1,
+                    KEY_ID: 0,
+                },
+            ],
+        }
+        ui._current_materialized_profiles_payload = lambda: deepcopy(payload)
+        ui._has_pending_local_config_changes = lambda: False
+        ui._has_file_backed_local_config_session = lambda: True
+        ui._current_profiles_path = lambda: Path("config.json")
+        ui._save_payload_to_config_path = lambda saved_payload, path: saved_payloads.append(deepcopy(saved_payload)) or path
+        ui._append_output = outputs.append
+        ui._selected_profile_name = lambda: "test_minimal_25_9"
+        ui._apply_profile_selection = lambda profile_name, reload_views: None
+        ui._poll_visibility_snapshot = lambda _now: None
+        ui._visibility_last_update = 0.0
+        ui._pending_profile_device_definitions = {}
+
+        saved = ui._save_config_from_ui()
+
+        self.assertTrue(saved)
+        self.assertEqual(1, len(saved_payloads))
+        self.assertIn("config.json", outputs[-1])
 
     def test_new_blank_config_from_ui_starts_in_memory_empty_session(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
@@ -1380,6 +1599,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
             KEY_DEVICES: [
                 {
                     KEY_LABEL: "FALCON 9",
+                    KEY_INTERFACE: INTERFACE_CAN,
                     KEY_MANUFACTURER: 4,
                     KEY_DEVICE_TYPE: 2,
                     KEY_ID: 9,
@@ -1401,6 +1621,58 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertEqual(["FALCON 9"], [device["label"] for device in ui._profile_devices.values()])
         self.assertEqual([True], ui._visibility_provider.allow_calls)
         self.assertEqual([[("FALCON 9", "4:2:9")]], ui._visibility_provider.expected_calls)
+
+    def test_refresh_profile_devices_excludes_non_can_devices_from_visibility_expectations(self) -> None:
+        class _VisibilityProviderStub:
+            def __init__(self) -> None:
+                self.expected_calls = []
+
+            def set_allow_suggested_labels_for_unexpected(self, allowed: bool) -> None:
+                pass
+
+            def set_expected_devices(self, devices) -> None:
+                self.expected_calls.append(list(devices))
+
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._visibility_provider = _VisibilityProviderStub()
+        ui._refresh_profile_active_group_members = lambda _name: None
+        ui._set_evidence_engine_section_label = lambda *_args, **_kwargs: None
+        ui._current_materialized_profiles_payload = lambda: {
+            KEY_DEVICES: [
+                {
+                    KEY_LABEL: "roborio",
+                    KEY_INTERFACE: INTERFACE_CAN,
+                    KEY_MANUFACTURER: 1,
+                    KEY_DEVICE_TYPE: 1,
+                    KEY_ID: 0,
+                },
+                {
+                    KEY_LABEL: "controller0",
+                    KEY_INTERFACE: "USB",
+                    KEY_MANUFACTURER: 1,
+                    KEY_DEVICE_TYPE: 1,
+                    KEY_ID: 0,
+                },
+                {
+                    KEY_LABEL: "lmtSw0",
+                    KEY_INTERFACE: "DIO",
+                    KEY_ID: 0,
+                },
+            ],
+            KEY_PROFILES: {
+                "default": {
+                    KEY_PROFILE_DEVICES: ["roborio", "controller0", "lmtSw0"],
+                }
+            },
+            KEY_DEFAULT_PROFILE: "default",
+        }
+        ui._overlay_pending_profile_device_definitions = BringupControlUI._overlay_pending_profile_device_definitions.__get__(ui, BringupControlUI)
+        ui._pending_profile_device_map = BringupControlUI._pending_profile_device_map.__get__(ui, BringupControlUI)
+        ui._pending_profile_device_definitions = {}
+
+        ui._refresh_profile_devices("default")
+
+        self.assertEqual([[("roborio", "1:1:0")]], ui._visibility_provider.expected_calls)
 
     def test_push_config_from_ui_saves_in_memory_session_before_push(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
@@ -1484,6 +1756,20 @@ class BringupUiActionMetadataTests(unittest.TestCase):
                     KEY_PROFILE_DEVICES: ["old label"],
                 }
             },
+            "topology": {
+                "profiles": {
+                    "default": {
+                        "nodes": [
+                            {
+                                "key": 1,
+                                "objectType": "device",
+                                "deviceRef": "old label",
+                            }
+                        ],
+                        "edges": [],
+                    }
+                }
+            },
             KEY_DEFAULT_PROFILE: "default",
         }
         ui._has_file_backed_local_config_session = lambda: False
@@ -1522,6 +1808,10 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertTrue(in_memory_only)
         self.assertEqual("renamed label", payload[KEY_DEVICES][0][KEY_LABEL])
         self.assertEqual(["renamed label"], payload[KEY_PROFILES]["default"][KEY_PROFILE_DEVICES])
+        self.assertEqual(
+            "renamed label",
+            payload["topology"]["profiles"]["default"]["nodes"][0]["deviceRef"],
+        )
         self.assertIn("old label -> renamed label", output_line)
 
     def test_set_evidence_engine_section_label_updates_live_view_title_when_overall_status_changes(self) -> None:

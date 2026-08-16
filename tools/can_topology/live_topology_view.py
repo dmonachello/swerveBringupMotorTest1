@@ -470,6 +470,8 @@ GROUP_INSPECTOR_TARGET_COUNT_FMT = "{count}/{total}"
 GROUP_INSPECTOR_DUTY_THRESHOLD = 0.15
 GROUP_INSPECTOR_MOTION_MIN_RPM = 5.0
 GROUP_INSPECTOR_MOTION_MIN_POSITION_DELTA_ROT = 0.05
+NON_CAN_NODE_FILL = "#dce9f5"
+NON_CAN_NODE_OUTLINE = "#3f5f7a"
 DETAILS_PANEL_INITIAL_WIDTH = 360
 DETAILS_PANEL_MIN_WIDTH = 260
 SELECTION_FRAME_HEIGHT = 360
@@ -915,26 +917,94 @@ def _profile_devices(
         if not label:
             continue
         entry = registry.get(label.lower())
-        if not entry or get_device_interface(entry) != INTERFACE_CAN:
-            continue
-        can_id = entry.get(KEY_ID)
+        can_id = entry.get(KEY_ID) if isinstance(entry, dict) else None
         nodes.append(
             LiveNode(
                 key=key,
-                category=_category_for_device(entry),
+                category=_category_for_device(entry) if isinstance(entry, dict) else CATEGORY_DEVICES,
                 label=label,
                 can_id=int(can_id) if isinstance(can_id, int) else NODE_CAN_ID_DEFAULT,
                 bus_index=0,
                 row=NODE_ROW_EVEN if key % NODE_ROW_MOD == 0 else NODE_ROW_ODD,
                 x=float(key * NODE_X_STEP),
-                vendor=_vendor_for_device(entry),
-                device_type=str(entry.get(KEY_DEVICE_TYPE) or ""),
+                vendor=_vendor_for_device(entry) if isinstance(entry, dict) else "",
+                device_type=str(entry.get(KEY_DEVICE_TYPE) or "") if isinstance(entry, dict) else "",
                 node_type="device",
-                interface=str(entry.get(KEY_INTERFACE) or INTERFACE_CAN),
+                interface=str(entry.get(KEY_INTERFACE) or INTERFACE_CAN) if isinstance(entry, dict) else INTERFACE_CAN,
             )
         )
         key += 1
     return nodes
+
+
+def _align_diagram_nodes_to_profile_membership(
+    nodes: List[LiveNode],
+    profile_labels: List[str],
+    registry: Dict[str, Dict[str, object]],
+) -> List[LiveNode]:
+    """
+    NAME
+        _align_diagram_nodes_to_profile_membership - Keep diagram device membership aligned with current profile labels.
+    """
+    normalized_profile_labels: List[str] = []
+    allowed_labels = set()
+    for label_entry in profile_labels:
+        label = str(label_entry or "").strip()
+        if not label:
+            continue
+        label_key = label.lower()
+        if label_key in allowed_labels:
+            continue
+        allowed_labels.add(label_key)
+        normalized_profile_labels.append(label)
+    if not normalized_profile_labels:
+        return nodes
+    kept_nodes: List[LiveNode] = []
+    present_device_labels = set()
+    max_key = 0
+    max_x = 0.0
+    for node in nodes:
+        node_key = int(getattr(node, "key", 0) or 0)
+        max_key = max(max_key, node_key)
+        max_x = max(max_x, float(getattr(node, "x", 0.0) or 0.0))
+        if getattr(node, "node_type", "device") != "device":
+            kept_nodes.append(node)
+            continue
+        label = str(getattr(node, "label", "")).strip()
+        if not label:
+            continue
+        label_key = label.lower()
+        if label_key not in allowed_labels:
+            continue
+        kept_nodes.append(node)
+        present_device_labels.add(label_key)
+    next_key = max_key + 1
+    next_x = max_x + NODE_X_STEP
+    for label in normalized_profile_labels:
+        label_key = label.lower()
+        if label_key in present_device_labels:
+            continue
+        entry = registry.get(label_key)
+        can_id = entry.get(KEY_ID) if isinstance(entry, dict) else None
+        kept_nodes.append(
+            LiveNode(
+                key=next_key,
+                category=_category_for_device(entry) if isinstance(entry, dict) else CATEGORY_DEVICES,
+                label=label,
+                can_id=int(can_id) if isinstance(can_id, int) else NODE_CAN_ID_DEFAULT,
+                bus_index=0,
+                row=NODE_ROW_EVEN if next_key % NODE_ROW_MOD == 0 else NODE_ROW_ODD,
+                x=next_x,
+                vendor=_vendor_for_device(entry) if isinstance(entry, dict) else "",
+                device_type=str(entry.get(KEY_DEVICE_TYPE) or "") if isinstance(entry, dict) else "",
+                node_type="device",
+                interface=str(entry.get(KEY_INTERFACE) or INTERFACE_CAN) if isinstance(entry, dict) else INTERFACE_CAN,
+            )
+        )
+        present_device_labels.add(label_key)
+        next_key += 1
+        next_x += NODE_X_STEP
+    return kept_nodes
 
 
 def _diagram_nodes(
@@ -1522,7 +1592,11 @@ class LiveTopologyView(ttk.Frame):
             diag = topology_profile if isinstance(topology_profile, dict) else None
         if isinstance(diag, dict):
             nodes, meta = _diagram_nodes(diag, registry)
-            self._nodes = nodes
+            self._nodes = _align_diagram_nodes_to_profile_membership(
+                nodes,
+                self._profile_device_labels,
+                registry,
+            )
             self._diagram_meta = meta
             self._use_diagram_layout = True
             view_dict = meta.get(KEY_TOPOLOGY_VIEW)
@@ -3448,6 +3522,27 @@ class LiveTopologyView(ttk.Frame):
             return None
         return self._presence_fill_from_runtime_device(live, now_ms)
 
+    def _base_fill(self, node: LiveNode, now_ms: int) -> str:
+        """
+        NAME
+            _base_fill - Resolve one node fill color including non-CAN differentiation.
+        """
+        fill = self._live_fill(node, now_ms)
+        if fill:
+            return fill
+        if getattr(node, "interface", INTERFACE_CAN) != INTERFACE_CAN:
+            return NON_CAN_NODE_FILL
+        return fill_color_for_vendor(vendor_key_for_category(node.category, node.vendor))
+
+    def _base_outline(self, node: LiveNode) -> str:
+        """
+        NAME
+            _base_outline - Resolve one node outline color including non-CAN differentiation.
+        """
+        if getattr(node, "interface", INTERFACE_CAN) != INTERFACE_CAN:
+            return NON_CAN_NODE_OUTLINE
+        return outline_color_for_vendor(vendor_key_for_category(node.category, node.vendor))
+
     def _evidence_fill(self, node: LiveNode) -> Optional[str]:
         """
         NAME
@@ -3595,8 +3690,8 @@ class LiveTopologyView(ttk.Frame):
             is_swyft_node_fn=lambda node: node.category in ("cannect_direct", "cannect_inject"),
             is_dio_node_fn=lambda node: getattr(node, "interface", INTERFACE_CAN) != INTERFACE_CAN,
             shape_kind_fn=lambda node: shape_kind_for_category(node.category),
-            fill_color_fn=lambda node: self._live_fill(node, now_ms) or fill_color_for_vendor(vendor_key_for_category(node.category, node.vendor)),
-            outline_color_fn=lambda node: outline_color_for_vendor(vendor_key_for_category(node.category, node.vendor)),
+            fill_color_fn=lambda node: self._base_fill(node, now_ms),
+            outline_color_fn=lambda node: self._base_outline(node),
             text_color_fn=text_color_for_fill,
             label_text_fn=lambda node: node.label,
             fit_font_size_fn=fit_font_size,

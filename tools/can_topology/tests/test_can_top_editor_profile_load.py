@@ -3105,6 +3105,24 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
             [{"fromNode": 2, "toNode": 2}],
         )
 
+    def test_prune_topology_entry_device_refs_removes_legacy_object_type_callouts(self) -> None:
+        editor = TopologyEditor.__new__(TopologyEditor)
+        topology_entry = {
+            "nodes": [
+                {"key": 1, "objectType": "device", "deviceRef": "Motor 25"},
+                {"key": 2, "objectType": "callout", "targetNodeKey": 1},
+                {"key": 3, "objectType": "callout", "targetNodeKey": 999},
+            ],
+            "edges": [],
+        }
+
+        TopologyEditor._prune_topology_entry_device_refs(editor, topology_entry, {"Motor 25"})
+
+        self.assertEqual(
+            topology_entry["nodes"],
+            [{"key": 3, "objectType": "callout", "targetNodeKey": 999}],
+        )
+
     def test_apply_topology_snapshot_accepts_object_type_without_legacy_node_type(self) -> None:
         editor = TopologyEditor.__new__(TopologyEditor)
         editor._nodes = [

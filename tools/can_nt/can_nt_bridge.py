@@ -105,8 +105,10 @@ try:
     from tools.common.build_info import build_lines
     from tools.common.can_id import decode_frc_ext_id as decode_shared_frc_ext_id
     from tools.common.profile_constants import (
+        INTERFACE_CAN,
         KEY_DEVICE_TYPE,
         KEY_ID,
+        get_device_interface,
         KEY_LABEL,
         KEY_MANUFACTURER,
     )
@@ -535,6 +537,8 @@ def _build_visibility_expected(devices: List[Dict[str, Any]]) -> List[Tuple[str,
     for spec in devices:
         label = str(spec.get(DEVICE_KEY_LABEL, EMPTY_STRING)).strip()
         if not label:
+            continue
+        if get_device_interface(spec) != INTERFACE_CAN:
             continue
         try:
             mfg = int(spec.get(DEVICE_KEY_MFG))

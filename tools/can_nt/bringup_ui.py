@@ -272,18 +272,34 @@ from tools.common.config_lifecycle import LocalConfigQueryService
 from tools.common.profiles import list_profile_names
 from tools.common.profile_constants import (
     INTERFACE_CAN,
+    KEY_DEVICE_REF,
     KEY_DEVICE_TYPE,
     KEY_DEVICES,
     KEY_ID,
     KEY_INTERFACE,
     KEY_LABEL as PROFILE_KEY_LABEL,
+    KEY_LAYOUT,
     KEY_MANUFACTURER,
     KEY_MODEL,
+    KEY_NODE_CLASS,
+    KEY_NODE_KEY,
+    KEY_NODE_TYPE,
+    KEY_OBJECT_TYPE,
     KEY_PROFILE_DEVICES,
     KEY_PROFILES,
     KEY_TAGS,
+    KEY_TOPOLOGY,
+    KEY_TOPOLOGY_NODES,
+    KEY_TOPOLOGY_PROFILES,
+    KEY_TOPOLOGY_SOURCE,
+    KEY_TOPOLOGY_VERSION,
+    KEY_TOPOLOGY_VIEW,
     TYPE_ENCODER_EXTERNAL,
     TYPE_MOTOR,
+    get_device_interface,
+    KEY_BUS,
+    LAYOUT_KEY_ROW,
+    LAYOUT_KEY_X,
 )
 from tools.common.profile_constants import KEY_ENABLED
 from tools.common.profile_constants import KEY_TYPE
@@ -878,6 +894,17 @@ VIS_RESTART_SNIFFER_FAILED_FMT = "Passive CAN sniffer restart failed: {error}"
 VIS_PACKETS_UNKNOWN = "--"
 VIS_RATE_UNKNOWN = "--"
 VIS_RATE_FMT = "{value:.1f}/s"
+TOPOLOGY_REPAIR_VERSION = 1
+TOPOLOGY_REPAIR_SOURCE_LOCAL = "local"
+TOPOLOGY_REPAIR_NODE_DEVICE = "device"
+TOPOLOGY_REPAIR_NODE_CLASS_DEVICE = "device"
+TOPOLOGY_REPAIR_BUS_INDEX = 0
+TOPOLOGY_REPAIR_ROW_MOD = 2
+TOPOLOGY_REPAIR_ROW_EVEN = 0
+TOPOLOGY_REPAIR_ROW_ODD = 1
+TOPOLOGY_REPAIR_X_START = 120.0
+TOPOLOGY_REPAIR_X_STEP = 120.0
+TOPOLOGY_KEY_EDGES = "edges"
 VIS_DETAIL_TEXT_HEIGHT = 14
 VIS_TABLE_SPLIT_ORIENT = "vertical"
 VIS_RAW_EMPTY_MESSAGE = "Select a CTRE row to inspect contributing raw IDs."
@@ -1964,6 +1991,8 @@ def _build_visibility_expected_devices(devices: List[Dict[str, Any]]) -> List[Tu
         label = str(device.get(PROFILE_KEY_LABEL, NT_VALUE_EMPTY)).strip()
         if not label:
             continue
+        if get_device_interface(device) != INTERFACE_CAN:
+            continue
         try:
             manufacturer = int(device.get(DEVICE_KEY_MFG))
             device_type = int(device.get(DEVICE_KEY_TYPE))
@@ -1979,6 +2008,171 @@ def _build_visibility_expected_devices(devices: List[Dict[str, Any]]) -> List[Tu
         )
         expected.append((label, identity_key))
     return expected
+
+
+def _rename_topology_device_refs_in_payload(
+    payload: Dict[str, Any],
+    old_label: str,
+    new_label: str,
+) -> None:
+    """
+    NAME
+        _rename_topology_device_refs_in_payload - Update saved topology deviceRef labels across all profiles.
+    """
+    if not old_label or not new_label:
+        return
+    topology_root = payload.get("topology")
+    if not isinstance(topology_root, dict):
+        return
+    topology_profiles = topology_root.get("profiles")
+    if not isinstance(topology_profiles, dict):
+        return
+    old_lower = old_label.lower()
+    for topology_entry in topology_profiles.values():
+        if not isinstance(topology_entry, dict):
+            continue
+        nodes = topology_entry.get("nodes")
+        if not isinstance(nodes, list):
+            continue
+        for node in nodes:
+            if not isinstance(node, dict):
+                continue
+            device_ref = str(node.get(KEY_DEVICE_REF, NT_VALUE_EMPTY)).strip()
+            if device_ref.lower() == old_lower:
+                node[KEY_DEVICE_REF] = new_label
+
+
+def _repair_missing_topology_nodes_in_payload(payload: Dict[str, Any]) -> None:
+    """
+    NAME
+        _repair_missing_topology_nodes_in_payload - Materialize missing saved topology device nodes from profile membership before save.
+    """
+    if not isinstance(payload, dict):
+        return
+    profiles = payload.get(KEY_PROFILES)
+    devices = payload.get(KEY_DEVICES)
+    if not isinstance(profiles, dict) or not isinstance(devices, list):
+        return
+    registry: Dict[str, Dict[str, Any]] = {}
+    for entry in devices:
+        if not isinstance(entry, dict):
+            continue
+        label = str(entry.get(PROFILE_KEY_LABEL, NT_VALUE_EMPTY)).strip()
+        if not label:
+            continue
+        registry[label.lower()] = entry
+    topology_root = payload.get(KEY_TOPOLOGY)
+    if not isinstance(topology_root, dict):
+        topology_root = {
+            KEY_TOPOLOGY_VERSION: TOPOLOGY_REPAIR_VERSION,
+            KEY_TOPOLOGY_SOURCE: TOPOLOGY_REPAIR_SOURCE_LOCAL,
+            KEY_TOPOLOGY_PROFILES: {},
+        }
+        payload[KEY_TOPOLOGY] = topology_root
+    topology_profiles = topology_root.get(KEY_TOPOLOGY_PROFILES)
+    if not isinstance(topology_profiles, dict):
+        topology_profiles = {}
+        topology_root[KEY_TOPOLOGY_PROFILES] = topology_profiles
+    for profile_name, profile_payload in profiles.items():
+        if not isinstance(profile_payload, dict):
+            continue
+        profile_devices = profile_payload.get(KEY_PROFILE_DEVICES)
+        if not isinstance(profile_devices, list):
+            continue
+        topology_entry = topology_profiles.get(profile_name)
+        if not isinstance(topology_entry, dict):
+            topology_entry = {
+                KEY_TOPOLOGY_NODES: [],
+                TOPOLOGY_KEY_EDGES: [],
+                KEY_TOPOLOGY_VIEW: {},
+            }
+            topology_profiles[profile_name] = topology_entry
+        nodes = topology_entry.get(KEY_TOPOLOGY_NODES)
+        if not isinstance(nodes, list):
+            nodes = []
+            topology_entry[KEY_TOPOLOGY_NODES] = nodes
+        kept_nodes: List[Dict[str, Any]] = []
+        for node in nodes:
+            if not isinstance(node, dict):
+                continue
+            node_type = str(node.get(KEY_OBJECT_TYPE, node.get(KEY_NODE_TYPE, NT_VALUE_EMPTY))).strip().lower()
+            if node_type != TOPOLOGY_REPAIR_NODE_DEVICE:
+                kept_nodes.append(node)
+                continue
+            device_ref = str(node.get(KEY_DEVICE_REF, NT_VALUE_EMPTY)).strip()
+            if not device_ref:
+                continue
+            if device_ref.lower() not in registry:
+                continue
+            kept_nodes.append(node)
+        if len(kept_nodes) != len(nodes):
+            nodes = kept_nodes
+            topology_entry[KEY_TOPOLOGY_NODES] = nodes
+        existing_refs = {
+            str(node.get(KEY_DEVICE_REF, NT_VALUE_EMPTY)).strip().lower()
+            for node in nodes
+            if isinstance(node, dict)
+            and str(node.get(KEY_OBJECT_TYPE, node.get(KEY_NODE_TYPE, NT_VALUE_EMPTY))).strip().lower()
+            == TOPOLOGY_REPAIR_NODE_DEVICE
+            and str(node.get(KEY_DEVICE_REF, NT_VALUE_EMPTY)).strip()
+        }
+        next_key = max(
+            [
+                int(node.get(KEY_NODE_KEY))
+                for node in nodes
+                if isinstance(node, dict) and isinstance(node.get(KEY_NODE_KEY), int)
+            ],
+            default=0,
+        ) + 1
+        max_x = max(
+            [
+                float(layout.get(LAYOUT_KEY_X))
+                for node in nodes
+                if isinstance(node, dict)
+                and isinstance(node.get(KEY_LAYOUT), dict)
+                and isinstance(node.get(KEY_LAYOUT).get(LAYOUT_KEY_X), (int, float))
+                for layout in [node.get(KEY_LAYOUT)]
+            ],
+            default=TOPOLOGY_REPAIR_X_START - TOPOLOGY_REPAIR_X_STEP,
+        )
+        next_x = max_x + TOPOLOGY_REPAIR_X_STEP
+        for label_entry in profile_devices:
+            label = str(label_entry or NT_VALUE_EMPTY).strip()
+            if not label or label.lower() in existing_refs:
+                continue
+            if label.lower() not in registry:
+                continue
+            nodes.append(
+                {
+                    KEY_NODE_KEY: next_key,
+                    KEY_OBJECT_TYPE: TOPOLOGY_REPAIR_NODE_DEVICE,
+                    KEY_NODE_TYPE: TOPOLOGY_REPAIR_NODE_DEVICE,
+                    KEY_NODE_CLASS: TOPOLOGY_REPAIR_NODE_CLASS_DEVICE,
+                    KEY_DEVICE_REF: label,
+                    KEY_LAYOUT: {
+                        KEY_BUS: TOPOLOGY_REPAIR_BUS_INDEX,
+                        LAYOUT_KEY_ROW: (
+                            TOPOLOGY_REPAIR_ROW_EVEN
+                            if next_key % TOPOLOGY_REPAIR_ROW_MOD == TOPOLOGY_REPAIR_ROW_EVEN
+                            else TOPOLOGY_REPAIR_ROW_ODD
+                        ),
+                        LAYOUT_KEY_X: next_x,
+                    },
+                }
+            )
+            existing_refs.add(label.lower())
+            next_key += 1
+            next_x += TOPOLOGY_REPAIR_X_STEP
+
+
+def _payload_requires_topology_repair(payload: Dict[str, Any]) -> bool:
+    """
+    NAME
+        _payload_requires_topology_repair - Return whether topology repair would materially change one payload.
+    """
+    candidate = deepcopy(payload)
+    _repair_missing_topology_nodes_in_payload(candidate)
+    return candidate != payload
 
 
 def _runtime_active_probe_attachment(device: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -8394,6 +8588,7 @@ class BringupControlUI(tk.Tk):
             for index, existing_label in enumerate(list(profile_devices)):
                 if str(existing_label).strip().lower() == old_label.lower():
                     profile_devices[index] = clean_label
+        _rename_topology_device_refs_in_payload(payload, old_label, clean_label)
         current_path = self._current_profiles_path() if self._has_file_backed_local_config_session() else None
         self._apply_local_config_session(
             payload,
@@ -12031,6 +12226,7 @@ class BringupControlUI(tk.Tk):
         """
         repository = ConfigRepository()
         clean_path = path.expanduser().resolve()
+        _repair_missing_topology_nodes_in_payload(payload)
         if clean_path == repository.canonical_path().resolve():
             session = repository.begin_canonical_edit()
             session.to_payload().clear()
@@ -12078,14 +12274,17 @@ class BringupControlUI(tk.Tk):
         NAME
             _save_config_from_ui - Persist staged local config edits into the current bringup config path.
         """
-        if not self._has_pending_local_config_changes():
+        payload = self._current_materialized_profiles_payload()
+        has_pending_changes = self._has_pending_local_config_changes()
+        repair_needed = _payload_requires_topology_repair(payload)
+        if not has_pending_changes and not repair_needed:
             self._append_output(VIS_SAVE_CONFIG_NO_PENDING_TEXT)
             return True
         if not self._has_file_backed_local_config_session():
             return self._save_config_as_from_ui()
         try:
             path = self._save_payload_to_config_path(
-                self._current_materialized_profiles_payload(),
+                payload,
                 self._current_profiles_path(),
             )
         except Exception as exc:
