@@ -1685,6 +1685,60 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
             captured,
         )
 
+    def test_load_profile_from_path_refreshes_profile_combo_from_new_source(self) -> None:
+        original_messagebox = can_top_editor.messagebox
+        can_top_editor.messagebox = _MessageBoxStub
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                first_path = Path(temp_dir) / "first.json"
+                second_path = Path(temp_dir) / "second.json"
+                write_profiles_payload(
+                    first_path,
+                    {
+                        "default_profile": "first_a",
+                        "profiles": {
+                            "first_a": {"devices": []},
+                            "first_b": {"devices": []},
+                        },
+                    },
+                    stamp=False,
+                )
+                write_profiles_payload(
+                    second_path,
+                    {
+                        "default_profile": "second_only",
+                        "profiles": {
+                            "second_only": {"devices": []},
+                        },
+                    },
+                    stamp=False,
+                )
+                editor = self._headless_editor("first_a")
+                editor._active_profiles_path = TopologyEditor._active_profiles_path.__get__(editor, TopologyEditor)
+                editor._read_profile_index = TopologyEditor._read_profile_index.__get__(editor, TopologyEditor)
+                editor._refresh_profile_choices = TopologyEditor._refresh_profile_choices.__get__(editor, TopologyEditor)
+                editor._default_profiles_path = lambda: first_path
+                editor._load_profile_from_path(
+                    str(first_path),
+                    ask_profile=False,
+                    confirm_discard=False,
+                    selected_name="first_a",
+                )
+
+                self.assertEqual(["first_a", "first_b"], editor.profile_combo["values"])
+
+                editor._load_profile_from_path(
+                    str(second_path),
+                    ask_profile=False,
+                    confirm_discard=False,
+                    selected_name="second_only",
+                )
+
+                self.assertEqual(["second_only"], editor.profile_combo["values"])
+                self.assertEqual("second_only", editor._profile_pick_var.get())
+        finally:
+            can_top_editor.messagebox = original_messagebox
+
     def test_save_profile_to_path_warns_when_backup_fails(self) -> None:
         profile_name = "test_minimal_25_9"
         source_path = self._regression_fixture_path(profile_name, "bringup_system.json")

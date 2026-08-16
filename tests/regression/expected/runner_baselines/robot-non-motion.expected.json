@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "suite": "robot-non-motion",
+  "results": [
+    {
+      "commandId": "robot-non-motion",
+      "label": "robot-non-motion",
+      "mode": "connected",
+      "argv": [
+        "C:\\Users\\dmona\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "C:\\Users\\dmona\\swerve3/tools/can_nt/scripts/bridge_cli_robot_non_motion_regression.py",
+        "--rio",
+        "172.22.11.2"
+      ],
+      "features": [
+        "robot rest command server",
+        "connected non-motion workflow"
+      ],
+      "expectedExitCode": 0
+    }
+  ]
+}

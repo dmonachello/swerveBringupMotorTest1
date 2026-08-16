@@ -2730,6 +2730,7 @@ class TopologyEditor(tk.Tk):
         self._default_profile_name = default_profile_name
         self._profile_source_path = path
         self._set_profile_names(names)
+        self._refresh_profile_choices(keep_selection=False)
         self._suppress_profile_select = True
         try:
             self.entry_profile.set(name)
