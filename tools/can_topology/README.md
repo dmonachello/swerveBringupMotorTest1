@@ -58,7 +58,7 @@ Purpose: Describe the shortest path from sketch to JSON.
 10. File -> `Reload Canonical` reloads `src/main/deploy/bringup_system.json` into the editor.
 11. Profiles menu: Import Profile... (external file -> canonical, with diagram metadata if present).
 12. Profiles menu: Export Profile... (single profile to external file).
-13. Profiles menu: Rename Profile... (non-default only).
+13. Profiles menu: Rename Profile... (default-profile designation follows the renamed profile).
 14. Profiles menu: Delete Profile... (non-default only; last profile protected).
 15. Destructive profile actions write a timestamped backup alongside the active file.
 16. Use `Set As Default` to update `default_profile` on save.

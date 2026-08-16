@@ -437,6 +437,62 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
             )
         )
 
+    def test_rename_profile_transfers_default_profile_designation(self) -> None:
+        payload = {
+            "default_profile": "alpha",
+            "profiles": {
+                "alpha": {"devices": ["motor1"]},
+                "beta": {"devices": ["motor2"]},
+            },
+            "topology": {
+                "version": 1,
+                "source": "local",
+                "profiles": {
+                    "alpha": {"nodes": [{"deviceRef": "motor1"}], "edges": []},
+                },
+            },
+            "diagram": {
+                "profiles": {
+                    "alpha": {"nodes": [{"key": 1}]},
+                },
+            },
+        }
+        editor = TopologyEditor.__new__(TopologyEditor)
+        editor.entry_profile = _StringVarStub()
+        editor.entry_profile.set("alpha")
+        editor._profile_name = "alpha"
+        editor._canonical_profiles_path = lambda: Path("C:/tmp/bringup_system.json")
+        editor._load_profiles_payload = lambda _path: payload
+        editor._choose_profile_name = lambda names, default_name: "alpha"
+        backup_paths: list[Path] = []
+        editor._backup_profiles_file = lambda path: backup_paths.append(path)
+        written: dict[str, object] = {}
+        editor._write_profiles_payload = (
+            lambda path, data, include_extras=True: written.update(
+                {"path": path, "data": data, "include_extras": include_extras}
+            )
+            or True
+        )
+        refreshed: list[bool] = []
+        editor._refresh_profile_choices = lambda keep_selection=False: refreshed.append(keep_selection)
+
+        with patch("tools.can_topology.can_top_editor.simpledialog.askstring", return_value="renamed"):
+            with patch("tools.can_topology.can_top_editor.messagebox.showinfo") as showinfo:
+                TopologyEditor._rename_profile(editor)
+
+        self.assertEqual([Path("C:/tmp/bringup_system.json")], backup_paths)
+        self.assertEqual(Path("C:/tmp/bringup_system.json"), written["path"])
+        self.assertTrue(written["include_extras"])
+        self.assertEqual("renamed", payload["default_profile"])
+        self.assertIn("renamed", payload["profiles"])
+        self.assertNotIn("alpha", payload["profiles"])
+        self.assertIn("renamed", payload["topology"]["profiles"])
+        self.assertIn("renamed", payload["diagram"]["profiles"])
+        self.assertEqual("renamed", editor._profile_name)
+        self.assertEqual("renamed", editor.entry_profile.get())
+        self.assertEqual([False], refreshed)
+        showinfo.assert_called_once_with("Renamed", "Renamed 'alpha' to 'renamed'.")
+
     @staticmethod
     def _repo_root() -> Path:
         return Path(__file__).resolve().parents[3]

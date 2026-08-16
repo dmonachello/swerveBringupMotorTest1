@@ -1241,6 +1241,51 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertEqual("default", ui._local_profiles_payload_override[KEY_DEFAULT_PROFILE])
         self.assertIn("default", ui._local_profiles_payload_override[KEY_PROFILES])
 
+    def test_rename_profile_from_ui_transfers_default_profile_designation(self) -> None:
+        payload = {
+            KEY_DEFAULT_PROFILE: "alpha",
+            KEY_PROFILES: {
+                "alpha": {KEY_PROFILE_DEVICES: ["Motor A"]},
+                "beta": {KEY_PROFILE_DEVICES: ["Motor B"]},
+            },
+        }
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._profile_box = _ProfileBoxStub("alpha", values=(PROFILE_NONE, "alpha", "beta"))
+        ui._current_materialized_profiles_payload = lambda: deepcopy(payload)
+        ui._selected_real_profile = lambda: "alpha"
+        ui._has_file_backed_local_config_session = lambda: True
+        ui._current_profiles_path = lambda: Path("C:/tmp/bringup_system.json")
+        ui._last_selected_profile = "alpha"
+        ui._append_output = lambda _line: None
+        applied_selections: list[tuple[str, bool]] = []
+        ui._apply_profile_selection = (
+            lambda name, reload_views=True: applied_selections.append((name, reload_views))
+        )
+        applied_session: dict[str, object] = {}
+
+        def _capture_apply(payload_arg, path_arg, *, dirty, in_memory_only, output_line="") -> None:
+            applied_session["payload"] = payload_arg
+            applied_session["path"] = path_arg
+            applied_session["dirty"] = dirty
+            applied_session["in_memory_only"] = in_memory_only
+            applied_session["output_line"] = output_line
+
+        ui._apply_local_config_session = _capture_apply
+
+        with patch("tools.can_nt.bringup_ui.simpledialog.askstring", return_value="renamed"):
+            ui._rename_profile_from_ui()
+
+        updated = applied_session["payload"]
+        self.assertEqual("renamed", updated[KEY_DEFAULT_PROFILE])
+        self.assertIn("renamed", updated[KEY_PROFILES])
+        self.assertNotIn("alpha", updated[KEY_PROFILES])
+        self.assertEqual(Path("C:/tmp/bringup_system.json"), applied_session["path"])
+        self.assertTrue(applied_session["dirty"])
+        self.assertFalse(applied_session["in_memory_only"])
+        self.assertEqual("renamed", ui._profile_box.get())
+        self.assertEqual("renamed", ui._last_selected_profile)
+        self.assertEqual([("renamed", True)], applied_selections)
+
     def test_refresh_tests_for_profile_uses_current_materialized_local_payload(self) -> None:
         payload = {
             KEY_PROFILES: {

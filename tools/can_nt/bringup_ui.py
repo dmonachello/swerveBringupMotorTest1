@@ -263,7 +263,7 @@ from .ui_theme import (
 )
 from .status import SS__NORMAL
 from tools.common.json_io import read_json, write_json
-from tools.common.config_api import ConfigEditSession, ConfigRepository
+from tools.common.config_api import ConfigEditSession, ConfigRepository, rename_profile as rename_profile_payload
 from tools.common.paths import repo_root, tests_deploy_path
 from tools.common.profile_constants import KEY_DEFAULT_PROFILE, KEY_DSL_TESTS
 from tools.common.topology_parse import parse_bridge_groups, topology_profile_from_payload
@@ -577,6 +577,7 @@ BUTTON_SAVE_CONFIG = "Save Config"
 BUTTON_NEW_BLANK_CONFIG = "New Blank Config..."
 BUTTON_OPEN_CONFIG = "Open Config..."
 BUTTON_SAVE_CONFIG_AS = "Save Config As..."
+BUTTON_RENAME_PROFILE = "Rename Profile..."
 BUTTON_DOWNLOAD_CONFIG = "Download Current Config"
 BUTTON_RUNTIME_ACTIVATE = "Runtime Activate"
 BUTTON_RUNTIME_DEACTIVATE = "Runtime Deactivate"
@@ -830,6 +831,13 @@ CONFIG_OPENED_FMT = "Opened config: {path}"
 CONFIG_SAVE_AS_CANCELLED = "Save Config As cancelled."
 CONFIG_SAVE_AS_SAVED_FMT = "Saved current config to {path}."
 CONFIG_SAVE_AS_FAILED_FMT = "Save Config As failed: {error}"
+CONFIG_RENAME_PROFILE_TITLE = "Rename Profile"
+CONFIG_RENAME_PROFILE_PROMPT = "New profile name:"
+CONFIG_RENAME_PROFILE_NO_SELECTION = "Rename Profile blocked: no profile selected."
+CONFIG_RENAME_PROFILE_NO_PROFILES = "Rename Profile blocked: no profiles are available."
+CONFIG_RENAME_PROFILE_EMPTY = "Rename Profile blocked: profile name cannot be empty."
+CONFIG_RENAME_PROFILE_DUPLICATE = "Rename Profile blocked: that profile name already exists."
+CONFIG_RENAME_PROFILE_SAVED_FMT = "Renamed profile in local config session: {old_name} -> {new_name}. Use Save Config to persist it."
 PROFILE_CONTEXT_MISSING_LOCAL_TITLE = "Robot Profile Missing In Local Config"
 PROFILE_CONTEXT_MISSING_LOCAL_FMT = (
     "Robot selected profile '{robot}' is not available in the currently open local config session.\n\n"
@@ -2467,6 +2475,7 @@ class BringupControlUI(tk.Tk):
         file_menu.add_command(label=BUTTON_OPEN_CONFIG, command=self._open_config_from_ui)
         file_menu.add_command(label=BUTTON_SAVE_CONFIG, command=self._save_config_from_ui)
         file_menu.add_command(label=BUTTON_SAVE_CONFIG_AS, command=self._save_config_as_from_ui)
+        file_menu.add_command(label=BUTTON_RENAME_PROFILE, command=self._rename_profile_from_ui)
         prefs_menu = tk.Menu(menubar, tearoff=False)
         self._ui_theme_var = tk.StringVar(value=self._ui_theme_name)
         theme_menu = tk.Menu(prefs_menu, tearoff=False)
@@ -12078,6 +12087,53 @@ class BringupControlUI(tk.Tk):
         self._visibility_last_update = 0.0
         self._poll_visibility_snapshot(time.time())
         return True
+
+    def _rename_profile_from_ui(self) -> None:
+        """
+        NAME
+            _rename_profile_from_ui - Rename the selected profile in the current local config session.
+        """
+        payload = deepcopy(self._current_materialized_profiles_payload())
+        profiles = payload.get(KEY_PROFILES)
+        if not isinstance(profiles, dict) or not profiles:
+            self._append_output(CONFIG_RENAME_PROFILE_NO_PROFILES)
+            return
+        old_name = self._selected_real_profile()
+        if not old_name:
+            self._append_output(CONFIG_RENAME_PROFILE_NO_SELECTION)
+            return
+        new_name = simpledialog.askstring(
+            CONFIG_RENAME_PROFILE_TITLE,
+            CONFIG_RENAME_PROFILE_PROMPT,
+            initialvalue=old_name,
+            parent=self,
+        )
+        if new_name is None:
+            return
+        new_name = str(new_name).strip()
+        if not new_name:
+            self._append_output(CONFIG_RENAME_PROFILE_EMPTY)
+            return
+        if new_name == old_name:
+            return
+        if new_name in profiles:
+            self._append_output(CONFIG_RENAME_PROFILE_DUPLICATE)
+            return
+        rename_profile_payload(payload, old_name, new_name)
+        current_path = self._current_profiles_path() if self._has_file_backed_local_config_session() else None
+        self._apply_local_config_session(
+            payload,
+            current_path,
+            dirty=True,
+            in_memory_only=not self._has_file_backed_local_config_session(),
+            output_line=CONFIG_RENAME_PROFILE_SAVED_FMT.format(
+                old_name=old_name,
+                new_name=new_name,
+            ),
+        )
+        self._profile_box.set(new_name)
+        self._last_selected_profile = new_name
+        self._apply_profile_selection(new_name, reload_views=True)
 
     def _discard_pending_local_config_changes(self) -> None:
         """

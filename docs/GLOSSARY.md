@@ -43,7 +43,7 @@ Purpose: working glossary seed for major repository concepts.
 
 - Definition: Repository topic cluster centered on REST API.
 - Purpose: Helps locate design, workflow, and implementation notes related to REST API.
-- Related Pages: [[docs/ARCHITECTURE.md|ARCHITECTURE]], [[docs/SPEC_LAYERED_ARCHITECTURE_REFACTOR.md|SPEC LAYERED ARCHITECTURE REFACTOR]], [[AGENTS.md|AGENTS]], [[CHANGELOG.md|CHANGELOG]], [[Current UI And Runtime Rules - V2.md|Current UI And Runtime Rules - V2]], [[Host TCP Command Serialization Layer.md|Host TCP Command Serialization Layer]], [[README.md|README]], [[TEST_TCP_UI.md|TEST TCP UI]]
+- Related Pages: [[docs/ARCHITECTURE.md|ARCHITECTURE]], [[docs/SPEC_LAYERED_ARCHITECTURE_REFACTOR.md|SPEC LAYERED ARCHITECTURE REFACTOR]], [[docs/WORKFLOW_01_NEW_ROBOT_BRINGUP.md|WORKFLOW 01 NEW ROBOT BRINGUP]], [[AGENTS.md|AGENTS]], [[CHANGELOG.md|CHANGELOG]], [[Current UI And Runtime Rules - V2.md|Current UI And Runtime Rules - V2]], [[Host TCP Command Serialization Layer.md|Host TCP Command Serialization Layer]], [[README.md|README]]
 - See Also: Activation Manager, Active Group, [[docs/mocs/architecture.md|Architecture]], [[docs/mocs/can_diagnostics.md|CAN Diagnostics]], [[docs/mocs/dsl.md|DSL]], REST Server
 
 ## REST Server
@@ -64,7 +64,7 @@ Purpose: working glossary seed for major repository concepts.
 
 - Definition: Repository topic cluster centered on Robot Runtime.
 - Purpose: Helps locate design, workflow, and implementation notes related to Robot Runtime.
-- Related Pages: [[docs/ROBOT_DIAGNOSTIC_TEST_DSL_SPEC_V0_3.md|ROBOT DIAGNOSTIC TEST DSL SPEC V0 3]], [[docs/DSL_INTERPRETER_RUNTIME.md|DSL INTERPRETER RUNTIME]], [[docs/ARCHITECTURE.md|ARCHITECTURE]], [[docs/RELEASE_1_0_READINESS.md|RELEASE 1 0 READINESS]], [[docs/ROBOT_BASE_FUNCTIONALITY.md|ROBOT BASE FUNCTIONALITY]], [[docs/SPEC_LAYERED_ARCHITECTURE_REFACTOR.md|SPEC LAYERED ARCHITECTURE REFACTOR]], [[docs/SPEC_NON_MOTOR_DEVICE_TESTING_AND_DSL_INTERVENTION.md|SPEC NON MOTOR DEVICE TESTING AND DSL INTERVENTION]], [[CHANGELOG.md|CHANGELOG]]
+- Related Pages: [[docs/ROBOT_DIAGNOSTIC_TEST_DSL_SPEC_V0_3.md|ROBOT DIAGNOSTIC TEST DSL SPEC V0 3]], [[docs/DSL_INTERPRETER_RUNTIME.md|DSL INTERPRETER RUNTIME]], [[docs/ARCHITECTURE.md|ARCHITECTURE]], [[docs/RELEASE_1_0_READINESS.md|RELEASE 1 0 READINESS]], [[docs/ROBOT_BASE_FUNCTIONALITY.md|ROBOT BASE FUNCTIONALITY]], [[docs/SPEC_LAYERED_ARCHITECTURE_REFACTOR.md|SPEC LAYERED ARCHITECTURE REFACTOR]], [[docs/SPEC_NON_MOTOR_DEVICE_TESTING_AND_DSL_INTERVENTION.md|SPEC NON MOTOR DEVICE TESTING AND DSL INTERVENTION]], [[docs/WORKFLOW_01_NEW_ROBOT_BRINGUP.md|WORKFLOW 01 NEW ROBOT BRINGUP]]
 - See Also: Activation Manager, Active Group, [[docs/mocs/architecture.md|Architecture]], [[docs/mocs/can_diagnostics.md|CAN Diagnostics]], [[docs/mocs/dsl.md|DSL]], [[docs/mocs/rest_api.md|REST API]]
 
 ## Testing
@@ -85,7 +85,7 @@ Purpose: working glossary seed for major repository concepts.
 
 - Definition: Repository topic cluster centered on Topology Editor.
 - Purpose: Helps locate design, workflow, and implementation notes related to Topology Editor.
-- Related Pages: [[docs/FEATURE_SPEC_REGRESSION_AUTOMATION.md|FEATURE SPEC REGRESSION AUTOMATION]], [[docs/TESTING_WINDOWS_OFFLINE.md|TESTING WINDOWS OFFLINE]], [[docs/ARCHITECTURE.md|ARCHITECTURE]], [[docs/RELEASE_1_0_READINESS.md|RELEASE 1 0 READINESS]], [[docs/SPEC_LAYERED_ARCHITECTURE_REFACTOR.md|SPEC LAYERED ARCHITECTURE REFACTOR]], [[docs/SPEC_NON_MOTOR_DEVICE_TESTING_AND_DSL_INTERVENTION.md|SPEC NON MOTOR DEVICE TESTING AND DSL INTERVENTION]], [[docs/TEST_PROCEDURE_ZERO_CONFIG.md|TEST PROCEDURE ZERO CONFIG]], [[CHANGELOG.md|CHANGELOG]]
+- Related Pages: [[docs/FEATURE_SPEC_REGRESSION_AUTOMATION.md|FEATURE SPEC REGRESSION AUTOMATION]], [[docs/TESTING_WINDOWS_OFFLINE.md|TESTING WINDOWS OFFLINE]], [[docs/ARCHITECTURE.md|ARCHITECTURE]], [[docs/FEATURE_SPEC_BRINGUP_UI_DISCOVERY_FIRST_CONFIG_AUTHORING.md|FEATURE SPEC BRINGUP UI DISCOVERY FIRST CONFIG AUTHORING]], [[docs/FEATURE_SPEC_TOPOLOGY_EDITOR_DEVICE_MANAGEMENT_AND_DELETION.md|FEATURE SPEC TOPOLOGY EDITOR DEVICE MANAGEMENT AND DELETION]], [[docs/RELEASE_1_0_READINESS.md|RELEASE 1 0 READINESS]], [[docs/SPEC_LAYERED_ARCHITECTURE_REFACTOR.md|SPEC LAYERED ARCHITECTURE REFACTOR]], [[docs/SPEC_NON_MOTOR_DEVICE_TESTING_AND_DSL_INTERVENTION.md|SPEC NON MOTOR DEVICE TESTING AND DSL INTERVENTION]]
 - See Also: Activation Manager, Active Group, [[docs/mocs/architecture.md|Architecture]], [[docs/mocs/can_diagnostics.md|CAN Diagnostics]], [[docs/mocs/dsl.md|DSL]], [[docs/mocs/rest_api.md|REST API]]
 
 ## UI

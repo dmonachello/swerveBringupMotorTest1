@@ -2388,7 +2388,7 @@ class TopologyEditor(tk.Tk):
     def _rename_profile(self) -> None:
         """
         NAME
-            _rename_profile - Rename a non-default profile in the canonical file.
+            _rename_profile - Rename one profile in the canonical file.
         """
         path = self._canonical_profiles_path()
         data = self._load_profiles_payload(path)
@@ -2402,9 +2402,6 @@ class TopologyEditor(tk.Tk):
         names = sorted(profiles.keys())
         old_name = self._choose_profile_name(names, default_name if isinstance(default_name, str) else None)
         if not old_name:
-            return
-        if isinstance(default_name, str) and old_name == default_name:
-            messagebox.showerror("Error", "Default profile cannot be renamed.")
             return
         new_name = simpledialog.askstring("Rename Profile", "New profile name:")
         if not new_name:
