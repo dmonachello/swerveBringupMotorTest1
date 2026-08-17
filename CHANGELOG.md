@@ -39,6 +39,23 @@ All notable user-facing changes are documented in this file.
   first bootstrap is marked experimental, and shipped app versions now report
   `1.0.0-rc1`.
 
+## 2026-08-17
+
+### Fixed - 2026-08-17
+
+- Fixed host/robot context handling in Bringup Control so supported workflows
+  no longer silently adopt robot-side profile/test context on connect or local
+  profile changes. The UI now surfaces explicit out-of-sync state, blocks
+  motion-capable actions while contexts diverge, and requires the operator to
+  resolve mismatches deliberately instead of using profile-toggle workarounds.
+- Fixed topology-editor device deletion cleanup so profile-local removal and
+  app-wide deletion now prune dependent live callouts correctly, and save-time
+  persistence no longer re-emits stale topology references after a confirmed
+  delete.
+- Fixed topology-editor delete regression coverage to prove cross-profile
+  membership pruning, topology pruning, bridge-config selected-device cleanup,
+  and editor-owned test-reference cleanup for deleted devices.
+
 ## 2026-07-08
 
 ### Added - 2026-07-08

@@ -7,14 +7,14 @@ package frc.robot;
 public final class BuildInfo {
   private BuildInfo() {}
 
-  public static final String BUILD_GIT_DESCRIBE = "discovery-bootstrap-checkpoint-2026-08-16-dirty";
-  public static final String BUILD_REVISION = "278";
-  public static final String BUILD_WORKSPACE_REVISION = "513";
-  public static final String BUILD_CODE_REVISION = "315ec9976b04";
-  public static final String BUILD_GIT_SHA = "069c2ca";
+  public static final String BUILD_GIT_DESCRIBE = "stabilization_visibility_topology_20260816-dirty";
+  public static final String BUILD_REVISION = "282";
+  public static final String BUILD_WORKSPACE_REVISION = "25";
+  public static final String BUILD_CODE_REVISION = "5755da05df92";
+  public static final String BUILD_GIT_SHA = "277c19a";
   public static final String BUILD_GIT_BRANCH = "main";
   public static final String BUILD_GIT_DIRTY = "dirty";
-  public static final String BUILD_TIMESTAMP = "2026-08-16T12:45:25-04:00";
+  public static final String BUILD_TIMESTAMP = "2026-08-16T17:24:50-04:00";
 
   public static final String BUILD_LABEL_REVISION = "build-revision";
   public static final String BUILD_LABEL_WORKSPACE_REVISION = "workspace-revision";

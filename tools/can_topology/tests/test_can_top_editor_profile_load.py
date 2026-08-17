@@ -1782,6 +1782,94 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
         self.assertEqual(can_top_editor.MSG_SAVE_DEGRADED_TITLE, warning_calls[0][0])
         self.assertIn("Backup failed for test.", warning_calls[0][1])
 
+    def test_save_profile_to_path_prunes_pending_global_deletions_across_profiles_and_topology(self) -> None:
+        original_messagebox = can_top_editor.messagebox
+        can_top_editor.messagebox = _MessageBoxStub
+        try:
+            editor = self._headless_editor("alpha")
+            editor._pending_global_device_deletions = {"Motor 25"}
+            editor._profile_from_nodes = lambda: {"devices": ["Other Motor"]}
+            editor._merge_saved_profile_fields = lambda _existing, updated: updated
+            editor._topology_snapshot = lambda: {
+                "nodes": [{"key": 2, "nodeType": "device", "deviceRef": "Other Motor"}],
+                "edges": [],
+            }
+            editor._write_profiles_payload = lambda path, data, include_extras=True: captured.update(
+                {"path": path, "data": json.loads(json.dumps(data)), "include_extras": include_extras}
+            ) or True
+            editor._expected_schema_version = lambda: 5
+            editor._set_profile_names = lambda _names: None
+            editor._refresh_profile_choices = lambda keep_selection=False: None
+            editor._refresh_default_checkbox = lambda: None
+            editor.var_set_default = _BoolVarStub(False)
+            editor._root_extras = {
+                "bridgeConfig": {
+                    "byProfile": {
+                        "alpha": {
+                            "groups": [{"name": "drive", "members": [{"label": "Other Motor", "enabled": True}]}]
+                        }
+                    }
+                }
+            }
+            payload = {
+                "schema_version": 5,
+                "default_profile": "alpha",
+                "profiles": {
+                    "alpha": {"devices": ["Motor 25", "Other Motor"]},
+                    "beta": {"devices": ["Motor 25"]},
+                },
+                "topology": {
+                    "version": 1,
+                    "source": "local",
+                    "profiles": {
+                        "alpha": {
+                            "nodes": [
+                                {"key": 1, "nodeType": "device", "deviceRef": "Motor 25"},
+                                {"key": 2, "nodeType": "device", "deviceRef": "Other Motor"},
+                                {"key": 3, "nodeType": "callout", "targetNodeKey": 1},
+                            ],
+                            "edges": [
+                                {"fromNode": 1, "toNode": 2},
+                                {"fromNode": 2, "toNode": 2},
+                            ],
+                        },
+                        "beta": {
+                            "nodes": [
+                                {"key": 4, "nodeType": "device", "deviceRef": "Motor 25"},
+                            ],
+                            "edges": [],
+                        },
+                    },
+                },
+            }
+            editor._load_config_payload = lambda _path: json.loads(json.dumps(payload))
+            editor._backup_profiles_file = lambda _path: None
+            captured: dict[str, object] = {}
+
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_path = Path(temp_dir) / "bringup_system.json"
+                temp_path.write_text("{}", encoding="utf-8")
+
+                saved = editor._save_profile_to_path(
+                    temp_path,
+                    prompt_replace=False,
+                    update_source=False,
+                )
+        finally:
+            can_top_editor.messagebox = original_messagebox
+
+        self.assertTrue(saved)
+        self.assertTrue(captured["include_extras"])
+        written = captured["data"]
+        self.assertEqual(["Other Motor"], written["profiles"]["alpha"]["devices"])
+        self.assertEqual([], written["profiles"]["beta"]["devices"])
+        self.assertEqual(
+            [{"key": 2, "nodeType": "device", "deviceRef": "Other Motor"}],
+            written["topology"]["profiles"]["alpha"]["nodes"],
+        )
+        self.assertEqual([], written["topology"]["profiles"]["alpha"]["edges"])
+        self.assertEqual([], written["topology"]["profiles"]["beta"]["nodes"])
+
     def test_refresh_list_current_profile_scope_hides_out_of_profile_registry_rows(self) -> None:
         editor = self._headless_editor("inventory_scope_profile")
         editor._refresh_list = TopologyEditor._refresh_list.__get__(editor, TopologyEditor)
@@ -2095,6 +2183,9 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
             editor._inventory_entry_for_label = TopologyEditor._inventory_entry_for_label.__get__(editor, TopologyEditor)
             editor._profile_device_nodes = TopologyEditor._profile_device_nodes.__get__(editor, TopologyEditor)
             editor._remove_device_label_from_current_profile = TopologyEditor._remove_device_label_from_current_profile.__get__(editor, TopologyEditor)
+            editor._prune_current_canvas_removed_node_refs = (
+                TopologyEditor._prune_current_canvas_removed_node_refs.__get__(editor, TopologyEditor)
+            )
             editor._prune_current_profile_bridge_config_label = TopologyEditor._prune_current_profile_bridge_config_label.__get__(editor, TopologyEditor)
             editor._prune_bridge_config_label = TopologyEditor._prune_bridge_config_label.__get__(editor, TopologyEditor)
             editor._prune_bridge_config_entry_label = TopologyEditor._prune_bridge_config_entry_label.__get__(editor, TopologyEditor)
@@ -2122,6 +2213,69 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
             editor._root_extras["bridgeConfig"]["byProfile"]["other_profile"]["groups"][0]["members"],
             [{"label": "Motor 25", "enabled": True}],
         )
+
+    def test_remove_selected_inventory_can_device_prunes_dependent_callout(self) -> None:
+        original_messagebox = can_top_editor.messagebox
+        can_top_editor.messagebox = _MessageBoxStub
+        try:
+            editor = self._headless_editor("inventory_local_remove_callout")
+            editor._device_registry_list = [
+                {
+                    "label": "Motor 25",
+                    "deviceInterface": "CAN",
+                    "manufacturer": 5,
+                    "deviceType": 2,
+                    "id": 25,
+                    "model": "REV NEO",
+                    "type": "motor",
+                }
+            ]
+            editor._device_registry = {"Motor 25": editor._device_registry_list[0]}
+            editor._selected_inventory_label = "Motor 25"
+            editor._nodes = [
+                Node(
+                    key=1,
+                    category="neos",
+                    label="Motor 25",
+                    can_id=25,
+                    interface=INTERFACE_CAN,
+                ),
+                Node(
+                    key=2,
+                    category="callout",
+                    label="Inspect Motor 25",
+                    can_id=-1,
+                    node_type="callout",
+                    callout_text="Inspect Motor 25",
+                    callout_target_type="device",
+                    callout_target_node_key=1,
+                ),
+            ]
+            editor._inventory_entry_for_label = TopologyEditor._inventory_entry_for_label.__get__(editor, TopologyEditor)
+            editor._profile_device_nodes = TopologyEditor._profile_device_nodes.__get__(editor, TopologyEditor)
+            editor._remove_device_label_from_current_profile = TopologyEditor._remove_device_label_from_current_profile.__get__(editor, TopologyEditor)
+            editor._prune_current_canvas_removed_node_refs = (
+                TopologyEditor._prune_current_canvas_removed_node_refs.__get__(editor, TopologyEditor)
+            )
+            editor._prune_current_profile_bridge_config_label = lambda _label: 0
+            editor._push_undo = lambda: None
+            editor._clear_selection = lambda: editor._selected_nodes.clear()
+            editor._selected_nodes = set()
+            editor._prune_attachment_links = lambda: None
+            editor._prune_power_links = lambda: None
+            editor._prune_dio_wiring_links = lambda: None
+            editor._refresh_list = lambda: None
+            editor._update_details_panel = lambda _node: None
+            editor._update_selection_overlays = lambda: None
+            editor._mark_neighbors_stale = lambda: None
+            editor._redraw_canvas = lambda: None
+
+            result = TopologyEditor._remove_selected_inventory_item(editor)
+        finally:
+            can_top_editor.messagebox = original_messagebox
+
+        self.assertTrue(result)
+        self.assertEqual([], editor._nodes)
 
     def test_remove_selected_node_only_prunes_current_profile_bridge_refs(self) -> None:
         original_messagebox = can_top_editor.messagebox
@@ -2235,6 +2389,9 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
             editor._delete_device_label_from_app = TopologyEditor._delete_device_label_from_app.__get__(editor, TopologyEditor)
             editor._delete_inventory_entry_globally = TopologyEditor._delete_inventory_entry_globally.__get__(editor, TopologyEditor)
             editor._profile_references_for_label = lambda _label: ["other_profile"]
+            editor._prune_current_canvas_removed_node_refs = (
+                TopologyEditor._prune_current_canvas_removed_node_refs.__get__(editor, TopologyEditor)
+            )
             editor._prune_bridge_config_label = TopologyEditor._prune_bridge_config_label.__get__(editor, TopologyEditor)
             editor._prune_bridge_config_entry_label = TopologyEditor._prune_bridge_config_entry_label.__get__(editor, TopologyEditor)
             editor._is_registry_device_node = TopologyEditor._is_registry_device_node.__get__(editor, TopologyEditor)
@@ -2264,6 +2421,119 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
         self.assertEqual(
             editor._root_extras["bridgeConfig"]["byProfile"]["other_profile"]["groups"][0]["members"],
             [],
+        )
+
+    def test_delete_inventory_entry_globally_prunes_callouts_and_test_refs(self) -> None:
+        original_messagebox = can_top_editor.messagebox
+        can_top_editor.messagebox = _MessageBoxStub
+        try:
+            editor = self._headless_editor("inventory_global_remove_refs")
+            editor._device_registry_list = [
+                {
+                    "label": "Motor 25",
+                    "deviceInterface": "CAN",
+                    "manufacturer": 5,
+                    "deviceType": 2,
+                    "id": 25,
+                    "model": "REV NEO",
+                    "type": "motor",
+                }
+            ]
+            editor._device_registry = {"Motor 25": editor._device_registry_list[0]}
+            editor._nodes = [
+                Node(
+                    key=1,
+                    category="neos",
+                    label="Motor 25",
+                    can_id=25,
+                    interface=INTERFACE_CAN,
+                ),
+                Node(
+                    key=2,
+                    category="callout",
+                    label="Check Motor 25",
+                    can_id=-1,
+                    node_type="callout",
+                    callout_text="Check Motor 25",
+                    callout_target_type="device",
+                    callout_target_node_key=1,
+                ),
+            ]
+            editor._root_extras = {
+                "bridgeConfig": {
+                    "byProfile": {
+                        "other_profile": {
+                            "groups": [
+                                {
+                                    "name": "spares",
+                                    "members": [{"label": "Motor 25", "enabled": True}],
+                                }
+                            ],
+                            "selectedDevice": {"device": "Motor 25", "enabled": True},
+                            "tests": {
+                                "test_sets": {
+                                    "default": [
+                                        {
+                                            "name": "delete-me",
+                                            "motorLabels": ["Motor 25"],
+                                        },
+                                        {
+                                            "name": "keep-me",
+                                            "motorLabels": ["Other Motor", "Motor 25"],
+                                            "rotation": {"encoderKey": "Motor 25"},
+                                            "deadbandSweep": {"encoderKey": "Motor 25"},
+                                            "limitSwitch": {"id": "Motor 25", "enabled": True},
+                                        },
+                                    ]
+                                }
+                            },
+                        }
+                    }
+                }
+            }
+            editor._remove_registry_entry_by_label = TopologyEditor._remove_registry_entry_by_label.__get__(editor, TopologyEditor)
+            editor._delete_device_label_from_app = TopologyEditor._delete_device_label_from_app.__get__(editor, TopologyEditor)
+            editor._profile_references_for_label = lambda _label: ["other_profile"]
+            editor._prune_current_canvas_removed_node_refs = (
+                TopologyEditor._prune_current_canvas_removed_node_refs.__get__(editor, TopologyEditor)
+            )
+            editor._prune_bridge_config_label = TopologyEditor._prune_bridge_config_label.__get__(editor, TopologyEditor)
+            editor._prune_bridge_config_entry_label = TopologyEditor._prune_bridge_config_entry_label.__get__(editor, TopologyEditor)
+            editor._prune_tests_label_refs = TopologyEditor._prune_tests_label_refs.__get__(editor, TopologyEditor)
+            editor._is_registry_device_node = TopologyEditor._is_registry_device_node.__get__(editor, TopologyEditor)
+            editor._push_undo = lambda: None
+            editor._clear_selection = lambda: editor._selected_nodes.clear()
+            editor._selected_nodes = set()
+            editor._prune_attachment_links = lambda: None
+            editor._prune_power_links = lambda: None
+            editor._prune_dio_wiring_links = lambda: None
+            editor._refresh_list = lambda: None
+            editor._update_details_panel = lambda _node: None
+            editor._update_selection_overlays = lambda: None
+            editor._mark_neighbors_stale = lambda: None
+            editor._redraw_canvas = lambda: None
+
+            result = TopologyEditor._delete_device_label_from_app(editor, "Motor 25")
+        finally:
+            can_top_editor.messagebox = original_messagebox
+
+        self.assertTrue(result)
+        self.assertEqual([], editor._nodes)
+        self.assertEqual([], editor._root_extras["bridgeConfig"]["byProfile"]["other_profile"]["groups"][0]["members"])
+        self.assertEqual(
+            {"device": "", "enabled": False},
+            editor._root_extras["bridgeConfig"]["byProfile"]["other_profile"]["selectedDevice"],
+        )
+        remaining_tests = editor._root_extras["bridgeConfig"]["byProfile"]["other_profile"]["tests"]["test_sets"][
+            "default"
+        ]
+        self.assertEqual(1, len(remaining_tests))
+        self.assertEqual(["Other Motor"], remaining_tests[0]["motorLabels"])
+        self.assertEqual("internal", remaining_tests[0]["rotation"]["encoderKey"])
+        self.assertEqual("internal", remaining_tests[0]["deadbandSweep"]["encoderKey"])
+        self.assertEqual(
+            {"enabled": False},
+            remaining_tests[0]["limitSwitch"],
         )
 
     def test_on_remove_single_node_only_prunes_current_profile_bridge_refs(self) -> None:

@@ -226,6 +226,7 @@ from .host_ui_state_service import (
     TEST_SCOPE_STATUS_READY_DETAIL as SHARED_TEST_SCOPE_STATUS_READY_DETAIL,
     TEST_SCOPE_STATUS_SCOPE_SWAP_REQUIRED_DETAIL as SHARED_TEST_SCOPE_STATUS_SCOPE_SWAP_REQUIRED_DETAIL,
     ActiveGroupMemberRowState,
+    ContextSyncState,
     SelectedTestScopeState,
     SelectedTestPanelState,
     DiagnosticProfileState,
@@ -235,6 +236,7 @@ from .host_ui_state_service import (
     TopologySceneState,
     UiContextState,
     resolve_active_group_edit_action_state,
+    resolve_context_sync_state,
     resolve_manual_duty_access_state,
     resolve_manual_duty_action_state,
     resolve_manual_duty_scope_state,
@@ -356,7 +358,6 @@ from tools.common.app_versions import (
 )
 from tools.common.build_info import build_lines
 from tools.common.profile_session import (
-    SYNC_ACTION_ADOPT,
     SYNC_ACTION_MISSING_LOCAL,
     SYNC_ACTION_PROMPT,
     decide_host_profile_sync,
@@ -860,6 +861,30 @@ PROFILE_CONTEXT_MISSING_LOCAL_FMT = (
     "Local UI profile: '{host}'.\n\n"
     "Open the matching config or switch the robot/UI to a shared profile name."
 )
+CONTEXT_SYNC_TITLE = "System Out Of Sync"
+CONTEXT_SYNC_SUMMARY = "System is out of sync."
+CONTEXT_SYNC_PROMPT_FMT = (
+    "{summary}\n\n"
+    "{detail}\n\n"
+    "Yes: Use Robot Context.\n"
+    "No: Apply UI Context To Robot.\n"
+    "Cancel: keep editing locally for now."
+)
+CONTEXT_SYNC_BLOCKED_FMT = (
+    "{summary}\n\n"
+    "{detail}\n\n"
+    "The robot context cannot be matched by the currently open local config/test library."
+)
+CONTEXT_SYNC_BUTTON_LABEL = "Resolve..."
+CONTEXT_SYNC_ALLOWED_ACTIONS = {"runtimedeactivate", "pushconfig"}
+CONTEXT_SYNC_BLOCKED_ACTIONS = {
+    "runtimeactivate",
+    "runtest",
+    "activeadd",
+    "activenext",
+    "manualdevicedutyset",
+    "manualgroupdutyset",
+}
 VIS_TAG_GUESSED_PREFIX = "guessed:"
 VIS_TAG_GUESSED_LABEL = "guessed:label"
 VIS_TAG_GUESSED_MODEL = "guessed:model"
@@ -1459,7 +1484,30 @@ TEST_SUCCESS_PREFIX = "Test success detail:"
 TEST_FAILURE_REQUIRE_PREFIX = "require not satisfied:"
 TEST_FAILURE_SIGNAL_SET_PREFIX = "signal fallback active:"
 TEST_FAILURE_LAST_SAMPLES_PREFIX = "last samples:"
+TEST_FAILURE_AGGREGATE_HINTS_PREFIX = "aggregate hints:"
 TEST_FAILURE_SAMPLE_LIMIT = 3
+TEST_FAILURE_AGGREGATE_HINT_LIMIT = 2
+TEST_SIGNAL_SUFFIX_CURRENT_ACTUAL = ".current_actual"
+TEST_SIGNAL_SUFFIX_CURRENT_ACTUAL_MAX = ".current_actual_max"
+TEST_SIGNAL_SUFFIX_POSITION_DELTA = ".position_delta"
+TEST_SIGNAL_SUFFIX_POSITION_DELTA_MAX_ABS = ".position_delta_max_abs"
+TEST_SIGNAL_SUFFIX_VELOCITY_ACTUAL = ".velocity_actual"
+TEST_SIGNAL_SUFFIX_VELOCITY_ACTUAL_MAX_ABS = ".velocity_actual_max_abs"
+TEST_SIGNAL_SUFFIX_YAW_DELTA = ".yaw_delta"
+TEST_SIGNAL_SUFFIX_YAW_DELTA_MAX_ABS = ".yaw_delta_max_abs"
+TEST_SIGNAL_SUFFIX_PITCH_DELTA = ".pitch_delta"
+TEST_SIGNAL_SUFFIX_PITCH_DELTA_MAX_ABS = ".pitch_delta_max_abs"
+TEST_SIGNAL_SUFFIX_ROLL_DELTA = ".roll_delta"
+TEST_SIGNAL_SUFFIX_ROLL_DELTA_MAX_ABS = ".roll_delta_max_abs"
+TEST_FAILURE_AGGREGATE_SIGNAL_SUFFIXES = (
+    (TEST_SIGNAL_SUFFIX_CURRENT_ACTUAL, TEST_SIGNAL_SUFFIX_CURRENT_ACTUAL_MAX),
+    (TEST_SIGNAL_SUFFIX_POSITION_DELTA, TEST_SIGNAL_SUFFIX_POSITION_DELTA_MAX_ABS),
+    (TEST_SIGNAL_SUFFIX_VELOCITY_ACTUAL, TEST_SIGNAL_SUFFIX_VELOCITY_ACTUAL_MAX_ABS),
+    (TEST_SIGNAL_SUFFIX_YAW_DELTA, TEST_SIGNAL_SUFFIX_YAW_DELTA_MAX_ABS),
+    (TEST_SIGNAL_SUFFIX_PITCH_DELTA, TEST_SIGNAL_SUFFIX_PITCH_DELTA_MAX_ABS),
+    (TEST_SIGNAL_SUFFIX_ROLL_DELTA, TEST_SIGNAL_SUFFIX_ROLL_DELTA_MAX_ABS),
+)
+PROFILE_CONTEXT_RELOAD_TOKEN_INITIAL = 0
 TEST_LIBRARY_STATUS_INACTIVE_PREFIX = "selected test inactive - "
 TEST_LIBRARY_STATUS_READY = SHARED_TEST_SCOPE_STATUS_READY_DETAIL
 TEST_LIBRARY_STATUS_NO_SELECTED_TEST = TEST_LIBRARY_STATUS_INACTIVE_PREFIX + OUTPUT_NO_SELECTED_TEST
@@ -2810,6 +2858,35 @@ class BringupControlUI(tk.Tk):
             textvariable=self._scope_context_var,
             foreground="#374151",
         ).pack(side="left", padx=(12, 0))
+        self._context_sync_banner_var = tk.StringVar(value="")
+        context_sync_frame = tk.Frame(
+            header,
+            bg=NOTICE_COLOR_WARN_BG,
+            highlightbackground=TEST_SCOPE_PANEL_BORDER,
+            highlightthickness=1,
+            bd=0,
+            padx=8,
+            pady=4,
+        )
+        context_sync_label = tk.Label(
+            context_sync_frame,
+            textvariable=self._context_sync_banner_var,
+            bg=NOTICE_COLOR_WARN_BG,
+            fg=NOTICE_COLOR_WARN_FG,
+            anchor="w",
+            justify="left",
+        )
+        context_sync_label.pack(side="left")
+        context_sync_button = ttk.Button(
+            context_sync_frame,
+            text=CONTEXT_SYNC_BUTTON_LABEL,
+            command=lambda: self._show_context_sync_resolution(trigger="banner"),
+        )
+        context_sync_button.pack(side="left", padx=(8, 0))
+        self._context_sync_frame = context_sync_frame
+        self._context_sync_label = context_sync_label
+        self._context_sync_button = context_sync_button
+        self._context_sync_banner_visible = False
 
         self._selected_test_var = tk.StringVar(value=tests[0])
         self._running_text_var = tk.StringVar(value=TEST_LIBRARY_RUNNING_DEFAULT)
@@ -4120,6 +4197,13 @@ class BringupControlUI(tk.Tk):
         """
         selected_name = str(name or "").strip()
         if not selected_name or selected_name == PROFILE_NONE:
+            self._last_ui_selected_test_intent = ""
+            self._selected_test_var.set(PROFILE_NONE)
+            self._last_selected_test = PROFILE_NONE
+            self._sync_test_library_entry_to_selected_test(PROFILE_NONE)
+            self._sync_selected_test_devices_panel_local()
+            self._refresh_selected_test_scope_status()
+            self._refresh_context_sync_banner()
             return
         self._last_ui_selected_test_intent = selected_name
         tests_tab_active = self._current_right_tab_text() == TEST_LIBRARY_TAB_LABEL
@@ -4170,6 +4254,7 @@ class BringupControlUI(tk.Tk):
             loaded_to_robot=self._selected_test_required_membership_loaded_to_robot()
         )
         self._refresh_selected_test_scope_status()
+        self._refresh_context_sync_banner()
 
     def _robot_knows_test_name(self, name: str) -> bool:
         """
@@ -4685,12 +4770,12 @@ class BringupControlUI(tk.Tk):
         name = self._selected_profile_name()
         self._apply_profile_selection(name, reload_views=True)
         if name == self._last_selected_profile:
+            self._refresh_context_sync_banner()
             return
         self._last_selected_profile = name
-        self._pending_robot_profile_selection = name
-        if name == PROFILE_NONE:
-            return
-        self._maybe_send_pending_robot_profile_selection()
+        self._pending_robot_profile_selection = PROFILE_NONE
+        self._refresh_context_sync_banner()
+        self._maybe_prompt_host_profile_context_sync()
 
     def _can_send_profile_selection_now(self) -> bool:
         """
@@ -4766,6 +4851,193 @@ class BringupControlUI(tk.Tk):
             handshake_ready=bool(self.__dict__.get("_handshake_done", False)),
             has_robot_runtime_state=bool(self.__dict__.get("_runtime_state_seen", False)),
         )
+
+    def _robot_selected_test_name(self) -> str:
+        """
+        NAME
+            _robot_selected_test_name - Return the robot-reported selected test or PROFILE_NONE.
+        """
+        name = str(self.__dict__.get("_last_robot_selected_test_name", "") or "").strip()
+        return name if name else PROFILE_NONE
+
+    def _context_sync_state(self) -> ContextSyncState:
+        """
+        NAME
+            _context_sync_state - Return the shared UI/robot synchronization state.
+        """
+        return resolve_context_sync_state(
+            local_selected_profile=self._selected_profile_name(),
+            robot_selected_profile=self.__dict__.get("_robot_selected_profile", PROFILE_NONE),
+            robot_active_runtime_profile=self.__dict__.get(
+                "_robot_active_runtime_profile", PROFILE_NONE
+            ),
+            local_selected_test=self._selected_test_name(),
+            robot_selected_test=self._robot_selected_test_name(),
+            transport_connected=bool(self.__dict__.get("_tcp_connected", False)),
+            handshake_ready=bool(self.__dict__.get("_handshake_done", False)),
+        )
+
+    def _context_sync_signature(self) -> Tuple[str, str, str, str, str]:
+        """
+        NAME
+            _context_sync_signature - Return one stable mismatch signature for prompt de-duplication.
+        """
+        state = self._context_sync_state()
+        return (
+            state.ui_profile,
+            state.robot_profile,
+            state.robot_runtime_profile,
+            state.ui_test,
+            state.robot_test,
+        )
+
+    def _robot_context_available_locally(self, profile_name: str, test_name: str) -> bool:
+        """
+        NAME
+            _robot_context_available_locally - Return whether one robot profile/test context can be represented locally.
+        """
+        clean_profile = _normalize_profile_name(profile_name)
+        if clean_profile == PROFILE_NONE or not hasattr(self, "_profile_box"):
+            return False
+        available_profiles = tuple(str(value) for value in self._profile_box.cget("values"))
+        if clean_profile not in available_profiles:
+            return False
+        clean_test = str(test_name or "").strip()
+        if not clean_test or clean_test == PROFILE_NONE:
+            return True
+        try:
+            state = self._local_test_library_state(clean_profile)
+        except Exception:
+            return False
+        all_names = set(str(name).strip() for name in list(state.get("global_names", [])))
+        all_names.update(str(name).strip() for name in list(state.get("config_names", [])))
+        all_names.update(str(name).strip() for name in list(state.get("profile_names", [])))
+        return clean_test in all_names
+
+    def _refresh_context_sync_banner(self) -> None:
+        """
+        NAME
+            _refresh_context_sync_banner - Render or hide the persistent out-of-sync banner.
+        """
+        frame = self.__dict__.get("_context_sync_frame")
+        banner_var = self.__dict__.get("_context_sync_banner_var")
+        if frame is None or banner_var is None:
+            return
+        state = self._context_sync_state()
+        if not state.out_of_sync:
+            banner_var.set("")
+            if self.__dict__.get("_context_sync_banner_visible", False):
+                frame.pack_forget()
+                self._context_sync_banner_visible = False
+            self._last_context_sync_prompt = None
+            return
+        banner_var.set(f"{state.summary} {state.detail}")
+        if not self.__dict__.get("_context_sync_banner_visible", False):
+            frame.pack(side="left", padx=(12, 0))
+            self._context_sync_banner_visible = True
+
+    def _apply_host_test_context_only(self, test_name: object) -> None:
+        """
+        NAME
+            _apply_host_test_context_only - Switch local UI test context without sending robot commands.
+        """
+        name = str(test_name or "").strip()
+        if not name or name == PROFILE_NONE:
+            self._apply_selected_test_name_from_ui(PROFILE_NONE)
+            return
+        self._last_ui_selected_test_intent = ""
+        self._selected_test_var.set(name)
+        self._last_selected_test = name
+        self._sync_test_library_entry_to_selected_test(name)
+        self._sync_selected_test_devices_panel_local(
+            loaded_to_robot=self._selected_test_required_membership_loaded_to_robot()
+        )
+        self._refresh_selected_test_scope_status()
+
+    def _apply_robot_context_to_ui(self) -> bool:
+        """
+        NAME
+            _apply_robot_context_to_ui - Switch the local UI profile/test context to match the robot without sending commands.
+        """
+        state = self._context_sync_state()
+        if not self._robot_context_available_locally(state.robot_profile, state.robot_test):
+            messagebox.showwarning(
+                CONTEXT_SYNC_TITLE,
+                CONTEXT_SYNC_BLOCKED_FMT.format(summary=state.summary, detail=state.detail),
+                parent=self,
+            )
+            return False
+        self._apply_host_profile_context_only(state.robot_profile, reload_views=True)
+        self._apply_host_test_context_only(state.robot_test or PROFILE_NONE)
+        self._refresh_context_sync_banner()
+        return True
+
+    def _apply_ui_context_to_robot(self) -> bool:
+        """
+        NAME
+            _apply_ui_context_to_robot - Explicitly move the robot-selected profile to the current UI profile after deactivation.
+        """
+        profile_name = self._selected_profile_name()
+        if profile_name == PROFILE_NONE:
+            self._append_output(OUTPUT_NO_PROFILE)
+            return False
+        if bool(self.__dict__.get("_runtime_active_known", False)) or bool(
+            self.__dict__.get("_controlled_lifecycle_active_known", False)
+        ):
+            self._append_output(f"{timestamp_hms()} {OUTPUT_RUNTIME_DEACTIVATE}")
+            self._last_cmd = (CMD_RUNTIME_DEACTIVATE, {})
+            if not self._send_and_wait(CMD_RUNTIME_DEACTIVATE, {}):
+                return False
+        ts = timestamp_hms()
+        self._append_output(f'{ts} CMD selectProfile "{profile_name}"')
+        self._last_cmd = ("selectProfile", {"name": profile_name})
+        if not self._send_and_wait("selectProfile", {"name": profile_name}):
+            return False
+        self._refresh_context_sync_banner()
+        return True
+
+    def _show_context_sync_resolution(self, trigger: str) -> bool:
+        """
+        NAME
+            _show_context_sync_resolution - Present one operator-facing mismatch resolution popup.
+        """
+        state = self._context_sync_state()
+        self._refresh_context_sync_banner()
+        if not state.out_of_sync:
+            return True
+        signature = self._context_sync_signature()
+        if trigger == "auto" and self.__dict__.get("_last_context_sync_prompt") == signature:
+            return False
+        self._last_context_sync_prompt = signature
+        if not self._robot_context_available_locally(state.robot_profile, state.robot_test):
+            messagebox.showwarning(
+                CONTEXT_SYNC_TITLE,
+                CONTEXT_SYNC_BLOCKED_FMT.format(summary=state.summary, detail=state.detail),
+                parent=self,
+            )
+            return False
+        answer = messagebox.askyesnocancel(
+            CONTEXT_SYNC_TITLE,
+            CONTEXT_SYNC_PROMPT_FMT.format(summary=state.summary, detail=state.detail),
+            parent=self,
+            default=messagebox.YES,
+        )
+        if answer is True:
+            return self._apply_robot_context_to_ui()
+        if answer is False:
+            return self._apply_ui_context_to_robot()
+        return False
+
+    def _should_block_for_context_sync(self, command_name: object) -> bool:
+        """
+        NAME
+            _should_block_for_context_sync - Return whether one motion-capable action must stop for mismatch resolution.
+        """
+        state = self._context_sync_state()
+        if not state.out_of_sync:
+            return False
+        clean_command = str(command_name or "").strip().lower()
+        return clean_command in CONTEXT_SYNC_BLOCKED_ACTIONS
 
     def _diagnostic_profile_state(self) -> DiagnosticProfileState:
         """
@@ -4991,7 +5263,20 @@ class BringupControlUI(tk.Tk):
         topology_scene_state = self._topology_scene_state()
         name = state.effective_profile
         self._refresh_profile_devices(name)
-        if reload_views and name != self._last_profile_context:
+        current_reload_token = int(
+            self.__dict__.get("_profile_context_reload_token", PROFILE_CONTEXT_RELOAD_TOKEN_INITIAL) or 0
+        )
+        last_reload_token = int(
+            self.__dict__.get(
+                "_last_profile_context_reload_token",
+                PROFILE_CONTEXT_RELOAD_TOKEN_INITIAL,
+            )
+            or 0
+        )
+        should_reload_views = bool(reload_views) and (
+            name != self._last_profile_context or current_reload_token != last_reload_token
+        )
+        if should_reload_views:
             for live_view in self._iter_live_views():
                 if hasattr(live_view, "apply_topology_scene_state"):
                     live_view.apply_topology_scene_state(topology_scene_state)
@@ -5000,6 +5285,7 @@ class BringupControlUI(tk.Tk):
                 else:
                     live_view.reload_profile(name)
         self._last_profile_context = name
+        self._last_profile_context_reload_token = current_reload_token
         self.after_idle(self._refresh_evidence_view)
 
     def _apply_host_profile_context_only(self, profile_name: object, reload_views: bool) -> None:
@@ -5020,54 +5306,14 @@ class BringupControlUI(tk.Tk):
     def _maybe_prompt_host_profile_context_sync(self) -> None:
         """
         NAME
-            _maybe_prompt_host_profile_context_sync - Offer to align local UI context to the robot-selected profile.
+            _maybe_prompt_host_profile_context_sync - Surface out-of-sync UI/robot context and offer explicit resolution.
         """
         if bool(self.__dict__.get("_suppress_host_profile_context_sync", HOST_PROFILE_SYNC_NOT_SUPPRESSED)):
             return
+        self._refresh_context_sync_banner()
         if _normalize_profile_name(self.__dict__.get("_pending_robot_profile_selection", PROFILE_NONE)) != PROFILE_NONE:
             return
-        if not hasattr(self, "_profile_box"):
-            return
-        available_profiles = tuple(str(value) for value in self._profile_box.cget("values"))
-        decision = decide_host_profile_sync(
-            self._selected_profile_name(),
-            self._robot_selected_profile,
-            available_profiles,
-        )
-        robot_selected = decision.robot_profile or PROFILE_NONE
-        local_selected = decision.host_profile or PROFILE_NONE
-        if decision.action not in (SYNC_ACTION_ADOPT, SYNC_ACTION_MISSING_LOCAL, SYNC_ACTION_PROMPT):
-            self._last_profile_mismatch_prompt = None
-            return
-        mismatch_key = (local_selected, robot_selected)
-        if self._last_profile_mismatch_prompt == mismatch_key:
-            return
-        if decision.action == SYNC_ACTION_MISSING_LOCAL:
-            self._last_profile_mismatch_prompt = mismatch_key
-            messagebox.showwarning(
-                PROFILE_CONTEXT_MISSING_LOCAL_TITLE,
-                PROFILE_CONTEXT_MISSING_LOCAL_FMT.format(
-                    robot=robot_selected,
-                    host=local_selected,
-                ),
-                parent=self,
-            )
-            return
-        if decision.action == SYNC_ACTION_ADOPT:
-            self._last_profile_mismatch_prompt = mismatch_key
-            self._apply_host_profile_context_only(robot_selected, reload_views=True)
-            return
-        self._last_profile_mismatch_prompt = mismatch_key
-        if messagebox.askyesno(
-            "Profile Context Mismatch",
-            (
-                f"Robot selected profile is '{robot_selected}', but the UI is using "
-                f"'{local_selected}'.\n\nSwitch the UI to the robot profile?"
-            ),
-            parent=self,
-            default=messagebox.YES,
-        ):
-            self._apply_host_profile_context_only(robot_selected, reload_views=True)
+        self._show_context_sync_resolution(trigger="auto")
 
     def _apply_profile_selection(self, profile_name: object, reload_views: bool) -> None:
         """
@@ -5994,6 +6240,9 @@ class BringupControlUI(tk.Tk):
         clean_label = str(label or NT_VALUE_EMPTY).strip()
         if not clean_label:
             return
+        if self._should_block_for_context_sync(CMD_GROUP_ADD_DEVICE):
+            self._show_context_sync_resolution(trigger=CMD_GROUP_ADD_DEVICE)
+            return
         action_state = self._active_group_edit_action_state()
         if not action_state.allowed:
             self._append_output(action_state.blocked_reason or ACTIVE_GROUP_WAITING_TEXT)
@@ -6044,6 +6293,9 @@ class BringupControlUI(tk.Tk):
         NAME
             _open_manual_duty_targets - Validate manual-duty preconditions then open the shared popup for one or more targets.
         """
+        if self._should_block_for_context_sync(MANUAL_DUTY_CMD_SET):
+            self._show_context_sync_resolution(trigger=MANUAL_DUTY_CMD_SET)
+            return
         action_state = self._manual_duty_action_state(targets)
         if not action_state.allowed:
             self._append_output(
@@ -10000,12 +10252,11 @@ class BringupControlUI(tk.Tk):
             _sync_test_library_entry_to_selected_test - Align list selections and source editor to one authoritative selected test.
         """
         target = str(test_name or "").strip()
-        if not target:
-            return
-        current_entry_name, _current_entry_scope = self._selected_test_library_entry()
-        current_source_name = str(self.__dict__.get("_selected_test_source_name", "") or "").strip()
-        if current_entry_name == target and current_source_name == target:
-            return
+        if target and target != PROFILE_NONE:
+            current_entry_name, _current_entry_scope = self._selected_test_library_entry()
+            current_source_name = str(self.__dict__.get("_selected_test_source_name", "") or "").strip()
+            if current_entry_name == target and current_source_name == target:
+                return
         global_list = self.__dict__.get("_test_library_global_list")
         config_list = self.__dict__.get("_test_library_config_list")
         profile_list = self.__dict__.get("_test_library_profile_list")
@@ -10017,14 +10268,20 @@ class BringupControlUI(tk.Tk):
                 config_list.selection_clear(0, tk.END)
             if profile_list is not None:
                 profile_list.selection_clear(0, tk.END)
-            selected = (
-                self._restore_test_library_listbox_selection(profile_list, target)
-                or self._restore_test_library_listbox_selection(config_list, target)
-                or self._restore_test_library_listbox_selection(global_list, target)
-            )
+            if not target or target == PROFILE_NONE:
+                selected = False
+            else:
+                selected = (
+                    self._restore_test_library_listbox_selection(profile_list, target)
+                    or self._restore_test_library_listbox_selection(config_list, target)
+                    or self._restore_test_library_listbox_selection(global_list, target)
+                )
         finally:
             self._suppress_test_library_selection_change = False
-        if selected:
+        if not target or target == PROFILE_NONE:
+            if "_test_source_text" in self.__dict__:
+                self._load_selected_test_source()
+        elif selected:
             self._load_selected_test_source()
 
     def _test_source_has_unsaved_changes(self) -> bool:
@@ -11406,6 +11663,9 @@ class BringupControlUI(tk.Tk):
         """
         if not command:
             return
+        if self._should_block_for_context_sync(command):
+            self._show_context_sync_resolution(trigger=str(command or "action"))
+            return
         if str(command or "").strip().lower() == CMD_SHOW_RUNTIME_STATE.lower():
             self._show_runtime_state_from_ui()
             return
@@ -11642,6 +11902,37 @@ class BringupControlUI(tk.Tk):
                 break
         return f"{TEST_FAILURE_LAST_SAMPLES_PREFIX} " + ", ".join(parts) if parts else ""
 
+    def _format_test_require_aggregate_hints(self, require_text: str, details: Dict[str, Any]) -> str:
+        """
+        NAME
+            _format_test_require_aggregate_hints - Surface matching run-scoped aggregate evidence for one failed require.
+        """
+        clean_require = str(require_text or "").strip()
+        if not clean_require:
+            return ""
+        aggregate_signals = details.get("aggregateSignals")
+        if not isinstance(aggregate_signals, dict) or not aggregate_signals:
+            return ""
+        quoted_parts = clean_require.split('"')
+        if len(quoted_parts) < 3:
+            return ""
+        device_label = str(quoted_parts[1] or "").strip()
+        trailing_text = str(quoted_parts[2] or "").strip()
+        if not device_label or not trailing_text.startswith("."):
+            return ""
+        parts: List[str] = []
+        for signal_suffix, aggregate_suffix in TEST_FAILURE_AGGREGATE_SIGNAL_SUFFIXES:
+            if not trailing_text.startswith(signal_suffix):
+                continue
+            aggregate_key = f"{device_label}{aggregate_suffix}"
+            aggregate_value = aggregate_signals.get(aggregate_key)
+            if aggregate_value is None:
+                continue
+            parts.append(f"{aggregate_key}={_format_test_detail_value(aggregate_value)}")
+            if len(parts) >= TEST_FAILURE_AGGREGATE_HINT_LIMIT:
+                break
+        return f"{TEST_FAILURE_AGGREGATE_HINTS_PREFIX} " + ", ".join(parts) if parts else ""
+
     def _format_test_failure_reason(self, run_payload: Dict[str, Any]) -> str:
         """
         NAME
@@ -11672,6 +11963,9 @@ class BringupControlUI(tk.Tk):
                 sample_summary = self._format_test_last_samples(details)
                 if sample_summary:
                     reason += f"; {sample_summary}"
+                aggregate_summary = self._format_test_require_aggregate_hints(require_text, details)
+                if aggregate_summary:
+                    reason += f"; {aggregate_summary}"
                 return reason
         signal_fallbacks = details.get("signalSetFallbacks")
         if isinstance(signal_fallbacks, list) and signal_fallbacks:
@@ -12113,6 +12407,9 @@ class BringupControlUI(tk.Tk):
         self._pending_profile_device_definitions = {}
         self._suppress_host_profile_context_sync = self._is_blank_local_config_payload(payload)
         self._last_profile_mismatch_prompt = None
+        self._profile_context_reload_token = int(
+            self.__dict__.get("_profile_context_reload_token", PROFILE_CONTEXT_RELOAD_TOKEN_INITIAL) or 0
+        ) + 1
         self._pending_robot_profile_selection = PROFILE_NONE
         self._sync_shared_profiles_path_override()
         profile_names = self._profile_names_from_payload(payload)
@@ -13209,6 +13506,9 @@ class BringupControlUI(tk.Tk):
         NAME
             _runtime_activate_from_ui - Activate selected-profile runtime and current UI-owned scope.
         """
+        if self._should_block_for_context_sync(CMD_RUNTIME_ACTIVATE):
+            self._show_context_sync_resolution(trigger=CMD_RUNTIME_ACTIVATE)
+            return
         self._activate_runtime_from_ui()
 
     def _selected_test_membership_change_requires_scope_swap(self) -> bool:
@@ -14684,6 +14984,9 @@ class BringupControlUI(tk.Tk):
                 command_key = str(command or "").strip().lower()
                 if command_key in ACTIVE_GROUP_RESULT_COMMANDS and self._active_group_is_currently_active():
                     btn.state(["disabled"])
+                    continue
+                if self._should_block_for_context_sync(command_key):
+                    btn.state(["disabled"])
                 continue
             btn.state(
                 ["!disabled"] if self._host_local_action_enabled(command) else ["disabled"]
@@ -14693,7 +14996,12 @@ class BringupControlUI(tk.Tk):
         activate_scope_button = getattr(self, "_activate_scope_button", None)
         if activate_scope_button is not None:
             activate_scope_button.state(
-                ["!disabled"] if scope_control_state.activate_allowed else ["disabled"]
+                [
+                    "!disabled"
+                ]
+                if scope_control_state.activate_allowed
+                and not self._should_block_for_context_sync(CMD_RUNTIME_ACTIVATE)
+                else ["disabled"]
             )
         deactivate_scope_button = getattr(self, "_deactivate_scope_button", None)
         if deactivate_scope_button is not None:
@@ -14703,7 +15011,12 @@ class BringupControlUI(tk.Tk):
         run_selected_button = getattr(self, "_tests_run_selected_button", None)
         if run_selected_button is not None:
             run_selected_button.state(
-                ["!disabled"] if scope_control_state.run_selected_allowed else ["disabled"]
+                [
+                    "!disabled"
+                ]
+                if scope_control_state.run_selected_allowed
+                and not self._should_block_for_context_sync("runTest")
+                else ["disabled"]
             )
         if self._reset_button is not None:
             self._reset_button.state(["!disabled"] if self._tcp_connected else ["disabled"])
@@ -14829,19 +15142,27 @@ class BringupControlUI(tk.Tk):
         if not values:
             values = [PROFILE_NONE]
         self._known_test_names = values
-        if not current_selection:
+        if not current_selection or (
+            values == [PROFILE_NONE] and current_selection != PROFILE_NONE
+        ):
             preferred = str(
-                getattr(self, "_last_ui_selected_test_intent", "") or ""
+                self.__dict__.get("_last_ui_selected_test_intent", "") or ""
             ).strip()
             if not preferred:
-                preferred = str(getattr(self, "_last_selected_test", "") or "").strip()
+                preferred = str(self.__dict__.get("_last_selected_test", "") or "").strip()
             if not preferred:
                 preferred = str(
-                    getattr(self, "_last_robot_selected_test_name", "") or ""
+                    self.__dict__.get("_last_robot_selected_test_name", "") or ""
                 ).strip()
             selected_value = preferred if preferred in values else values[0]
             self._selected_test_var.set(selected_value)
             self._last_selected_test = selected_value
+            if selected_value == PROFILE_NONE:
+                self._last_ui_selected_test_intent = ""
+                self._sync_test_library_entry_to_selected_test(selected_value)
+                self._sync_selected_test_devices_panel_local()
+                self._refresh_selected_test_scope_status()
+                self._refresh_context_sync_banner()
 
     def _sync_test_selection(self, name: str) -> None:
         """

@@ -40,6 +40,7 @@ from tools.can_nt.host_ui_state_service import (
     TEST_SCOPE_STATUS_NO_SELECTION_DETAIL,
     TEST_SCOPE_STATUS_RUNNING_DETAIL,
     TEST_SCOPE_STATUS_SCOPE_SWAP_REQUIRED_DETAIL,
+    resolve_context_sync_state,
     resolve_active_group_edit_action_state,
     resolve_manual_duty_access_state,
     resolve_manual_duty_action_state,
@@ -101,6 +102,36 @@ class HostUiStateServiceTests(unittest.TestCase):
         self.assertTrue(state.transport_connected)
         self.assertFalse(state.handshake_ready)
         self.assertTrue(state.has_robot_runtime_state)
+
+    def test_resolve_context_sync_state_reports_profile_and_test_mismatch(self) -> None:
+        state = resolve_context_sync_state(
+            local_selected_profile="ui_profile",
+            robot_selected_profile="robot_profile",
+            robot_active_runtime_profile="robot_runtime",
+            local_selected_test="ui_test",
+            robot_selected_test="robot_test",
+            transport_connected=True,
+            handshake_ready=True,
+        )
+
+        self.assertTrue(state.out_of_sync)
+        self.assertEqual("System is out of sync.", state.summary)
+        self.assertIn("UI profile=ui_profile | robot profile=robot_profile", state.detail)
+        self.assertIn("UI test=ui_test | robot test=robot_test", state.detail)
+        self.assertIn("robot runtime=robot_runtime", state.detail)
+
+    def test_resolve_context_sync_state_ignores_mismatch_when_disconnected(self) -> None:
+        state = resolve_context_sync_state(
+            local_selected_profile="ui_profile",
+            robot_selected_profile="robot_profile",
+            robot_active_runtime_profile="robot_runtime",
+            local_selected_test="ui_test",
+            robot_selected_test="robot_test",
+            transport_connected=False,
+            handshake_ready=False,
+        )
+
+        self.assertFalse(state.out_of_sync)
 
     def test_resolve_diagnostic_profile_state_prefers_robot_active_runtime(self) -> None:
         state = resolve_diagnostic_profile_state(

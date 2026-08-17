@@ -195,6 +195,35 @@ Purpose: Describe the current Selection-pane behavior in the CAN Visibility tab.
 
 - `Open Config...` switches the host UI's local config session to the selected `bringup_system.json` path for profile browsing and local edits only; it does not push config to the robot or activate runtime by itself.
 
+- When the UI is connected and the robot-selected profile differs from the local UI profile context, the UI must not silently switch profiles.
+
+- If the robot-selected profile exists in the currently open local config session, the UI prompts explicitly:
+  - `Yes`: switch the local UI profile context to the robot-selected profile
+  - `No`: keep the current local UI profile context
+  - `Cancel`: dismiss without changing local UI profile context
+
+- If the robot-selected profile is missing from the currently open local config session, the UI warns and keeps the current local UI profile context unchanged.
+
+- While connected, the UI treats mismatched local-vs-robot profile/test context as an explicit `Out Of Sync` state instead of silently switching either side.
+
+- In `Out Of Sync` state, Bringup Control shows a persistent warning banner with `Resolve...`.
+
+- `Resolve...` offers only explicit operator choices:
+  - `Yes`: use robot context in the UI only
+  - `No`: apply the current UI profile to the robot by deactivating runtime first and then sending profile selection
+  - `Cancel`: keep editing locally without changing either side
+
+- `Out Of Sync` does not auto-reactivate runtime after robot-side profile selection.
+
+- Motion-capable actions are blocked while `Out Of Sync` remains unresolved:
+  - `Run Selected`
+  - `Runtime Activate`
+  - `Active Add`
+  - `Active Next`
+  - manual motor duty entry
+
+- `Runtime Deactivate` remains available during `Out Of Sync` as the safe recovery action.
+
 - `Save Config` writes pending local profile/device edits to the currently loaded config path when the session is file-backed.
 
 - Before writing, `Save Config` repairs saved topology device nodes against the current profile/device catalog: it removes stale unknown `deviceRef` entries and adds missing profile devices so the diagram stays aligned with the current config.

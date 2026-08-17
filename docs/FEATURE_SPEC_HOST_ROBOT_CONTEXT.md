@@ -94,6 +94,7 @@ Then:
 - Host active profile becomes `<name>`.
 - Robot active profile does not change.
 - The CLI SHOULD warn once per session when host and robot profiles differ.
+- The host UI SHOULD surface the mismatch explicitly and MUST NOT silently switch the visible host profile to match the robot.
 
 Suggested warning text (informational):
 

@@ -4484,7 +4484,13 @@ class TopologyEditor(tk.Tk):
                 "tags": list(node.tags or []),
             }
             for node in nodes_list
-            if node.node_type == "callout"
+            if (
+                node.node_type == "callout"
+                and not (
+                    str(node.callout_target_type or TEXT_EMPTY).strip().lower() == NODE_TYPE_DEVICE
+                    and node.callout_target_node_key not in node_by_key
+                )
+            )
         ]
         self._ensure_bus_connector_sides(len(self._bus_offsets))
         return {
@@ -6655,14 +6661,16 @@ class TopologyEditor(tk.Tk):
         if not proceed:
             return True
         self._push_undo()
+        removed_keys = set(node_keys)
         if node_keys:
             self._nodes = [node for node in self._nodes if int(node.key) not in node_keys]
+            removed_keys = self._prune_current_canvas_removed_node_refs(removed_keys)
         if in_non_topology:
             self._non_topology_profile_labels = [
                 existing for existing in self._non_topology_profile_labels if existing != label_text
             ]
         self._selected_inventory_label = None
-        if any(key in set(self._selected_nodes) for key in node_keys):
+        if any(key in set(self._selected_nodes) for key in removed_keys):
             self._clear_selection()
         self._prune_current_profile_bridge_config_label(label_text)
         self._prune_attachment_links()
@@ -6714,6 +6722,14 @@ class TopologyEditor(tk.Tk):
         self._push_undo()
         self._remove_registry_entry_by_label(label_text)
         self._pending_global_device_deletions.add(label_text)
+        removed_keys = {
+            int(node.key)
+            for node in self._nodes
+            if (
+                self._is_registry_device_node(node)
+                and str(node.label or TEXT_EMPTY).strip() == label_text
+            )
+        }
         self._nodes = [
             node
             for node in self._nodes
@@ -6722,6 +6738,7 @@ class TopologyEditor(tk.Tk):
                 and str(node.label or TEXT_EMPTY).strip() == label_text
             )
         ]
+        self._prune_current_canvas_removed_node_refs(removed_keys)
         self._non_topology_profile_labels = [
             existing for existing in self._non_topology_profile_labels if existing != label_text
         ]
@@ -6738,6 +6755,30 @@ class TopologyEditor(tk.Tk):
         self._mark_neighbors_stale()
         self._redraw_canvas()
         return True
+
+    def _prune_current_canvas_removed_node_refs(self, removed_node_keys: set[int]) -> set[int]:
+        """
+        NAME
+            _prune_current_canvas_removed_node_refs - Remove live callouts whose targets were removed.
+
+        RETURNS
+            Set of removed node keys, including dependent callout keys removed from the live canvas.
+        """
+        if not removed_node_keys:
+            return set()
+        removed_keys = set(removed_node_keys)
+        kept_nodes: List[Node] = []
+        for node in self._nodes:
+            if (
+                node.node_type == NODE_TYPE_CALLOUT
+                and str(node.callout_target_type or TEXT_EMPTY).strip().lower() == NODE_TYPE_DEVICE
+                and node.callout_target_node_key in removed_node_keys
+            ):
+                removed_keys.add(int(node.key))
+                continue
+            kept_nodes.append(node)
+        self._nodes = kept_nodes
+        return removed_keys
 
     def _delete_inventory_entry_globally(self, label: str) -> bool:
         """
@@ -7897,6 +7938,11 @@ class TopologyEditor(tk.Tk):
             return
         if not messagebox.askyesno(TITLE_REMOVE_FROM_PROFILE, MSG_REMOVE_SELECTION_CONFIRM):
             return
+        removed_node_keys = {
+            int(node.key)
+            for node in self._nodes
+            if node.key in self._selected_nodes and node.node_type != NODE_TYPE_CALLOUT
+        }
         removed_labels = [
             (n.label or TEXT_EMPTY).strip()
             for n in self._nodes
@@ -7904,6 +7950,7 @@ class TopologyEditor(tk.Tk):
         ]
         self._push_undo()
         self._nodes = [n for n in self._nodes if n.key not in self._selected_nodes]
+        self._prune_current_canvas_removed_node_refs(removed_node_keys)
         self._clear_selection()
         for label in removed_labels:
             self._prune_current_profile_bridge_config_label(label)

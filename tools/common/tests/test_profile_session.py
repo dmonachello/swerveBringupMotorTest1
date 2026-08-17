@@ -9,7 +9,6 @@ import unittest
 
 from tools.common.profile_session import (
     SESSION_STATUS_LOCAL_ONLY,
-    SYNC_ACTION_ADOPT,
     SYNC_ACTION_MISSING_LOCAL,
     SYNC_ACTION_NONE,
     SYNC_ACTION_PROMPT,
@@ -22,13 +21,13 @@ class ProfileSessionPolicyTests(unittest.TestCase):
     def test_normalize_profile_name_strips_inactive_suffix(self) -> None:
         self.assertEqual("demo", normalize_profile_name("demo (inactive)"))
 
-    def test_decide_host_profile_sync_adopts_robot_when_host_empty(self) -> None:
+    def test_decide_host_profile_sync_prompts_when_host_empty_and_robot_exists_locally(self) -> None:
         decision = decide_host_profile_sync("", "robot_profile", ["robot_profile"])
-        self.assertEqual(SYNC_ACTION_ADOPT, decision.action)
+        self.assertEqual(SYNC_ACTION_PROMPT, decision.action)
 
-    def test_decide_host_profile_sync_marks_missing_local_when_host_empty_and_robot_unknown(self) -> None:
+    def test_decide_host_profile_sync_noops_when_host_empty_and_robot_unknown(self) -> None:
         decision = decide_host_profile_sync("", "robot_profile", ["other_profile"])
-        self.assertEqual(SYNC_ACTION_MISSING_LOCAL, decision.action)
+        self.assertEqual(SYNC_ACTION_NONE, decision.action)
 
     def test_decide_host_profile_sync_prompts_on_mismatch(self) -> None:
         decision = decide_host_profile_sync("local_profile", "robot_profile", ["local_profile", "robot_profile"])

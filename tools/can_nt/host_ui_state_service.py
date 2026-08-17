@@ -197,6 +197,23 @@ class UiContextState:
 
 
 @dataclass(frozen=True)
+class ContextSyncState:
+    """
+    NAME
+        ContextSyncState - Shared host-side UI vs robot context synchronization state.
+    """
+
+    out_of_sync: bool
+    ui_profile: str
+    robot_profile: str
+    robot_runtime_profile: str
+    ui_test: str
+    robot_test: str
+    summary: str
+    detail: str
+
+
+@dataclass(frozen=True)
 class DiagnosticProfileState:
     """
     NAME
@@ -468,6 +485,81 @@ def resolve_ui_context_state(
         has_robot_runtime_state=bool(has_robot_runtime_state),
         transport_connected=bool(transport_connected),
         handshake_ready=bool(handshake_ready),
+    )
+
+
+def resolve_context_sync_state(
+    *,
+    local_selected_profile: object,
+    robot_selected_profile: object,
+    robot_active_runtime_profile: object,
+    local_selected_test: object,
+    robot_selected_test: object,
+    transport_connected: bool,
+    handshake_ready: bool,
+) -> ContextSyncState:
+    """
+    NAME
+        resolve_context_sync_state - Determine whether the UI and robot are currently out of sync.
+    """
+    ui_profile = _normalize_profile_name(local_selected_profile)
+    robot_profile = _normalize_profile_name(robot_selected_profile)
+    robot_runtime_profile = _normalize_profile_name(robot_active_runtime_profile)
+    ui_test = str(local_selected_test or "").strip()
+    robot_test = str(robot_selected_test or "").strip()
+    if not bool(transport_connected) or not bool(handshake_ready):
+        return ContextSyncState(
+            out_of_sync=False,
+            ui_profile=ui_profile,
+            robot_profile=robot_profile,
+            robot_runtime_profile=robot_runtime_profile,
+            ui_test=ui_test,
+            robot_test=robot_test,
+            summary="",
+            detail="",
+        )
+    ui_profile_cmp = ui_profile if ui_profile and ui_profile != PROFILE_NONE else PROFILE_NONE
+    robot_profile_cmp = (
+        robot_profile if robot_profile and robot_profile != PROFILE_NONE else PROFILE_NONE
+    )
+    ui_test_cmp = ui_test if ui_test and ui_test != PROFILE_NONE else PROFILE_NONE
+    robot_test_cmp = robot_test if robot_test and robot_test != PROFILE_NONE else PROFILE_NONE
+    profile_mismatch = robot_profile_cmp != PROFILE_NONE and ui_profile_cmp != robot_profile_cmp
+    test_mismatch = robot_test_cmp != PROFILE_NONE and ui_test_cmp != robot_test_cmp
+    runtime_mismatch = (
+        robot_runtime_profile not in ("", PROFILE_NONE)
+        and robot_profile_cmp not in ("", PROFILE_NONE)
+        and robot_runtime_profile != robot_profile_cmp
+    )
+    out_of_sync = profile_mismatch or test_mismatch or runtime_mismatch
+    if not out_of_sync:
+        return ContextSyncState(
+            out_of_sync=False,
+            ui_profile=ui_profile,
+            robot_profile=robot_profile,
+            robot_runtime_profile=robot_runtime_profile,
+            ui_test=ui_test,
+            robot_test=robot_test,
+            summary="",
+            detail="",
+        )
+    summary = "System is out of sync."
+    details: List[str] = []
+    if profile_mismatch:
+        details.append(f"UI profile={ui_profile_cmp} | robot profile={robot_profile_cmp}")
+    if test_mismatch:
+        details.append(f"UI test={ui_test_cmp} | robot test={robot_test_cmp}")
+    if runtime_mismatch:
+        details.append(f"robot runtime={robot_runtime_profile}")
+    return ContextSyncState(
+        out_of_sync=True,
+        ui_profile=ui_profile,
+        robot_profile=robot_profile,
+        robot_runtime_profile=robot_runtime_profile,
+        ui_test=ui_test,
+        robot_test=robot_test,
+        summary=summary,
+        detail="; ".join(details),
     )
 
 

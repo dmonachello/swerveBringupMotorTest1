@@ -872,7 +872,7 @@ class BridgeCliVisibilityTests(unittest.TestCase):
         self.assertEqual(profiles_output.getvalue(), profile_output.getvalue())
         self.assertIn("selected=demo", profiles_output.getvalue())
 
-    def test_connect_batch_adopts_robot_profile_when_host_context_invalid(self) -> None:
+    def test_connect_batch_warns_and_keeps_host_context_when_robot_profile_differs(self) -> None:
         cli = self._build_cli(connected=False)
         cli._groups_profile = "local-profile"
 
@@ -888,11 +888,11 @@ class BridgeCliVisibilityTests(unittest.TestCase):
             result = cli._exec_command(["connect"])
 
         self.assertEqual(result.code, SS__NORMAL)
-        self.assertEqual(PROFILE_NAME, cli._groups_profile)
+        self.assertEqual("local-profile", cli._groups_profile)
         self.assertEqual(PROFILE_NAME, cli._robot_selected_profile)
         self.assertTrue(
             any(
-                "Using robot profile for this session." in str(call.args[0])
+                "Leaving host context unchanged." in str(call.args[0])
                 for call in mock_print.call_args_list
                 if call.args
             )
@@ -1025,8 +1025,11 @@ class BridgeCliVisibilityTests(unittest.TestCase):
         self.assertFalse(
             any("local profiles" in str(call.args[0]) for call in mock_print.call_args_list if call.args)
         )
+        self.assertFalse(
+            any("keeping host context" in str(call.args[0]) for call in mock_print.call_args_list if call.args)
+        )
 
-    def test_connect_interactive_adopts_robot_profile_only_when_host_context_invalid(self) -> None:
+    def test_connect_interactive_prompts_before_switching_host_context(self) -> None:
         cli = self._build_cli(connected=False)
         cli._batch = False
         cli._groups_profile = "local-profile"

@@ -632,6 +632,51 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertEqual(["robot_test_a", "robot_test_b"], ui._known_test_names)
         self.assertEqual(PROFILE_NONE, ui._selected_test_var.get())
 
+    def test_sync_test_dropdown_values_clears_stale_selected_test_when_values_become_none(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._selected_test_var = _StringVarStub("newTests_123")
+        ui._last_selected_test = "newTests_123"
+        ui._last_ui_selected_test_intent = "newTests_123"
+        library = []
+        devices = []
+        statuses = []
+        ui._sync_test_library_entry_to_selected_test = lambda name: library.append(name)
+        ui._sync_selected_test_devices_panel_local = lambda: devices.append("devices")
+        ui._refresh_selected_test_scope_status = lambda: statuses.append("status")
+        ui._refresh_context_sync_banner = lambda: None
+
+        ui._sync_test_dropdown_values([])
+
+        self.assertEqual([PROFILE_NONE], ui._known_test_names)
+        self.assertEqual(PROFILE_NONE, ui._selected_test_var.get())
+        self.assertEqual(PROFILE_NONE, ui._last_selected_test)
+        self.assertEqual("", ui._last_ui_selected_test_intent)
+        self.assertEqual([PROFILE_NONE], library)
+        self.assertEqual(["devices"], devices)
+        self.assertEqual(["status"], statuses)
+
+    def test_sync_test_dropdown_values_clears_stale_selected_test_when_values_become_none(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._selected_test_var = _StringVarStub("newTests_123")
+        ui._last_selected_test = "newTests_123"
+        ui._last_ui_selected_test_intent = "newTests_123"
+        library = []
+        devices = []
+        statuses = []
+        ui._sync_test_library_entry_to_selected_test = lambda name: library.append(name)
+        ui._sync_selected_test_devices_panel_local = lambda: devices.append("devices")
+        ui._refresh_selected_test_scope_status = lambda: statuses.append("status")
+
+        ui._sync_test_dropdown_values([])
+
+        self.assertEqual([PROFILE_NONE], ui._known_test_names)
+        self.assertEqual(PROFILE_NONE, ui._selected_test_var.get())
+        self.assertEqual(PROFILE_NONE, ui._last_selected_test)
+        self.assertEqual("", ui._last_ui_selected_test_intent)
+        self.assertEqual([PROFILE_NONE], library)
+        self.assertEqual(["devices"], devices)
+        self.assertEqual(["status"], statuses)
+
     def test_scope_context_uses_tests_tab_when_selected(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
         ui._current_right_tab_text = lambda: "Tests"
@@ -1444,6 +1489,34 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertEqual([("alpha", True)], applied)
         set_override_mock.assert_called_once_with(Path("C:/tmp/bringup_system.json").resolve())
 
+    def test_sync_diagnostic_profile_context_reloads_live_views_when_config_session_changes_under_same_profile_name(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._robot_selected_profile = PROFILE_NONE
+        ui._robot_active_runtime_profile = PROFILE_NONE
+        ui._profile_box = _ProfileBoxStub("alpha", values=(PROFILE_NONE, "alpha"))
+        ui._refresh_profile_devices = lambda name: setattr(ui, "_refreshed_profile_name", name)
+        ui._last_profile_context = "alpha"
+        ui._profile_context_reload_token = 2
+        ui._last_profile_context_reload_token = 1
+        ui.after_idle = lambda callback, *args, **kwargs: callback(*args, **kwargs)
+        ui._refresh_evidence_view = lambda: None
+
+        class _LiveViewStub:
+            def __init__(self) -> None:
+                self.reloaded = []
+
+            def reload_profile(self, name: str) -> None:
+                self.reloaded.append(name)
+
+        live_view = _LiveViewStub()
+        ui._iter_live_views = lambda: [live_view]
+
+        ui._sync_diagnostic_profile_context(reload_views=True)
+
+        self.assertEqual("alpha", ui._refreshed_profile_name)
+        self.assertEqual(["alpha"], live_view.reloaded)
+        self.assertEqual(2, ui._last_profile_context_reload_token)
+
     def test_ensure_default_profile_for_local_config_session_creates_default_profile(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
         ui._profile_box = _ProfileBoxStub(PROFILE_NONE, values=(PROFILE_NONE,))
@@ -1857,6 +1930,49 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertTrue(ui._test_library_global_list.cleared)
         self.assertTrue(ui._test_library_config_list.cleared)
         self.assertTrue(ui._test_library_profile_list.cleared)
+
+    def test_apply_selected_test_name_from_ui_clears_state_for_none_selection(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._selected_test_var = _StringVarStub("robot_test_a")
+        ui._last_selected_test = "robot_test_a"
+        ui._last_ui_selected_test_intent = "robot_test_a"
+        library = []
+        devices = []
+        statuses = []
+        ui._sync_test_library_entry_to_selected_test = lambda name: library.append(name)
+        ui._sync_selected_test_devices_panel_local = lambda: devices.append("devices")
+        ui._refresh_selected_test_scope_status = lambda: statuses.append("status")
+        ui._refresh_context_sync_banner = lambda: None
+
+        ui._apply_selected_test_name_from_ui(PROFILE_NONE)
+
+        self.assertEqual(PROFILE_NONE, ui._selected_test_var.get())
+        self.assertEqual(PROFILE_NONE, ui._last_selected_test)
+        self.assertEqual("", ui._last_ui_selected_test_intent)
+        self.assertEqual([PROFILE_NONE], library)
+        self.assertEqual(["devices"], devices)
+        self.assertEqual(["status"], statuses)
+
+    def test_apply_selected_test_name_from_ui_clears_state_for_none_selection(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._selected_test_var = _StringVarStub("robot_test_a")
+        ui._last_selected_test = "robot_test_a"
+        ui._last_ui_selected_test_intent = "robot_test_a"
+        library = []
+        devices = []
+        statuses = []
+        ui._sync_test_library_entry_to_selected_test = lambda name: library.append(name)
+        ui._sync_selected_test_devices_panel_local = lambda: devices.append("devices")
+        ui._refresh_selected_test_scope_status = lambda: statuses.append("status")
+
+        ui._apply_selected_test_name_from_ui(PROFILE_NONE)
+
+        self.assertEqual(PROFILE_NONE, ui._selected_test_var.get())
+        self.assertEqual(PROFILE_NONE, ui._last_selected_test)
+        self.assertEqual("", ui._last_ui_selected_test_intent)
+        self.assertEqual([PROFILE_NONE], library)
+        self.assertEqual(["devices"], devices)
+        self.assertEqual(["status"], statuses)
 
     def test_sync_test_dropdown_keeps_robot_selected_name_when_rows_are_empty(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
@@ -5321,7 +5437,10 @@ class BringupUiActionMetadataTests(unittest.TestCase):
 
     def test_ui_prompts_to_sync_host_profile_context_to_robot_profile(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
+        ui._tcp_connected = True
+        ui._handshake_done = True
         ui._robot_selected_profile = "test_minimal_25_9"
+        ui._selected_test_var = _StringVarStub(PROFILE_NONE)
         ui._profile_box = _ProfileBoxStub(
             "2026_no_swyfts",
             values=("2026_no_swyfts", "test_minimal_25_9"),
@@ -5330,8 +5449,13 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._last_profile_mismatch_prompt = None
         applied = []
         ui._apply_profile_selection = lambda name, reload_views: applied.append((name, reload_views))
+        ui._local_test_library_state = lambda profile_name: {
+            "global_names": [],
+            "config_names": [],
+            "profile_names": [],
+        }
 
-        with patch("tools.can_nt.bringup_ui.messagebox.askyesno", return_value=True) as mock_prompt:
+        with patch("tools.can_nt.bringup_ui.messagebox.askyesnocancel", return_value=True) as mock_prompt:
             ui._maybe_prompt_host_profile_context_sync()
 
         self.assertEqual("test_minimal_25_9", ui._profile_box.get())
@@ -5339,9 +5463,12 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertEqual([("test_minimal_25_9", True)], applied)
         mock_prompt.assert_called_once()
 
-    def test_ui_adopts_robot_profile_without_prompt_when_local_context_is_empty(self) -> None:
+    def test_ui_prompts_before_switching_from_empty_local_context_to_robot_profile(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
+        ui._tcp_connected = True
+        ui._handshake_done = True
         ui._robot_selected_profile = "test_minimal_25_9"
+        ui._selected_test_var = _StringVarStub(PROFILE_NONE)
         ui._profile_box = _ProfileBoxStub(
             "(none)",
             values=("2026_no_swyfts", "test_minimal_25_9", "(none)"),
@@ -5350,18 +5477,26 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._last_profile_mismatch_prompt = None
         applied = []
         ui._apply_profile_selection = lambda name, reload_views: applied.append((name, reload_views))
+        ui._local_test_library_state = lambda profile_name: {
+            "global_names": [],
+            "config_names": [],
+            "profile_names": [],
+        }
 
-        with patch("tools.can_nt.bringup_ui.messagebox.askyesno") as mock_prompt:
+        with patch("tools.can_nt.bringup_ui.messagebox.askyesnocancel", return_value=True) as mock_prompt:
             ui._maybe_prompt_host_profile_context_sync()
 
         self.assertEqual("test_minimal_25_9", ui._profile_box.get())
         self.assertEqual("test_minimal_25_9", ui._last_selected_profile)
         self.assertEqual([("test_minimal_25_9", True)], applied)
-        mock_prompt.assert_not_called()
+        mock_prompt.assert_called_once()
 
     def test_ui_warns_when_robot_profile_is_missing_from_open_local_config(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
+        ui._tcp_connected = True
+        ui._handshake_done = True
         ui._robot_selected_profile = "robot_2026_swerve"
+        ui._selected_test_var = _StringVarStub(PROFILE_NONE)
         ui._profile_box = _ProfileBoxStub(
             "default",
             values=("default",),
@@ -5372,7 +5507,30 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._apply_profile_selection = lambda name, reload_views: applied.append((name, reload_views))
 
         with patch("tools.can_nt.bringup_ui.messagebox.showwarning") as mock_warning:
-            with patch("tools.can_nt.bringup_ui.messagebox.askyesno") as mock_prompt:
+            with patch("tools.can_nt.bringup_ui.messagebox.askyesnocancel") as mock_prompt:
+                ui._maybe_prompt_host_profile_context_sync()
+
+        self.assertEqual([], applied)
+        mock_warning.assert_called_once()
+        mock_prompt.assert_not_called()
+
+    def test_ui_warns_when_local_context_is_empty_and_robot_profile_is_missing_locally(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._tcp_connected = True
+        ui._handshake_done = True
+        ui._robot_selected_profile = "robot_2026_swerve"
+        ui._selected_test_var = _StringVarStub(PROFILE_NONE)
+        ui._profile_box = _ProfileBoxStub(
+            "(none)",
+            values=("default", "(none)"),
+        )
+        ui._last_selected_profile = "(none)"
+        ui._last_profile_mismatch_prompt = None
+        applied = []
+        ui._apply_profile_selection = lambda name, reload_views: applied.append((name, reload_views))
+
+        with patch("tools.can_nt.bringup_ui.messagebox.showwarning") as mock_warning:
+            with patch("tools.can_nt.bringup_ui.messagebox.askyesnocancel") as mock_prompt:
                 ui._maybe_prompt_host_profile_context_sync()
 
         self.assertEqual([], applied)
@@ -5396,11 +5554,13 @@ class BringupUiActionMetadataTests(unittest.TestCase):
             },
         )()
         ui._apply_profile_selection = lambda _name, reload_views: None
+        ui._refresh_context_sync_banner = lambda: None
+        ui._maybe_prompt_host_profile_context_sync = lambda: None
 
         with patch("tools.can_nt.bringup_ui.send_command", return_value=77) as mock_send:
             ui._on_profile_selected()
 
-        self.assertEqual("test_minimal_25_9", ui._pending_robot_profile_selection)
+        self.assertEqual(PROFILE_NONE, ui._pending_robot_profile_selection)
         self.assertIsNone(ui.__dict__.get("_last_sent_seq"))
         mock_send.assert_not_called()
 
@@ -6841,6 +7001,27 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertTrue(any("CMD showRuntimeState" in line for line in output_lines))
         self.assertTrue(any("OUT showRuntimeState" in line for line in output_lines))
 
+    def test_on_action_blocks_run_test_during_context_mismatch(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        calls: list[str] = []
+        ui._should_block_for_context_sync = lambda command: str(command).lower() == "runtest"
+        ui._show_context_sync_resolution = lambda trigger: calls.append(str(trigger)) or False
+
+        ui._on_action("runTest")
+
+        self.assertEqual(["runTest"], calls)
+
+    def test_runtime_activate_from_ui_blocks_during_context_mismatch(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        calls: list[str] = []
+        ui._should_block_for_context_sync = lambda command: str(command).lower() == "runtimeactivate"
+        ui._show_context_sync_resolution = lambda trigger: calls.append(str(trigger)) or False
+        ui._activate_runtime_from_ui = lambda: calls.append("activate")
+
+        ui._runtime_activate_from_ui()
+
+        self.assertEqual([CMD_RUNTIME_ACTIVATE], calls)
+
     def test_poll_nt_disconnect_transition_resets_runtime_context(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
         ui._live_clock_var = type("ClockVarStub", (), {"set": lambda _self, _value: None})()
@@ -7529,6 +7710,19 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         )
         self.assertEqual(["refresh"], refresh_calls)
 
+    def test_active_group_toggle_is_blocked_during_context_mismatch(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        triggers = []
+        ui._should_block_for_context_sync = lambda command: command == "groupAddDevice"
+        ui._show_context_sync_resolution = lambda trigger: triggers.append(trigger) or False
+        ui._send_and_wait = lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("should not send while contexts are out of sync")
+        )
+
+        ui._on_active_group_member_toggled("FALCON 9", True)
+
+        self.assertEqual(["groupAddDevice"], triggers)
+
     def test_send_and_wait_returns_false_when_command_out_reports_error(self) -> None:
         class _Session:
             def __init__(self) -> None:
@@ -7946,6 +8140,54 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertIn('"SPARKMAX/NEO 25".position_delta outside -1.0 1.0', text)
         self.assertIn("last=-0.125", text)
         self.assertEqual("#991b1b", ui._last_result_label.foreground)
+
+    def test_refresh_test_result_status_shows_matching_aggregate_hint_for_instantaneous_current_require(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._last_result_text_var = _StringVarStub()
+        ui._last_result_label = _LabelStub()
+        ui._append_output = lambda _line: None
+        ui._append_test_output = lambda _line: None
+        ui._last_test_result_signature = None
+        tests_state = {
+            "run": {
+                "runId": 8,
+                "state": "failed",
+                "test": "newTests_123",
+                "result": "FAIL_REQUIRE_NOT_MET",
+                "status": 'until until_2: until lmtSw0.pressed == true',
+                "message": "",
+                "details": {
+                    "requires": [
+                        {
+                            "id": "require_2",
+                            "text": 'require "SPARKMAX/NEO 25".current_actual > 0.1',
+                            "satisfied": False,
+                            "sampleValue": 0.0,
+                        }
+                    ],
+                    "lastSamples": {
+                        "FALCON 9.current_actual": 0.2,
+                        "SPARKMAX/NEO 25.current_actual": 0.0,
+                        "lmtSw0.pressed": True,
+                    },
+                    "aggregateSignals": {
+                        "SPARKMAX/NEO 25.current_actual_max": 6.4,
+                    },
+                },
+            }
+        }
+        ui._latest_tests_state_payload = tests_state
+        ui._tests_table = _RestTableAdapter.from_tests_state(tests_state)
+
+        ui._refresh_test_result_status()
+
+        text = ui._last_result_text_var.get()
+        self.assertIn('require "SPARKMAX/NEO 25".current_actual > 0.1', text)
+        self.assertIn("last=0.000", text)
+        self.assertIn("last samples:", text)
+        self.assertIn("SPARKMAX/NEO 25.current_actual=0.000", text)
+        self.assertIn("aggregate hints:", text)
+        self.assertIn("SPARKMAX/NEO 25.current_actual_max=6.400", text)
 
     def test_refresh_test_result_status_logs_failure_detail_once(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)

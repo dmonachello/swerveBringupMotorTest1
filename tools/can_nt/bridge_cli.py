@@ -63,7 +63,6 @@ from tools.can_nt.bridge_cli_constants import CLI_PARSER_CONST
 from tools.can_nt.bridge_cli_constants_gen import SPEC as PARSER_SPEC
 from tools.can_nt.can_profiles import get_default_profile
 from tools.common.profile_session import (
-    SYNC_ACTION_ADOPT,
     SYNC_ACTION_MISSING_LOCAL,
     SYNC_ACTION_NONE,
     SYNC_ACTION_PROMPT,
@@ -1945,7 +1944,7 @@ MESSAGE_PROFILE_CONTEXT_MISMATCH_FMT = (
 )
 MESSAGE_PROFILE_CONTEXT_BATCH_SYNC_FMT = (
     "WARNING: Robot selected profile is '{robot}', but host context is '{host}'. "
-    "Using robot profile for this session."
+    "Leaving host context unchanged."
 )
 MESSAGE_PROFILE_CONTEXT_MISSING_LOCAL_FMT = (
     "WARNING: Robot selected profile '{robot}' is not available in local profiles; "
@@ -12742,6 +12741,7 @@ class BridgeCli:
         if not robot_name:
             return
         self._robot_selected_profile = robot_name
+        host_display = host_name or STRING_NONE
         if decision.action == SYNC_ACTION_NONE:
             self._profile_context_mismatch_seen = None
             return
@@ -12749,20 +12749,15 @@ class BridgeCli:
         if self._profile_context_mismatch_seen == mismatch_key:
             return
         if decision.action == SYNC_ACTION_MISSING_LOCAL:
-            print(MESSAGE_PROFILE_CONTEXT_MISSING_LOCAL_FMT.format(robot=robot_name, host=host_name))
+            print(MESSAGE_PROFILE_CONTEXT_MISSING_LOCAL_FMT.format(robot=robot_name, host=host_display))
             self._profile_context_mismatch_seen = mismatch_key
             return
-        if decision.action == SYNC_ACTION_ADOPT:
-            self._apply_host_profile_context(robot_name, announce=True)
-            self._profile_context_mismatch_seen = None
-            return
         if self._batch or not prompt_user:
-            print(MESSAGE_PROFILE_CONTEXT_BATCH_SYNC_FMT.format(robot=robot_name, host=host_name))
-            self._apply_host_profile_context(robot_name, announce=True)
+            print(MESSAGE_PROFILE_CONTEXT_BATCH_SYNC_FMT.format(robot=robot_name, host=host_display))
             self._profile_context_mismatch_seen = mismatch_key
             return
         if decision.action == SYNC_ACTION_PROMPT and self._confirm_yes_default(
-            MESSAGE_PROFILE_CONTEXT_MISMATCH_FMT.format(robot=robot_name, host=host_name)
+            MESSAGE_PROFILE_CONTEXT_MISMATCH_FMT.format(robot=robot_name, host=host_display)
         ):
             self._apply_host_profile_context(robot_name, announce=True)
         self._profile_context_mismatch_seen = mismatch_key

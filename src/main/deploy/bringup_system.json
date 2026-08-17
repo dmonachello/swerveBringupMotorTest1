@@ -58,10 +58,10 @@
         "pdp",
         "SPARKMAX/NEO 25",
         "lmtSw0",
-        "FALCON 9",
-        "pigeon 2",
         "cancoder",
         "SPARKMAX/NEO 7",
+        "FALCON 9",
+        "pigeon 2",
         "controller0"
       ],
       "dslTestSet": "test_minimal_25_9"
@@ -234,16 +234,6 @@
       "type": "motor"
     },
     {
-      "label": "FALCON 9",
-      "deviceInterface": "CAN",
-      "terminator": false,
-      "id": 9,
-      "manufacturer": 4,
-      "deviceType": 2,
-      "model": "Falcon 500",
-      "type": "motor"
-    },
-    {
       "label": "SPARKMAX/NEO 25",
       "deviceInterface": "CAN",
       "terminator": false,
@@ -264,16 +254,6 @@
       "manufacturer": 4,
       "deviceType": 8,
       "model": "PDP",
-      "type": ""
-    },
-    {
-      "label": "pigeon 2",
-      "deviceInterface": "CAN",
-      "terminator": false,
-      "id": 19,
-      "manufacturer": 4,
-      "deviceType": 4,
-      "model": "pigeon 2",
       "type": ""
     },
     {
@@ -314,10 +294,38 @@
       "deviceType": 2,
       "model": "REV NEO",
       "type": "motor"
+    },
+    {
+      "label": "FALCON 9",
+      "deviceInterface": "CAN",
+      "tags": [
+        "guessed:label",
+        "guessed:model",
+        "guessed:type"
+      ],
+      "terminator": false,
+      "id": 9,
+      "manufacturer": 4,
+      "deviceType": 2,
+      "model": "MotorController",
+      "type": "motor"
+    },
+    {
+      "label": "pigeon 2",
+      "deviceInterface": "CAN",
+      "tags": [
+        "guessed:label",
+        "guessed:model"
+      ],
+      "id": 19,
+      "manufacturer": 4,
+      "deviceType": 4,
+      "model": "Pigeon",
+      "type": ""
     }
   ],
-  "data_version": "2026-08-16_140655",
-  "data_hash": "cc3c9d1d76d16ae657623bc62eff13b4d38ac6d093da82d4623e9cf9efac9a2f",
+  "data_version": "2026-08-17_131815",
+  "data_hash": "84b2fff7bb0db245d7ea831e3c6a6f2a596f502edd627cf10570276ac510ebc1",
   "default_profile": "test_minimal_25_9",
   "bridgeConfig": {
     "schemaVersion": 2,
@@ -844,15 +852,11 @@
             "enabled": true,
             "members": [
               {
-                "label": "SPARKMAX/NEO 25",
+                "label": "SPARKMAX/NEO 7",
                 "enabled": true
               },
               {
                 "label": "FALCON 9",
-                "enabled": true
-              },
-              {
-                "label": "SPARKMAX/NEO 7",
                 "enabled": true
               }
             ],
@@ -2390,8 +2394,8 @@
         "runnable": true
       },
       "newTests_123": {
-        "source": "test \"newTests_123\"\n\ndevice \"SPARKMAX/NEO 25\"\ndevice \"FALCON 9\"\ndevice \"controller0\"\ndevice \"pdp\"\ndevice \"lmtSw0\"\ndevice \"pigeon 2\"\ndevice \"cancoder\"\n\nmain:\n\tset \"SPARKMAX/NEO 25\".output_percent_cmd = controller0.leftY deadband 0.08 scaled 0.25 default 0.0\n\tset \"FALCON 9\".output_percent_cmd = 0.333\n\n\tuntil timer.elapsed >= 10.0\n\tuntil lmtSw0.pressed == true\n\n\tabort pdp.channel0_current > 10.0\n\trequire pdp.channel0_fault == false\n\trequire \"FALCON 9\".current_actual > 0.1\n\trequire \"SPARKMAX/NEO 25\".current_actual > 0.1\n\trequire \"pigeon 2\".yaw_delta_max_abs > 5.0\n#\trequire \"cancoder\".position_delta_max_abs > 5.0\n\n\n",
-        "sourceHash": "c5556fc6abdbef20d4b2a31aeed8320d54e1a99c704f9c89f2af0ce8f9ea4732",
+        "source": "test \"newTests_123\"\n\ndevice \"SPARKMAX/NEO 25\"\ndevice \"FALCON 9\"\ndevice \"controller0\"\ndevice \"pdp\"\ndevice \"lmtSw0\"\ndevice \"pigeon 2\"\ndevice \"cancoder\"\n\nmain:\n\tset \"SPARKMAX/NEO 25\".output_percent_cmd = controller0.leftY deadband 0.08 scaled 0.25 default 0.0\n\tset \"FALCON 9\".output_percent_cmd = 0.333\n\n\tuntil timer.elapsed >= 10.0\n\tuntil lmtSw0.pressed == true\n\n\tabort pdp.channel0_current > 10.0\n\trequire pdp.channel0_fault == false\n\trequire \"FALCON 9\".current_actual_max > 0.1\n\trequire \"SPARKMAX/NEO 25\".current_actual_max > 0.1\n\trequire \"pigeon 2\".yaw_delta_max_abs > 5.0\n#\trequire \"cancoder\".position_delta_max_abs > 5.0\n\n\n",
+        "sourceHash": "fcc66578818ab1931b4f534d9e2b8bb5d84376873ba373ff03fae2669cee00c7",
         "normalized": {
           "name": "newTests_123",
           "devices": [
@@ -2536,11 +2540,11 @@
               {
                 "id": "require_2",
                 "kind": "require",
-                "text": "require \"FALCON 9\".current_actual > 0.1",
+                "text": "require \"FALCON 9\".current_actual_max > 0.1",
                 "reference": {
                   "device": "FALCON 9",
-                  "signal": "current_actual",
-                  "text": "FALCON 9.current_actual"
+                  "signal": "current_actual_max",
+                  "text": "FALCON 9.current_actual_max"
                 },
                 "mode": "comparison",
                 "operator": ">",
@@ -2552,11 +2556,11 @@
               {
                 "id": "require_3",
                 "kind": "require",
-                "text": "require \"SPARKMAX/NEO 25\".current_actual > 0.1",
+                "text": "require \"SPARKMAX/NEO 25\".current_actual_max > 0.1",
                 "reference": {
                   "device": "SPARKMAX/NEO 25",
-                  "signal": "current_actual",
-                  "text": "SPARKMAX/NEO 25.current_actual"
+                  "signal": "current_actual_max",
+                  "text": "SPARKMAX/NEO 25.current_actual_max"
                 },
                 "mode": "comparison",
                 "operator": ">",
@@ -4161,8 +4165,8 @@
             "layout": {
               "bus": 0,
               "row": 0,
-              "x": 150.0,
-              "y": -66.06016042780749,
+              "x": 76.0,
+              "y": -77.73930481283422,
               "yRelative": true
             }
           },
@@ -4175,8 +4179,8 @@
             "layout": {
               "bus": 0,
               "row": 1,
-              "x": 974.4224598930482,
-              "y": 71.89973262032086,
+              "x": 1014.4224598930482,
+              "y": 71.16978609625669,
               "yRelative": true
             }
           },
@@ -4209,34 +4213,6 @@
             }
           },
           {
-            "key": 6,
-            "objectType": "device",
-            "nodeType": "device",
-            "nodeClass": "device",
-            "deviceRef": "FALCON 9",
-            "layout": {
-              "bus": 0,
-              "row": 0,
-              "x": 766.4973262032096,
-              "y": -47.81149732620321,
-              "yRelative": true
-            }
-          },
-          {
-            "key": 8,
-            "objectType": "device",
-            "nodeType": "device",
-            "nodeClass": "device",
-            "deviceRef": "pigeon 2",
-            "layout": {
-              "bus": 0,
-              "row": 0,
-              "x": 459.48930481283446,
-              "y": -93.06818181818181,
-              "yRelative": true
-            }
-          },
-          {
             "key": 9,
             "objectType": "device",
             "nodeType": "device",
@@ -4245,8 +4221,8 @@
             "layout": {
               "bus": 0,
               "row": 0,
-              "x": 889.7486631016035,
-              "y": -151.4639037433155,
+              "x": 954.7139037433154,
+              "y": -91.60828877005348,
               "yRelative": true
             }
           },
@@ -4265,6 +4241,34 @@
             }
           },
           {
+            "key": 12,
+            "objectType": "device",
+            "nodeType": "device",
+            "nodeClass": "device",
+            "deviceRef": "FALCON 9",
+            "layout": {
+              "bus": 0,
+              "row": 1,
+              "x": 505.20855614973254,
+              "y": 100.36764705882352,
+              "yRelative": true
+            }
+          },
+          {
+            "key": 13,
+            "objectType": "device",
+            "nodeType": "device",
+            "nodeClass": "device",
+            "deviceRef": "pigeon 2",
+            "layout": {
+              "bus": 0,
+              "row": 0,
+              "x": 286.49999999999955,
+              "y": -75.54946524064171,
+              "yRelative": true
+            }
+          },
+          {
             "key": 11,
             "label": "can analyzer 1",
             "category": "analyzer",
@@ -4276,8 +4280,8 @@
             "layout": {
               "bus": 0,
               "row": 0,
-              "x": 300.0,
-              "y": -62.41042780748663,
+              "x": 193.7887700534761,
+              "y": -193.80080213903744,
               "yRelative": true
             }
           }
@@ -4295,29 +4299,29 @@
             "id": "edge_2",
             "fromNode": 11,
             "fromPort": "right",
-            "toNode": 8,
+            "toNode": 13,
             "toPort": "left",
             "edgeType": "can_tap"
           },
           {
             "id": "edge_3",
-            "fromNode": 8,
+            "fromNode": 13,
+            "fromPort": "right",
+            "toNode": 12,
+            "toPort": "left",
+            "edgeType": "can_trunk"
+          },
+          {
+            "id": "edge_4",
+            "fromNode": 12,
             "fromPort": "right",
             "toNode": 4,
             "toPort": "left",
             "edgeType": "can_trunk"
           },
           {
-            "id": "edge_4",
-            "fromNode": 4,
-            "fromPort": "right",
-            "toNode": 6,
-            "toPort": "left",
-            "edgeType": "can_trunk"
-          },
-          {
             "id": "edge_5",
-            "fromNode": 6,
+            "fromNode": 4,
             "fromPort": "right",
             "toNode": 10,
             "toPort": "left",
@@ -4351,20 +4355,12 @@
             "id": "edge_9",
             "fromNode": 2,
             "fromPort": "power",
-            "toNode": 6,
-            "toPort": "power",
-            "edgeType": "power"
-          },
-          {
-            "id": "edge_10",
-            "fromNode": 2,
-            "fromPort": "power",
             "toNode": 4,
             "toPort": "power",
             "edgeType": "power"
           },
           {
-            "id": "edge_11",
+            "id": "edge_10",
             "fromNode": 1,
             "fromPort": "power",
             "toNode": 2,
@@ -4372,7 +4368,7 @@
             "edgeType": "power"
           },
           {
-            "id": "edge_12",
+            "id": "edge_11",
             "fromNode": 2,
             "fromPort": "power",
             "toNode": 9,
@@ -4380,15 +4376,7 @@
             "edgeType": "power"
           },
           {
-            "id": "edge_13",
-            "fromNode": 2,
-            "fromPort": "power",
-            "toNode": 8,
-            "toPort": "power",
-            "edgeType": "power"
-          },
-          {
-            "id": "edge_14",
+            "id": "edge_12",
             "fromNode": 2,
             "fromPort": "power",
             "toNode": 10,
@@ -4396,7 +4384,7 @@
             "edgeType": "power"
           },
           {
-            "id": "edge_15",
+            "id": "edge_13",
             "fromNode": 4,
             "fromPort": "attachment",
             "toNode": 5,
