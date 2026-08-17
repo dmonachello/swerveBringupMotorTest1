@@ -244,6 +244,11 @@ class _TextStub:
         self.state = None
         self.yview_range = (0.0, 1.0)
         self.moved_to = None
+        self.see_calls = []
+        self.visible_index = "1.0"
+        self.yview_calls = []
+        self.line_y = 0
+        self.next_displayline_index = None
 
     def configure(self, **kwargs) -> None:
         if "state" in kwargs:
@@ -255,11 +260,27 @@ class _TextStub:
     def insert(self, index, text) -> None:
         self.content += str(text)
 
-    def yview(self):
+    def yview(self, *args):
+        if args:
+            self.yview_calls.append(args)
+            return None
         return self.yview_range
 
     def yview_moveto(self, fraction: float) -> None:
         self.moved_to = fraction
+
+    def see(self, index) -> None:
+        self.see_calls.append(index)
+
+    def index(self, expression) -> str:
+        if isinstance(expression, str) and expression.startswith("@0,"):
+            return self.visible_index
+        if isinstance(expression, str) and expression.endswith(" +1displaylines"):
+            return self.next_displayline_index or self.visible_index
+        return "1.0"
+
+    def dlineinfo(self, index):
+        return (0, self.line_y, 100, 16, 12)
 
 
 class _LiveViewTitleStub:
@@ -279,9 +300,12 @@ class _TreeviewStub:
         self._rows = {}
         self._order = []
         self._selection = ()
+        self.yview_range = (0.0, 1.0)
+        self.moved_to = None
+        self.see_calls = []
 
     def yview(self):
-        return (0.0, 1.0)
+        return self.yview_range
 
     def get_children(self):
         return tuple(self._order)
@@ -312,9 +336,11 @@ class _TreeviewStub:
         return {"values": values}
 
     def see(self, _item_id) -> None:
+        self.see_calls.append(_item_id)
         return
 
-    def yview_moveto(self, _fraction: float) -> None:
+    def yview_moveto(self, fraction: float) -> None:
+        self.moved_to = fraction
         return
 
 
@@ -2923,6 +2949,48 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertEqual(expected, evidence_view.snapshot)
         self.assertEqual(expected, live_view.snapshot)
 
+    def test_refresh_evidence_view_preserves_scroll_without_forcing_see_on_background_refresh(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._refresh_evidence_enrichment_status = lambda: None
+        ui._evidence_table = _TreeviewStub()
+        ui._evidence_table.yview_range = (0.42, 0.88)
+        ui._evidence_table.insert("", "end", values=("stale",))
+        stale_row = ui._evidence_table.get_children()[0]
+        ui._evidence_table.selection_set(stale_row)
+        ui._evidence_live_view = _LiveViewTitleStub()
+        ui._live_view = _LiveViewTitleStub()
+        ui._visibility_live_view = None
+        ui._iter_live_views = lambda: []
+        ui._build_evidence_rows = lambda: [
+            {
+                "label": "FALCON 9",
+                "passive": "--",
+                "console": "--",
+                "probe": "Waiting",
+                "probeScore": "--",
+                "manual": "Not run",
+                "existence": "PRESENT",
+                "operability": "OK",
+                "identity": "MATCHING",
+                "confidence": "HIGH",
+                "state": "ok",
+            }
+        ]
+        ui._selected_evidence_filter_key = lambda: "all"
+        ui._evidence_matches_filter = lambda _row, _filter: True
+        ui._evidence_summary_var = _StringVarStub("")
+        ui._evidence_engine_status = {"engineLabel": ENGINE_LABEL_NEW}
+        ui._evidence_selected_label = "falcon 9"
+        applied = []
+        ui._apply_evidence_selection = lambda label: applied.append(label)
+        ui._evidence_syncing_selection = False
+
+        ui._refresh_evidence_view()
+
+        self.assertEqual(0.42, ui._evidence_table.moved_to)
+        self.assertEqual([], ui._evidence_table.see_calls)
+        self.assertEqual(["falcon 9"], applied)
+
     def test_apply_live_topology_lens_sets_explicit_overlay_mode(self) -> None:
         class _LiveViewStub:
             def __init__(self) -> None:
@@ -3123,32 +3191,121 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui = BringupControlUI.__new__(BringupControlUI)
         ui._visibility_passive_detail_text = _TextStub()
         ui._visibility_passive_detail_text.yview_range = (0.65, 1.0)
+        ui._visibility_passive_detail_text.visible_index = "21.0"
 
         ui._set_visibility_passive_detail_text("updated detail")
 
         self.assertEqual("updated detail", ui._visibility_passive_detail_text.content)
-        self.assertEqual(0.65, ui._visibility_passive_detail_text.moved_to)
+        self.assertEqual([("21.0",)], ui._visibility_passive_detail_text.yview_calls)
+        self.assertEqual([], ui._visibility_passive_detail_text.see_calls)
+
+    def test_first_fully_visible_text_index_advances_past_partially_visible_line(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        widget = _TextStub()
+        widget.visible_index = "30.0"
+        widget.line_y = -2
+        widget.next_displayline_index = "31.0"
+
+        result = ui._first_fully_visible_text_index(widget)
+
+        self.assertEqual("31.0", result)
+
+    def test_apply_visibility_snapshot_preserves_selected_row_without_forcing_see_on_background_refresh(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._apply_visibility_snapshot = BringupControlUI._apply_visibility_snapshot.__get__(ui, BringupControlUI)
+        ui._visibility_table = _TreeviewStub()
+        ui._visibility_table.yview_range = (0.37, 0.82)
+        ui._visibility_unrecognized_table = _TreeviewStub()
+        ui._visibility_ctre_raw_table = _TreeviewStub()
+        ui._visibility_columns = []
+        ui._visibility_row_meta = {}
+        ui._visibility_selected_label = "FALCON 9"
+        ui._visibility_selected_unexpected = False
+        ui._profile_devices = {"falcon 9": {"label": "FALCON 9"}}
+        ui._latest_runtime_devices = {}
+        ui._latest_visibility_snapshot = {}
+        ui._latest_visibility_summary = {}
+        ui._current_passive_result = lambda: None
+        ui._visibility_existence_packet_counts = lambda _passive_result: {}
+        ui._configure_visibility_table_columns = lambda *_args, **_kwargs: None
+        ui._format_visibility_identity = lambda device: str(device.get("identityKey", "4:2:9"))
+        ui._format_visibility_last_seen = lambda _metrics: "0.0s"
+        ui._format_visibility_packet_count = lambda _metrics: "10"
+        ui._format_visibility_existence_packet_count = lambda _count: "--"
+        ui._format_visibility_packet_rate = lambda _metrics: "100/s"
+        ui._populate_ctre_raw_table = lambda _raw_ids: None
+        applied = []
+        ui._apply_visibility_selection = lambda label, passive_result=None: applied.append((label, passive_result))
+        ui._set_visibility_passive_detail_text = lambda _text: None
+        ui._update_visibility_summary = lambda _summary: None
+        ui._iter_live_views = lambda: []
+        ui._refresh_evidence_view = lambda: None
+        snapshot = {
+            "sources": [{"id": "src0", "label": "CANable"}],
+            "devices": [
+                {
+                    "label": "FALCON 9",
+                    "unexpected": False,
+                    "identityKey": "4:2:9",
+                    "visibility": {"src0": True},
+                    "metrics": {},
+                    "rawIds": [],
+                }
+            ],
+        }
+
+        ui._apply_visibility_snapshot(snapshot, {})
+
+        self.assertEqual([], ui._visibility_table.see_calls)
+        self.assertEqual([], ui._visibility_unrecognized_table.see_calls)
+        self.assertEqual([("FALCON 9", None)], applied)
 
     def test_set_evidence_text_preserves_scroll_position(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
         widget = _TextStub()
         widget.yview_range = (0.4, 0.9)
+        widget.visible_index = "12.0"
         ui._evidence_text_widgets = {EVIDENCE_PROBE_TEXT: widget}
 
         ui._set_evidence_text(EVIDENCE_PROBE_TEXT, "probe details")
 
         self.assertEqual("probe details", widget.content)
-        self.assertEqual(0.4, widget.moved_to)
+        self.assertEqual([("12.0",)], widget.yview_calls)
+        self.assertEqual([], widget.see_calls)
 
     def test_set_fault_finder_text_preserves_scroll_position(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
         ui._fault_finder_text = _TextStub()
         ui._fault_finder_text.yview_range = (0.55, 0.95)
+        ui._fault_finder_text.visible_index = "18.0"
 
         ui._set_fault_finder_text("fault finder details")
 
         self.assertEqual("fault finder details", ui._fault_finder_text.content)
-        self.assertEqual(0.55, ui._fault_finder_text.moved_to)
+        self.assertEqual([("18.0",)], ui._fault_finder_text.yview_calls)
+        self.assertEqual([], ui._fault_finder_text.see_calls)
+
+    def test_render_log_lines_preserves_scroll_position_when_not_at_end(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        widget = _TextStub()
+        widget.yview_range = (0.35, 0.8)
+
+        ui._render_log_lines(widget, ["one", "two"])
+
+        self.assertEqual("one\ntwo\n", widget.content)
+        self.assertEqual(0.35, widget.moved_to)
+        self.assertEqual([], widget.see_calls)
+
+    def test_render_log_lines_follows_end_when_user_is_already_at_bottom(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        widget = _TextStub()
+        widget.yview_range = (0.82, 1.0)
+
+        ui._render_log_lines(widget, ["one", "two"])
+
+        self.assertEqual("one\ntwo\n", widget.content)
+        self.assertIsNone(widget.moved_to)
+        self.assertEqual(["end"], widget.see_calls)
 
     def test_restart_visibility_can_sniffer_requests_restart_and_refreshes_snapshot(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
@@ -7010,6 +7167,110 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._on_action("runTest")
 
         self.assertEqual(["runTest"], calls)
+
+    def test_should_not_block_run_test_when_only_selected_test_differs(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._context_sync_state = lambda: type(
+            "ContextSyncStateStub",
+            (),
+            {
+                "out_of_sync": True,
+                "ui_profile": "test_minimal_25_9",
+                "robot_profile": "test_minimal_25_9",
+                "robot_runtime_profile": "test_minimal_25_9",
+                "ui_test": "mtrs_limit",
+                "robot_test": "newTests_123",
+                "summary": "System is out of sync.",
+                "detail": "UI test=mtrs_limit | robot test=newTests_123",
+            },
+        )()
+
+        self.assertFalse(ui._should_block_for_context_sync("runTest"))
+
+    def test_on_action_run_test_syncs_robot_selected_test_before_run(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        output_lines: list[str] = []
+        sent: list[tuple[str, object]] = []
+        ui._context_sync_state = lambda: type(
+            "ContextSyncStateStub",
+            (),
+            {
+                "out_of_sync": True,
+                "ui_profile": "test_minimal_25_9",
+                "robot_profile": "test_minimal_25_9",
+                "robot_runtime_profile": "test_minimal_25_9",
+                "ui_test": "mtrs_limit",
+                "robot_test": "newTests_123",
+                "summary": "System is out of sync.",
+                "detail": "UI test=mtrs_limit | robot test=newTests_123",
+            },
+        )()
+        ui._refresh_context_sync_banner = lambda: None
+        ui._selected_test_name = lambda: "mtrs_limit"
+        ui._robot_knows_test_name = lambda name: name == "mtrs_limit"
+        ui._send_and_wait = lambda command, args: sent.append((command, args)) or True
+        ui._append_output = lambda line: output_lines.append(line)
+        ui._append_test_output = lambda line: output_lines.append(line)
+        ui._is_test_activity_command = lambda _command: True
+        ui._tcp_connected = True
+        ui._tracker = type("TrackerStub", (), {"is_pending": staticmethod(lambda: False)})()
+        ui._session = object()
+        ui._last_cmd = None
+
+        with patch("tools.can_nt.bringup_ui.send_tracked_command", return_value=42) as send_mock:
+            ui._on_action("runTest")
+
+        self.assertEqual([("selectTestByName", {"name": "mtrs_limit"})], sent)
+        self.assertEqual("mtrs_limit", ui._last_robot_selected_test_name)
+        self.assertEqual("runTest", send_mock.call_args.args[2])
+        self.assertTrue(any('CMD selectTestByName "mtrs_limit"' in line for line in output_lines))
+        self.assertTrue(any("CMD runTest" in line for line in output_lines))
+
+    def test_on_action_run_test_still_blocks_for_profile_mismatch(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        calls: list[str] = []
+        ui._context_sync_state = lambda: type(
+            "ContextSyncStateStub",
+            (),
+            {
+                "out_of_sync": True,
+                "ui_profile": "test_minimal_25_9",
+                "robot_profile": "other_profile",
+                "robot_runtime_profile": "other_profile",
+                "ui_test": "mtrs_limit",
+                "robot_test": "newTests_123",
+                "summary": "System is out of sync.",
+                "detail": "UI profile=test_minimal_25_9 | robot profile=other_profile",
+            },
+        )()
+        ui._show_context_sync_resolution = lambda trigger: calls.append(str(trigger)) or False
+
+        ui._on_action("runTest")
+
+        self.assertEqual(["runTest"], calls)
+
+    def test_apply_selected_test_name_from_ui_updates_robot_selected_test_cache_on_success(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._selected_test_var = _StringVarStub("test_minimal_25_9_spark25_leftY")
+        ui._last_selected_test = "test_minimal_25_9_spark25_leftY"
+        ui._last_robot_selected_test_name = "test_minimal_25_9_spark25_leftY"
+        ui._last_ui_selected_test_intent = "test_minimal_25_9_spark25_leftY"
+        ui._current_right_tab_text = lambda: "Tests"
+        ui._tcp_connected = True
+        ui._tracker = type("TrackerStub", (), {"is_pending": staticmethod(lambda: False)})()
+        ui._scope_context_kind = lambda: "manual"
+        ui._append_output = lambda _line: None
+        ui._append_test_output = lambda _line: None
+        ui._sync_selected_test_devices_panel_local = lambda **_kwargs: None
+        ui._refresh_selected_test_scope_status = lambda: None
+        ui._refresh_context_sync_banner = lambda: None
+        ui._selected_test_required_membership_loaded_to_robot = lambda: True
+        ui._robot_knows_test_name = lambda _name: True
+        ui._send_and_wait = lambda command, args: command == "selectTestByName" and args == {"name": "falcon9_to_limit"}
+
+        ui._apply_selected_test_name_from_ui("falcon9_to_limit")
+
+        self.assertEqual("falcon9_to_limit", ui._last_robot_selected_test_name)
 
     def test_runtime_activate_from_ui_blocks_during_context_mismatch(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)

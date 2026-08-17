@@ -7,6 +7,7 @@ NAME
 
 import unittest
 
+import tools.can_nt.passive_discovery_integration_service as passive_service
 from tools.can_nt.passive_discovery_integration_service import (
     ATTACHMENT_TYPE_ACTIVE_PRESENCE_PROBE,
     EVIDENCE_CONFIDENCE_HIGH,
@@ -127,6 +128,54 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
         self.assertEqual("FALCON 9", catalog["falcon 9"]["label"])
         self.assertEqual("SPARKMAX/NEO 25", catalog["sparkmax/neo 25"]["label"])
         self.assertEqual(ENGINE_LABEL_NEW, catalog["falcon 9"]["evidenceEngineLabel"])
+
+    def test_expected_rows_from_profile_devices_ignores_non_can_identity_collisions(self) -> None:
+        rows = passive_service._expected_rows_from_profile_devices(
+            {
+                "roborio": {
+                    "label": "roborio",
+                    "deviceInterface": "CAN",
+                    "manufacturer": 1,
+                    "deviceType": 1,
+                    "id": 0,
+                    "model": "roborio",
+                    "profileNode": "singleton",
+                    "bus": "rio",
+                },
+                "controller0": {
+                    "label": "controller0",
+                    "deviceInterface": "USB",
+                    "manufacturer": 1,
+                    "deviceType": 1,
+                    "id": 0,
+                    "model": "Xbox Controller",
+                    "profileNode": "singleton",
+                    "bus": "usb",
+                },
+                "lmtSw0": {
+                    "label": "lmtSw0",
+                    "deviceInterface": "DIO",
+                    "manufacturer": 1,
+                    "deviceType": 1,
+                    "id": 0,
+                    "model": "Limit Switch",
+                    "profileNode": "attachment",
+                    "bus": "dio",
+                },
+            }
+        )
+
+        self.assertEqual(
+            {
+                (1, 1, 0): {
+                    "label": "roborio",
+                    "model": "roborio",
+                    "profileNode": "singleton",
+                    "bus": "rio",
+                }
+            },
+            rows,
+        )
 
     def test_build_live_passive_result_analyzes_recent_visibility_frames(self) -> None:
         provider = VisibilityProvider(timeout_ms=TEST_TIMEOUT_MS)
@@ -549,7 +598,13 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
         text = build_passive_visibility_deep_dive_text(
             label="SPARKMAX/NEO 25",
             passive_result=passive_result,
-            visibility_device={"metrics": {}},
+            visibility_device={
+                "metrics": {},
+                "rawIds": [
+                    {"apiClass": 46, "apiIndex": 0, "msgCount": 120},
+                    {"apiClass": 32, "apiIndex": 1, "msgCount": 30},
+                ],
+            },
             visibility_identity_text="MATCHING",
             visibility_last_seen_text="0.1s ago",
             visibility_packet_count_text="150",
@@ -561,9 +616,11 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
         self.assertIn("existencePackets=120", text)
         self.assertIn("Evidence Families", text)
         self.assertIn("role=DEVICE_EMITTED_PRIMARY_STATUS", text)
+        self.assertIn("totalPackets=120", text)
         self.assertIn("countsForPresence=yes", text)
         self.assertIn("Supporting / Reference Families", text)
         self.assertIn("role=CONTROLLER_EMITTED_COMMAND", text)
+        self.assertIn("totalPackets=30", text)
         self.assertIn("countsForPresence=no", text)
         self.assertIn("No fresh heartbeat family.", text)
 
@@ -621,7 +678,13 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
         text = build_passive_visibility_deep_dive_text(
             label="UNPROFILED_DEVICE_50207",
             passive_result=passive_result,
-            visibility_device={"metrics": {}},
+            visibility_device={
+                "metrics": {},
+                "rawIds": [
+                    {"apiClass": 46, "apiIndex": 2, "msgCount": 150},
+                    {"apiClass": 47, "apiIndex": 0, "msgCount": 12},
+                ],
+            },
             visibility_identity_text="5:2:7",
             visibility_last_seen_text="0.0s",
             visibility_packet_count_text="13699",
@@ -634,6 +697,8 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
         self.assertIn("evidenceFamilies=2", text)
         self.assertIn("role=DEVICE_EMITTED_PRIMARY_STATUS", text)
         self.assertIn("role=DEVICE_EMITTED_SECONDARY_STATUS", text)
+        self.assertIn("totalPackets=150", text)
+        self.assertIn("totalPackets=12", text)
         self.assertIn("No profile mapping is defined for this device.", text)
         self.assertIn("Guesses", text)
         self.assertIn("Guess: likely manufacturer=REV, deviceType=SPARK MAX", text)

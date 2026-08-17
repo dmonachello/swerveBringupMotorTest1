@@ -931,6 +931,7 @@ TOPOLOGY_REPAIR_X_START = 120.0
 TOPOLOGY_REPAIR_X_STEP = 120.0
 TOPOLOGY_KEY_EDGES = "edges"
 VIS_DETAIL_TEXT_HEIGHT = 14
+READONLY_TEXT_SCROLL_CAPTURE_COORD = "@0,2"
 VIS_TABLE_SPLIT_ORIENT = "vertical"
 VIS_RAW_EMPTY_MESSAGE = "Select a CTRE row to inspect contributing raw IDs."
 LIVE_TOPOLOGY_TAB_LABEL = "Live Topology"
@@ -4237,6 +4238,7 @@ class BringupControlUI(tk.Tk):
         self._last_cmd = ("selectTestByName", {"name": selected_name})
         if not self._send_and_wait("selectTestByName", {"name": selected_name}):
             return
+        self._last_robot_selected_test_name = selected_name
         if (
             self._scope_context_kind() == GROUP_SOURCE_SELECTED_TEST
             and self.__dict__.get("_controlled_lifecycle_active_known") is True
@@ -5037,7 +5039,57 @@ class BringupControlUI(tk.Tk):
         if not state.out_of_sync:
             return False
         clean_command = str(command_name or "").strip().lower()
+        if clean_command == "runtest" and self._only_selected_test_context_differs(state):
+            return False
         return clean_command in CONTEXT_SYNC_BLOCKED_ACTIONS
+
+    def _only_selected_test_context_differs(self, state: ContextSyncState) -> bool:
+        """
+        NAME
+            _only_selected_test_context_differs - Return whether the current context mismatch is limited to the selected test name.
+        """
+        ui_profile = _normalize_profile_name(getattr(state, "ui_profile", PROFILE_NONE))
+        robot_profile = _normalize_profile_name(getattr(state, "robot_profile", PROFILE_NONE))
+        robot_runtime_profile = _normalize_profile_name(
+            getattr(state, "robot_runtime_profile", PROFILE_NONE)
+        )
+        ui_test = str(getattr(state, "ui_test", "") or "").strip()
+        robot_test = str(getattr(state, "robot_test", "") or "").strip()
+        ui_test_cmp = ui_test if ui_test and ui_test != PROFILE_NONE else PROFILE_NONE
+        robot_test_cmp = robot_test if robot_test and robot_test != PROFILE_NONE else PROFILE_NONE
+        if ui_test_cmp == robot_test_cmp:
+            return False
+        if ui_profile != robot_profile:
+            return False
+        if robot_runtime_profile not in ("", PROFILE_NONE, robot_profile):
+            return False
+        return robot_test_cmp != PROFILE_NONE
+
+    def _sync_robot_selected_test_to_ui_if_needed(self) -> bool:
+        """
+        NAME
+            _sync_robot_selected_test_to_ui_if_needed - Send selectTestByName before runTest when only the robot-selected test differs.
+        """
+        state = self._context_sync_state()
+        if not self._only_selected_test_context_differs(state):
+            return True
+        selected_name = self._selected_test_name()
+        if not selected_name or selected_name == PROFILE_NONE:
+            return True
+        if not self._robot_knows_test_name(selected_name):
+            self._append_output(TEST_SCOPE_DETAIL_NOT_LOADED_ON_ROBOT)
+            self._append_test_output(TEST_SCOPE_DETAIL_NOT_LOADED_ON_ROBOT)
+            self._refresh_selected_test_scope_status()
+            return False
+        ts = timestamp_hms()
+        self._append_output(f'{ts} CMD selectTestByName "{selected_name}"')
+        self._append_test_output(f'{ts} CMD selectTestByName "{selected_name}"')
+        self._last_cmd = ("selectTestByName", {"name": selected_name})
+        if not self._send_and_wait("selectTestByName", {"name": selected_name}):
+            return False
+        self._last_robot_selected_test_name = selected_name
+        self._refresh_context_sync_banner()
+        return True
 
     def _diagnostic_profile_state(self) -> DiagnosticProfileState:
         """
@@ -6975,7 +7027,6 @@ class BringupControlUI(tk.Tk):
         if selected_defined_item:
             self._visibility_table.selection_set(selected_defined_item)
             self._visibility_table.focus(selected_defined_item)
-            self._visibility_table.see(selected_defined_item)
             meta = self._visibility_row_meta.get(selected_defined_item, {})
             raw_ids = meta.get(VIS_ROW_META_RAW_IDS, [])
             self._populate_ctre_raw_table(raw_ids if isinstance(raw_ids, list) else [])
@@ -6986,7 +7037,6 @@ class BringupControlUI(tk.Tk):
         elif selected_unrecognized_item:
             self._visibility_unrecognized_table.selection_set(selected_unrecognized_item)
             self._visibility_unrecognized_table.focus(selected_unrecognized_item)
-            self._visibility_unrecognized_table.see(selected_unrecognized_item)
             meta = self._visibility_row_meta.get(selected_unrecognized_item, {})
             raw_ids = meta.get(VIS_ROW_META_RAW_IDS, [])
             self._populate_ctre_raw_table(raw_ids if isinstance(raw_ids, list) else [])
@@ -8216,12 +8266,14 @@ class BringupControlUI(tk.Tk):
             _replace_readonly_text_preserve_scroll - Rewrite one read-only text pane without snapping its scroll position to the top.
         """
         scroll_top = 0.0
+        top_visible_index = None
         try:
             yview_state = widget.yview()
             if isinstance(yview_state, tuple) and yview_state:
                 scroll_top = float(yview_state[0])
         except Exception:
             scroll_top = 0.0
+        top_visible_index = self._first_fully_visible_text_index(widget)
         configure = getattr(widget, "configure", None)
         if callable(configure):
             configure(state="normal")
@@ -8230,9 +8282,33 @@ class BringupControlUI(tk.Tk):
         if callable(configure):
             configure(state="disabled")
         try:
-            widget.yview_moveto(scroll_top)
+            if top_visible_index and top_visible_index != "1.0":
+                widget.yview(top_visible_index)
+            else:
+                widget.yview_moveto(scroll_top)
         except Exception:
             pass
+
+    def _first_fully_visible_text_index(self, widget: tk.Text) -> Optional[str]:
+        """
+        NAME
+            _first_fully_visible_text_index - Resolve the first fully visible display line for a read-only text pane.
+        """
+        try:
+            top_visible_index = str(widget.index(READONLY_TEXT_SCROLL_CAPTURE_COORD))
+        except Exception:
+            return None
+        try:
+            line_info = widget.dlineinfo(top_visible_index)
+        except Exception:
+            line_info = None
+        if isinstance(line_info, (tuple, list)) and len(line_info) > 1:
+            try:
+                if int(line_info[1]) < 0:
+                    return str(widget.index(f"{top_visible_index} +1displaylines"))
+            except Exception:
+                return top_visible_index
+        return top_visible_index
 
     def _apply_evidence_selection(self, label: str) -> None:
         """
@@ -8356,10 +8432,7 @@ class BringupControlUI(tk.Tk):
                 self._evidence_syncing_selection = False
         else:
             self._apply_evidence_selection(NT_VALUE_EMPTY)
-        if auto_selected_label and selected_label:
-            selected_items = table.selection()
-            if selected_items:
-                table.see(selected_items[0])
+        if auto_selected_label:
             return
         if existing_selection:
             try:
@@ -11226,10 +11299,16 @@ class BringupControlUI(tk.Tk):
         """
         if widget is None:
             return
+        yview_state = widget.yview()
+        scroll_top = float(yview_state[0]) if yview_state else 0.0
+        follow_end = bool(yview_state) and float(yview_state[1]) >= 0.999
         widget.configure(state="normal")
         widget.delete("1.0", "end")
         widget.insert("end", "\n".join(lines) + "\n")
-        widget.see("end")
+        if follow_end:
+            widget.see("end")
+        else:
+            widget.yview_moveto(scroll_top)
         widget.configure(state="disabled")
 
     def _set_test_source_results(self, lines: List[str]) -> None:
@@ -11699,6 +11778,9 @@ class BringupControlUI(tk.Tk):
             if self._is_test_activity_command(command):
                 self._append_test_output("Busy: wait for current command to finish.")
             return
+        if str(command or "").strip().lower() == "runtest":
+            if not self._sync_robot_selected_test_to_ui_if_needed():
+                return
         ts = timestamp_hms()
         self._append_output(f"{ts} CMD {command}")
         if self._is_test_activity_command(command):

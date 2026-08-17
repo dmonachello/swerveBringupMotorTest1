@@ -71,6 +71,7 @@ FAULT_SNAPSHOT_KEY_RENDERED_TEXT = "renderedText"
 FAULT_SNAPSHOT_KEY_CANDIDATE_COUNT = "candidateCount"
 FAULT_SNAPSHOT_KEY_RAN_AT = "ranAt"
 KEY_DEVICE_TYPE = "deviceType"
+KEY_DEVICE_INTERFACE = "deviceInterface"
 KEY_PROFILE_NODE = "profileNode"
 KEY_BUS = "bus"
 KEY_EVIDENCE_ENGINE_ID = "evidenceEngineId"
@@ -82,6 +83,7 @@ RUN_METADATA_SOURCE = "source"
 RUN_METADATA_SOURCE_KIND = "sourceKind"
 RUN_METADATA_FRAME_PROVIDER = "visibility_provider"
 RUN_METADATA_HOST_PASSIVE = "host_live_passive_discovery"
+DEVICE_INTERFACE_CAN = "CAN"
 INT_ZERO = 0
 INT_ONE = 1
 INT_TWO = 2
@@ -603,6 +605,11 @@ EVIDENCE_FIELD_MOTOR_CURRENT_A = "motorCurrentA"
 EVIDENCE_FIELD_POSITION_ROT = "positionRot"
 VIS_IDENTITY_UNKNOWN = "--"
 VIS_PACKET_COUNT_UNKNOWN = "--"
+VIS_KEY_RAW_IDS = "rawIds"
+VIS_KEY_MSG_COUNT = "msgCount"
+VIS_KEY_API_CLASS = "apiClass"
+VIS_KEY_API_INDEX = "apiIndex"
+VIS_TOTAL_PACKETS_UNKNOWN = "--"
 VIS_PACKET_RATE_UNKNOWN = "--"
 ACTIVE_GROUP_NAME = "active-group"
 LIFECYCLE_STATE_CONTROLLED_ACTIVE = "controlled-active"
@@ -797,6 +804,8 @@ def load_profile_device_catalog(
             continue
         entry: Dict[str, Any] = {
             KEY_LABEL: label,
+            KEY_DEVICE_INTERFACE: str(row.get(KEY_DEVICE_INTERFACE, DEVICE_INTERFACE_CAN)).strip()
+            or DEVICE_INTERFACE_CAN,
             KEY_MANUFACTURER: manufacturer,
             KEY_DEVICE_TYPE: device_type,
             KEY_ID: device_id,
@@ -3323,6 +3332,7 @@ def build_passive_visibility_deep_dive_text(
     evidence_family_keys = tuple(passive_device.evidence_family_keys or ())
     evidence_families: List[FamilyRecord] = []
     supporting_families: List[FamilyRecord] = []
+    family_total_packets = _passive_visibility_family_total_packets_by_key(visibility_device)
     evidence_packet_count = 0
     for family_key in evidence_family_keys:
         family = family_records_by_key.get(family_key)
@@ -3367,13 +3377,25 @@ def build_passive_visibility_deep_dive_text(
     ]
     if evidence_families:
         for family in evidence_families:
-            lines.append(_passive_visibility_family_detail_line(family, counts_for_presence=True))
+            lines.append(
+                _passive_visibility_family_detail_line(
+                    family,
+                    counts_for_presence=True,
+                    family_total_packets=family_total_packets,
+                )
+            )
     else:
         lines.append("No fresh device-emitted families are currently contributing to passive presence.")
     lines.extend(("", "Supporting / Reference Families"))
     if supporting_families:
         for family in supporting_families:
-            lines.append(_passive_visibility_family_detail_line(family, counts_for_presence=False))
+            lines.append(
+                _passive_visibility_family_detail_line(
+                    family,
+                    counts_for_presence=False,
+                    family_total_packets=family_total_packets,
+                )
+            )
     else:
         lines.append("No supporting/reference-only families were retained for this device.")
     lines.extend(("", "Evidence Gaps"))
@@ -3515,20 +3537,51 @@ def _passive_visibility_family_detail_line(
     family: FamilyRecord,
     *,
     counts_for_presence: bool,
+    family_total_packets: Mapping[Tuple[int, int], int],
 ) -> str:
     """
     NAME
         _passive_visibility_family_detail_line - Render one compact family-level CAN evidence line.
     """
+    total_packets = family_total_packets.get(
+        (int(family.key.api_class), int(family.key.api_index))
+    )
     return EVIDENCE_NOTE_SEPARATOR.join(
         (
             f"api={int(family.key.api_class)}/{int(family.key.api_index)}",
             f"role={str(family.role or TEXT_EMPTY).strip() or EVIDENCE_SOURCE_NONE}",
             f"rate={float(getattr(family.metrics, 'rate_hz', 0.0) or 0.0):.1f}Hz",
-            f"count={int(getattr(family.metrics, 'count', 0) or 0)}",
+            f"totalPackets={int(total_packets) if isinstance(total_packets, int) else VIS_TOTAL_PACKETS_UNKNOWN}",
             f"countsForPresence={'yes' if counts_for_presence else 'no'}",
         )
     )
+
+
+def _passive_visibility_family_total_packets_by_key(
+    visibility_device: Optional[Mapping[str, Any]],
+) -> Dict[Tuple[int, int], int]:
+    """
+    NAME
+        _passive_visibility_family_total_packets_by_key - Sum cumulative raw-ID packet totals by API family.
+    """
+    totals: Dict[Tuple[int, int], int] = {}
+    if not isinstance(visibility_device, Mapping):
+        return totals
+    raw_ids = visibility_device.get(VIS_KEY_RAW_IDS)
+    if not isinstance(raw_ids, list):
+        return totals
+    for row in raw_ids:
+        if not isinstance(row, Mapping):
+            continue
+        try:
+            api_class = int(row.get(VIS_KEY_API_CLASS))
+            api_index = int(row.get(VIS_KEY_API_INDEX))
+            msg_count = int(row.get(VIS_KEY_MSG_COUNT))
+        except Exception:
+            continue
+        family_key = (api_class, api_index)
+        totals[family_key] = totals.get(family_key, 0) + max(0, msg_count)
+    return totals
 
 
 def _bool_text(value: Any) -> str:
@@ -3851,6 +3904,9 @@ def _expected_rows_from_profile_devices(
     rows: Dict[Tuple[int, int, int], Dict[str, object]] = {}
     for device in profile_devices.values():
         if not isinstance(device, Mapping):
+            continue
+        device_interface = str(device.get(KEY_DEVICE_INTERFACE, TEXT_EMPTY)).strip().upper()
+        if device_interface != DEVICE_INTERFACE_CAN:
             continue
         try:
             manufacturer = int(device.get(KEY_MANUFACTURER))
