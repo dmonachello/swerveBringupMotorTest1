@@ -573,6 +573,23 @@ public class BridgeUiCommandHandler {
     BridgeUiProfileCommands profileCommands =
         new BridgeUiProfileCommands(new BridgeUiProfileCommands.Dependencies() {
           @Override
+          public BringupRuntime.PreservedActiveGroup snapshotRuntimeActiveGroup() {
+            return BringupRuntime.preserveActiveGroup(bridgeGroups().getGroup(GROUP_ACTIVE));
+          }
+
+          @Override
+          public void restoreRuntimeActiveGroup(
+              BringupRuntime.PreservedActiveGroup preservedActiveGroup) {
+            BridgeGroupManager groups = bridgeGroups();
+            if (groups.getGroup(GROUP_ACTIVE) == null) {
+              groups.createGroup(GROUP_ACTIVE);
+            } else {
+              groups.syncGroupMembers(GROUP_ACTIVE, List.of());
+            }
+            BringupRuntime.restoreActiveGroup(groups, preservedActiveGroup);
+          }
+
+          @Override
           public String parseUiArgString(JsonObject args, String key) {
             return BridgeUiCommandHandler.this.parseUiArgString(args, key);
           }
@@ -592,11 +609,6 @@ public class BridgeUiCommandHandler {
             String selected = BringupUtil.getSelectedCanProfileLabel();
             String current = selected != null ? selected.trim() : TEXT_EMPTY;
             return !requested.isBlank() && requested.equals(current);
-          }
-
-          @Override
-          public void prepareActivationForSelectedProfile() {
-            BringupUtil.prepareActivationForSelectedProfile();
           }
 
           @Override

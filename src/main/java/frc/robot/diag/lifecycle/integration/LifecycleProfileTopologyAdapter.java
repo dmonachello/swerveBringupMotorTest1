@@ -25,6 +25,7 @@ import java.util.Set;
  *     intentionally performs no activation or hardware work.
  */
 public final class LifecycleProfileTopologyAdapter {
+    private static final String GROUP_ACTIVE = "active-group";
     private static final String TYPE_PDH = "PDH";
     private static final String TYPE_PDP = "PDP";
     private static final String TYPE_ROBORIO = "roboRIO";
@@ -101,6 +102,9 @@ public final class LifecycleProfileTopologyAdapter {
         }
         for (BringupUtil.BridgeProfileGroupConfig group : bridgeConfig.groups) {
             if (group == null || group.name == null || group.name.isBlank()) {
+                continue;
+            }
+            if (GROUP_ACTIVE.equalsIgnoreCase(group.name.trim())) {
                 continue;
             }
             List<String> memberLabels = new ArrayList<>();

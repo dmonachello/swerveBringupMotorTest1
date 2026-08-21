@@ -84,6 +84,8 @@ PASSIVE_TOKEN_PRESENCE_PREFIX = "presence="
 PASSIVE_TOKEN_SCORE_PREFIX = "score="
 PASSIVE_TOKEN_PACKET_PREFIX = "packets="
 PASSIVE_TOKEN_LAST_SEEN_PREFIX = "lastseen="
+PASSIVE_TOKEN_RATE_PREFIX = "rate="
+PASSIVE_TOKEN_EXISTENCE_PACKETS_PREFIX = "existencepackets="
 PASSIVE_PRESENCE_VALUES = {"high", "medium", "low", "uncertain"}
 INFRASTRUCTURE_LABELS = {"roborio", "pdp", "pdh"}
 BOUNDARY_ROBORIO_PREFIX = "between roborio and "
@@ -178,6 +180,13 @@ POSITIVE_SOURCE_SCORE_MANUAL = 60.0
 POSITIVE_SOURCE_SCORE_PASSIVE = 70.0
 POSITIVE_CURRENT_SOURCE_MIN_COUNT = 2
 CONSOLE_SCORE_NEUTRAL = 50.0
+PASSIVE_RATE_SUFFIX_HZ = "hz"
+PASSIVE_AGE_SUFFIX_SECONDS = "s"
+PASSIVE_AGE_SUFFIX_MINUTES = "m"
+PASSIVE_AGE_SUFFIX_HOURS = "h"
+PASSIVE_FRESH_LAST_SEEN_MAX_SECONDS = 1.0
+PASSIVE_CURRENT_RATE_MIN_HZ = 0.1
+PASSIVE_CURRENT_EXISTENCE_PACKET_MIN_COUNT = 1.0
 TEXT_NONE = "--"
 
 
@@ -227,6 +236,8 @@ def _token_float(token: str, prefix: str) -> Optional[float]:
     if not token.startswith(prefix):
         return None
     value_text = token[len(prefix) :].strip()
+    if value_text.lower().endswith(PASSIVE_RATE_SUFFIX_HZ):
+        value_text = value_text[: -len(PASSIVE_RATE_SUFFIX_HZ)].strip()
     if "/" in value_text:
         value_text = value_text.split("/", 1)[0].strip()
     try:
@@ -235,13 +246,126 @@ def _token_float(token: str, prefix: str) -> Optional[float]:
         return None
 
 
+def _token_age_seconds(token: str, prefix: str) -> Optional[float]:
+    if not token.startswith(prefix):
+        return None
+    value_text = token[len(prefix) :].strip().lower()
+    if not value_text or value_text == TEXT_NONE:
+        return None
+    multiplier = 1.0
+    if value_text.endswith(PASSIVE_AGE_SUFFIX_HOURS):
+        multiplier = 3600.0
+        value_text = value_text[: -len(PASSIVE_AGE_SUFFIX_HOURS)].strip()
+    elif value_text.endswith(PASSIVE_AGE_SUFFIX_MINUTES):
+        multiplier = 60.0
+        value_text = value_text[: -len(PASSIVE_AGE_SUFFIX_MINUTES)].strip()
+    elif value_text.endswith(PASSIVE_AGE_SUFFIX_SECONDS):
+        value_text = value_text[: -len(PASSIVE_AGE_SUFFIX_SECONDS)].strip()
+    try:
+        return float(value_text) * multiplier
+    except ValueError:
+        return None
+
+
+def _passive_snapshot_is_current(row: Mapping[str, Any]) -> bool:
+    passive_last_seen_seconds: Optional[float] = None
+    passive_rate_hz: Optional[float] = None
+    passive_existence_packets: Optional[float] = None
+    passive_packets: Optional[float] = None
+    passive_presence_token = False
+    for token in _passive_token_values(row):
+        if token.startswith(PASSIVE_TOKEN_PRESENCE_PREFIX):
+            value = token[len(PASSIVE_TOKEN_PRESENCE_PREFIX) :].strip()
+            if value in PASSIVE_PRESENCE_VALUES:
+                passive_presence_token = True
+            continue
+        score = _token_float(token, PASSIVE_TOKEN_SCORE_PREFIX)
+        if score is not None and score > 0.0:
+            passive_presence_token = True
+            continue
+        packets = _token_float(token, PASSIVE_TOKEN_PACKET_PREFIX)
+        if packets is not None:
+            passive_packets = packets
+            continue
+        passive_last_seen = _token_age_seconds(token, PASSIVE_TOKEN_LAST_SEEN_PREFIX)
+        if passive_last_seen is not None:
+            passive_last_seen_seconds = passive_last_seen
+            continue
+        passive_rate = _token_float(token, PASSIVE_TOKEN_RATE_PREFIX)
+        if passive_rate is not None:
+            passive_rate_hz = passive_rate
+            continue
+        existence_packets = _token_float(token, PASSIVE_TOKEN_EXISTENCE_PACKETS_PREFIX)
+        if existence_packets is not None:
+            passive_existence_packets = existence_packets
+            continue
+    if passive_last_seen_seconds is not None and passive_last_seen_seconds <= PASSIVE_FRESH_LAST_SEEN_MAX_SECONDS:
+        return True
+    if passive_rate_hz is not None and passive_rate_hz >= PASSIVE_CURRENT_RATE_MIN_HZ:
+        return True
+    if (
+        passive_existence_packets is not None
+        and passive_existence_packets >= PASSIVE_CURRENT_EXISTENCE_PACKET_MIN_COUNT
+    ):
+        return True
+    if (
+        passive_presence_token
+        and passive_packets is not None
+        and passive_packets > 0.0
+        and passive_last_seen_seconds is None
+        and passive_rate_hz is None
+        and passive_existence_packets is None
+    ):
+        return True
+    return False
+
+
+def _passive_snapshot_has_observer_history(row: Mapping[str, Any]) -> bool:
+    passive_packets: Optional[float] = None
+    passive_last_seen_seconds: Optional[float] = None
+    passive_presence_token = False
+    for token in _passive_token_values(row):
+        if token.startswith(PASSIVE_TOKEN_PRESENCE_PREFIX):
+            value = token[len(PASSIVE_TOKEN_PRESENCE_PREFIX) :].strip()
+            if value in PASSIVE_PRESENCE_VALUES:
+                passive_presence_token = True
+            continue
+        score = _token_float(token, PASSIVE_TOKEN_SCORE_PREFIX)
+        if score is not None and score > 0.0:
+            passive_presence_token = True
+            continue
+        packets = _token_float(token, PASSIVE_TOKEN_PACKET_PREFIX)
+        if packets is not None:
+            passive_packets = packets
+            continue
+        passive_last_seen = _token_age_seconds(token, PASSIVE_TOKEN_LAST_SEEN_PREFIX)
+        if passive_last_seen is not None:
+            passive_last_seen_seconds = passive_last_seen
+    return bool(
+        passive_presence_token
+        or (passive_packets is not None and passive_packets > 0.0)
+        or passive_last_seen_seconds is not None
+    )
+
+
+def _passive_visibility_decay_with_console_failure(row: Mapping[str, Any]) -> bool:
+    if not _console_is_current_negative(row):
+        return False
+    if _passive_snapshot_is_current(row):
+        return False
+    if not _passive_snapshot_has_observer_history(row):
+        return False
+    return True
+
+
 def _observer_indicates_presence(row: Mapping[str, Any]) -> bool:
     presence_state = _clean_text(row.get(ROW_KEY_PRESENCE_STATE)).lower()
     presence_score = row.get(ROW_KEY_PRESENCE_SCORE)
+    passive_snapshot_current = _passive_snapshot_is_current(row)
     if presence_state == PRESENCE_STATE_PRESENT:
-        return True
+        return passive_snapshot_current or not _passive_token_values(row)
     if isinstance(presence_score, (int, float)) and float(presence_score) >= 50.0:
-        return True
+        return passive_snapshot_current or not _passive_token_values(row)
     source_scores = row.get(ROW_KEY_SOURCE_SCORES)
     if isinstance(source_scores, Mapping):
         for source_name in ("passive", "runtime", "probe", "enrichment"):
@@ -250,24 +374,13 @@ def _observer_indicates_presence(row: Mapping[str, Any]) -> bool:
                 continue
             source_state = _clean_text(source_entry.get("state")).lower()
             source_score = source_entry.get("score")
+            if source_name == SOURCE_NAME_PASSIVE and not passive_snapshot_current:
+                continue
             if source_state == PRESENCE_STATE_PRESENT:
                 return True
             if isinstance(source_score, (int, float)) and float(source_score) >= 70.0:
                 return True
-    for token in _passive_token_values(row):
-        if token.startswith(PASSIVE_TOKEN_PRESENCE_PREFIX):
-            value = token[len(PASSIVE_TOKEN_PRESENCE_PREFIX) :].strip()
-            if value in PASSIVE_PRESENCE_VALUES:
-                return True
-        score = _token_float(token, PASSIVE_TOKEN_SCORE_PREFIX)
-        if score is not None and score > 0.0:
-            return True
-        packets = _token_float(token, PASSIVE_TOKEN_PACKET_PREFIX)
-        if packets is not None and packets > 0.0:
-            return True
-        if token.startswith(PASSIVE_TOKEN_LAST_SEEN_PREFIX):
-            return True
-    return False
+    return passive_snapshot_current
 
 
 def _source_score_entry(row: Mapping[str, Any], source_name: str) -> Optional[Mapping[str, Any]]:
@@ -366,11 +479,16 @@ def _is_affected_row(row: Mapping[str, Any]) -> bool:
     operability = _clean_text(row.get(ROW_KEY_OPERABILITY)).upper()
     presence_state = _clean_text(row.get(ROW_KEY_PRESENCE_STATE)).lower()
     strong_positive_counterevidence = _has_strong_current_positive_counterevidence(row)
+    passive_visibility_decay = _passive_visibility_decay_with_console_failure(row)
     if operability in {VALUE_FAILED, VALUE_CONFLICT}:
         return True
     if state == STATE_FAILED:
         return True
     if presence_state == PRESENCE_STATE_CONFLICT:
+        if strong_positive_counterevidence:
+            return False
+        return True
+    if passive_visibility_decay:
         if strong_positive_counterevidence:
             return False
         return True

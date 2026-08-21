@@ -237,6 +237,8 @@ Regression coverage:
 
 - shared selected-test readiness tests
 - `Run Selected` enablement synchronization tests
+- test-only context-mismatch auto-alignment tests
+- stale robot-selected-test cache update tests
 
 ### Leaving The Tests Tab
 

@@ -216,11 +216,15 @@ Purpose: Describe the current Selection-pane behavior in the CAN Visibility tab.
 - `Out Of Sync` does not auto-reactivate runtime after robot-side profile selection.
 
 - Motion-capable actions are blocked while `Out Of Sync` remains unresolved:
-  - `Run Selected`
   - `Runtime Activate`
   - `Active Add`
   - `Active Next`
   - manual motor duty entry
+
+- `Run Selected` is a special case:
+  - if the selected profile/runtime context already matches and only the selected test name differs, the UI first sends `selectTestByName`
+  - after that test-only alignment, the normal selected-test readiness rules decide whether the button remains enabled and whether the run may proceed
+  - required-device mismatch is not resolved through the `Out Of Sync` popup
 
 - `Runtime Deactivate` remains available during `Out Of Sync` as the safe recovery action.
 
@@ -1292,6 +1296,10 @@ Purpose: Describe common operator scenarios and the code-driven behavior they sh
 - When selected-test readiness says the test is runnable, `Run Selected` must be enabled under that same shared truth.
 
 - The readiness panel and the action button must not use separate gating rules.
+
+- If only the selected test name differs between host and robot while profile/runtime context already matches, pressing `Run Selected` must first align the robot-selected test with `selectTestByName`, then immediately reevaluate readiness under the same shared rules.
+
+- If required devices are not allocated, `Run Selected` must be disabled rather than routing the operator through the `Out Of Sync` popup.
 
   
 

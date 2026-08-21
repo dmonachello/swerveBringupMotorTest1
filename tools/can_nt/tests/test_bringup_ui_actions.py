@@ -3285,6 +3285,23 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertEqual([("18.0",)], ui._fault_finder_text.yview_calls)
         self.assertEqual([], ui._fault_finder_text.see_calls)
 
+    def test_iter_live_views_includes_fault_finder_view(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._live_view = object()
+        ui._visibility_live_view = object()
+        ui._fault_finder_live_view = object()
+        ui._evidence_live_view = object()
+
+        self.assertEqual(
+            [
+                ui._live_view,
+                ui._visibility_live_view,
+                ui._fault_finder_live_view,
+                ui._evidence_live_view,
+            ],
+            ui._iter_live_views(),
+        )
+
     def test_render_log_lines_preserves_scroll_position_when_not_at_end(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
         widget = _TextStub()
@@ -3562,6 +3579,83 @@ class BringupUiActionMetadataTests(unittest.TestCase):
             ["FALCON 9"],
             ui._fault_finder_result["candidates"][0]["affectedDevices"],
         )
+
+    @patch("tools.can_nt.bringup_ui.build_runtime_presence_catalog", return_value={})
+    @patch("tools.can_nt.bringup_ui.index_run_result_by_identity", return_value={})
+    @patch("tools.can_nt.bringup_ui.build_live_passive_result", return_value=None)
+    def test_run_can_fault_check_rebuilds_full_snapshot_even_when_incremental_cursor_is_at_end(
+        self,
+        _build_live_passive_result,
+        _index_run_result_by_identity,
+        _build_runtime_presence_catalog,
+    ) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._fault_finder_status_var = _StringVarStub("")
+        ui._fault_finder_text = _TextStub()
+        ui._fault_finder_run_count = 0
+        ui._profile_devices = {
+            "falcon 9": {"label": "FALCON 9"},
+            "sparkmax/neo 25": {"label": "SPARKMAX/NEO 25"},
+            "pdp": {"label": "pdp"},
+        }
+        ui._latest_runtime_devices = {}
+        ui._latest_visibility_snapshot = {}
+        ui._visibility_provider = None
+        ui._evidence_enrichment_snapshot = {ENRICHMENT_RUN_RECORDS_KEY: ()}
+        ui._evidence_eval_budget = 1
+        ui._evidence_eval_class_order = [
+            "motion_device",
+            "infrastructure_device",
+            "unprofiled_device",
+        ]
+        ui._evidence_eval_cursor_class_index = 99
+        ui._evidence_eval_cursor_device_index = 99
+        ui._evidence_eval_generation = ""
+        ui._evidence_eval_cache = {}
+        ui._ctre_enrichment_rows_from_snapshot = lambda: {}
+        ui._collect_console_snapshot = lambda: {}
+
+        infer_calls = []
+
+        def _infer(display_label, *_args, **_kwargs):
+            infer_calls.append(display_label)
+            if display_label == "pdp":
+                return {
+                    "label": display_label,
+                    "deviceType": "infrastructure_device",
+                    "existence": "ABSENT",
+                    "operability": "FAILED",
+                    "identity": "MATCHING",
+                    "confidence": "HIGH",
+                    "state": "missing",
+                    "presenceScore": 0,
+                    "presenceState": "missing",
+                    "presenceReasons": ["test"],
+                    "sourceScores": {},
+                }
+            return {
+                "label": display_label,
+                "deviceType": "motion_device",
+                "existence": "PRESENT",
+                "operability": "OK",
+                "identity": "MATCHING",
+                "confidence": "HIGH",
+                "state": "ok",
+                "presenceScore": 100,
+                "presenceState": "present",
+                "presenceReasons": ["test"],
+                "sourceScores": {},
+            }
+
+        ui._infer_device_evidence = _infer
+        ui._current_topology_profile = lambda: {}
+
+        with patch("tools.can_nt.bringup_ui.time.time", return_value=10.0):
+            ui._run_can_fault_check()
+
+        self.assertCountEqual(["FALCON 9", "SPARKMAX/NEO 25", "pdp"], infer_calls)
+        self.assertIn("candidates=1", ui._fault_finder_status_var.get())
+        self.assertEqual(["pdp"], ui._fault_finder_result["candidates"][0]["affectedDevices"])
 
     @patch("tools.can_nt.bringup_ui.build_runtime_presence_catalog", return_value={})
     @patch("tools.can_nt.bringup_ui.index_run_result_by_identity", return_value={})
@@ -8061,6 +8155,48 @@ class BringupUiActionMetadataTests(unittest.TestCase):
             replaced,
         )
         self.assertEqual([("after_idle", "<lambda>"), ("panel", "refresh")], notices)
+
+    def test_on_active_group_select_all_replaces_members_in_one_command(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._append_output = lambda _line: None
+        ui._should_block_for_context_sync = lambda _command: False
+        ui._show_context_sync_resolution = lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("should not open context sync popup")
+        )
+        ui._active_group_edit_action_state = lambda: SimpleNamespace(
+            allowed=True,
+            blocked_reason="",
+            refresh_when_blocked=False,
+            refresh_after_action=False,
+        )
+        replaced = []
+        ui._replace_active_group_members = lambda rows: replaced.append(list(rows)) or True
+        ui.after_idle = lambda callback: (_ for _ in ()).throw(
+            AssertionError("should not schedule refresh when not requested")
+        )
+
+        ui._on_active_group_select_all(["FALCON 9", "SPARKMAX/NEO 25", "FALCON 9", ""])
+
+        self.assertEqual(
+            [[
+                {"label": "FALCON 9", "enabled": True},
+                {"label": "SPARKMAX/NEO 25", "enabled": True},
+            ]],
+            replaced,
+        )
+
+    def test_on_active_group_select_all_shows_context_sync_resolution_when_blocked(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        replaced = []
+        resolutions = []
+        ui._replace_active_group_members = lambda rows: replaced.append(list(rows)) or True
+        ui._should_block_for_context_sync = lambda command: command == "groupAddDevice"
+        ui._show_context_sync_resolution = lambda **kwargs: resolutions.append(kwargs)
+
+        ui._on_active_group_select_all(["FALCON 9"])
+
+        self.assertEqual([], replaced)
+        self.assertEqual([{"trigger": "groupAddDevice"}], resolutions)
 
     def test_apply_selected_test_name_from_ui_ignores_local_test_not_known_to_robot(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)

@@ -100,6 +100,83 @@ class BridgeUiProfileCommandsTest {
   }
 
   @Test
+  void runtimeActivateRestoresPreservedActiveGroupBeforeLifecycleActivation() {
+    ProfileDeps deps = new ProfileDeps();
+    deps.profileActive = true;
+    deps.runtimeActivationAllowed = true;
+    deps.activeRuntimeProfile = "beta";
+    deps.nextName = "beta";
+    deps.clearActiveGroupOnActivate = true;
+    deps.activationSuccessFollowsActiveGroup = true;
+    deps.activeGroupMembers =
+        List.of(
+            new BringupRuntime.PreservedActiveMember("FALCON 9", true),
+            new BringupRuntime.PreservedActiveMember("SPARKMAX/NEO 25", false));
+    BridgeUiProfileCommands commands = new BridgeUiProfileCommands(deps);
+    BridgeUiIngressPolicy.Ingress ingress = new BridgeUiIngressPolicy.Ingress(
+        CMD_RUNTIME_ACTIVATE,
+        new JsonObject(),
+        "clientA",
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        false);
+
+    BridgeUiCommandResult result = commands.execute(ingress, 0.0, false);
+
+    assertTrue(result.ok);
+    assertTrue(deps.runtimeScopeActivateCalled);
+    assertTrue(deps.restoreRuntimeActiveGroupCalled);
+    assertEquals(2, deps.activeGroupMembers.size());
+    assertEquals("FALCON 9", deps.activeGroupMembers.get(0).label);
+    assertFalse(deps.activeGroupMembers.get(1).enabled);
+  }
+
+  @Test
+  void runtimeActivateSnapshotsActiveGroupBeforeActivationPreparationCanClearIt() {
+    ProfileDeps deps = new ProfileDeps();
+    deps.profileActive = true;
+    deps.runtimeActivationAllowed = true;
+    deps.activeRuntimeProfile = "beta";
+    deps.selectedProfileLabel = "beta";
+    deps.activeProfileLabel = "beta";
+    deps.nextName = "beta";
+    deps.clearActiveGroupOnActivate = true;
+    deps.activationSuccessFollowsActiveGroup = true;
+    deps.activeGroupMembers =
+        List.of(
+            new BringupRuntime.PreservedActiveMember("cancoder", true),
+            new BringupRuntime.PreservedActiveMember("FALCON 9", true),
+            new BringupRuntime.PreservedActiveMember("SPARKMAX/NEO 25", true));
+    BridgeUiProfileCommands commands = new BridgeUiProfileCommands(deps);
+    BridgeUiIngressPolicy.Ingress ingress = new BridgeUiIngressPolicy.Ingress(
+        CMD_RUNTIME_ACTIVATE,
+        new JsonObject(),
+        "clientA",
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        false);
+
+    BridgeUiCommandResult result = commands.execute(ingress, 0.0, false);
+
+    assertTrue(result.ok);
+    assertTrue(deps.runtimeScopeActivateCalled);
+    assertEquals(3, deps.activeGroupMembers.size());
+    assertEquals("cancoder", deps.activeGroupMembers.get(0).label);
+    assertEquals("FALCON 9", deps.activeGroupMembers.get(1).label);
+    assertEquals("SPARKMAX/NEO 25", deps.activeGroupMembers.get(2).label);
+  }
+
+  @Test
   void runtimeActivateSameSelectedProfileDoesNotReselectAndClearRuntimeState() {
     ProfileDeps deps = new ProfileDeps();
     deps.profileActive = true;
@@ -159,6 +236,48 @@ class BridgeUiProfileCommandsTest {
     assertTrue(result.ok);
     assertTrue(deps.selectCanProfileCalled);
     assertEquals("beta", deps.lastSelectedProfileName);
+  }
+
+  @Test
+  void runtimeActivateDifferentProfilePreservesManualActiveGroupAcrossReselect() {
+    ProfileDeps deps = new ProfileDeps();
+    deps.profileActive = true;
+    deps.runtimeActivationAllowed = true;
+    deps.activeRuntimeProfile = "beta";
+    deps.selectedProfileLabel = "(none)";
+    deps.activeProfileLabel = "(none)";
+    deps.nextName = "beta";
+    deps.clearActiveGroupOnSelectProfile = true;
+    deps.clearActiveGroupOnActivate = true;
+    deps.activationSuccessFollowsActiveGroup = true;
+    deps.activeGroupMembers =
+        List.of(
+            new BringupRuntime.PreservedActiveMember("cancoder", true),
+            new BringupRuntime.PreservedActiveMember("FALCON 9", true),
+            new BringupRuntime.PreservedActiveMember("SPARKMAX/NEO 25", true));
+    BridgeUiProfileCommands commands = new BridgeUiProfileCommands(deps);
+    BridgeUiIngressPolicy.Ingress ingress = new BridgeUiIngressPolicy.Ingress(
+        CMD_RUNTIME_ACTIVATE,
+        new JsonObject(),
+        "clientA",
+        true,
+        true,
+        false,
+        false,
+        false,
+        true,
+        true,
+        false);
+
+    BridgeUiCommandResult result = commands.execute(ingress, 0.0, false);
+
+    assertTrue(result.ok);
+    assertTrue(deps.selectCanProfileCalled);
+    assertTrue(deps.restoreRuntimeActiveGroupCalled);
+    assertEquals(3, deps.activeGroupMembers.size());
+    assertEquals("cancoder", deps.activeGroupMembers.get(0).label);
+    assertEquals("FALCON 9", deps.activeGroupMembers.get(1).label);
+    assertEquals("SPARKMAX/NEO 25", deps.activeGroupMembers.get(2).label);
   }
 
   @Test
@@ -402,6 +521,7 @@ class BridgeUiProfileCommandsTest {
   }
 
   private static final class ProfileDeps implements BridgeUiProfileCommands.Dependencies {
+    private List<BringupRuntime.PreservedActiveMember> activeGroupMembers = List.of();
     private String nextName;
     private boolean profileActive;
     private boolean runtimeActivationAllowed;
@@ -414,11 +534,27 @@ class BridgeUiProfileCommandsTest {
     private boolean runtimeScopeDeactivateCalled;
     private boolean runtimeScopeActivationSuccess;
     private boolean runtimeScopeDeactivateSuccess;
+    private boolean clearActiveGroupOnSelectProfile;
+    private boolean clearActiveGroupOnActivate;
+    private boolean activationSuccessFollowsActiveGroup;
+    private boolean restoreRuntimeActiveGroupCalled;
     private String nextMembershipMode;
     private String activeRuntimeProfile = "";
     private String selectedProfileLabel = "alpha";
     private String activeProfileLabel = "alpha";
     private String lastSelectedProfileName = "";
+
+    @Override
+    public BringupRuntime.PreservedActiveGroup snapshotRuntimeActiveGroup() {
+      return new BringupRuntime.PreservedActiveGroup(true, activeGroupMembers);
+    }
+
+    @Override
+    public void restoreRuntimeActiveGroup(BringupRuntime.PreservedActiveGroup preservedActiveGroup) {
+      restoreRuntimeActiveGroupCalled = true;
+      activeGroupMembers =
+          preservedActiveGroup != null ? preservedActiveGroup.members : List.of();
+    }
 
     @Override
     public String parseUiArgString(JsonObject args, String key) {
@@ -433,6 +569,9 @@ class BridgeUiProfileCommandsTest {
       selectCanProfileCalled = true;
       lastSelectedProfileName = profileName;
       selectedProfileLabel = profileName;
+      if (clearActiveGroupOnSelectProfile) {
+        activeGroupMembers = List.of();
+      }
     }
 
     @Override
@@ -441,10 +580,11 @@ class BridgeUiProfileCommandsTest {
     }
 
     @Override
-    public void prepareActivationForSelectedProfile() {}
-
-    @Override
-    public void activateSelectedProfile() {}
+    public void activateSelectedProfile() {
+      if (clearActiveGroupOnActivate) {
+        activeGroupMembers = List.of();
+      }
+    }
 
     @Override
     public void deactivateActiveProfile() {
@@ -476,6 +616,9 @@ class BridgeUiProfileCommandsTest {
         frc.robot.diag.lifecycle.activation.ActivationMode mode,
         frc.robot.diag.lifecycle.activation.ActivationMembershipMode membershipMode) {
       runtimeScopeActivateCalled = true;
+      if (activationSuccessFollowsActiveGroup) {
+        runtimeScopeActivationSuccess = !activeGroupMembers.isEmpty();
+      }
       return new frc.robot.diag.lifecycle.activation.ActivationResult(
           runtimeScopeActivationSuccess,
           "active-group",

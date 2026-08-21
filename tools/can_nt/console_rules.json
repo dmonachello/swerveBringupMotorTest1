@@ -69,15 +69,8 @@
       "device_id_group": 1
     },
     {
-      "name": "HAL_CAN_RECEIVE_TIMEOUT",
-      "regex": "HAL:\\s*CAN Receive has Timed Out",
-      "severity": "ERROR",
-      "scope": "system",
-      "event_type": "HAL_CAN_RECEIVE_TIMEOUT"
-    },
-    {
       "name": "PDP_STATUS_READER_TIMEOUT",
-      "regex": "Error at frc\\.robot\\.manufacturers\\.ctre\\.util\\.PdpStatusReader\\.snapshot",
+      "regex": "Error at frc\\.robot\\.manufacturers\\.ctre\\.util\\.PdpStatusReader(?:\\.snapshot|\\$WpiPowerDistributionAccess\\.(?:getCurrent|getVoltage|getTotalCurrent))",
       "severity": "ERROR",
       "scope": "device",
       "event_type": "PDP_STATUS_READER_TIMEOUT",
@@ -90,6 +83,13 @@
       "scope": "device",
       "event_type": "PDH_STATUS_READER_TIMEOUT",
       "device_label": "pdh"
+    },
+    {
+      "name": "HAL_CAN_RECEIVE_TIMEOUT",
+      "regex": "HAL:\\s*CAN Receive has Timed Out",
+      "severity": "ERROR",
+      "scope": "system",
+      "event_type": "HAL_CAN_RECEIVE_TIMEOUT"
     }
   ]
 }

@@ -229,6 +229,119 @@ class CanFaultInferenceTests(unittest.TestCase):
         self.assertEqual(FAULT_CLASS_SINGLE_DEVICE, result["candidates"][0]["faultClass"])
         self.assertEqual(["FALCON 9"], result["candidates"][0]["affectedDevices"])
 
+    def test_stale_passive_history_does_not_mask_missing_device_candidate(self) -> None:
+        result = build_fault_diagnosis(
+            evidence_rows=[
+                {
+                    "label": "pigeon 2",
+                    "existence": "ABSENT",
+                    "operability": "FAILED",
+                    "confidence": "MEDIUM",
+                    "state": "missing",
+                    "presenceState": "missing",
+                    "passive": (
+                        "source=passive_discovery_poc | presence=high | passiveScore=92/100 | "
+                        "observerIdentity=4:4:19 | lastSeen=3.1m | packets=149164 | rate=0.0/s | "
+                        "existencePackets=0"
+                    ),
+                    "console": "[WARN] pigeon 2 19 Status Signal Yaw stale",
+                    "notesText": "Fresh device-targeted stale/timeout console evidence present.",
+                    "sourceScores": {
+                        "passive": {
+                            "score": 92,
+                            "state": "present",
+                            "reason": "Historical passive visibility only.",
+                        },
+                        "console": {
+                            "score": 20,
+                            "state": "conflict",
+                            "reason": "Fresh stale status warnings are present.",
+                        },
+                    },
+                }
+            ],
+            now_s=10.0,
+        )
+
+        self.assertEqual(FAULT_CLASS_SINGLE_DEVICE, result["candidates"][0]["faultClass"])
+        self.assertEqual(["pigeon 2"], result["candidates"][0]["affectedDevices"])
+        self.assertEqual(["pigeon 2"], result["candidates"][0]["missingDevices"])
+
+    def test_console_failure_plus_passive_visibility_decay_becomes_candidate(self) -> None:
+        result = build_fault_diagnosis(
+            evidence_rows=[
+                {
+                    "label": "pigeon 2",
+                    "existence": "UNKNOWN",
+                    "operability": "UNKNOWN",
+                    "confidence": "MEDIUM",
+                    "state": "degraded",
+                    "presenceState": "unknown",
+                    "passive": (
+                        "source=passive_discovery_poc | presence=high | passiveScore=92/100 | "
+                        "observerIdentity=4:4:19 | lastSeen=3.1m | packets=149164 | rate=0.0/s | "
+                        "existencePackets=0"
+                    ),
+                    "console": "[WARN] pigeon 2 19 Status Signal Yaw stale",
+                    "notesText": "Fresh device-targeted stale/timeout console evidence present.",
+                    "sourceScores": {
+                        "passive": {
+                            "score": 92,
+                            "state": "present",
+                            "reason": "Historical passive visibility only.",
+                        },
+                        "console": {
+                            "score": 20,
+                            "state": "conflict",
+                            "reason": "Fresh stale status warnings are present.",
+                        },
+                    },
+                }
+            ],
+            now_s=10.0,
+        )
+
+        self.assertEqual("ok", result["status"])
+        self.assertEqual(FAULT_CLASS_SINGLE_DEVICE, result["candidates"][0]["faultClass"])
+        self.assertEqual(["pigeon 2"], result["candidates"][0]["affectedDevices"])
+
+    def test_console_failure_with_current_passive_visibility_does_not_raise_candidate(self) -> None:
+        result = build_fault_diagnosis(
+            evidence_rows=[
+                {
+                    "label": "pigeon 2",
+                    "existence": "PRESENT",
+                    "operability": "UNKNOWN",
+                    "confidence": "MEDIUM",
+                    "state": "degraded",
+                    "presenceState": "present",
+                    "passive": (
+                        "source=passive_discovery_poc | presence=high | passiveScore=92/100 | "
+                        "observerIdentity=4:4:19 | lastSeen=0.0s | packets=149164 | rate=205.2/s | "
+                        "existencePackets=636"
+                    ),
+                    "console": "[WARN] pigeon 2 19 Status Signal Yaw stale",
+                    "notesText": "Fresh device-targeted stale/timeout console evidence present.",
+                    "sourceScores": {
+                        "passive": {
+                            "score": 92,
+                            "state": "present",
+                            "reason": "Current passive visibility is present.",
+                        },
+                        "console": {
+                            "score": 20,
+                            "state": "conflict",
+                            "reason": "Fresh stale status warnings are present.",
+                        },
+                    },
+                }
+            ],
+            now_s=10.0,
+        )
+
+        self.assertEqual(STATUS_NO_FAULT, result["status"])
+        self.assertEqual([], result["candidates"])
+
     def test_empty_evidence_returns_insufficient_candidate(self) -> None:
         result = build_fault_diagnosis(evidence_rows=[], now_s=10.0)
 

@@ -84,13 +84,15 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
    *   Dependencies - Narrow dependency contract for profile commands.
    */
   interface Dependencies {
+    BringupRuntime.PreservedActiveGroup snapshotRuntimeActiveGroup();
+
+    void restoreRuntimeActiveGroup(BringupRuntime.PreservedActiveGroup preservedActiveGroup);
+
     String parseUiArgString(JsonObject args, String key);
 
     void selectCanProfile(String profileName);
 
     boolean isSameSelectedProfile(String profileName);
-
-    void prepareActivationForSelectedProfile();
 
     void activateSelectedProfile();
 
@@ -229,6 +231,8 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
       result.outText = result.message;
       return;
     }
+    BringupRuntime.PreservedActiveGroup preservedActiveGroup =
+        dependencies.snapshotRuntimeActiveGroup();
     String profileName = dependencies.parseUiArgString(args, ARG_NAME);
     if (profileName != null && !profileName.isBlank()) {
       String requestedProfile = profileName.trim();
@@ -249,9 +253,9 @@ final class BridgeUiProfileCommands implements BridgeUiCommandDispatcher.Command
         return;
       }
     }
-    dependencies.prepareActivationForSelectedProfile();
     dependencies.activateSelectedProfile();
     if (dependencies.isRuntimeDeclaredActive()) {
+      dependencies.restoreRuntimeActiveGroup(preservedActiveGroup);
       dependencies.runProfileActivateAction();
       if (requireEnabledTeleop) {
         ActivationResult activation =

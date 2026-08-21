@@ -8,9 +8,9 @@ import org.junit.jupiter.api.Test;
 
 /**
  * NAME
- *   RobotV2RuntimeBridgeConfigTest - Regression tests for RobotV2 bridge-config sync.
+ *   RobotRuntimeBridgeConfigTest - Regression tests for Robot bridge-config sync.
  */
-class RobotV2RuntimeBridgeConfigTest {
+class RobotRuntimeBridgeConfigTest {
 
   @Test
   void synchronizeRuntimeBridgeConfigPreservesManualActiveGroupMembers() {
@@ -37,7 +37,7 @@ class RobotV2RuntimeBridgeConfigTest {
                     List.of())),
             new BringupUtil.BridgeProfileSelectedDeviceConfig("FALCON 9", true));
 
-    RobotV2.synchronizeRuntimeBridgeConfig(groups, selected, config, List.of());
+    Robot.synchronizeRuntimeBridgeConfig(groups, selected, config, List.of());
 
     assertTrue(groups.hasDevice("active-group", "FALCON 9"));
     assertTrue(groups.hasDevice("active-group", "SPARKMAX/NEO 25"));

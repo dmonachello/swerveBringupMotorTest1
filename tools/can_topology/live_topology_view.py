@@ -394,6 +394,7 @@ FIT_RETRY_DELAY_MS = 25
 SELECTION_FRAME_TEXT = "Selection"
 ACTIVE_GROUP_NAME = "active-group"
 ACTIVE_GROUP_FRAME_TEXT = "Active Group"
+ACTIVE_GROUP_BUTTON_SELECT_ALL = "Select All Devices"
 DETAILS_SPLIT_PANE_HEIGHT = 640
 DETAILS_SPLIT_SELECTION_WEIGHT = 3
 DETAILS_SPLIT_ACTIVE_GROUP_WEIGHT = 2
@@ -1124,6 +1125,7 @@ class LiveTopologyView(ttk.Frame):
         on_node_right_click: Optional[Callable[[LiveNode, tk.Event], None]] = None,
         on_group_right_click: Optional[Callable[[Dict[str, Any], tk.Event], None]] = None,
         on_active_group_member_toggled: Optional[Callable[[str, bool], None]] = None,
+        on_active_group_select_all: Optional[Callable[[List[str]], None]] = None,
         on_override_action: Optional[Callable[[str, str], None]] = None,
         on_left_click: Optional[Callable[[Optional[LiveNode], tk.Event], None]] = None,
         on_selection_changed: Optional[Callable[[Optional[LiveNode]], None]] = None,
@@ -1191,6 +1193,7 @@ class LiveTopologyView(ttk.Frame):
         self._on_node_right_click_cb = on_node_right_click
         self._on_group_right_click_cb = on_group_right_click
         self._on_active_group_member_toggled_cb = on_active_group_member_toggled
+        self._on_active_group_select_all_cb = on_active_group_select_all
         self._on_override_action_cb = on_override_action
         self._on_left_click_cb = on_left_click
         self._on_selection_changed_cb = on_selection_changed
@@ -1310,6 +1313,7 @@ class LiveTopologyView(ttk.Frame):
         self._active_group_member_vars: Dict[str, tk.BooleanVar] = {}
         self._active_group_member_update_in_progress = False
         self._active_group_edit_action_state = ACTION_STATE_ALLOWED
+        self._active_group_select_all_button: Optional[ttk.Button] = None
         self._override_action_state = ACTION_STATE_ALLOWED
         self._override_instantiate_button: Optional[ttk.Button] = None
         self._override_clear_button: Optional[ttk.Button] = None
@@ -1477,6 +1481,15 @@ class LiveTopologyView(ttk.Frame):
                 justify="left",
                 anchor="nw",
             ).pack(fill="x")
+            active_group_actions = ttk.Frame(active_group_frame)
+            active_group_actions.pack(fill="x", pady=(8, 0))
+            select_all_button = ttk.Button(
+                active_group_actions,
+                text=ACTIVE_GROUP_BUTTON_SELECT_ALL,
+                command=self._on_active_group_select_all_clicked,
+            )
+            select_all_button.pack(anchor="w")
+            self._active_group_select_all_button = select_all_button
             rows_container = ttk.Frame(active_group_frame)
             rows_container.pack(fill="both", expand=True, pady=(8, 0))
             rows_canvas = tk.Canvas(rows_container, height=ROWS_SCROLL_HEIGHT, highlightthickness=0)
@@ -3310,6 +3323,28 @@ class LiveTopologyView(ttk.Frame):
         """
         return self._active_scope_membership_state({}, EMPTY_STRING).editable
 
+    def _set_active_group_select_all_button_state(
+        self,
+        *,
+        editable: bool,
+        has_eligible_labels: bool,
+    ) -> None:
+        """
+        NAME
+            _set_active_group_select_all_button_state - Apply shared enablement for the bulk active-group selection action.
+        """
+        button = self._active_group_select_all_button
+        if not isinstance(button, ttk.Button):
+            return
+        is_allowed = bool(getattr(self, "_active_group_edit_action_state", ACTION_STATE_ALLOWED).allowed)
+        button.configure(
+            state=(
+                WIDGET_STATE_NORMAL
+                if editable and has_eligible_labels and is_allowed
+                else WIDGET_STATE_DISABLED
+            )
+        )
+
     def _render_active_group_rows(
         self,
         member_map: Dict[str, Dict[str, object]],
@@ -3337,6 +3372,10 @@ class LiveTopologyView(ttk.Frame):
         }
         eligible_labels = membership_state.eligible_labels
         expected_keys = {label.lower() for label in eligible_labels}
+        self._set_active_group_select_all_button_state(
+            editable=membership_state.editable,
+            has_eligible_labels=bool(eligible_labels),
+        )
         stale_keys = [
             key for key in self._active_group_row_widgets.keys() if key not in expected_keys
         ]
@@ -3504,6 +3543,26 @@ class LiveTopologyView(ttk.Frame):
         if variable is None:
             return
         callback(clean_label, bool(variable.get()))
+
+    def _on_active_group_select_all_clicked(self) -> None:
+        """
+        NAME
+            _on_active_group_select_all_clicked - Forward one bulk active-group selection request to the owning UI.
+        """
+        if self._active_group_member_update_in_progress:
+            return
+        if not getattr(self, "_active_group_edit_action_state", ACTION_STATE_ALLOWED).allowed:
+            return
+        membership_state = self._active_scope_membership_state({}, EMPTY_STRING)
+        if not membership_state.editable:
+            return
+        eligible_labels = list(membership_state.eligible_labels)
+        if not eligible_labels:
+            return
+        callback = self._on_active_group_select_all_cb
+        if not callable(callback):
+            return
+        callback(eligible_labels)
 
     def _live_fill(self, node: LiveNode, now_ms: int) -> Optional[str]:
         if self._overlay_lens == TOPOLOGY_LENS_EVIDENCE:

@@ -6,7 +6,7 @@ package frc.robot.commands.local;
  *
  * DESCRIPTION
  *   Lets the dispatcher and command-family handlers invoke robot-local
- *   behaviors without reaching directly into Robot or RobotV2 orchestration.
+ *   behaviors without reaching directly into Robot orchestration.
  */
 public interface RobotLocalCommandContext {
   void enqueuePrint(String text);

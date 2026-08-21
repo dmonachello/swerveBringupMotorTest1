@@ -140,6 +140,38 @@ class LifecycleProfileTopologyAdapterTest {
     }
 
     @Test
+    void buildIgnoresConfiguredActiveGroupAndUsesRuntimeActiveGroupMembers() {
+        BridgeGroupManager runtimeGroups = new BridgeGroupManager();
+        runtimeGroups.createGroup(GROUP_ACTIVE);
+        runtimeGroups.addDevice(GROUP_ACTIVE, LABEL_DRIVE, false);
+        runtimeGroups.addDevice(GROUP_ACTIVE, LABEL_STEER, false);
+
+        LifecycleCatalogBundle bundle =
+                LifecycleProfileTopologyAdapter.build(
+                        "test_profile",
+                        List.of(
+                                deviceEntry(ID_DRIVE, MFG_CTRE, DEVTYPE_MOTOR, TYPE_FALCON, LABEL_DRIVE),
+                                deviceEntry(ID_STEER, MFG_REV, DEVTYPE_MOTOR, TYPE_NEO, LABEL_STEER)),
+                        new BringupUtil.BridgeProfileRuntimeConfig(
+                                List.of(
+                                        new BringupUtil.BridgeProfileGroupConfig(
+                                                GROUP_ACTIVE,
+                                                true,
+                                                List.of(),
+                                                List.of())),
+                                new BringupUtil.BridgeProfileSelectedDeviceConfig("", false)),
+                        runtimeGroups.getGroups());
+
+        assertEquals(GroupKind.DYNAMIC, bundle.groupCatalog().groupRecord(GROUP_ACTIVE).kind());
+        assertEquals(
+                List.of(LABEL_DRIVE, LABEL_STEER),
+                bundle.groupCatalog().groupRecord(GROUP_ACTIVE).memberDeviceLabels());
+        assertEquals(
+                List.of(LABEL_DRIVE, LABEL_STEER),
+                bundle.labelResolver().resolveToDeviceLabels(GROUP_ACTIVE));
+    }
+
+    @Test
     void syncRuntimeGroupsRemovesDeletedDynamicGroups() {
         BridgeGroupManager runtimeGroups = new BridgeGroupManager();
         runtimeGroups.createGroup(GROUP_ACTIVE);

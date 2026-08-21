@@ -2519,6 +2519,7 @@ class BringupControlUI(tk.Tk):
         self._latest_passive_result = None
         self._fault_finder_status_var = tk.StringVar(value=CAN_FAULT_FINDER_STATUS_NOT_RUN)
         self._fault_finder_text: Optional[tk.Text] = None
+        self._fault_finder_live_view: Optional[LiveTopologyView] = None
         self._fault_finder_last_run_at = 0.0
         self._fault_finder_run_count = 0
         self._fault_finder_result: Dict[str, Any] = {}
@@ -2641,6 +2642,7 @@ class BringupControlUI(tk.Tk):
         self._poll_interval_idle = 1.0
         self._live_view: Optional[LiveTopologyView] = None
         self._visibility_live_view: Optional[LiveTopologyView] = None
+        self._fault_finder_live_view = None
         self._evidence_live_view = None
         self._manual_duty_popup: Optional[tk.Toplevel] = None
         self._manual_duty_var = tk.DoubleVar(value=MANUAL_DUTY_DEFAULT)
@@ -3109,6 +3111,7 @@ class BringupControlUI(tk.Tk):
             on_node_right_click=self._on_live_node_right_click,
             on_group_right_click=self._on_live_group_right_click,
             on_active_group_member_toggled=self._on_active_group_member_toggled,
+            on_active_group_select_all=self._on_active_group_select_all,
             on_override_action=self._on_live_override_action,
             on_left_click=self._on_live_view_left_click,
             manage_runtime_notice_internally=False,
@@ -3163,13 +3166,43 @@ class BringupControlUI(tk.Tk):
             side=VIS_PACK_SIDE_RIGHT,
             padx=(0, 8),
         )
-        body = ttk.Frame(parent)
+        body = ttk.Panedwindow(parent, orient="vertical")
         body.pack(fill=VIS_FILL_BOTH, expand=True, padx=8, pady=(0, 8))
-        text = tk.Text(body, height=20, wrap="word", state="normal")
+
+        topology_frame = ttk.Frame(body)
+        topology_frame.configure(
+            width=EVIDENCE_TOPOLOGY_FRAME_WIDTH,
+            height=EVIDENCE_TOPOLOGY_FRAME_HEIGHT,
+        )
+        topology_frame.pack_propagate(False)
+        profile_name = self._profile_box.get() if hasattr(self, "_profile_box") else ""
+        self._fault_finder_live_view = LiveTopologyView(
+            topology_frame,
+            profile_name,
+            on_node_right_click=self._on_live_node_right_click,
+            on_group_right_click=self._on_live_group_right_click,
+            on_active_group_member_toggled=self._on_active_group_member_toggled,
+            on_left_click=self._on_live_view_left_click,
+            show_selection_panel=False,
+            show_runnable_panel=False,
+            manage_runtime_notice_internally=False,
+            title_text=CAN_FAULT_FINDER_TITLE,
+            fit_on_load=True,
+            theme_name=self._ui_theme_name,
+        )
+        self._sync_live_view_action_states()
+        self._fault_finder_live_view.set_show_groups(self._live_groups_var.get())
+        self._fault_finder_live_view.set_overlay_lens(TOPOLOGY_LENS_EVIDENCE)
+        self._fault_finder_live_view.pack(fill=VIS_FILL_BOTH, expand=True)
+        body.add(topology_frame, weight=EVIDENCE_LAYOUT_TOP_WEIGHT)
+
+        text_frame = ttk.Frame(body)
+        body.add(text_frame, weight=EVIDENCE_LAYOUT_BOTTOM_WEIGHT)
+        text = tk.Text(text_frame, height=20, wrap="word", state="normal")
         text.insert("1.0", CAN_FAULT_FINDER_TEXT_NOT_RUN)
         text.configure(state="disabled")
         text.pack(side=VIS_PACK_SIDE_LEFT, fill=VIS_FILL_BOTH, expand=True)
-        scroll = ttk.Scrollbar(body, command=text.yview)
+        scroll = ttk.Scrollbar(text_frame, command=text.yview)
         scroll.pack(side=VIS_PACK_SIDE_RIGHT, fill="y")
         text.configure(yscrollcommand=scroll.set)
         self._fault_finder_text = text
@@ -6069,11 +6102,14 @@ class BringupControlUI(tk.Tk):
         views: List[LiveTopologyView] = []
         live_view = self.__dict__.get("_live_view")
         visibility_live_view = self.__dict__.get("_visibility_live_view")
+        fault_finder_live_view = self.__dict__.get("_fault_finder_live_view")
         evidence_live_view = self.__dict__.get("_evidence_live_view")
         if live_view is not None:
             views.append(live_view)
         if visibility_live_view is not None:
             views.append(visibility_live_view)
+        if fault_finder_live_view is not None:
+            views.append(fault_finder_live_view)
         if evidence_live_view is not None:
             views.append(evidence_live_view)
         return views
@@ -6313,6 +6349,37 @@ class BringupControlUI(tk.Tk):
         if self._send_and_wait(command, args):
             if action_state.refresh_after_action:
                 self.after_idle(self._request_runtime_state_refresh)
+
+    def _on_active_group_select_all(self, labels: List[str]) -> None:
+        """
+        NAME
+            _on_active_group_select_all - Replace robot active-group membership with every eligible Live Topology device.
+        """
+        normalized_labels = []
+        seen = set()
+        for label in list(labels or []):
+            clean_label = str(label or NT_VALUE_EMPTY).strip()
+            if not clean_label:
+                continue
+            key = clean_label.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            normalized_labels.append(clean_label)
+        if not normalized_labels:
+            return
+        if self._should_block_for_context_sync(CMD_GROUP_ADD_DEVICE):
+            self._show_context_sync_resolution(trigger=CMD_GROUP_ADD_DEVICE)
+            return
+        action_state = self._active_group_edit_action_state()
+        if not action_state.allowed:
+            self._append_output(action_state.blocked_reason or ACTIVE_GROUP_WAITING_TEXT)
+            if action_state.refresh_when_blocked:
+                self.after_idle(self._request_runtime_state_refresh)
+            return
+        members = [{"label": label, "enabled": True} for label in normalized_labels]
+        if self._replace_active_group_members(members) and action_state.refresh_after_action:
+            self.after_idle(self._request_runtime_state_refresh)
 
     def _on_live_override_action(self, label: str, action: str) -> None:
         """
@@ -7646,14 +7713,7 @@ class BringupControlUI(tk.Tk):
         now_s = time.time()
         self._fault_finder_status_var.set(CAN_FAULT_FINDER_STATUS_RUNNING)
         try:
-            profile_devices = self.__dict__.get("_profile_devices", {})
-            if (
-                isinstance(profile_devices, dict)
-                and profile_devices
-                and isinstance(self.__dict__.get("_evidence_eval_cache"), dict)
-            ):
-                self._update_evidence_cache_incremental(max_devices=len(profile_devices))
-            rows = self._build_evidence_rows()
+            rows = self._build_fault_finder_evidence_rows()
             snapshot = build_evidence_fault_snapshot(
                 evidence_rows=rows,
                 console_snapshot=self._collect_console_snapshot(),
@@ -7688,6 +7748,69 @@ class BringupControlUI(tk.Tk):
                 body=rendered_text or TEXT_EMPTY,
             )
         )
+
+    def _build_fault_finder_evidence_rows(self) -> List[Dict[str, Any]]:
+        """
+        NAME
+            _build_fault_finder_evidence_rows - Build one fully refreshed evidence-row snapshot for fault-finder freezing.
+        """
+        profile_devices = self.__dict__.get("_profile_devices", {})
+        if not isinstance(profile_devices, dict) or not profile_devices:
+            return self._build_evidence_rows()
+        grouped_labels = self._evidence_labels_by_device_type()
+        self._reset_evidence_evaluator_if_needed(grouped_labels)
+        passive_result = build_live_passive_result(
+            self._visibility_provider,
+            profile_devices,
+            ctre_enrichment=self._ctre_enrichment_rows_from_snapshot(),
+            enrichment_records=tuple(
+                self.__dict__.get("_evidence_enrichment_snapshot", {}).get(ENRICHMENT_RUN_RECORDS_KEY, ()) or ()
+            ),
+        )
+        passive_devices_by_identity = index_run_result_by_identity(passive_result)
+        presence_entries_by_label = build_runtime_presence_catalog(
+            self._latest_runtime_devices,
+            profile_devices,
+        )
+        visibility_devices: Dict[str, Dict[str, Any]] = {}
+        devices = self._latest_visibility_snapshot.get(VIS_KEY_DEVICES)
+        if isinstance(devices, list):
+            for device in devices:
+                if not isinstance(device, dict):
+                    continue
+                label = str(device.get(VIS_KEY_LABEL, NT_VALUE_EMPTY)).strip()
+                if label:
+                    visibility_devices[label.lower()] = device
+        console_snapshot = self._collect_console_snapshot()
+        console_devices = {}
+        if isinstance(console_snapshot, dict):
+            raw_console_devices = console_snapshot.get(EVIDENCE_CONSOLE_SCOPE_DEVICES)
+            if isinstance(raw_console_devices, dict):
+                console_devices = raw_console_devices
+        rows: List[Dict[str, Any]] = []
+        for labels in grouped_labels.values():
+            for label_key in labels:
+                profile_device = profile_devices.get(label_key, {})
+                passive_device = passive_devices_by_identity.get(
+                    (
+                        int(profile_device.get(DEVICE_KEY_MFG, 0)),
+                        int(profile_device.get(DEVICE_KEY_TYPE, 0)),
+                        int(profile_device.get(DEVICE_KEY_ID, 0)),
+                    )
+                )
+                display_label = str(profile_device.get(DEVICE_KEY_LABEL, label_key)).strip() or label_key
+                row = self._infer_device_evidence(
+                    display_label,
+                    presence_entries_by_label.get(label_key),
+                    passive_device,
+                    visibility_devices.get(label_key),
+                    self._latest_runtime_devices.get(label_key),
+                    console_devices.get(label_key),
+                    console_snapshot,
+                )
+                rows.append(dict(row))
+        rows.sort(key=lambda row: str(row.get("label", NT_VALUE_EMPTY)).lower())
+        return rows
 
     def _evidence_profile_generation(self) -> str:
         """
@@ -9475,7 +9598,12 @@ class BringupControlUI(tk.Tk):
                     activebackground=palette.selection_bg,
                     activeforeground=palette.text_primary,
                 )
-        for view_name in ("_live_view", "_visibility_live_view", "_evidence_live_view"):
+        for view_name in (
+            "_live_view",
+            "_visibility_live_view",
+            "_fault_finder_live_view",
+            "_evidence_live_view",
+        ):
             view = getattr(self, view_name, None)
             if view is not None and hasattr(view, "set_theme"):
                 view.set_theme(self._ui_theme_name)
