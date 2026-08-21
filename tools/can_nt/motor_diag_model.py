@@ -96,6 +96,8 @@ class MotorSpec:
     """
 
     model: Optional[str] = None
+    matched: Optional[bool] = None
+    requested_model: Optional[str] = None
     nominal_v: Optional[float] = None
     free_current_a: Optional[float] = None
     stall_current_a: Optional[float] = None

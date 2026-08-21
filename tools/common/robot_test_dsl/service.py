@@ -39,6 +39,7 @@ from .validator import ValidationIssue, ValidationResult, validate_entry, valida
 
 SIGNALS_PATH = repo_root() / "tools" / "common" / "generated" / "robot_test_dsl_signals.json"
 KEY_DEVICE_TYPES = "deviceTypes"
+KEY_DEVICE_TYPE_ALIASES = "deviceTypeAliases"
 KEY_DEFAULT_SET = "defaultSet"
 KEY_TEST_SETS = "testSets"
 KEY_TESTS_BY_NAME = "testsByName"
@@ -68,16 +69,18 @@ DEVICE_TYPE_DSL_PDP = "PDP"
 DEVICE_TYPE_DSL_LIMIT_SWITCH = "limitSwitch"
 DEVICE_TYPE_DSL_ENCODER_EXTERNAL = "encoderExternal"
 DEVICE_TYPE_DSL_IMU = "imu"
+DEVICE_TYPE_DSL_ROBOT_CONTROLLER = "robotController"
 DEVICE_TYPE_DSL_XBOX_CONTROLLER = "xboxController"
-DEVICE_TYPE_ALIAS_CANCODER = "CANCoder"
-DEVICE_TYPE_ALIAS_PIGEON = "Pigeon"
 MANUFACTURER_CTRE = 4
 MANUFACTURER_REV = 5
 DEVICE_TYPE_GYRO = 4
 DEVICE_TYPE_ENCODER = 7
 DEVICE_TYPE_POWER = 8
+MANUFACTURER_NI = 1
+DEVICE_TYPE_ROBOT_CONTROLLER_NI = 1
 MODEL_PDP = "PDP"
 MODEL_PDH = "PDH"
+MODEL_ROBOT_CONTROLLER = "ROBOTCONTROLLER"
 
 
 class DslServiceError(Exception):
@@ -136,7 +139,32 @@ def signal_catalog(signal_catalog_path: Optional[Path] = None) -> Dict[str, Dict
     return {str(name): value for name, value in device_types.items() if isinstance(value, dict)}
 
 
-def resolve_profile_device_dsl_type(device_entry: Dict[str, object]) -> str:
+def device_type_alias_catalog(signal_catalog_path: Optional[Path] = None) -> Dict[str, str]:
+    """
+    NAME
+        device_type_alias_catalog - Load generated DSL device-type aliases from the shared artifact.
+    """
+    path = signal_catalog_path if signal_catalog_path is not None else SIGNALS_PATH
+    payload = read_json(path)
+    if not isinstance(payload, dict):
+        return {}
+    aliases = payload.get(KEY_DEVICE_TYPE_ALIASES)
+    if not isinstance(aliases, dict):
+        return {}
+    result: Dict[str, str] = {}
+    for name, canonical in aliases.items():
+        alias_name = str(name or "").strip()
+        canonical_name = str(canonical or "").strip()
+        if not alias_name or not canonical_name:
+            continue
+        result[alias_name.lower()] = canonical_name
+    return result
+
+
+def resolve_profile_device_dsl_type(
+    device_entry: Dict[str, object],
+    signal_catalog_path: Optional[Path] = None,
+) -> str:
     """
     NAME
         resolve_profile_device_dsl_type - Resolve one profile/config device entry to the shared DSL device type name.
@@ -145,7 +173,7 @@ def resolve_profile_device_dsl_type(device_entry: Dict[str, object]) -> str:
         return ""
     explicit_type = str(device_entry.get(KEY_TYPE, "") or "").strip()
     if explicit_type:
-        return _canonicalize_profile_device_dsl_type(explicit_type)
+        return _canonicalize_profile_device_dsl_type(explicit_type, signal_catalog_path)
     raw_model = str(device_entry.get(KEY_MODEL, "") or "").strip().upper()
     raw_manufacturer = device_entry.get(KEY_MANUFACTURER)
     raw_device_type = device_entry.get(KEY_DEVICE_TYPE)
@@ -161,29 +189,38 @@ def resolve_profile_device_dsl_type(device_entry: Dict[str, object]) -> str:
         return DEVICE_TYPE_DSL_ENCODER_EXTERNAL
     if manufacturer == MANUFACTURER_CTRE and device_type == DEVICE_TYPE_GYRO:
         return DEVICE_TYPE_DSL_IMU
+    if manufacturer == MANUFACTURER_NI and device_type == DEVICE_TYPE_ROBOT_CONTROLLER_NI:
+        return DEVICE_TYPE_DSL_ROBOT_CONTROLLER
     if device_type == DEVICE_TYPE_POWER:
         if manufacturer == MANUFACTURER_CTRE or MODEL_PDP in raw_model:
             return DEVICE_TYPE_DSL_PDP
         if manufacturer == MANUFACTURER_REV or MODEL_PDH in raw_model:
             return DEVICE_TYPE_DSL_PDH
+    if MODEL_ROBOT_CONTROLLER in raw_model:
+        return DEVICE_TYPE_DSL_ROBOT_CONTROLLER
     return ""
 
 
-def _canonicalize_profile_device_dsl_type(device_type: str) -> str:
+def _canonicalize_profile_device_dsl_type(
+    device_type: str,
+    signal_catalog_path: Optional[Path] = None,
+) -> str:
     """
     NAME
         _canonicalize_profile_device_dsl_type - Normalize one profile/config logical device type to the shared DSL catalog key.
     """
     if not device_type:
         return ""
-    if device_type == DEVICE_TYPE_ALIAS_CANCODER:
-        return DEVICE_TYPE_DSL_ENCODER_EXTERNAL
-    if device_type == DEVICE_TYPE_ALIAS_PIGEON:
-        return DEVICE_TYPE_DSL_IMU
-    return device_type
+    normalized = device_type.strip()
+    alias_map = device_type_alias_catalog(signal_catalog_path)
+    return alias_map.get(normalized.lower(), normalized)
 
 
-def device_catalog(root_payload: Dict[str, object], profile_name: str) -> Dict[str, Dict[str, object]]:
+def device_catalog(
+    root_payload: Dict[str, object],
+    profile_name: str,
+    signal_catalog_path: Optional[Path] = None,
+) -> Dict[str, Dict[str, object]]:
     """
     NAME
         device_catalog - Build the profile-scoped DSL device catalog from a root config payload.
@@ -206,7 +243,7 @@ def device_catalog(root_payload: Dict[str, object], profile_name: str) -> Dict[s
         for label in selected:
             if isinstance(label, str) and label in by_label:
                 entry = by_label[label]
-                resolved = resolve_profile_device_dsl_type(entry)
+                resolved = resolve_profile_device_dsl_type(entry, signal_catalog_path)
                 if resolved:
                     copied = dict(entry)
                     copied[KEY_TYPE] = resolved
@@ -241,7 +278,7 @@ def validate_store_for_profile(
     )
     return validate_store(
         filtered_store,
-        device_catalog(root_payload, profile_name),
+        device_catalog(root_payload, profile_name, signal_catalog_path),
         signal_catalog(signal_catalog_path),
     )
 
@@ -259,7 +296,7 @@ def resolve_runnable_profile_test_names(
     saved_names = resolve_profile_test_names(root_payload, profile_name)
     if not saved_names:
         return []
-    devices = device_catalog(root_payload, profile_name)
+    devices = device_catalog(root_payload, profile_name, signal_catalog_path)
     signals = signal_catalog(signal_catalog_path)
     runnable_names: List[str] = []
     for test_name in saved_names:
@@ -286,7 +323,7 @@ def profile_test_runnable_map(
     """
     store = store_from_root_payload(root_payload)
     saved_names = resolve_profile_test_names(root_payload, profile_name)
-    devices = device_catalog(root_payload, profile_name)
+    devices = device_catalog(root_payload, profile_name, signal_catalog_path)
     signals = signal_catalog(signal_catalog_path)
     result: Dict[str, bool] = {}
     for test_name in saved_names:
@@ -312,7 +349,7 @@ def config_library_test_runnable_map(
     """
     store = store_from_root_payload(root_payload)
     config_names = resolve_global_library_test_names(root_payload)
-    devices = device_catalog(root_payload, profile_name)
+    devices = device_catalog(root_payload, profile_name, signal_catalog_path)
     signals = signal_catalog(signal_catalog_path)
     result: Dict[str, bool] = {}
     for test_name in config_names:
@@ -335,7 +372,7 @@ def external_library_test_runnable_map(
         external_library_test_runnable_map - Return per-test runnable state for the external shared library.
     """
     _require_known_profile(root_payload, profile_name)
-    devices = device_catalog(root_payload, profile_name)
+    devices = device_catalog(root_payload, profile_name, signal_catalog_path)
     signals = signal_catalog(signal_catalog_path)
     result: Dict[str, bool] = {}
     for test_name in list_external_library_test_names(library_dir):
@@ -395,7 +432,7 @@ def import_test_into_root_payload(
     result = validate_entry(
         test_name,
         entry,
-        device_catalog(root_payload, profile_name),
+        device_catalog(root_payload, profile_name, signal_catalog_path),
         signal_catalog(signal_catalog_path),
     )
     entry.runnable = result.ok()
@@ -451,7 +488,7 @@ def create_blank_test_in_root_payload(
     result = validate_entry(
         clean_name,
         entry,
-        device_catalog(root_payload, profile_name),
+        device_catalog(root_payload, profile_name, signal_catalog_path),
         signal_catalog(signal_catalog_path),
     )
     entry.runnable = result.ok()
@@ -587,7 +624,7 @@ def copy_test_into_root_payload(
     result = validate_entry(
         target_name,
         entry,
-        device_catalog(root_payload, profile_name),
+        device_catalog(root_payload, profile_name, signal_catalog_path),
         signal_catalog(signal_catalog_path),
     )
     entry.runnable = result.ok()
@@ -640,7 +677,7 @@ def update_test_source_in_root_payload(
     result = validate_entry(
         clean_name,
         entry,
-        device_catalog(root_payload, profile_name),
+        device_catalog(root_payload, profile_name, signal_catalog_path),
         signal_catalog(signal_catalog_path),
     )
     entry.runnable = result.ok()
@@ -659,7 +696,7 @@ def cleanup_stale_tests_in_store(
     NAME
         cleanup_stale_tests_in_store - Remove non-validating DSL tests from a store.
     """
-    devices = device_catalog(root_payload, profile_name)
+    devices = device_catalog(root_payload, profile_name, signal_catalog_path)
     signals = signal_catalog(signal_catalog_path)
     removed: List[str] = []
     for test_name in sorted(list(store.tests_by_name.keys())):
@@ -1114,7 +1151,7 @@ def _build_entry_from_source_text(
     result = validate_entry(
         clean_name,
         entry,
-        device_catalog(root_payload, profile_name),
+        device_catalog(root_payload, profile_name, signal_catalog_path),
         signal_catalog(signal_catalog_path),
     )
     entry.runnable = result.ok()

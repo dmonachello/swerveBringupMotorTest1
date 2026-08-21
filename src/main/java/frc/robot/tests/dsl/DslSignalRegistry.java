@@ -8,6 +8,7 @@ import frc.robot.tests.dsl.signals.ImuSignalProvider;
 import frc.robot.tests.dsl.signals.LimitSwitchSignalProvider;
 import frc.robot.tests.dsl.signals.MotorSignalProvider;
 import frc.robot.tests.dsl.signals.PowerDistributionSignalProvider;
+import frc.robot.tests.dsl.signals.RobotControllerSignalProvider;
 import frc.robot.tests.dsl.signals.TestTimerSignalProvider;
 import frc.robot.tests.dsl.signals.XboxControllerSignalProvider;
 import java.util.List;
@@ -34,6 +35,8 @@ public final class DslSignalRegistry {
   public static final String DEVICE_TYPE_TEST_TIMER = "TestTimer";
   public static final String DEVICE_TYPE_PDH = "PDH";
   public static final String DEVICE_TYPE_PDP = "PDP";
+  public static final String DEVICE_TYPE_ROBOT_CONTROLLER = "robotController";
+  public static final String DEVICE_TYPE_SYSTEM_CORE = "SystemCore";
   public static final int PDP_CHANNEL_COUNT = 16;
   public static final int PDH_CHANNEL_COUNT = 24;
   public static final String VALUE_TYPE_BOOLEAN = "boolean";
@@ -82,6 +85,22 @@ public final class DslSignalRegistry {
   public static final String SIGNAL_STICKY_CAN_WARNING = "sticky_can_warning";
   public static final String SIGNAL_STICKY_CAN_BUS_OFF = "sticky_can_bus_off";
   public static final String SIGNAL_STICKY_HAS_RESET = "sticky_has_reset";
+  public static final String SIGNAL_INPUT_VOLTAGE = "input_voltage";
+  public static final String SIGNAL_CAN_UTILIZATION = "can_utilization";
+  public static final String SIGNAL_CAN_TX_ERROR_COUNT = "can_tx_error_count";
+  public static final String SIGNAL_CAN_RX_ERROR_COUNT = "can_rx_error_count";
+  public static final String SIGNAL_CAN_BUS_OFF_COUNT = "can_bus_off_count";
+  public static final String SIGNAL_CAN_TX_FULL_COUNT = "can_tx_full_count";
+  public static final String SIGNAL_BROWNOUT_VOLTAGE = "brownout_voltage";
+  public static final String SIGNAL_RAIL_3V3_VOLTAGE = "rail_3v3_voltage";
+  public static final String SIGNAL_RAIL_5V_VOLTAGE = "rail_5v_voltage";
+  public static final String SIGNAL_RAIL_6V_VOLTAGE = "rail_6v_voltage";
+  public static final String SIGNAL_RAIL_3V3_ENABLED = "rail_3v3_enabled";
+  public static final String SIGNAL_RAIL_5V_ENABLED = "rail_5v_enabled";
+  public static final String SIGNAL_RAIL_6V_ENABLED = "rail_6v_enabled";
+  public static final String SIGNAL_RAIL_3V3_FAULT_COUNT = "rail_3v3_fault_count";
+  public static final String SIGNAL_RAIL_5V_FAULT_COUNT = "rail_5v_fault_count";
+  public static final String SIGNAL_RAIL_6V_FAULT_COUNT = "rail_6v_fault_count";
   public static final String SIGNAL_A = "A";
   public static final String SIGNAL_B = "B";
   public static final String SIGNAL_X = "X";
@@ -110,10 +129,12 @@ public final class DslSignalRegistry {
       new ImuSignalProvider(),
       new PowerDistributionSignalProvider(DEVICE_TYPE_PDP, PDP_CHANNEL_COUNT),
       new PowerDistributionSignalProvider(DEVICE_TYPE_PDH, PDH_CHANNEL_COUNT),
+      new RobotControllerSignalProvider(),
       new XboxControllerSignalProvider(),
       new TestTimerSignalProvider());
 
   private static final Map<String, Map<String, DslSignalMeta>> REGISTRY = buildRegistry();
+  private static final Map<String, String> DEVICE_TYPE_ALIASES = buildDeviceTypeAliases();
 
   private DslSignalRegistry() {}
 
@@ -133,6 +154,11 @@ public final class DslSignalRegistry {
     JsonObject root = new JsonObject();
     root.addProperty("schemaVersion", 1);
     root.addProperty("generatedFrom", DslSignalRegistry.class.getName());
+    JsonObject aliases = new JsonObject();
+    for (Map.Entry<String, String> entry : DEVICE_TYPE_ALIASES.entrySet()) {
+      aliases.addProperty(entry.getKey(), entry.getValue());
+    }
+    root.add("deviceTypeAliases", aliases);
     JsonObject deviceTypes = new JsonObject();
     for (Map.Entry<String, Map<String, DslSignalMeta>> entry : REGISTRY.entrySet()) {
       JsonObject signals = new JsonObject();
@@ -166,13 +192,13 @@ public final class DslSignalRegistry {
     if (deviceType == null || deviceType.isBlank()) {
       return deviceType;
     }
-    if (DEVICE_TYPE_CANCODER.equals(deviceType)) {
-      return DEVICE_TYPE_ENCODER_EXTERNAL;
+    String trimmed = deviceType.trim();
+    for (Map.Entry<String, String> entry : DEVICE_TYPE_ALIASES.entrySet()) {
+      if (entry.getKey().equalsIgnoreCase(trimmed)) {
+        return entry.getValue();
+      }
     }
-    if (DEVICE_TYPE_PIGEON.equals(deviceType)) {
-      return DEVICE_TYPE_IMU;
-    }
-    return deviceType;
+    return trimmed;
   }
 
   private static Map<String, Map<String, DslSignalMeta>> buildRegistry() {
@@ -191,5 +217,14 @@ public final class DslSignalRegistry {
       root.put(deviceType, new LinkedHashMap<>(provider.signals()));
     }
     return root;
+  }
+
+  private static Map<String, String> buildDeviceTypeAliases() {
+    Map<String, String> aliases = new LinkedHashMap<>();
+    aliases.put(DEVICE_TYPE_CANCODER, DEVICE_TYPE_ENCODER_EXTERNAL);
+    aliases.put(DEVICE_TYPE_PIGEON, DEVICE_TYPE_IMU);
+    aliases.put("roboRIO", DEVICE_TYPE_ROBOT_CONTROLLER);
+    aliases.put(DEVICE_TYPE_SYSTEM_CORE, DEVICE_TYPE_ROBOT_CONTROLLER);
+    return aliases;
   }
 }

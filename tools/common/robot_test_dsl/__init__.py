@@ -37,6 +37,7 @@ from .service import (
     DslServiceError,
     cleanup_stale_tests_in_store,
     device_catalog,
+    device_type_alias_catalog,
     import_test_into_config_library,
     import_test_into_external_library,
     import_test_into_root_payload,
@@ -59,6 +60,7 @@ from .service import (
     update_test_source_in_root_payload,
     validate_store_for_profile,
     write_test_source_into_config_library,
+    write_test_source_into_profile,
     write_store_to_root_payload,
 )
 
@@ -96,6 +98,7 @@ __all__ = [
     "DslServiceError",
     "cleanup_stale_tests_in_store",
     "device_catalog",
+    "device_type_alias_catalog",
     "import_test_into_config_library",
     "import_test_into_external_library",
     "import_test_into_root_payload",
@@ -118,5 +121,6 @@ __all__ = [
     "update_test_source_in_root_payload",
     "validate_store_for_profile",
     "write_test_source_into_config_library",
+    "write_test_source_into_profile",
     "write_store_to_root_payload",
 ]

@@ -1,8 +1,11 @@
 package frc.robot;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import frc.robot.diag.snapshots.MotorSpecAttachment;
 import org.junit.jupiter.api.Test;
 
 class BringupUtilMotorSpecLookupTest {
@@ -29,5 +32,25 @@ class BringupUtilMotorSpecLookupTest {
 
     assertNotNull(spec);
     assertEquals("REV NEO", spec.model);
+  }
+
+  @Test
+  void buildMotorSpecAttachmentMarksMatchedSpec() {
+    MotorSpecAttachment attachment = BringupUtil.buildMotorSpecAttachment("FALCON 9", "Falcon 500");
+
+    assertNotNull(attachment);
+    assertTrue(attachment.matched);
+    assertEquals("Falcon 500", attachment.requestedModel);
+    assertEquals("CTRE Falcon 500", attachment.model);
+  }
+
+  @Test
+  void buildMotorSpecAttachmentCarriesMissingSpecRequest() {
+    MotorSpecAttachment attachment = BringupUtil.buildMotorSpecAttachment("FALCON 9", "Unknown Motor");
+
+    assertNotNull(attachment);
+    assertFalse(attachment.matched);
+    assertEquals("Unknown Motor", attachment.requestedModel);
+    assertEquals("", attachment.model);
   }
 }

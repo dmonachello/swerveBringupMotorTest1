@@ -91,7 +91,12 @@ class CanBusReportServiceTests(unittest.TestCase):
                             "busV": 12.0,
                             "motorCurrentA": 5.4,
                             "tempC": 31.0,
-                        }
+                        },
+                        {
+                            "type": "motorSpec",
+                            "matched": False,
+                            "requestedModel": "Unknown Motor",
+                        },
                     ],
                 }
             ],
@@ -112,6 +117,7 @@ class CanBusReportServiceTests(unittest.TestCase):
         self.assertIn("Robot Runtime Devices:", report)
         self.assertIn("vendor=CTRE type=FALCON id=9", report)
         self.assertIn("cmdDuty=0.30", report)
+        self.assertIn("motorSpec: matched=NO requestedModel=Unknown Motor", report)
 
     def test_build_host_can_bus_report_handles_missing_bus_and_provider(self) -> None:
         report = build_host_can_bus_report(_FakeSession({"devices": []}), None, now=100.0)

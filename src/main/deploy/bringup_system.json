@@ -194,7 +194,7 @@
       "id": 0,
       "manufacturer": 1,
       "deviceType": 1,
-      "model": "RobotController",
+      "model": "roboRIO",
       "type": ""
     },
     {
@@ -324,8 +324,8 @@
       "type": ""
     }
   ],
-  "data_version": "2026-08-17_131815",
-  "data_hash": "84b2fff7bb0db245d7ea831e3c6a6f2a596f502edd627cf10570276ac510ebc1",
+  "data_version": "2026-08-21_151255",
+  "data_hash": "9ece8a9700bcbd53de4fe51fab6f0ff1df73179f446a7ba9f3f49e6487a4275b",
   "default_profile": "test_minimal_25_9",
   "bridgeConfig": {
     "schemaVersion": 2,
@@ -851,6 +851,10 @@
             "name": "motors",
             "enabled": true,
             "members": [
+              {
+                "label": "SPARKMAX/NEO 25",
+                "enabled": true
+              },
               {
                 "label": "SPARKMAX/NEO 7",
                 "enabled": true
@@ -2394,8 +2398,8 @@
         "runnable": true
       },
       "newTests_123": {
-        "source": "test \"newTests_123\"\n\ndevice \"SPARKMAX/NEO 25\"\ndevice \"FALCON 9\"\ndevice \"controller0\"\ndevice \"pdp\"\ndevice \"lmtSw0\"\ndevice \"pigeon 2\"\ndevice \"cancoder\"\n\nmain:\n\tset \"SPARKMAX/NEO 25\".output_percent_cmd = controller0.leftY deadband 0.08 scaled 0.25 default 0.0\n\tset \"FALCON 9\".output_percent_cmd = 0.333\n\n\tuntil timer.elapsed >= 10.0\n\tuntil lmtSw0.pressed == true\n\n\tabort pdp.channel0_current > 10.0\n\trequire pdp.channel0_fault == false\n\trequire \"FALCON 9\".current_actual_max > 0.1\n\trequire \"SPARKMAX/NEO 25\".current_actual_max > 0.1\n\trequire \"pigeon 2\".yaw_delta_max_abs > 5.0\n#\trequire \"cancoder\".position_delta_max_abs > 5.0\n\n\n",
-        "sourceHash": "fcc66578818ab1931b4f534d9e2b8bb5d84376873ba373ff03fae2669cee00c7",
+        "source": "test \"newTests_123\"\n\ndevice \"SPARKMAX/NEO 25\"\ndevice \"FALCON 9\"\ndevice \"controller0\"\ndevice \"pdp\"\ndevice \"lmtSw0\"\ndevice \"pigeon 2\"\ndevice \"cancoder\"\ndevice \"roborio\"\n\n\nmain:\n\tset \"SPARKMAX/NEO 25\".output_percent_cmd = controller0.leftY deadband 0.08 scaled 0.25 default 0.0\n\tset \"FALCON 9\".output_percent_cmd = 0.333\n\n\tuntil timer.elapsed >= 10.0\n\tuntil lmtSw0.pressed == true\n\n\tabort pdp.channel0_current > 10.0\n\tabort \"roborio\".input_voltage < 11.0\n\n\trequire pdp.channel0_fault == false\n\trequire \"FALCON 9\".current_actual_max > 0.1\n\trequire \"SPARKMAX/NEO 25\".current_actual_max > 0.1\n\trequire \"pigeon 2\".yaw_delta_max_abs > 5.0\n#\trequire \"cancoder\".position_delta_max_abs > 5.0\n\trequire \"roborio\".input_voltage > 11.5\n    \trequire \"roborio\".brownout == false\n    \trequire \"roborio\".rail_6v_enabled == true\n\n\n",
+        "sourceHash": "f73334dc2102bd6bf936496688287a20654415353f653de3720340a6c0d5291a",
         "normalized": {
           "name": "newTests_123",
           "devices": [
@@ -2419,6 +2423,9 @@
             },
             {
               "name": "cancoder"
+            },
+            {
+              "name": "roborio"
             }
           ],
           "unsafeExit": [],
@@ -2481,6 +2488,22 @@
                 "operator": ">",
                 "literal": {
                   "value": 10.0,
+                  "valueType": "number"
+                }
+              },
+              {
+                "id": "abort_2",
+                "kind": "abort",
+                "text": "abort \"roborio\".input_voltage < 11.0",
+                "reference": {
+                  "device": "roborio",
+                  "signal": "input_voltage",
+                  "text": "roborio.input_voltage"
+                },
+                "mode": "comparison",
+                "operator": "<",
+                "literal": {
+                  "value": 11.0,
                   "valueType": "number"
                 }
               }
@@ -2583,6 +2606,54 @@
                 "literal": {
                   "value": 5.0,
                   "valueType": "number"
+                }
+              },
+              {
+                "id": "require_5",
+                "kind": "require",
+                "text": "require \"roborio\".input_voltage > 11.5",
+                "reference": {
+                  "device": "roborio",
+                  "signal": "input_voltage",
+                  "text": "roborio.input_voltage"
+                },
+                "mode": "comparison",
+                "operator": ">",
+                "literal": {
+                  "value": 11.5,
+                  "valueType": "number"
+                }
+              },
+              {
+                "id": "require_6",
+                "kind": "require",
+                "text": "require \"roborio\".brownout == false",
+                "reference": {
+                  "device": "roborio",
+                  "signal": "brownout",
+                  "text": "roborio.brownout"
+                },
+                "mode": "comparison",
+                "operator": "==",
+                "literal": {
+                  "value": false,
+                  "valueType": "boolean"
+                }
+              },
+              {
+                "id": "require_7",
+                "kind": "require",
+                "text": "require \"roborio\".rail_6v_enabled == true",
+                "reference": {
+                  "device": "roborio",
+                  "signal": "rail_6v_enabled",
+                  "text": "roborio.rail_6v_enabled"
+                },
+                "mode": "comparison",
+                "operator": "==",
+                "literal": {
+                  "value": true,
+                  "valueType": "boolean"
                 }
               }
             ]
@@ -4402,7 +4473,7 @@
             -4.0
           ],
           "busRights": [
-            1094.4224598930482
+            1134.4224598930482
           ],
           "busConnectors": [],
           "busConnectorSides": [],

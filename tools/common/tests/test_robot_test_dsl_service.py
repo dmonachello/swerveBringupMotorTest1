@@ -5,10 +5,13 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from tools.common.tests.config_api_test_helper import load_profiles_payload
 from tools.common.robot_test_dsl import (
     create_blank_test_in_root_payload,
     copy_test_into_root_payload,
     cleanup_stale_tests_in_store,
+    device_catalog,
+    device_type_alias_catalog,
     delete_external_library_test,
     delete_test_from_root_payload,
     import_test_into_root_payload,
@@ -153,14 +156,76 @@ class RobotTestDslServiceTests(unittest.TestCase):
             ),
         )
 
+    def test_resolve_profile_device_dsl_type_normalizes_robot_controller_aliases(self) -> None:
+        self.assertEqual(
+            "robotController",
+            resolve_profile_device_dsl_type(
+                {
+                    "manufacturer": 1,
+                    "deviceType": 1,
+                    "model": "roboRIO",
+                    "type": "roboRIO",
+                }
+            ),
+        )
+        self.assertEqual(
+            "robotController",
+            resolve_profile_device_dsl_type(
+                {
+                    "manufacturer": 1,
+                    "deviceType": 1,
+                    "model": "roboRIO",
+                    "type": "",
+                }
+            ),
+        )
+        self.assertEqual(
+            "robotController",
+            resolve_profile_device_dsl_type(
+                {
+                    "manufacturer": 1,
+                    "deviceType": 1,
+                    "model": "roboRIO",
+                    "type": "robotController",
+                }
+            ),
+        )
+        self.assertEqual(
+            "robotController",
+            resolve_profile_device_dsl_type(
+                {
+                    "manufacturer": 42,
+                    "deviceType": 99,
+                    "model": "SystemCore",
+                    "type": "SystemCore",
+                }
+            ),
+        )
+        self.assertEqual(
+            "robotController",
+            resolve_profile_device_dsl_type(
+                {
+                    "manufacturer": 42,
+                    "deviceType": 99,
+                    "model": "systemcore",
+                    "type": "systemcore",
+                }
+            ),
+        )
+
     def test_signal_catalog_includes_power_distribution_channel_signals(self) -> None:
         catalog = signal_catalog()
+        aliases = device_type_alias_catalog()
 
         self.assertIn("channel0_current", catalog["PDP"])
         self.assertIn("channel15_sticky_fault", catalog["PDP"])
         self.assertNotIn("channel16_current", catalog["PDP"])
         self.assertIn("channel23_current", catalog["PDH"])
         self.assertNotIn("channel24_fault", catalog["PDH"])
+        self.assertEqual("encoderExternal", aliases["cancoder"])
+        self.assertEqual("imu", aliases["pigeon"])
+        self.assertEqual("robotController", aliases["roborio"])
+        self.assertEqual("robotController", aliases["systemcore"])
         self.assertEqual(
             "PDH",
             resolve_profile_device_dsl_type(
@@ -213,9 +278,148 @@ class RobotTestDslServiceTests(unittest.TestCase):
         self.assertTrue(any("angular_velocity_z" in line for line in imu_topic["signals"]))
         self.assertTrue(any("supply_voltage" in line for line in imu_topic["signals"]))
         self.assertTrue(str(imu_topic.get("sourcePath", "")).endswith("imu.devices.md"))
+        robot_controller_topic = topic_map["topic_device_type_robotController"]
+        self.assertIn("Shared robot-controller device family", robot_controller_topic["summary"])
+        self.assertTrue(any("input_voltage" in line for line in robot_controller_topic["signals"]))
+        self.assertTrue(any("can_utilization" in line for line in robot_controller_topic["signals"]))
+        self.assertTrue(any("rail_6v_fault_count" in line for line in robot_controller_topic["signals"]))
+        self.assertTrue(str(robot_controller_topic.get("sourcePath", "")).endswith("robotController.devices.md"))
         comments_topic = topic_map["topic_comments"]
         self.assertIn("# character starts a comment", " ".join(comments_topic["details"]))
         self.assertIn('device "cancoder"  # inline comment', comments_topic["syntax"])
+
+    def test_validate_store_for_profile_accepts_lowercase_roborio_shared_signals(self) -> None:
+        payload = self._root_payload(include_controller=False)
+        payload["devices"].append(
+            {
+                "label": "roborio",
+                "manufacturer": 1,
+                "deviceType": 1,
+                "id": 0,
+                "model": "roboRIO",
+                "type": "robotController",
+                "deviceInterface": "CAN",
+            }
+        )
+        payload["profiles"]["demo"]["devices"] = ["roborio"]
+        payload["dslTests"] = {
+            "schemaVersion": 1,
+            "defaultSet": "demo",
+            "testSets": {"demo": ["controller_health"]},
+            "testsByName": {
+                "controller_health": {
+                    "source": (
+                        'test "controller_health"\n'
+                        'device "roborio"\n\n'
+                        "main:\n"
+                        '    require "roborio".input_voltage > 11.5\n'
+                        '    require "roborio".brownout == false\n'
+                        '    require "roborio".rail_6v_enabled == true\n'
+                        "    until timer.elapsed >= 1.0\n"
+                    ),
+                    "sourceHash": "",
+                    "normalized": {
+                        "name": "controller_health",
+                        "devices": [{"name": "roborio"}],
+                        "unsafeExit": [],
+                        "init": {},
+                        "main": {
+                            "requires": [
+                                {
+                                    "id": "r1",
+                                    "kind": "require",
+                                    "text": '"roborio".input_voltage > 11.5',
+                                    "reference": {
+                                        "device": "roborio",
+                                        "signal": "input_voltage",
+                                        "text": '"roborio".input_voltage',
+                                    },
+                                    "mode": "comparison",
+                                    "operator": ">",
+                                    "literal": {"value": 11.5, "valueType": "number"},
+                                },
+                                {
+                                    "id": "r2",
+                                    "kind": "require",
+                                    "text": '"roborio".brownout == false',
+                                    "reference": {
+                                        "device": "roborio",
+                                        "signal": "brownout",
+                                        "text": '"roborio".brownout',
+                                    },
+                                    "mode": "comparison",
+                                    "operator": "==",
+                                    "literal": {"value": False, "valueType": "boolean"},
+                                },
+                                {
+                                    "id": "r3",
+                                    "kind": "require",
+                                    "text": '"roborio".rail_6v_enabled == true',
+                                    "reference": {
+                                        "device": "roborio",
+                                        "signal": "rail_6v_enabled",
+                                        "text": '"roborio".rail_6v_enabled',
+                                    },
+                                    "mode": "comparison",
+                                    "operator": "==",
+                                    "literal": {"value": True, "valueType": "boolean"},
+                                },
+                            ],
+                            "untils": [
+                                {
+                                    "id": "u1",
+                                    "kind": "until",
+                                    "text": "timer.elapsed >= 1.0",
+                                    "reference": {
+                                        "device": "timer",
+                                        "signal": "elapsed",
+                                        "text": "timer.elapsed",
+                                    },
+                                    "mode": "comparison",
+                                    "operator": ">=",
+                                    "literal": {"value": 1.0, "valueType": "number"},
+                                }
+                            ],
+                        },
+                        "close": {},
+                    },
+                }
+            },
+        }
+
+        result = validate_store_for_profile(payload, store_from_root_payload(payload), "demo")
+
+        self.assertTrue(result.ok(), render_validation_text(result, store_from_root_payload(payload)))
+
+    def test_device_catalog_infers_robot_controller_from_current_config_shape(self) -> None:
+        payload = self._root_payload(include_controller=False)
+        payload["devices"].append(
+            {
+                "label": "roborio",
+                "manufacturer": 1,
+                "deviceType": 1,
+                "id": 0,
+                "model": "roboRIO",
+                "type": "",
+                "deviceInterface": "CAN",
+            }
+        )
+        payload["profiles"]["demo"]["devices"] = ["roborio"]
+
+        catalog = device_catalog(payload, "demo")
+
+        self.assertEqual("robotController", catalog["roborio"]["type"])
+
+    def test_deploy_config_explicitly_types_roborio_as_robot_controller(self) -> None:
+        payload = load_profiles_payload(Path("src/main/deploy/bringup_system.json"))
+
+        roborio = next(
+            device
+            for device in payload["devices"]
+            if str(device.get("label", "")).strip().lower() == "roborio"
+        )
+
+        self.assertEqual("robotController", roborio["type"])
 
     def test_import_test_into_root_payload_without_explicit_set_uses_profile_owned_set(self) -> None:
         payload = self._root_payload(include_controller=True)

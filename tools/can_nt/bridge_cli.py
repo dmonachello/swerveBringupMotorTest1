@@ -14629,9 +14629,13 @@ class BridgeCli:
                         del devices[idx]
                         removed = True
                         break
-        elif category in ("pdh", "pdp", "pigeon", "roborio"):
-            if profile.get(category) is entry:
-                profile.pop(category, None)
+        elif category in ("pdh", "pdp", "pigeon", "robotController", "roborio"):
+            singleton_key = "robotController" if category == "roborio" else category
+            if profile.get(singleton_key) is entry:
+                profile.pop(singleton_key, None)
+                removed = True
+            elif category == "roborio" and profile.get("roborio") is entry:
+                profile.pop("roborio", None)
                 removed = True
 
         label = str(entry.get(KEY_LABEL, "")).strip()
@@ -15023,9 +15027,11 @@ class BridgeCli:
         ):
             if entry in (profile.get(key) or []):
                 return key
-        for key in ("pdh", "pdp", "pigeon", "roborio"):
+        for key in ("pdh", "pdp", "pigeon", "robotController"):
             if profile.get(key) is entry:
                 return key
+        if profile.get("roborio") is entry:
+            return "robotController"
         if entry in (profile.get("devices") or []):
             return "devices"
         return None

@@ -35,11 +35,13 @@ from tools.can_nt.motor_diag_constants import (
     FIELD_INVERT,
     FIELD_LAST_ERROR,
     FIELD_LOW_CURRENT_NOTE,
+    FIELD_MATCHED,
     FIELD_MODEL,
     FIELD_MOTOR_CURRENT_A,
     FIELD_MOTOR_V,
     FIELD_NOMINAL_V,
     FIELD_RESET,
+    FIELD_REQUESTED_MODEL,
     FIELD_STALL_CURRENT_A,
     FIELD_STICKY_FAULTS_RAW,
     FIELD_STICKY_FAULT_FLAGS,
@@ -294,6 +296,8 @@ def _map_encoder_attachment(attachment: Dict[str, Any], telemetry: NormalizedMot
 
 def _map_motor_spec_attachment(attachment: Dict[str, Any], telemetry: NormalizedMotorTelemetry) -> None:
     telemetry.spec.model = str(attachment.get(FIELD_MODEL, STR_EMPTY)).strip() or None
+    telemetry.spec.matched = _as_bool(attachment.get(FIELD_MATCHED))
+    telemetry.spec.requested_model = str(attachment.get(FIELD_REQUESTED_MODEL, STR_EMPTY)).strip() or None
     telemetry.spec.nominal_v = _as_float(attachment.get(FIELD_NOMINAL_V))
     telemetry.spec.free_current_a = _as_float(attachment.get(FIELD_FREE_CURRENT_A))
     telemetry.spec.stall_current_a = _as_float(attachment.get(FIELD_STALL_CURRENT_A))

@@ -22,7 +22,7 @@ class LifecycleProfileTopologyAdapterTest {
     private static final String TYPE_FALCON = "FALCON";
     private static final String TYPE_NEO = "NEO";
     private static final String TYPE_PDH = "PDH";
-    private static final String TYPE_ROBORIO = "roboRIO";
+    private static final String TYPE_ROBORIO = "robotController";
     private static final String TYPE_XBOX_CONTROLLER = "xboxController";
     private static final String LABEL_DRIVE = "front_left_drive";
     private static final String LABEL_STEER = "front_left_steer";
@@ -55,10 +55,26 @@ class LifecycleProfileTopologyAdapterTest {
                         List.of(
                                 deviceEntry(ID_DRIVE, MFG_CTRE, DEVTYPE_MOTOR, TYPE_FALCON, LABEL_DRIVE),
                                 deviceEntry(0, 0, 0, TYPE_ROBORIO, LABEL_ROBORIO),
+                                new BringupUtil.DeviceEntry(
+                                        0,
+                                        0,
+                                        0,
+                                        INTERFACE_CAN,
+                                        "Limelight",
+                                        "SystemCore",
+                                        "robotController",
+                                        "main-controller-systemcore",
+                                        "",
+                                        new BringupUtil.LimitConfig(),
+                                        List.of(),
+                                        false),
                                 deviceEntry(0, 0, 0, TYPE_XBOX_CONTROLLER, LABEL_CONTROLLER)),
                         BringupUtil.BridgeProfileRuntimeConfig.empty());
 
         assertEquals(DeviceLifecycleKind.SINGLETON, bundle.deviceCatalog().deviceRecord(LABEL_ROBORIO).lifecycleKind());
+        assertEquals(
+                DeviceLifecycleKind.SINGLETON,
+                bundle.deviceCatalog().deviceRecord("main-controller-systemcore").lifecycleKind());
         assertEquals(DeviceLifecycleKind.SINGLETON, bundle.deviceCatalog().deviceRecord(LABEL_CONTROLLER).lifecycleKind());
     }
 

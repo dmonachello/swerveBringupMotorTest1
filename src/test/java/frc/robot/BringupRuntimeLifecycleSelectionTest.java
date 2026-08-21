@@ -258,6 +258,20 @@ class BringupRuntimeLifecycleSelectionTest {
     BringupUtil.DeviceEntry controller =
         new BringupUtil.DeviceEntry(
             0, 9, 1, "USB", "Microsoft", "xboxController", "controller0", null, null, null, null);
+    BringupUtil.DeviceEntry robotController =
+        new BringupUtil.DeviceEntry(
+            0,
+            0,
+            0,
+            "CAN",
+            "Limelight",
+            "SystemCore",
+            "robotController",
+            "main-controller-systemcore",
+            null,
+            null,
+            null,
+            null);
     BringupUtil.DeviceEntry pdp =
         new BringupUtil.DeviceEntry(
             20, 4, 8, "CAN", "CTRE", "PDP", "pdp", null, null, null, null);
@@ -266,6 +280,7 @@ class BringupRuntimeLifecycleSelectionTest {
             0, 1, 0, "DIO", "NI", "limitSwitch", "lmtSw0", null, null, null, null);
 
     assertTrue(BringupRuntime.isLifecycleSingletonEntry(controller));
+    assertTrue(BringupRuntime.isLifecycleSingletonEntry(robotController));
     assertTrue(BringupRuntime.isLifecycleSingletonEntry(pdp));
     assertFalse(BringupRuntime.isLifecycleSingletonEntry(limitSwitch));
   }

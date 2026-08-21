@@ -32,7 +32,8 @@ BUCKET_CATEGORIES = [
     "cancoders",
     "candles",
 ]
-SINGLETON_CATEGORIES = ["pdh", "pdp", "pigeon", "roborio"]
+SINGLETON_CATEGORIES = ["pdh", "pdp", "pigeon", "robotController"]
+LEGACY_SINGLETON_CATEGORIES = {"roborio": "robotController"}
 GENERIC_CATEGORY = "devices"
 
 
@@ -96,6 +97,13 @@ def _rewrite_profile(
 
     for category in SINGLETON_CATEGORIES:
         entry = profile.get(category)
+        if not isinstance(entry, dict):
+            legacy_key = next(
+                (key for key, canonical in LEGACY_SINGLETON_CATEGORIES.items() if canonical == category),
+                "",
+            )
+            if legacy_key:
+                entry = profile.get(legacy_key)
         if isinstance(entry, dict):
             _set_label(category, entry)
 

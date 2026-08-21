@@ -173,7 +173,7 @@ def _resolve_category(entry: Dict[str, Any]) -> str:
     if manufacturer == 4 and device_type == 4:
         return "pigeon"
     if manufacturer == 1 and device_type == 1:
-        return "roborio"
+        return "robotController"
     if dtype:
         return dtype
     return "devices"

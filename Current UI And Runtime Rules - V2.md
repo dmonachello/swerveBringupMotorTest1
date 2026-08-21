@@ -114,9 +114,31 @@ Current implication:
 
 Purpose: Capture the current shared meaning for runtime report and Evidence-tab diagnostics details.
 
+- Profile/config/runtime `type` now represents the shared classifier device class, not the product model.
+
+- The current NI controller therefore uses `type=robotController` across config, runtime JSON/text, host UI available-device displays, topology/category surfaces, and classifier-derived host views.
+
+- Concrete product identity remains separate in fields such as `model`, so the current hardware may still show `model=roboRIO` while a future controller may show `model=SystemCore`.
+
+- DSL uses the same shared `robotController` family name directly and continues to accept compatibility aliases such as `roboRIO`, `roborio`, and `SystemCore` during device-type normalization.
+
 - Virtual singleton infrastructure devices such as `roborio` are reported as present in robot-local runtime snapshots even though they do not allocate a vendor CAN API object.
 
 - Report, dump, and Evidence surfaces should therefore treat `roborio` presence as a virtual-runtime truth, not as proof of observed CAN traffic.
+
+- The active presence probe now supports `roborio` as a controller-family target using robot-local controller telemetry evidence rather than observed CAN traffic or a vendor CAN motor/sensor handle.
+
+- `roborio` active-probe results are therefore expected to reflect controller-local health such as input voltage, brownout state, CAN status readability, and rail health, while still remaining distinct from passive CAN-observer proof of on-bus traffic.
+
+- Runtime JSON report entries for controller-family devices now remain attachment-first but also add a shared `family=robotController` summary shape with nested controller `power`, `bus`, and `rails` sections when those shared attachments are present.
+
+- The human-readable CAN diagnostics report no longer stops at `virtual, no API` for `roborio`; it now summarizes the same shared controller-family power, CAN-controller, and rail telemetry exposed by the runtime snapshot.
+
+- Runtime/report surfaces now expose motor-spec match state from the shared `motorSpec` attachment instead of relying on console-only warnings.
+
+- When a configured motor label/model does not resolve to a `motor_specs.json` entry, operator-visible text/report surfaces should show an explicit missing-spec warning and the requested model text when available.
+
+- The shared Selection inspector for runtime-backed topology devices now exposes motor-spec match state from the same `motorSpec` attachment, including the requested model text when the spec lookup is missing.
 
 - CAN/fault suspicion wording must distinguish active fault state from sticky-only fault state when the underlying telemetry provides both.
 
@@ -281,6 +303,16 @@ Purpose: Describe the current file-save behavior in the topology editor.
 - Exported files may still retain legacy `diagram.profiles.<profile>` data for compatibility while legacy read fallback remains in place.
 
 - `Save to Deploy` remains an explicit write to the canonical deploy config path.
+
+## Topology Editor DIO Wiring
+
+Purpose: Describe the current DIO-wiring behavior in the topology editor.
+
+- DIO wiring now targets the shared controller-family node rather than a `roboRIO`-named special case.
+
+- The topology editor still persists the existing DIO-link structure for compatibility, but the operator-facing workflow is phrased against the generic robot controller.
+
+- DIO warnings and wiring prompts therefore refer to the robot controller as the required infrastructure node.
 
   
 
@@ -1047,6 +1079,13 @@ Current meaning of selected-test scope selection:
 
 - `Runtime Activate` then activates that `active-group`
 
+- After one terminal `Run Selected` result, the Test Activity tab appends a per-`require` summary for that single test run:
+  - one line per `require`
+  - pass/fail state
+  - sampled signal value when available
+
+- That extra per-`require` summary is suppressed for `Run All`.
+
   
 
 ## Runnable State Panels
@@ -1270,6 +1309,10 @@ Purpose: Describe common operator scenarios and the code-driven behavior they sh
   
 
 - The selected test can be selected and edited offline or while scope is inactive without rewriting `active-group`.
+
+- When the operator highlights a test in the Tests tab, that local choice remains the authoritative `Current Test` in the UI even if the connected robot has not loaded that test into its current runnable test set.
+
+- In that robot-unknown case, the UI must not keep an older robot-known test as `Current Test`; it should keep the newly selected local test visible and block robot-side selection/run actions with the explicit `not loaded on robot` reason.
 
 - When scope is inactive, the selected-test panel should report `not activated` rather than claiming required devices are unavailable solely because the host has not pushed membership.
 

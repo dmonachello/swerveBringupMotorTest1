@@ -34,6 +34,12 @@ class _StringVarStub:
         self.value = str(value)
 
 
+class _NodeStub:
+    def __init__(self, label: str, can_id: int) -> None:
+        self.label = label
+        self.can_id = can_id
+
+
 class _LabelStub:
     def __init__(self) -> None:
         self.text = ""
@@ -263,6 +269,60 @@ class LiveTopologyViewTests(unittest.TestCase):
 
         self.assertEqual([], calls)
 
+    def test_update_details_shows_motor_spec_warning_fields(self) -> None:
+        view = self._make_view()
+        view._detail_vars = {
+            live_view_module.DETAIL_KEY_LABEL: _StringVarStub("--"),
+            live_view_module.DETAIL_KEY_CAN_ID: _StringVarStub("--"),
+            live_view_module.DETAIL_KEY_PRESENCE: _StringVarStub("--"),
+            live_view_module.DETAIL_KEY_PRESENCE_STATUS: _StringVarStub("--"),
+            live_view_module.DETAIL_KEY_PRESENCE_AGE: _StringVarStub("--"),
+            live_view_module.DETAIL_KEY_PRESENCE_SOURCE: _StringVarStub("--"),
+            live_view_module.DETAIL_KEY_FULL_PROBE_BUCKET: _StringVarStub("--"),
+            live_view_module.DETAIL_KEY_FULL_PROBE_AGE: _StringVarStub("--"),
+            live_view_module.DETAIL_KEY_FULL_PROBE_SCORE: _StringVarStub("--"),
+            live_view_module.DETAIL_KEY_FULL_PROBE_STATUS: _StringVarStub("--"),
+            live_view_module.DETAIL_KEY_FULL_PROBE_MESSAGE: _StringVarStub("--"),
+            live_view_module.DETAIL_KEY_GROUP_MEMBER: _StringVarStub("--"),
+            live_view_module.DETAIL_KEY_SCOPE_ACTIVE: _StringVarStub("--"),
+            live_view_module.DETAIL_KEY_INSTANTIATED: _StringVarStub("--"),
+            live_view_module.DETAIL_KEY_LIFECYCLE_STATE: _StringVarStub("--"),
+            live_view_module.DETAIL_KEY_TESTABLE: _StringVarStub("--"),
+            live_view_module.DETAIL_KEY_OVERRIDE_ACTIVE: _StringVarStub("--"),
+            live_view_module.DETAIL_KEY_OVERRIDE_ORIGINATED: _StringVarStub("--"),
+            live_view_module.DETAIL_KEY_OVERRIDE_FAILURE: _StringVarStub("--"),
+            live_view_module.DETAIL_KEY_NOT_TESTABLE_REASON: _StringVarStub("--"),
+            live_view_module.DETAIL_KEY_LAST_SEEN: _StringVarStub("--"),
+            live_view_module.DETAIL_KEY_CURRENT_A: _StringVarStub("--"),
+            live_view_module.DETAIL_KEY_CURRENT_AVG_A: _StringVarStub("--"),
+            live_view_module.DETAIL_KEY_CURRENT_PEAK_A: _StringVarStub("--"),
+            live_view_module.DETAIL_KEY_CURRENT_NONZERO: _StringVarStub("--"),
+            live_view_module.DETAIL_KEY_CURRENT_SAMPLES: _StringVarStub("--"),
+            live_view_module.DETAIL_KEY_CMD_DUTY: _StringVarStub("--"),
+            live_view_module.DETAIL_KEY_APPLIED_DUTY: _StringVarStub("--"),
+            live_view_module.DETAIL_KEY_VEL_RPM: _StringVarStub("--"),
+            live_view_module.DETAIL_KEY_POSITION_ROT: _StringVarStub("--"),
+            live_view_module.DETAIL_KEY_POSITION_DELTA_ROT: _StringVarStub("--"),
+            live_view_module.DETAIL_KEY_TEMP_C: _StringVarStub("--"),
+            live_view_module.DETAIL_KEY_MOTOR_SPEC_MATCH: _StringVarStub("--"),
+            live_view_module.DETAIL_KEY_MOTOR_SPEC_MODEL: _StringVarStub("--"),
+            live_view_module.DETAIL_KEY_SELECTED: _StringVarStub("--"),
+        }
+        view._selected_node = _NodeStub("FALCON 9", 9)
+        view._runtime_state = {
+            "falcon 9": {
+                "presenceConfidence": 1.0,
+                "attachments": [
+                    {"type": "motorSpec", "matched": False, "requestedModel": "Unknown Motor"}
+                ],
+            }
+        }
+
+        view._update_details()
+
+        self.assertEqual("missing", view._detail_vars[live_view_module.DETAIL_KEY_MOTOR_SPEC_MATCH].get())
+        self.assertEqual("Unknown Motor", view._detail_vars[live_view_module.DETAIL_KEY_MOTOR_SPEC_MODEL].get())
+
     def _attach_detail_vars(self, view: live_view_module.LiveTopologyView) -> None:
         view._detail_vars = {
             key: _StringVarStub("--")
@@ -299,6 +359,8 @@ class LiveTopologyViewTests(unittest.TestCase):
                 live_view_module.DETAIL_KEY_POSITION_ROT,
                 live_view_module.DETAIL_KEY_POSITION_DELTA_ROT,
                 live_view_module.DETAIL_KEY_TEMP_C,
+                live_view_module.DETAIL_KEY_MOTOR_SPEC_MATCH,
+                live_view_module.DETAIL_KEY_MOTOR_SPEC_MODEL,
                 live_view_module.DETAIL_KEY_SELECTED,
             )
         }
@@ -986,7 +1048,7 @@ class LiveTopologyViewTests(unittest.TestCase):
         view._nodes = [
             live_view_module.LiveNode(
                 key=1,
-                category="roborio",
+                category="robotController",
                 label="roborio",
                 can_id=0,
                 bus_index=0,
@@ -1482,7 +1544,7 @@ class LiveTopologyViewTests(unittest.TestCase):
         view._nodes = [
             live_view_module.LiveNode(
                 key=1,
-                category="roborio",
+                category="robotController",
                 label="roborio",
                 can_id=0,
                 bus_index=0,
@@ -1588,7 +1650,7 @@ class LiveTopologyViewTests(unittest.TestCase):
         view._nodes = [
             live_view_module.LiveNode(
                 key=1,
-                category="roborio",
+                category="robotController",
                 label="roborio",
                 can_id=0,
                 bus_index=0,

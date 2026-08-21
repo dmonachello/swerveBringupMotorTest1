@@ -89,7 +89,8 @@ DIAGRAM_VENDOR_SWYFT = "SWYFT"
 DIAGRAM_VENDOR_ANALYZER = "ANALYZER"
 DIAGRAM_DEVICE_WIRING = "Wiring"
 DIAGRAM_DEVICE_ANALYZER = "Analyzer"
-CATEGORY_ROBORIO = "roborio"
+CATEGORY_ROBORIO = "robotController"
+LEGACY_CATEGORY_ROBORIO = "roborio"
 TAG_SWYFT = "swyft"
 TAG_CANNECT = "cannect"
 TAG_INJECT = "inject"
@@ -244,8 +245,8 @@ MSG_ATTACH_INVALID = "Attachment requires one DIO device and one non-DIO device.
 MSG_ATTACH_DUP = "Attachment already exists."
 MSG_ATTACH_NONE = "No attachment links were removed."
 MSG_ATTACH_REMOVE_SELECT = "Select one or more nodes to remove attachment links."
-MSG_WIRE_SELECT = "Select a DIO device to wire to roboRIO."
-MSG_WIRE_NO_ROBORIO = "No roboRIO node found in the diagram."
+MSG_WIRE_SELECT = "Select a DIO device to wire to the robot controller."
+MSG_WIRE_NO_ROBOT_CONTROLLER = "No robot-controller node found in the diagram."
 MSG_WIRE_DUP = "DIO wiring link already exists."
 MSG_WIRE_NONE = "No DIO wiring links were removed."
 MSG_WIRE_REMOVE_SELECT = "Select one or more nodes to remove DIO wiring links."
@@ -255,8 +256,8 @@ MSG_POWER_DUP = "Power link already exists."
 MSG_POWER_NONE = "No power links were removed."
 MSG_POWER_REMOVE_SELECT = "Select one or more nodes to remove power links."
 MSG_DIO_ATTACH_REQUIRED = "DIO device {} must be attached to a host device."
-MSG_DIO_WIRE_REQUIRED = "DIO device {} must be wired to roboRIO."
-MSG_DIO_NO_ROBORIO = "DIO devices require a roboRIO node."
+MSG_DIO_WIRE_REQUIRED = "DIO device {} must be wired to the robot controller."
+MSG_DIO_NO_ROBOT_CONTROLLER = "DIO devices require a robot-controller node."
 TITLE_ATTACH_DEVICE = "Attach Device"
 TITLE_REMOVE_ATTACHMENT = "Remove Attachment"
 TITLE_WIRE_DIO = "Wire DIO"
@@ -398,8 +399,8 @@ MSG_RENAME_LABEL_CONFIRM = (
 TITLE_DIO_WARN = "DIO Warning"
 MSG_DIO_WARN_HEADER = "DIO devices are not fully attached/wired:"
 MSG_DIO_WARN_ATTACH = "Not attached to host: {labels}"
-MSG_DIO_WARN_WIRE = "Not wired to roboRIO: {labels}"
-MSG_DIO_WARN_NO_ROBORIO = "No roboRIO node present for DIO wiring."
+MSG_DIO_WARN_WIRE = "Not wired to the robot controller: {labels}"
+MSG_DIO_WARN_NO_ROBOT_CONTROLLER = "No robot-controller node present for DIO wiring."
 MSG_DIO_WARN_PROMPT = "Continue saving?"
 KEY_DIO_FREEY_MODE = "dioFreeYMode"
 DIO_FREEY_MODE_RAIL = "rail"
@@ -460,7 +461,7 @@ HELP_DIO_BODY = (
     "- Use Edit -> Add DIO Device... to create a DIO node.\n"
     "- Set Interface=DIO, Type=limitSwitch or encoderExternal, and DIO channel.\n"
     "- Attach to a host device (Edit -> Attach Device) when you want ownership/reference.\n"
-    "- Wire to roboRIO (Edit -> Wire DIO to roboRIO) when you want physical wiring shown.\n"
+    "- Wire to the robot controller (Edit -> Wire DIO to Robot Controller) when you want physical wiring shown.\n"
     "- Missing attachment/wiring is allowed but will warn on save.\n"
 )
 ARG_VERSION = "--version"
@@ -1261,7 +1262,7 @@ class TopologyEditor(tk.Tk):
         edit_menu.add_command(label="Remove Attachment Link", command=self._remove_attachment_link)
         edit_menu.add_command(label="Add Power Link", command=self._add_power_link)
         edit_menu.add_command(label="Remove Power Link", command=self._remove_power_link)
-        edit_menu.add_command(label="Wire DIO to roboRIO", command=self._wire_dio_to_roborio)
+        edit_menu.add_command(label="Wire DIO to Robot Controller", command=self._wire_dio_to_robot_controller)
         edit_menu.add_command(label="Remove DIO Wire", command=self._remove_dio_wire)
         edit_menu.add_separator()
         edit_menu.add_command(
@@ -3776,6 +3777,17 @@ class TopologyEditor(tk.Tk):
         return self._node_from_device_def(entry)
 
     @staticmethod
+    def _normalize_device_category(category: str) -> str:
+        """
+        NAME
+            _normalize_device_category - Canonicalize legacy device categories.
+        """
+        category_text = str(category).strip()
+        if category_text.lower() == LEGACY_CATEGORY_ROBORIO:
+            return CATEGORY_ROBORIO
+        return category_text
+
+    @staticmethod
     def _infrastructure_category_from_label(label: str) -> Optional[str]:
         """
         NAME
@@ -3963,7 +3975,7 @@ class TopologyEditor(tk.Tk):
         if device_type == DEVTYPE_GYRO:
             return "pigeon"
         if device_type == DEVTYPE_ROBORIO:
-            return "roborio"
+            return "robotController"
         return GENERIC_CATEGORY
 
     def _vendor_for_device(self, entry: Dict[str, object]) -> str:
@@ -4000,7 +4012,7 @@ class TopologyEditor(tk.Tk):
         if device_type == DEVTYPE_GYRO:
             return "Pigeon"
         if device_type == DEVTYPE_ROBORIO:
-            return "roboRIO"
+            return "robotController"
         return ""
 
     def _apply_node_updates_to_registry(self) -> None:
@@ -4229,13 +4241,13 @@ class TopologyEditor(tk.Tk):
     def _ensure_dio_wiring_links(self) -> bool:
         """
         NAME
-            _ensure_dio_wiring_links - Ensure each DIO node is wired to roboRIO.
+            _ensure_dio_wiring_links - Ensure each DIO node is wired to the robot controller.
 
         RETURNS
             True when any links were added.
         """
-        roborio = self._roborio_node()
-        if roborio is None:
+        controller_node = self._robot_controller_node()
+        if controller_node is None:
             return False
         existing = {link.get(KEY_LINK_DEVICE) for link in self._dio_wiring_links}
         added = False
@@ -4245,7 +4257,7 @@ class TopologyEditor(tk.Tk):
             if node.key in existing:
                 continue
             self._dio_wiring_links.append(
-                {KEY_LINK_ROBORIO: roborio.key, KEY_LINK_DEVICE: node.key}
+                {KEY_LINK_ROBORIO: controller_node.key, KEY_LINK_DEVICE: node.key}
             )
             added = True
         return added
@@ -4310,7 +4322,7 @@ class TopologyEditor(tk.Tk):
         """
         nodes_to_check = self._profile_device_nodes()
         node_by_key = {n.key: n for n in self._device_nodes()}
-        roborio_node = self._roborio_node()
+        controller_node = self._robot_controller_node()
         attachment_keys = {
             link.get(KEY_LINK_ATTACHMENT)
             for link in self._attachment_links
@@ -4334,11 +4346,11 @@ class TopologyEditor(tk.Tk):
             return True
         missing_attach = [n.label for n in dio_nodes if n.key not in attachment_keys]
         missing_wire = [n.label for n in dio_nodes if n.key not in wiring_keys]
-        if not missing_attach and not missing_wire and roborio_node is not None:
+        if not missing_attach and not missing_wire and controller_node is not None:
             return True
         lines = [MSG_DIO_WARN_HEADER]
-        if roborio_node is None:
-            lines.append(MSG_DIO_WARN_NO_ROBORIO)
+        if controller_node is None:
+            lines.append(MSG_DIO_WARN_NO_ROBOT_CONTROLLER)
         if missing_attach:
             lines.append(MSG_DIO_WARN_ATTACH.format(labels=SEP_COMMA_SPACE.join(missing_attach)))
         if missing_wire:
@@ -5832,7 +5844,7 @@ class TopologyEditor(tk.Tk):
         NAME
             _editor_category_for_topology_node - Map topology node types to editor categories.
         """
-        category = str(entry.get(KEY_CATEGORY, EMPTY_STRING)).strip()
+        category = self._normalize_device_category(entry.get(KEY_CATEGORY, EMPTY_STRING))
         if category:
             return category
         node_type = str(
@@ -6561,7 +6573,7 @@ class TopologyEditor(tk.Tk):
             if not label_text:
                 continue
             entry = entries.setdefault(label_text, {KEY_LABEL: label_text})
-            category_text = str(node.get(KEY_CATEGORY, EMPTY_STRING)).strip()
+            category_text = self._normalize_device_category(node.get(KEY_CATEGORY, EMPTY_STRING))
             if not category_text:
                 inferred = self._infrastructure_category_from_label(label_text)
                 if inferred:
@@ -7327,22 +7339,22 @@ class TopologyEditor(tk.Tk):
             messagebox.showinfo(TITLE_REMOVE_POWER_LINK, MSG_POWER_NONE)
         self._redraw_canvas()
 
-    def _wire_dio_to_roborio(self) -> None:
+    def _wire_dio_to_robot_controller(self) -> None:
         """
         NAME
-            _wire_dio_to_roborio - Create a physical wiring link to roboRIO.
+            _wire_dio_to_robot_controller - Create a physical wiring link to the robot controller.
         """
         selected = [n for n in self._device_nodes() if n.key in self._selected_nodes]
         dio_nodes = [n for n in selected if self._is_dio_node(n)]
         if len(dio_nodes) != 1:
             messagebox.showinfo(TITLE_WIRE_DIO, MSG_WIRE_SELECT)
             return
-        roborio = self._roborio_node()
-        if roborio is None:
-            messagebox.showinfo(TITLE_WIRE_DIO, MSG_WIRE_NO_ROBORIO)
+        controller_node = self._robot_controller_node()
+        if controller_node is None:
+            messagebox.showinfo(TITLE_WIRE_DIO, MSG_WIRE_NO_ROBOT_CONTROLLER)
             return
         dio_node = dio_nodes[0]
-        link = {KEY_LINK_ROBORIO: roborio.key, KEY_LINK_DEVICE: dio_node.key}
+        link = {KEY_LINK_ROBORIO: controller_node.key, KEY_LINK_DEVICE: dio_node.key}
         if link in self._dio_wiring_links:
             messagebox.showinfo(TITLE_WIRE_DIO, MSG_WIRE_DUP)
             return
@@ -7544,10 +7556,10 @@ class TopologyEditor(tk.Tk):
             self._is_power_source_node(right) and self._is_low_power_device_node(left)
         )
 
-    def _roborio_node(self) -> Optional[Node]:
+    def _robot_controller_node(self) -> Optional[Node]:
         """
         NAME
-            _roborio_node - Return the roboRIO node if present.
+            _robot_controller_node - Return the robot-controller node if present.
         """
         return next((n for n in self._device_nodes() if n.category == CATEGORY_ROBORIO), None)
 
@@ -10084,7 +10096,7 @@ class TopologyEditor(tk.Tk):
         sensor_cats = {"cancoders", "pigeon"}
         power_cats = {"pdh", "pdp"}
         controller_cats = {
-            "roborio",
+            "robotcontroller",
             DIAGRAM_CATEGORY_CANNECT_INJECT,
             DIAGRAM_CATEGORY_CANNECT_DIRECT,
             DIAGRAM_CATEGORY_ANALYZER,

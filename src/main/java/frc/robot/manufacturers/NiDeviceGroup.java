@@ -32,8 +32,8 @@ public final class NiDeviceGroup implements ManufacturerGroup {
   private static final DeviceRegistration ROBORIO_REGISTRATION = new DeviceRegistration(
       RoboRioDevice.HEADER,
       "NI",
-      "roboRIO",
-      "roboRIO",
+      "robotController",
+      "robotController",
       DeviceRole.MISC,
       false,
       config -> new RoboRioDevice(config.getId(), config.getLabel()));

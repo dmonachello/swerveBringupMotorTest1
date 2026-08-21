@@ -88,8 +88,12 @@ KEY_FAULT_FLAGS = "faultFlags"
 KEY_STICKY_FAULT_FLAGS = "stickyFaultFlags"
 KEY_LAST_ERROR = "lastError"
 KEY_RESET = "reset"
+KEY_MATCHED = "matched"
+KEY_MODEL = "model"
+KEY_REQUESTED_MODEL = "requestedModel"
 ATTACHMENT_TYPE_PDP_STATUS = "pdpStatus"
 ATTACHMENT_TYPE_PDH_STATUS = "pdhStatus"
+ATTACHMENT_TYPE_MOTOR_SPEC = "motorSpec"
 KEY_SWITCHABLE_ENABLED = "switchableEnabled"
 KEY_TOTAL_CURRENT_A = "totalCurrentA"
 FLOAT_PACKETS_SCALE = 0
@@ -180,6 +184,7 @@ def _device_runtime_line(device: Dict[str, object]) -> str:
 def _device_detail_lines(device: Dict[str, object]) -> List[str]:
     details: List[str] = []
     attachment = runtime_motor_attachment(device)
+    spec_line = _motor_spec_detail_line(device)
     if isinstance(attachment, dict):
         motor_bits = [
             f"{KEY_CMD_DUTY}={_format_float(attachment.get(KEY_CMD_DUTY), FLOAT_SMALL_SCALE)}",
@@ -195,6 +200,8 @@ def _device_detail_lines(device: Dict[str, object]) -> List[str]:
         flag_bits = _attachment_flags(attachment)
         if flag_bits:
             details.append("    flags: " + " ".join(flag_bits))
+        if spec_line:
+            details.append(spec_line)
         return details
     attachments = device.get(KEY_ATTACHMENTS)
     if isinstance(attachments, list):
@@ -214,7 +221,36 @@ def _device_detail_lines(device: Dict[str, object]) -> List[str]:
                     + " switchableEnabled="
                     + _bool_text(attachment_entry.get(KEY_SWITCHABLE_ENABLED, False))
                 )
+    if spec_line:
+        details.append(spec_line)
     return details
+
+
+def _motor_spec_detail_line(device: Dict[str, object]) -> str:
+    attachment = _motor_spec_attachment(device)
+    if not isinstance(attachment, dict):
+        return ""
+    if not bool(attachment.get(KEY_MATCHED, False)):
+        requested_model = str(attachment.get(KEY_REQUESTED_MODEL, "")).strip()
+        if requested_model:
+            return f"    motorSpec: matched=NO requestedModel={requested_model}"
+        return "    motorSpec: matched=NO"
+    model = str(attachment.get(KEY_MODEL, "")).strip()
+    if not model:
+        return ""
+    return f"    motorSpec: matched=YES model={model}"
+
+
+def _motor_spec_attachment(device: Dict[str, object]) -> Optional[Dict[str, object]]:
+    attachments = device.get(KEY_ATTACHMENTS)
+    if not isinstance(attachments, list):
+        return None
+    for attachment in attachments:
+        if not isinstance(attachment, dict):
+            continue
+        if str(attachment.get(KEY_TYPE, "")).strip() == ATTACHMENT_TYPE_MOTOR_SPEC:
+            return attachment
+    return None
 
 
 def _visibility_row_line(device: Dict[str, object], now_ms: int) -> str:

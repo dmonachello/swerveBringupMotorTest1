@@ -23,6 +23,12 @@ public final class BringupHealthFormat {
   private static final String LIMIT_STATE_UNKNOWN = "?";
   private static final String LIMIT_STATE_CLOSED = "CLOSED";
   private static final String LIMIT_STATE_OPEN = "OPEN";
+  private static final String MOTOR_SPEC_MISSING_PREFIX = " specMissing=YES";
+  private static final String MOTOR_SPEC_REQUESTED_MODEL_PREFIX = " requestedModel=";
+  private static final String MOTOR_SPEC_FREE_PREFIX = " specFree=";
+  private static final String MOTOR_SPEC_STALL_PREFIX = " specStall=";
+  private static final String MOTOR_SPEC_FREE_RATIO_PREFIX = " freeRatio=";
+  private static final String MOTOR_SPEC_CURRENT_UNAVAILABLE = "?";
 
   /**
    * NAME
@@ -84,16 +90,27 @@ public final class BringupHealthFormat {
    *   Summary string or empty string when unavailable.
    */
   public static String formatMotorSpecNote(MotorSpecAttachment spec, Double motorCurrent) {
-    if (spec == null || spec.freeCurrentA == null || spec.stallCurrentA == null) {
+    if (spec == null) {
+      return "";
+    }
+    if (!spec.matched) {
+      StringBuilder sb = new StringBuilder(64);
+      sb.append(MOTOR_SPEC_MISSING_PREFIX);
+      if (spec.requestedModel != null && !spec.requestedModel.isBlank()) {
+        sb.append(MOTOR_SPEC_REQUESTED_MODEL_PREFIX).append(spec.requestedModel);
+      }
+      return sb.toString();
+    }
+    if (spec.freeCurrentA == null || spec.stallCurrentA == null) {
       return "";
     }
     double free = spec.freeCurrentA;
     double stall = spec.stallCurrentA;
     double current = motorCurrent != null ? motorCurrent : 0.0;
-    String ratio = free > 0.0 ? String.format("%.2fx", current / free) : "?";
-    return " specFree=" + String.format("%.1f", free) + "A" +
-        " specStall=" + String.format("%.0f", stall) + "A" +
-        " freeRatio=" + ratio;
+    String ratio = free > 0.0 ? String.format("%.2fx", current / free) : MOTOR_SPEC_CURRENT_UNAVAILABLE;
+    return MOTOR_SPEC_FREE_PREFIX + String.format("%.1f", free) + "A" +
+        MOTOR_SPEC_STALL_PREFIX + String.format("%.0f", stall) + "A" +
+        MOTOR_SPEC_FREE_RATIO_PREFIX + ratio;
   }
 
   /**

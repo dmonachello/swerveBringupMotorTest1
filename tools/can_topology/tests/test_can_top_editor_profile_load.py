@@ -1043,7 +1043,7 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
                 editor._nodes = [
                     Node(
                         key=1,
-                        category="roborio",
+                        category="robotController",
                         label="roborio",
                         can_id=0,
                         interface=INTERFACE_CAN,
@@ -1160,7 +1160,7 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
                 editor._nodes = [
                     Node(
                         key=1,
-                        category="roborio",
+                        category="robotController",
                         label="roborio",
                         can_id=0,
                         interface=INTERFACE_CAN,
@@ -3082,7 +3082,7 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
 
     def test_layout_neighbors_follow_bus_x_order_and_skip_dio(self) -> None:
         nodes = [
-            Node(key=1, category="roborio", label="roborio", can_id=0, x=300.0, bus_index=0),
+            Node(key=1, category="robotController", label="roborio", can_id=0, x=300.0, bus_index=0),
             Node(key=2, category="devices", label="lsw1", can_id=-1, interface=INTERFACE_DIO, x=200.0, bus_index=0),
             Node(key=3, category="neos", label="NEO", can_id=25, interface=INTERFACE_CAN, x=100.0, bus_index=0),
             Node(key=4, category="falcons", label="FALCON", can_id=9, interface=INTERFACE_CAN, x=500.0, bus_index=0),
@@ -3143,7 +3143,7 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
         }
         editor._node_from_device_label = lambda label: object() if label in ("roborio", "motor1", "lsw1") else None
         nodes = [
-            Node(key=1, category="roborio", label="roborio", can_id=0, x=10.0, bus_index=0),
+            Node(key=1, category="robotController", label="roborio", can_id=0, x=10.0, bus_index=0),
             Node(key=2, category="neos", label="motor1", can_id=25, x=30.0, bus_index=0),
             Node(key=3, category="devices", label="lsw1", can_id=-1, interface=INTERFACE_DIO, x=50.0, row=1, bus_index=0),
         ]
@@ -3396,7 +3396,7 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
     def test_apply_topology_snapshot_accepts_object_type_without_legacy_node_type(self) -> None:
         editor = TopologyEditor.__new__(TopologyEditor)
         editor._nodes = [
-            Node(key=10, category="roborio", label="roborio", can_id=0, x=0.0, bus_index=0),
+            Node(key=10, category="robotController", label="roborio", can_id=0, x=0.0, bus_index=0),
             Node(key=11, category="pdp", label="PDP", can_id=1, x=20.0, bus_index=0),
         ]
         editor._connection_filter_vars = {
@@ -3439,7 +3439,7 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
     def test_apply_topology_snapshot_rekeys_new_profile_devices_not_in_saved_topology(self) -> None:
         editor = TopologyEditor.__new__(TopologyEditor)
         editor._nodes = [
-            Node(key=1, category="roborio", label="roborio", can_id=0, x=0.0, bus_index=0),
+            Node(key=1, category="robotController", label="roborio", can_id=0, x=0.0, bus_index=0),
             Node(key=2, category="pdp", label="pdp", can_id=20, x=20.0, bus_index=0),
             Node(key=3, category="neos", label="SPARKMAX/NEO 25", can_id=25, x=40.0, bus_index=0),
             Node(key=4, category="devices", label="lmtSw0", can_id=-1, interface=INTERFACE_DIO, x=60.0, bus_index=0),
@@ -4378,7 +4378,7 @@ class TopologyEditorProfileLoadTests(unittest.TestCase):
     def test_apply_topology_snapshot_restores_attachment_links(self) -> None:
         editor = TopologyEditor.__new__(TopologyEditor)
         editor._nodes = [
-            Node(key=10, category="roborio", label="roborio", can_id=0, x=0.0, bus_index=0),
+            Node(key=10, category="robotController", label="roborio", can_id=0, x=0.0, bus_index=0),
             Node(key=11, category="pdp", label="PDP", can_id=1, x=20.0, bus_index=0),
             Node(
                 key=12,

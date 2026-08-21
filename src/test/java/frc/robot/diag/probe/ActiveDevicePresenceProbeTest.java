@@ -7,6 +7,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import frc.robot.BringupUtil;
 import frc.robot.devices.ctre.CtreCANCoderDevice;
 import frc.robot.devices.ctre.CtrePigeonDevice;
+import frc.robot.devices.ni.RoboRioDevice;
+import frc.robot.diag.snapshots.RobotControllerBusAttachment;
+import frc.robot.diag.snapshots.RobotControllerRailsAttachment;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -40,7 +43,7 @@ class ActiveDevicePresenceProbeTest {
         List.of(
             deviceEntry(9, "CAN", "CTRE", "motor", "FALCON 9"),
             deviceEntry(20, "CAN", "CTRE", "PDP", "pdp"),
-            deviceEntry(0, "CAN", "NI", "roboRIO", "roborio"));
+            deviceEntry(0, "CAN", "NI", "robotController", "roborio"));
 
     List<BringupUtil.DeviceEntry> merged =
         ActiveDevicePresenceProbe.mergeProbeEntries(
@@ -71,6 +74,40 @@ class ActiveDevicePresenceProbeTest {
         "PIGEON",
         ActiveDevicePresenceProbe.inferProbeModel(
             new CtrePigeonDevice(19, "pigeon 2")));
+    assertEquals(
+        "ROBORIO",
+        ActiveDevicePresenceProbe.inferProbeModel(
+            new RoboRioDevice(0, "roborio")));
+  }
+
+  @Test
+  void readableRobotControllerBusAttachmentCountsAsReadableProbeEvidence() {
+    RobotControllerBusAttachment bus = new RobotControllerBusAttachment();
+    bus.canUtilizationPct = 18.5;
+    bus.canRxErrorCount = 0;
+    bus.canTxErrorCount = 1;
+    bus.canBusOffCount = 0;
+    bus.canTxFullCount = 2;
+
+    assertTrue(ActiveDevicePresenceProbe.hasReadableRobotControllerBusAttachment(bus));
+
+    bus.canUtilizationPct = 120.0;
+    assertFalse(ActiveDevicePresenceProbe.hasReadableRobotControllerBusAttachment(bus));
+  }
+
+  @Test
+  void robotControllerRailHealthHelpersRequireEnabledRailsAndZeroFaults() {
+    RobotControllerRailsAttachment rails = new RobotControllerRailsAttachment();
+    rails.rail3v3FaultCount = 0;
+    rails.rail5vFaultCount = 0;
+    rails.rail6vFaultCount = 0;
+
+    assertTrue(ActiveDevicePresenceProbe.isHealthyRobotControllerRail(true, 3.3, 2.5, 4.0));
+    assertFalse(ActiveDevicePresenceProbe.isHealthyRobotControllerRail(false, 3.3, 2.5, 4.0));
+    assertTrue(ActiveDevicePresenceProbe.hasNoRobotControllerRailFaults(rails));
+
+    rails.rail6vFaultCount = 1;
+    assertFalse(ActiveDevicePresenceProbe.hasNoRobotControllerRailFaults(rails));
   }
 
   @Test

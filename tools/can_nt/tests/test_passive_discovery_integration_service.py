@@ -138,7 +138,7 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
                     "manufacturer": 1,
                     "deviceType": 1,
                     "id": 0,
-                    "model": "roborio",
+                    "model": "roboRIO",
                     "profileNode": "singleton",
                     "bus": "rio",
                 },
@@ -169,7 +169,7 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
             {
                 (1, 1, 0): {
                     "label": "roborio",
-                    "model": "roborio",
+                    "model": "roboRIO",
                     "profileNode": "singleton",
                     "bus": "rio",
                 }
@@ -437,6 +437,23 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
         self.assertEqual("no", snapshot["scopeActive"])
         self.assertEqual("no", snapshot["instantiated"])
         self.assertEqual("defined", snapshot["lifecycleState"])
+
+    def test_build_runtime_device_detail_snapshot_exposes_missing_motor_spec_state(self) -> None:
+        snapshot = build_runtime_device_detail_snapshot(
+            {
+                "attachments": [
+                    {
+                        "type": "motorSpec",
+                        "matched": False,
+                        "requestedModel": "Unknown Motor",
+                    }
+                ]
+            },
+            now_s=2.0,
+        )
+
+        self.assertEqual("missing", snapshot["motorSpecMatch"])
+        self.assertEqual("Unknown Motor", snapshot["motorSpecModel"])
 
     def test_build_interpreted_device_state_adapts_to_legacy_row_contract(self) -> None:
         state = build_interpreted_device_state(

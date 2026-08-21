@@ -2180,15 +2180,7 @@ public final class BringupCore {
    */
   private void fillSpecForMotor(DeviceSnapshot snap, String label, String modelOverride) {
     snap.label = label;
-    BringupUtil.MotorSpec spec = BringupUtil.getMotorSpecForDevice(label, modelOverride);
-    if (spec == null) {
-      return;
-    }
-    MotorSpecAttachment motorSpec = new MotorSpecAttachment();
-    motorSpec.model = spec.model;
-    motorSpec.nominalV = spec.nominalVoltage;
-    motorSpec.freeCurrentA = spec.freeCurrentA;
-    motorSpec.stallCurrentA = spec.stallCurrentA;
+    MotorSpecAttachment motorSpec = BringupUtil.buildMotorSpecAttachment(label, modelOverride);
     snap.addAttachment(motorSpec);
   }
 

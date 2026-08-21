@@ -28,7 +28,7 @@ public final class LifecycleProfileTopologyAdapter {
     private static final String GROUP_ACTIVE = "active-group";
     private static final String TYPE_PDH = "PDH";
     private static final String TYPE_PDP = "PDP";
-    private static final String TYPE_ROBORIO = "roboRIO";
+    private static final String TYPE_ROBORIO = "robotController";
     private static final String TYPE_XBOX_CONTROLLER = "xboxController";
 
     private LifecycleProfileTopologyAdapter() {}
@@ -189,14 +189,7 @@ public final class LifecycleProfileTopologyAdapter {
     }
 
     private static DeviceLifecycleKind lifecycleKindFor(BringupUtil.DeviceEntry entry) {
-        if (entry == null) {
-            return DeviceLifecycleKind.NORMAL;
-        }
-        String type = entry.type != null ? entry.type.trim() : "";
-        if (TYPE_PDH.equalsIgnoreCase(type)
-                || TYPE_PDP.equalsIgnoreCase(type)
-                || TYPE_ROBORIO.equalsIgnoreCase(type)
-                || TYPE_XBOX_CONTROLLER.equalsIgnoreCase(type)) {
+        if (BringupUtil.isSingletonLifecycleEntry(entry)) {
             return DeviceLifecycleKind.SINGLETON;
         }
         return DeviceLifecycleKind.NORMAL;

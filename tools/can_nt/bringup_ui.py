@@ -1486,6 +1486,9 @@ TEST_FAILURE_REQUIRE_PREFIX = "require not satisfied:"
 TEST_FAILURE_SIGNAL_SET_PREFIX = "signal fallback active:"
 TEST_FAILURE_LAST_SAMPLES_PREFIX = "last samples:"
 TEST_FAILURE_AGGREGATE_HINTS_PREFIX = "aggregate hints:"
+TEST_REQUIRE_SUMMARY_PREFIX = "Require summary:"
+TEST_REQUIRE_SUMMARY_PASS = "PASS"
+TEST_REQUIRE_SUMMARY_FAIL = "FAIL"
 TEST_FAILURE_SAMPLE_LIMIT = 3
 TEST_FAILURE_AGGREGATE_HINT_LIMIT = 2
 TEST_SIGNAL_SUFFIX_CURRENT_ACTUAL = ".current_actual"
@@ -4251,14 +4254,20 @@ class BringupControlUI(tk.Tk):
             self._refresh_selected_test_scope_status()
             return
         if self._tracker.is_pending():
+            self._selected_test_var.set(selected_name)
+            self._last_selected_test = selected_name
             self._sync_selected_test_devices_panel_local()
             self._refresh_selected_test_scope_status()
+            self._refresh_context_sync_banner()
             return
         if not self._robot_knows_test_name(selected_name):
+            self._selected_test_var.set(selected_name)
+            self._last_selected_test = selected_name
             self._sync_selected_test_devices_panel_local()
             self._append_output(TEST_SCOPE_DETAIL_NOT_LOADED_ON_ROBOT)
             self._append_test_output(TEST_SCOPE_DETAIL_NOT_LOADED_ON_ROBOT)
             self._refresh_selected_test_scope_status()
+            self._refresh_context_sync_banner()
             return
         self._selected_test_var.set(selected_name)
         if selected_name == self._last_selected_test:
@@ -12206,6 +12215,54 @@ class BringupControlUI(tk.Tk):
             return run_message
         return str(run_payload.get("test", "") or "").strip()
 
+    def _format_test_require_summary_lines(self, run_payload: Dict[str, Any]) -> List[str]:
+        """
+        NAME
+            _format_test_require_summary_lines - Build per-require terminal summary lines for one selected test run.
+        """
+        if not isinstance(run_payload, dict):
+            return []
+        details = run_payload.get("details")
+        if not isinstance(details, dict):
+            return []
+        requires = details.get("requires")
+        if not isinstance(requires, list) or not requires:
+            return []
+        lines: List[str] = []
+        for require in requires:
+            if not isinstance(require, dict):
+                continue
+            require_text = str(require.get("text", "") or "").strip()
+            if not require_text:
+                continue
+            state_text = (
+                TEST_REQUIRE_SUMMARY_PASS
+                if bool(require.get("satisfied", False))
+                else TEST_REQUIRE_SUMMARY_FAIL
+            )
+            sample_value = require.get("sampleValue")
+            if sample_value is None:
+                lines.append(f"{TEST_REQUIRE_SUMMARY_PREFIX} {state_text} - {require_text}")
+                continue
+            lines.append(
+                f"{TEST_REQUIRE_SUMMARY_PREFIX} {state_text} - {require_text} "
+                f"(value={_format_test_detail_value(sample_value)})"
+            )
+        return lines
+
+    def _should_log_selected_test_require_summary(self, run_payload: Dict[str, Any]) -> bool:
+        """
+        NAME
+            _should_log_selected_test_require_summary - Return whether per-require summary lines should be emitted.
+        """
+        if not isinstance(run_payload, dict):
+            return False
+        tests_table = self.__dict__.get("_tests_table")
+        if tests_table is not None and tests_table.getEntry("runAllActive").getBoolean(False):
+            return False
+        run_state = str(run_payload.get("state", "") or "").strip()
+        return run_state in ("passed", "failed", "blocked", "aborted", "interrupted")
+
     def _maybe_log_test_result_detail(self, run_payload: Dict[str, Any], detail: str) -> None:
         """
         NAME
@@ -12222,12 +12279,16 @@ class BringupControlUI(tk.Tk):
         if signature == self.__dict__.get("_last_test_result_signature"):
             return
         self._last_test_result_signature = signature
-        if not detail:
+        if detail:
+            prefix = TEST_SUCCESS_PREFIX if run_state == "passed" else TEST_FAILURE_PREFIX
+            line = f"{prefix} {detail}"
+            self._append_output(line)
+            self._append_test_output(line)
+        if not self._should_log_selected_test_require_summary(run_payload):
             return
-        prefix = TEST_SUCCESS_PREFIX if run_state == "passed" else TEST_FAILURE_PREFIX
-        line = f"{prefix} {detail}"
-        self._append_output(line)
-        self._append_test_output(line)
+        for line in self._format_test_require_summary_lines(run_payload):
+            self._append_output(line)
+            self._append_test_output(line)
 
     def _refresh_test_result_status(self) -> None:
         """

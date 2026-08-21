@@ -19,10 +19,14 @@ import frc.robot.devices.ctre.CtreCANCoderDevice;
 import frc.robot.devices.ctre.CtrePigeonDevice;
 import frc.robot.devices.ctre.CtrePdpDevice;
 import frc.robot.devices.ctre.CtreTalonFxDevice;
+import frc.robot.devices.ni.RoboRioDevice;
 import frc.robot.devices.rev.RevFlexVortexDevice;
 import frc.robot.devices.rev.RevPdhDevice;
 import frc.robot.devices.rev.RevSparkMaxNeo550Device;
 import frc.robot.devices.rev.RevSparkMaxNeoDevice;
+import frc.robot.diag.snapshots.RobotControllerBusAttachment;
+import frc.robot.diag.snapshots.RobotControllerPowerAttachment;
+import frc.robot.diag.snapshots.RobotControllerRailsAttachment;
 import frc.robot.manufacturers.ctre.diag.CtreReaderUtil;
 import frc.robot.manufacturers.ctre.diag.PdpStatusAttachment;
 import frc.robot.manufacturers.ctre.util.PdpStatusReader;
@@ -66,6 +70,7 @@ public final class ActiveDevicePresenceProbe {
   private static final String MODEL_PIGEON = "PIGEON";
   private static final String MODEL_PDP = "PDP";
   private static final String MODEL_PDH = "PDH";
+  private static final String MODEL_ROBORIO = "ROBORIO";
   private static final String MODEL_UNSUPPORTED = "UNSUPPORTED";
   private static final String TEXT_SESSION_SUCCESS = "Probe completed successfully.";
   private static final String TEXT_SESSION_WARN = "Probe completed with warnings.";
@@ -142,11 +147,25 @@ public final class ActiveDevicePresenceProbe {
   private static final int PD_TEMPERATURE = 20;
   private static final int PD_SWITCHABLE = 15;
   private static final int PD_NO_ACTIVE_FAULTS = 15;
+  private static final int CONTROLLER_INPUT_VOLTAGE = 20;
+  private static final int CONTROLLER_NOT_BROWNED_OUT = 15;
+  private static final int CONTROLLER_BUS_STATUS = 20;
+  private static final int CONTROLLER_RAIL_3V3 = 10;
+  private static final int CONTROLLER_RAIL_5V = 10;
+  private static final int CONTROLLER_RAIL_6V = 10;
+  private static final int CONTROLLER_NO_RAIL_FAULTS = 10;
   private static final double MIN_VALID_BUS_VOLTAGE = 1.0;
   private static final double MAX_VALID_BUS_VOLTAGE = 30.0;
   private static final double MAX_VALID_CURRENT_A = 500.0;
   private static final double MAX_VALID_TEMP_C = 250.0;
   private static final double MAX_VALID_DUTY = 1.05;
+  private static final double MAX_CONTROLLER_UTILIZATION_PCT = 100.0;
+  private static final double MIN_VALID_3V3_VOLTAGE = 2.5;
+  private static final double MAX_VALID_3V3_VOLTAGE = 4.0;
+  private static final double MIN_VALID_5V_VOLTAGE = 4.0;
+  private static final double MAX_VALID_5V_VOLTAGE = 6.0;
+  private static final double MIN_VALID_6V_VOLTAGE = 5.0;
+  private static final double MAX_VALID_6V_VOLTAGE = 7.5;
   private static final double MIN_MEANINGFUL_CURRENT_A = 0.05;
   private static final double MIN_MEANINGFUL_POWER_TEMP_C = 1.0;
   private static final int MIN_VALID_POWER_CHANNEL_COUNT = 1;
@@ -349,6 +368,9 @@ public final class ActiveDevicePresenceProbe {
     if (device instanceof RevPdhDevice) {
       return MODEL_PDH;
     }
+    if (device instanceof RoboRioDevice) {
+      return MODEL_ROBORIO;
+    }
     return MODEL_UNSUPPORTED;
   }
 
@@ -380,6 +402,7 @@ public final class ActiveDevicePresenceProbe {
       case MODEL_PIGEON -> probePigeon(target, (CtrePigeonDevice) device, preclearSticky);
       case MODEL_PDP -> probePdp(target, (CtrePdpDevice) device, preclearSticky);
       case MODEL_PDH -> probePdh(target, (RevPdhDevice) device, preclearSticky);
+      case MODEL_ROBORIO -> probeRoboRio(target, (RoboRioDevice) device);
       default -> unsupportedTarget(target, TEXT_UNSUPPORTED_MODEL_PREFIX + target.model);
     };
   }
@@ -1042,6 +1065,110 @@ public final class ActiveDevicePresenceProbe {
     }
   }
 
+  private ProbeDeviceResult probeRoboRio(
+      ProbeTarget target,
+      RoboRioDevice device) {
+    long deviceStartNs = System.nanoTime();
+    ProbeAccumulator acc = new ProbeAccumulator(target);
+    if (device == null) {
+      ProbeDeviceResult result = missingRuntimeDevice(target);
+      result.totalDurationMs = nanosToMs(System.nanoTime() - deviceStartNs);
+      return result;
+    }
+    acc.pass(CODE_OBJECT_HANDLE_REUSED, "Using runtime-owned roboRIO snapshot.", WEIGHT_CONSTRUCT,
+        Integer.toString(target.canId));
+    try {
+      acc.recordStageDuration(TEXT_STAGE_HANDLE, nanosToMs(System.nanoTime() - deviceStartNs));
+      long stageStartNs = System.nanoTime();
+      var snapshot = device.snapshot();
+      acc.recordStageDuration(TEXT_STAGE_SNAPSHOT, nanosToMs(System.nanoTime() - stageStartNs));
+      stageStartNs = System.nanoTime();
+      RobotControllerPowerAttachment power = snapshot.getAttachment(RobotControllerPowerAttachment.class);
+      RobotControllerRailsAttachment rails = snapshot.getAttachment(RobotControllerRailsAttachment.class);
+      RobotControllerBusAttachment bus = snapshot.getAttachment(RobotControllerBusAttachment.class);
+      if (power == null || rails == null || bus == null) {
+        acc.error(
+            CODE_EXCEPTION_THROWN,
+            "Controller snapshot attachments missing.",
+            MAX_SCORE,
+            describeMissingControllerAttachments(power, rails, bus),
+            StatusCatalogGenerated.SS__DEVICE__PROBE_EXCEPTION);
+        acc.forceBucket(BUCKET_ABSENT, StatusCatalogGenerated.SS__DEVICE__ABSENT, TEXT_RUNTIME_DEVICE_MISSING);
+        acc.recordStageDuration(TEXT_STAGE_EVALUATE, nanosToMs(System.nanoTime() - stageStartNs));
+        acc.setTotalDurationMs(nanosToMs(System.nanoTime() - deviceStartNs));
+        return acc.finish();
+      }
+      addTelemetryCheck(
+          acc,
+          isReasonableBusVoltage(power.inputVoltage),
+          CODE_BUS_VOLTAGE_VALID,
+          "Controller input voltage looks valid.",
+          "Controller input voltage not in expected range.",
+          CONTROLLER_INPUT_VOLTAGE,
+          formatDouble(power.inputVoltage));
+      addTelemetryCheck(
+          acc,
+          !power.brownout,
+          CODE_NO_ACTIVE_FAULTS,
+          "Controller is not browned out.",
+          "Controller reports brownout.",
+          CONTROLLER_NOT_BROWNED_OUT,
+          Boolean.toString(power.brownout));
+      addTelemetryCheck(
+          acc,
+          hasReadableRobotControllerBusAttachment(bus),
+          CODE_STATUS_REFRESH_OK,
+          "Controller CAN status looks readable.",
+          "Controller CAN status is not readable.",
+          CONTROLLER_BUS_STATUS,
+          formatRobotControllerBusObserved(bus));
+      addTelemetryCheck(
+          acc,
+          isHealthyRobotControllerRail(rails.rail3v3Enabled, rails.rail3v3Voltage, MIN_VALID_3V3_VOLTAGE, MAX_VALID_3V3_VOLTAGE),
+          CODE_SWITCHABLE_READ_VALID,
+          "3.3V rail looks healthy.",
+          "3.3V rail is disabled or out of range.",
+          CONTROLLER_RAIL_3V3,
+          formatRobotControllerRailObserved(rails.rail3v3Enabled, rails.rail3v3Voltage, rails.rail3v3FaultCount));
+      addTelemetryCheck(
+          acc,
+          isHealthyRobotControllerRail(rails.rail5vEnabled, rails.rail5vVoltage, MIN_VALID_5V_VOLTAGE, MAX_VALID_5V_VOLTAGE),
+          CODE_CURRENT_READ_VALID,
+          "5V rail looks healthy.",
+          "5V rail is disabled or out of range.",
+          CONTROLLER_RAIL_5V,
+          formatRobotControllerRailObserved(rails.rail5vEnabled, rails.rail5vVoltage, rails.rail5vFaultCount));
+      addTelemetryCheck(
+          acc,
+          isHealthyRobotControllerRail(rails.rail6vEnabled, rails.rail6vVoltage, MIN_VALID_6V_VOLTAGE, MAX_VALID_6V_VOLTAGE),
+          CODE_TEMPERATURE_READ_VALID,
+          "6V rail looks healthy.",
+          "6V rail is disabled or out of range.",
+          CONTROLLER_RAIL_6V,
+          formatRobotControllerRailObserved(rails.rail6vEnabled, rails.rail6vVoltage, rails.rail6vFaultCount));
+      addTelemetryCheck(
+          acc,
+          hasNoRobotControllerRailFaults(rails),
+          CODE_NO_STICKY_FAULTS,
+          "Controller rail fault counts are clear.",
+          "Controller rail fault counts are non-zero.",
+          CONTROLLER_NO_RAIL_FAULTS,
+          formatRobotControllerRailFaultsObserved(rails));
+      acc.recordStageDuration(TEXT_STAGE_EVALUATE, nanosToMs(System.nanoTime() - stageStartNs));
+      acc.setTotalDurationMs(nanosToMs(System.nanoTime() - deviceStartNs));
+      return acc.finish();
+    } catch (Exception ex) {
+      acc.error(
+          CODE_EXCEPTION_THROWN,
+          TEXT_EXCEPTION_PREFIX + ex.getClass().getSimpleName(),
+          MAX_SCORE,
+          safeExceptionMessage(ex),
+          StatusCatalogGenerated.SS__DEVICE__PROBE_EXCEPTION);
+      acc.setTotalDurationMs(nanosToMs(System.nanoTime() - deviceStartNs));
+      return acc.finish();
+    }
+  }
+
   private void scorePowerStatus(
       ProbeAccumulator acc,
       double voltage,
@@ -1116,6 +1243,86 @@ public final class ActiveDevicePresenceProbe {
 
   static boolean shouldForceAbsentForPowerProbe(boolean strongPresenceEvidence, int score) {
     return !strongPresenceEvidence;
+  }
+
+  static boolean hasReadableRobotControllerBusAttachment(RobotControllerBusAttachment bus) {
+    if (bus == null) {
+      return false;
+    }
+    return isFiniteInRange(bus.canUtilizationPct, 0.0, MAX_CONTROLLER_UTILIZATION_PCT)
+        && bus.canRxErrorCount >= 0
+        && bus.canTxErrorCount >= 0
+        && bus.canBusOffCount >= 0
+        && bus.canTxFullCount >= 0;
+  }
+
+  static boolean isHealthyRobotControllerRail(
+      boolean enabled,
+      double voltage,
+      double minVoltage,
+      double maxVoltage) {
+    return enabled && isFiniteInRange(voltage, minVoltage, maxVoltage);
+  }
+
+  static boolean hasNoRobotControllerRailFaults(RobotControllerRailsAttachment rails) {
+    if (rails == null) {
+      return false;
+    }
+    return rails.rail3v3FaultCount == 0
+        && rails.rail5vFaultCount == 0
+        && rails.rail6vFaultCount == 0;
+  }
+
+  private String describeMissingControllerAttachments(
+      RobotControllerPowerAttachment power,
+      RobotControllerRailsAttachment rails,
+      RobotControllerBusAttachment bus) {
+    return "power="
+        + Boolean.toString(power != null)
+        + ", rails="
+        + Boolean.toString(rails != null)
+        + ", bus="
+        + Boolean.toString(bus != null);
+  }
+
+  private String formatRobotControllerBusObserved(RobotControllerBusAttachment bus) {
+    if (bus == null) {
+      return "missing";
+    }
+    return "utilPct="
+        + formatDouble(bus.canUtilizationPct)
+        + ", rxErr="
+        + bus.canRxErrorCount
+        + ", txErr="
+        + bus.canTxErrorCount
+        + ", busOff="
+        + bus.canBusOffCount
+        + ", txFull="
+        + bus.canTxFullCount;
+  }
+
+  private String formatRobotControllerRailObserved(
+      boolean enabled,
+      double voltage,
+      int faultCount) {
+    return "enabled="
+        + Boolean.toString(enabled)
+        + ", voltage="
+        + formatDouble(voltage)
+        + ", faults="
+        + faultCount;
+  }
+
+  private String formatRobotControllerRailFaultsObserved(RobotControllerRailsAttachment rails) {
+    if (rails == null) {
+      return "missing";
+    }
+    return "3v3="
+        + rails.rail3v3FaultCount
+        + ", 5v="
+        + rails.rail5vFaultCount
+        + ", 6v="
+        + rails.rail6vFaultCount;
   }
 
   private String formatPowerEvidenceObserved(

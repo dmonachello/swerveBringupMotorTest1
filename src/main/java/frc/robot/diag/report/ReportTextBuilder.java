@@ -1,9 +1,13 @@
 package frc.robot.diag.report;
 
+import frc.robot.BringupHealthFormat;
 import frc.robot.ReportTextUtil;
 import frc.robot.diag.snapshots.BusSnapshot;
 import frc.robot.diag.snapshots.CanSuspicionAttachment;
 import frc.robot.diag.snapshots.LedStatusAttachment;
+import frc.robot.diag.snapshots.RobotControllerBusAttachment;
+import frc.robot.diag.snapshots.RobotControllerPowerAttachment;
+import frc.robot.diag.snapshots.RobotControllerRailsAttachment;
 import frc.robot.manufacturers.ctre.diag.CtreMotorAttachment;
 import frc.robot.diag.snapshots.DeviceSnapshot;
 import frc.robot.diag.snapshots.EncoderAttachment;
@@ -62,7 +66,25 @@ public final class ReportTextBuilder {
   private static final String STATUS_STICKY_FAULT = "STICKY_FAULT";
   private static final String STATUS_ACTIVE_FAULT = "ACTIVE_FAULT";
   private static final String STATUS_OK = "OK";
-  private static final String TEXT_VIRTUAL_NO_API = ": present=YES (virtual, no API)";
+  private static final String DEVICE_FAMILY_ROBOT_CONTROLLER = "robotController";
+  private static final String TEXT_CAN_ID_PREFIX = " CAN ";
+  private static final String TEXT_INPUT_VOLTAGE = " inputV=";
+  private static final String TEXT_BROWNOUT = " brownout=";
+  private static final String TEXT_BROWNOUT_VOLTAGE = " brownoutV=";
+  private static final String TEXT_CAN_UTIL = " canUtil=";
+  private static final String TEXT_CAN_RX_ERRORS = " canRxErr=";
+  private static final String TEXT_CAN_TX_ERRORS = " canTxErr=";
+  private static final String TEXT_CAN_BUS_OFF = " canBusOff=";
+  private static final String TEXT_CAN_TX_FULL = " canTxFull=";
+  private static final String TEXT_RAILS = " rails:";
+  private static final String TEXT_RAIL_3V3 = " 3v3=";
+  private static final String TEXT_RAIL_5V = " 5v=";
+  private static final String TEXT_RAIL_6V = " 6v=";
+  private static final String TEXT_ENABLED_SHORT = " en=";
+  private static final String TEXT_FAULT_COUNT_SHORT = " faults=";
+  private static final String TEXT_CURRENT_SHORT = " current=";
+  private static final String TEXT_PERCENT = "%";
+  private static final String TEXT_C = "C";
   private static final String TEXT_PIGEON_FAULT = " fault=0x";
   private static final String TEXT_PIGEON_STICKY = " sticky=0x";
   private static final String FORMAT_CH = "%02d";
@@ -160,12 +182,58 @@ public final class ReportTextBuilder {
         appendPdpDevice(sb, snap);
       } else if ("Pigeon".equals(snap.deviceType)) {
         appendPigeon(sb, snap);
-      } else if ("roboRIO".equals(snap.deviceType)) {
-        ReportTextUtil.appendLine(
-            sb,
-            "  roboRIO CAN " + snap.canId + TEXT_VIRTUAL_NO_API);
+      } else if (isRobotControllerSnapshot(snap)) {
+        appendRobotControllerDevice(sb, snap);
       }
     }
+  }
+
+  /**
+   * NAME
+   *   appendRobotControllerDevice - Append controller-family status section.
+   */
+  private void appendRobotControllerDevice(StringBuilder sb, DeviceSnapshot snap) {
+    if (!snap.present) {
+      ReportTextUtil.appendLine(
+          sb,
+          formatRobotControllerPrefix(snap) + snap.canId + TEXT_PRESENT_NO + formatNote(snap.note));
+      return;
+    }
+    RobotControllerPowerAttachment power = snap.getAttachment(RobotControllerPowerAttachment.class);
+    RobotControllerBusAttachment bus = snap.getAttachment(RobotControllerBusAttachment.class);
+    RobotControllerRailsAttachment rails = snap.getAttachment(RobotControllerRailsAttachment.class);
+    ReportTextUtil.appendLine(
+        sb,
+        formatRobotControllerPrefix(snap) + snap.canId
+            + TEXT_PRESENT_YES
+            + formatNote(snap.note)
+            + TEXT_INPUT_VOLTAGE + formatDouble(power != null ? power.inputVoltage : null, 2) + TEXT_VOLT
+            + TEXT_BROWNOUT + formatBoolean(power != null && power.brownout)
+            + TEXT_BROWNOUT_VOLTAGE + formatDouble(power != null ? power.brownoutVoltage : null, 2) + TEXT_VOLT
+            + TEXT_CAN_UTIL + formatDouble(bus != null ? bus.canUtilizationPct : null, 1) + TEXT_PERCENT
+            + TEXT_CAN_RX_ERRORS + (bus != null ? bus.canRxErrorCount : 0)
+            + TEXT_CAN_TX_ERRORS + (bus != null ? bus.canTxErrorCount : 0)
+            + TEXT_CAN_BUS_OFF + (bus != null ? bus.canBusOffCount : 0)
+            + TEXT_CAN_TX_FULL + (bus != null ? bus.canTxFullCount : 0));
+    if (rails != null) {
+      ReportTextUtil.appendLine(
+          sb,
+          TEXT_RAILS
+              + TEXT_RAIL_3V3 + formatDouble(rails.rail3v3Voltage, 2) + TEXT_VOLT
+              + TEXT_CURRENT_SHORT + formatDouble(rails.rail3v3Current, 2) + TEXT_AMP
+              + TEXT_ENABLED_SHORT + formatBoolean(rails.rail3v3Enabled)
+              + TEXT_FAULT_COUNT_SHORT + rails.rail3v3FaultCount
+              + TEXT_RAIL_5V + formatDouble(rails.rail5vVoltage, 2) + TEXT_VOLT
+              + TEXT_CURRENT_SHORT + formatDouble(rails.rail5vCurrent, 2) + TEXT_AMP
+              + TEXT_ENABLED_SHORT + formatBoolean(rails.rail5vEnabled)
+              + TEXT_FAULT_COUNT_SHORT + rails.rail5vFaultCount
+              + TEXT_RAIL_6V + formatDouble(rails.rail6vVoltage, 2) + TEXT_VOLT
+              + TEXT_CURRENT_SHORT + formatDouble(rails.rail6vCurrent, 2) + TEXT_AMP
+              + TEXT_ENABLED_SHORT + formatBoolean(rails.rail6vEnabled)
+              + TEXT_FAULT_COUNT_SHORT + rails.rail6vFaultCount);
+    }
+    appendCanSuspicionLines(sb, snap);
+    appendLedLines(sb, snap);
   }
 
   /**
@@ -184,7 +252,7 @@ public final class ReportTextBuilder {
     RevMotorAttachment rev = snap.getAttachment(RevMotorAttachment.class);
     MotorSpecAttachment spec = snap.getAttachment(MotorSpecAttachment.class);
     LimitsAttachment limits = snap.getAttachment(LimitsAttachment.class);
-    String specNote = formatMotorSpecNote(spec, rev != null ? rev.motorCurrentA : null);
+    String specNote = BringupHealthFormat.formatMotorSpecNote(spec, rev != null ? rev.motorCurrentA : null);
     ReportTextUtil.appendLine(
         sb,
         "  " + snap.deviceType + " CAN " + snap.canId +
@@ -217,7 +285,7 @@ public final class ReportTextBuilder {
     CtreMotorAttachment ctre = snap.getAttachment(CtreMotorAttachment.class);
     MotorSpecAttachment spec = snap.getAttachment(MotorSpecAttachment.class);
     LimitsAttachment limits = snap.getAttachment(LimitsAttachment.class);
-    String specNote = formatMotorSpecNote(spec, ctre != null ? ctre.motorCurrentA : null);
+    String specNote = BringupHealthFormat.formatMotorSpecNote(spec, ctre != null ? ctre.motorCurrentA : null);
     boolean faultOk = ctre != null && "OK".equals(ctre.faultStatus);
     boolean stickyOk = ctre != null && "OK".equals(ctre.stickyStatus);
     ReportTextUtil.appendLine(
@@ -639,23 +707,6 @@ public final class ReportTextBuilder {
 
   /**
    * NAME
-   *   formatMotorSpecNote - Format motor spec/current note.
-   */
-  private String formatMotorSpecNote(MotorSpecAttachment spec, Double motorCurrent) {
-    if (spec == null || spec.freeCurrentA == null || spec.stallCurrentA == null) {
-      return "";
-    }
-    double free = spec.freeCurrentA;
-    double stall = spec.stallCurrentA;
-    double current = motorCurrent != null ? motorCurrent : 0.0;
-    String ratio = free > 0.0 ? String.format("%.2fx", current / free) : "?";
-    return " specFree=" + String.format("%.1f", free) + "A" +
-        " specStall=" + String.format("%.0f", stall) + "A" +
-        " freeRatio=" + ratio;
-  }
-
-  /**
-   * NAME
    *   formatFlagList - Format a list of flags.
    */
   private String formatFlagList(List<String> flags) {
@@ -715,6 +766,37 @@ public final class ReportTextBuilder {
    */
   private String safeText(String value) {
     return value == null ? "" : value;
+  }
+
+  /**
+   * NAME
+   *   isRobotControllerSnapshot - Return true when shared controller attachments are present.
+   */
+  private boolean isRobotControllerSnapshot(DeviceSnapshot snap) {
+    if (snap == null) {
+      return false;
+    }
+    if (snap.getAttachment(RobotControllerPowerAttachment.class) != null) {
+      return true;
+    }
+    if (snap.getAttachment(RobotControllerBusAttachment.class) != null) {
+      return true;
+    }
+    if (snap.getAttachment(RobotControllerRailsAttachment.class) != null) {
+      return true;
+    }
+    return DEVICE_FAMILY_ROBOT_CONTROLLER.equalsIgnoreCase(snap.deviceType);
+  }
+
+  /**
+   * NAME
+   *   formatRobotControllerPrefix - Build the controller report-line prefix.
+   */
+  private String formatRobotControllerPrefix(DeviceSnapshot snap) {
+    String type = snap != null && snap.deviceType != null && !snap.deviceType.isBlank()
+        ? snap.deviceType
+        : DEVICE_FAMILY_ROBOT_CONTROLLER;
+    return "  " + type + TEXT_CAN_ID_PREFIX;
   }
 
 }

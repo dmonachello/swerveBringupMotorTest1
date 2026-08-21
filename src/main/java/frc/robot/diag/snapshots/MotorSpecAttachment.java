@@ -5,7 +5,10 @@ package frc.robot.diag.snapshots;
  *   MotorSpecAttachment - Motor specification metadata.
  */
 public final class MotorSpecAttachment extends DeviceAttachment {
+  public static final String ATTACHMENT_TYPE = "motorSpec";
   public String model = "";
+  public boolean matched = false;
+  public String requestedModel = "";
   public Double nominalV;
   public Double freeCurrentA;
   public Double stallCurrentA;
@@ -15,6 +18,6 @@ public final class MotorSpecAttachment extends DeviceAttachment {
    *   MotorSpecAttachment - Construct with attachment type name.
    */
   public MotorSpecAttachment() {
-    super("motorSpec");
+    super(ATTACHMENT_TYPE);
   }
 }

@@ -489,8 +489,8 @@ public final class RevDeviceGroup implements ManufacturerGroup {
    * Writes a warning to standard output.
    */
   private void warnIfMissingMotorSpec(String label, String modelOverride) {
-    BringupUtil.MotorSpec spec = BringupUtil.getMotorSpecForDevice(label, modelOverride);
-    if (spec == null) {
+    MotorSpecAttachment motorSpec = BringupUtil.buildMotorSpecAttachment(label, modelOverride);
+    if (!motorSpec.matched) {
       BringupPrinter.enqueue("Warning: missing motor spec for " + label);
     }
   }
@@ -509,15 +509,7 @@ public final class RevDeviceGroup implements ManufacturerGroup {
    */
   private void fillSpecForRev(DeviceSnapshot snap, String label, String modelOverride) {
     snap.label = label;
-    BringupUtil.MotorSpec spec = BringupUtil.getMotorSpecForDevice(label, modelOverride);
-    if (spec == null) {
-      return;
-    }
-    MotorSpecAttachment motorSpec = new MotorSpecAttachment();
-    motorSpec.model = spec.model;
-    motorSpec.nominalV = spec.nominalVoltage;
-    motorSpec.freeCurrentA = spec.freeCurrentA;
-    motorSpec.stallCurrentA = spec.stallCurrentA;
+    MotorSpecAttachment motorSpec = BringupUtil.buildMotorSpecAttachment(label, modelOverride);
     snap.addAttachment(motorSpec);
   }
 

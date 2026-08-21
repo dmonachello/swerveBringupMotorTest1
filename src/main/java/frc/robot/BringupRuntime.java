@@ -36,7 +36,7 @@ public final class BringupRuntime {
   private static final String SCOPE_LABEL_SELECTED_TEST_PREFIX = "selected-test:";
   private static final String TYPE_PDH = "PDH";
   private static final String TYPE_PDP = "PDP";
-  private static final String TYPE_ROBORIO = "roboRIO";
+  private static final String TYPE_ROBORIO = "robotController";
   private static final String TYPE_XBOX_CONTROLLER = "xboxController";
   private static final String TEXT_EMPTY = "";
   private static final double BINDING_VALUE_ANALOG = 0.0;
@@ -1727,14 +1727,7 @@ public final class BringupRuntime {
   }
 
   static boolean isLifecycleSingletonEntry(BringupUtil.DeviceEntry entry) {
-    if (entry == null || entry.type == null) {
-      return false;
-    }
-    String type = entry.type.trim();
-    return TYPE_PDH.equalsIgnoreCase(type)
-        || TYPE_PDP.equalsIgnoreCase(type)
-        || TYPE_ROBORIO.equalsIgnoreCase(type)
-        || TYPE_XBOX_CONTROLLER.equalsIgnoreCase(type);
+    return BringupUtil.isSingletonLifecycleEntry(entry);
   }
 
   private void replaceCore() {

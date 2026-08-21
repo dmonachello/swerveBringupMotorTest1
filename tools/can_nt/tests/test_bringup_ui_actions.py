@@ -133,6 +133,7 @@ from tools.common.profile_constants import (
     LAYOUT_KEY_ROW,
     LAYOUT_KEY_X,
 )
+from tools.common.robot_test_dsl import write_test_source_into_profile
 
 
 class _ProfileBoxStub:
@@ -5197,6 +5198,17 @@ class BringupUiActionMetadataTests(unittest.TestCase):
             ),
         )
         self.assertEqual(
+            "robotController (1)",
+            ui._profile_device_type_display(
+                {
+                    "manufacturer": 1,
+                    "deviceType": 1,
+                    "model": "roboRIO",
+                    KEY_TYPE: "",
+                }
+            ),
+        )
+        self.assertEqual(
             "motor (2)",
             ui._profile_device_type_display(
                 {
@@ -8198,10 +8210,11 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertEqual([], replaced)
         self.assertEqual([{"trigger": "groupAddDevice"}], resolutions)
 
-    def test_apply_selected_test_name_from_ui_ignores_local_test_not_known_to_robot(self) -> None:
+    def test_apply_selected_test_name_from_ui_preserves_local_selection_for_robot_unknown_test(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
         ui._selected_test_var = _StringVarStub("robot_test_a")
         ui._last_selected_test = "robot_test_a"
+        ui._last_ui_selected_test_intent = "robot_test_a"
         ui._current_right_tab_text = lambda: "Tests"
         ui._tcp_connected = True
         ui._tracker = type(
@@ -8230,16 +8243,22 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._append_output = lambda line: output_lines.append(line)
         ui._append_test_output = lambda line: output_lines.append(line)
         ui._refresh_selected_test_scope_status = lambda: output_lines.append("refresh")
+        ui._refresh_context_sync_banner = lambda: output_lines.append("banner")
+        ui._sync_selected_test_devices_panel_local = lambda: output_lines.append("devices")
         ui._send_and_wait = lambda *_args, **_kwargs: (_ for _ in ()).throw(
             AssertionError("should not send selectTestByName for a robot-unknown test")
         )
 
         ui._apply_selected_test_name_from_ui("local_only_test")
 
-        self.assertEqual("robot_test_a", ui._selected_test_var.get())
+        self.assertEqual("local_only_test", ui._selected_test_var.get())
+        self.assertEqual("local_only_test", ui._last_selected_test)
         self.assertTrue(
             any("robot has not loaded it into the current runnable test set" in line for line in output_lines)
         )
+        self.assertIn("devices", output_lines)
+        self.assertIn("refresh", output_lines)
+        self.assertIn("banner", output_lines)
 
     def test_apply_selected_test_name_from_ui_updates_local_selection_while_disconnected(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
@@ -8442,6 +8461,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         topic_map = collect_dsl_reference_topic_map(dsl_reference_topics())
 
         self.assertIn(TEST_SOURCE_REFERENCE_TOPIC_DEVICE_TYPE_PREFIX + "motor", topic_map)
+        self.assertIn(TEST_SOURCE_REFERENCE_TOPIC_DEVICE_TYPE_PREFIX + "robotController", topic_map)
         self.assertIn(TEST_SOURCE_REFERENCE_TOPIC_DEVICE_TYPE_PREFIX + "xboxController", topic_map)
         self.assertIn(TEST_SOURCE_REFERENCE_TOPIC_DEVICE_TYPE_PREFIX + "PDP", topic_map)
 
@@ -8463,6 +8483,17 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertIn("output_percent_cmd", detail)
         self.assertIn("current_actual_max", detail)
         self.assertIn("position_delta_max_abs", detail)
+
+    def test_render_dsl_reference_detail_includes_shared_robot_controller_signals(self) -> None:
+        topic_map = collect_dsl_reference_topic_map(dsl_reference_topics())
+        detail = render_dsl_reference_detail(
+            topic_map[TEST_SOURCE_REFERENCE_TOPIC_DEVICE_TYPE_PREFIX + "robotController"]
+        )
+
+        self.assertIn("Shared robot-controller device family", detail)
+        self.assertIn("input_voltage", detail)
+        self.assertIn("can_utilization", detail)
+        self.assertIn("rail_6v_fault_count", detail)
 
     def test_render_dsl_reference_detail_includes_comment_language_basics(self) -> None:
         topic_map = collect_dsl_reference_topic_map(dsl_reference_topics())
@@ -8695,6 +8726,125 @@ class BringupUiActionMetadataTests(unittest.TestCase):
             sum(1 for line in test_output_lines if line.startswith("Test success detail:")),
         )
 
+    def test_refresh_test_result_status_logs_require_summary_for_selected_run(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._last_result_text_var = _StringVarStub()
+        ui._last_result_label = _LabelStub()
+        output_lines: list[str] = []
+        test_output_lines: list[str] = []
+        ui._append_output = output_lines.append
+        ui._append_test_output = test_output_lines.append
+        ui._last_test_result_signature = None
+        tests_state = {
+            "run": {
+                "runId": 13,
+                "state": "failed",
+                "test": "newTests_123",
+                "result": "FAIL_REQUIRE_NOT_MET",
+                "status": "",
+                "message": "",
+                "details": {
+                    "requires": [
+                        {
+                            "id": "require_1",
+                            "text": 'require "roborio".input_voltage > 11.5',
+                            "satisfied": True,
+                            "sampleValue": 12.1,
+                        },
+                        {
+                            "id": "require_2",
+                            "text": 'require "roborio".brownout == false',
+                            "satisfied": False,
+                            "sampleValue": True,
+                        },
+                    ],
+                    "lastSamples": {},
+                },
+            },
+            "rows": [
+                {
+                    "name": "newTests_123",
+                    "selected": True,
+                    "status": "",
+                    "requiredDevices": ["roborio"],
+                    "runnableNow": False,
+                    "blockedReason": "",
+                }
+            ],
+        }
+        ui._latest_tests_state_payload = tests_state
+        ui._tests_table = _RestTableAdapter.from_tests_state(tests_state)
+
+        ui._refresh_test_result_status()
+
+        self.assertTrue(
+            any(
+                line == 'Require summary: PASS - require "roborio".input_voltage > 11.5 (value=12.100)'
+                for line in output_lines
+            )
+        )
+        self.assertTrue(
+            any(
+                line == 'Require summary: FAIL - require "roborio".brownout == false (value=true)'
+                for line in output_lines
+            )
+        )
+        self.assertTrue(
+            any(line.startswith("Require summary: PASS") for line in test_output_lines)
+        )
+        self.assertTrue(
+            any(line.startswith("Require summary: FAIL") for line in test_output_lines)
+        )
+
+    def test_refresh_test_result_status_suppresses_require_summary_for_run_all(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._last_result_text_var = _StringVarStub()
+        ui._last_result_label = _LabelStub()
+        output_lines: list[str] = []
+        test_output_lines: list[str] = []
+        ui._append_output = output_lines.append
+        ui._append_test_output = test_output_lines.append
+        ui._last_test_result_signature = None
+        tests_state = {
+            "run": {
+                "runId": 14,
+                "state": "passed",
+                "test": "newTests_123",
+                "result": "PASS",
+                "status": "success",
+                "message": "",
+                "details": {
+                    "requires": [
+                        {
+                            "id": "require_1",
+                            "text": 'require "roborio".input_voltage > 11.5',
+                            "satisfied": True,
+                            "sampleValue": 12.1,
+                        }
+                    ],
+                    "lastSamples": {},
+                },
+            },
+            "rows": [
+                {
+                    "name": "newTests_123",
+                    "selected": True,
+                    "status": "running",
+                    "requiredDevices": ["roborio"],
+                    "runnableNow": True,
+                    "blockedReason": "",
+                }
+            ],
+        }
+        ui._latest_tests_state_payload = tests_state
+        ui._tests_table = _RestTableAdapter.from_tests_state(tests_state)
+        ui._tests_table._payload["runAllActive"] = True
+
+        ui._refresh_test_result_status()
+
+        self.assertFalse(any(line.startswith("Require summary:") for line in output_lines))
+        self.assertFalse(any(line.startswith("Require summary:") for line in test_output_lines))
+
     def test_push_config_from_ui_shows_staged_progress_and_success_ack(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
         ui._tcp_connected = True
@@ -8760,6 +8910,55 @@ class BringupUiActionMetadataTests(unittest.TestCase):
 
         self.assertIn("Push Config: FAILED", output_lines)
         self.assertIn("Robot rejected config push.", output_lines)
+
+    def test_dsl_validate_from_ui_accepts_lowercase_roborio_shared_signals(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        output_lines: list[str] = []
+        test_output_lines: list[str] = []
+        ui._append_output = output_lines.append
+        ui._append_test_output = test_output_lines.append
+        ui._selected_real_profile = lambda: "demo"
+        ui._run_blocking_status_operation = (
+            lambda _start_line, operation, include_test_output=False: operation()
+        )
+        payload = {
+            "schema_version": 5,
+            "default_profile": "demo",
+            "profiles": {
+                "demo": {
+                    "devices": ["roborio"],
+                    "dslTestSet": "demo",
+                }
+            },
+            "devices": [
+                {
+                    "label": "roborio",
+                    "manufacturer": 1,
+                    "deviceType": 1,
+                    "id": 0,
+                    "model": "roboRIO",
+                    "type": "robotController",
+                    "deviceInterface": "CAN",
+                }
+            ],
+        }
+        source = (
+            'test "controller_health"\n'
+            'device "roborio"\n\n'
+            "main:\n"
+            '    require "roborio".input_voltage > 11.5\n'
+            '    require "roborio".brownout == false\n'
+            '    require "roborio".rail_6v_enabled == true\n'
+            "    until timer.elapsed >= 1.0\n"
+        )
+        write_test_source_into_profile(payload, "demo", "controller_health", source)
+        ui._load_local_profiles_payload = lambda: payload
+
+        ui._dsl_validate_from_ui()
+
+        self.assertTrue(any("DSL validation OK for profile demo." in line for line in output_lines))
+        self.assertFalse(any("unknown signal on device" in line for line in output_lines))
+        self.assertFalse(any("unknown signal on device" in line for line in test_output_lines))
 
     def test_load_ui_theme_pref_falls_back_to_default_for_invalid_name(self) -> None:
         with patch(

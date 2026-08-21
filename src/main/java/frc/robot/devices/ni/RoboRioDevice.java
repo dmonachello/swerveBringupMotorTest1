@@ -4,6 +4,7 @@ import frc.robot.BringupUtil;
 import frc.robot.devices.DeviceLifecycleOwnership;
 import frc.robot.devices.DeviceUnit;
 import frc.robot.diag.snapshots.DeviceSnapshot;
+import frc.robot.manufacturers.ni.util.RoboRioStatusReader;
 import frc.robot.registry.RegistrationHeader;
 
 /**
@@ -18,18 +19,19 @@ public final class RoboRioDevice implements DeviceUnit {
   public static final RegistrationHeader HEADER = new RegistrationHeader(
       "roboRIO",
       "NI",
-      "roboRIO",
+      "robotController",
       "WPILib",
       "Team",
       "2026-04-26",
       "Virtual roboRIO controller entry.");
 
   private static final String VENDOR = "NI";
-  private static final String DEVICE_TYPE = "roboRIO";
+  private static final String DEVICE_TYPE = "robotController";
   private static final String NOTE_VIRTUAL = "virtual";
 
   private final int canId;
   private final String label;
+  private final RoboRioStatusReader statusReader;
   private boolean created;
 
   /**
@@ -41,8 +43,22 @@ public final class RoboRioDevice implements DeviceUnit {
    *   label - Display label.
    */
   public RoboRioDevice(int canId, String label) {
+    this(canId, label, new RoboRioStatusReader());
+  }
+
+  /**
+   * NAME
+   *   RoboRioDevice - Construct a roboRIO wrapper with an injected status reader.
+   *
+   * PARAMETERS
+   *   canId - CAN identity ID.
+   *   label - Display label.
+   *   statusReader - controller telemetry reader used for snapshot attachments.
+   */
+  public RoboRioDevice(int canId, String label, RoboRioStatusReader statusReader) {
     this.canId = canId;
     this.label = label;
+    this.statusReader = statusReader;
   }
 
   @Override
@@ -93,7 +109,17 @@ public final class RoboRioDevice implements DeviceUnit {
     snap.label = label;
     snap.present = true;
     snap.note = NOTE_VIRTUAL;
+    snap.addAttachment(statusReader.readSharedPowerAttachment());
+    snap.addAttachment(statusReader.readSharedRailsAttachment());
+    snap.addAttachment(statusReader.readSharedBusAttachment());
+    snap.addAttachment(statusReader.readPowerAttachment());
+    snap.addAttachment(statusReader.readRailsAttachment());
     return snap;
+  }
+
+  @Override
+  public Object readDslSignal(String signalName) {
+    return frc.robot.devices.DeviceDslSupport.readRobotControllerSignal(this, signalName);
   }
 
   @Override

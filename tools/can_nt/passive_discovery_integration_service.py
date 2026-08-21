@@ -597,6 +597,8 @@ SOURCE_SCORE_KEY_STATE = "state"
 SOURCE_SCORE_KEY_REASON = "reason"
 DETAIL_SNAPSHOT_POSITION_DELTA_ROT = "positionDeltaRot"
 DETAIL_SNAPSHOT_TEMP_C = "tempC"
+DETAIL_SNAPSHOT_MOTOR_SPEC_MATCH = "motorSpecMatch"
+DETAIL_SNAPSHOT_MOTOR_SPEC_MODEL = "motorSpecModel"
 DETAIL_SNAPSHOT_SELECTED = "selected"
 EVIDENCE_FIELD_CMD_DUTY = "cmdDuty"
 EVIDENCE_FIELD_APPLIED_DUTY = "appliedDuty"
@@ -2623,6 +2625,8 @@ def build_runtime_device_detail_snapshot(
         DETAIL_SNAPSHOT_POSITION_ROT: EVIDENCE_SOURCE_NONE,
         DETAIL_SNAPSHOT_POSITION_DELTA_ROT: EVIDENCE_SOURCE_NONE,
         DETAIL_SNAPSHOT_TEMP_C: EVIDENCE_SOURCE_NONE,
+        DETAIL_SNAPSHOT_MOTOR_SPEC_MATCH: EVIDENCE_SOURCE_NONE,
+        DETAIL_SNAPSHOT_MOTOR_SPEC_MODEL: EVIDENCE_SOURCE_NONE,
     }
     if not isinstance(runtime_device, Mapping):
         return snapshot
@@ -2709,6 +2713,17 @@ def build_runtime_device_detail_snapshot(
             position_delta_rot = max_abs_position_delta_rot
     snapshot[DETAIL_SNAPSHOT_POSITION_DELTA_ROT] = _format_optional_float(position_delta_rot, precision=2)
     snapshot[DETAIL_SNAPSHOT_TEMP_C] = _format_optional_float(_runtime_device_field_from_mapping(runtime_device, "tempC"), precision=1)
+    motor_spec = _runtime_motor_spec_attachment(runtime_device)
+    if isinstance(motor_spec, Mapping):
+        matched = motor_spec.get("matched")
+        if isinstance(matched, bool):
+            snapshot[DETAIL_SNAPSHOT_MOTOR_SPEC_MATCH] = "yes" if matched else "missing"
+        model_text = str(motor_spec.get("model", TEXT_EMPTY)).strip()
+        requested_model_text = str(motor_spec.get("requestedModel", TEXT_EMPTY)).strip()
+        if model_text:
+            snapshot[DETAIL_SNAPSHOT_MOTOR_SPEC_MODEL] = model_text
+        elif requested_model_text:
+            snapshot[DETAIL_SNAPSHOT_MOTOR_SPEC_MODEL] = requested_model_text
     return snapshot
 
 
@@ -3449,6 +3464,25 @@ def resolve_passive_visibility_device_record(
             and int(getattr(identity, "device_id", -1)) == device_id
         ):
             return device
+    return None
+
+
+def _runtime_motor_spec_attachment(runtime_device: Optional[Mapping[str, Any]]) -> Optional[Mapping[str, Any]]:
+    """
+    NAME
+        _runtime_motor_spec_attachment - Return the shared motor-spec attachment from one runtime device.
+    """
+    if not isinstance(runtime_device, Mapping):
+        return None
+    attachments = runtime_device.get(RUNTIME_DEVICE_KEY_ATTACHMENTS)
+    if not isinstance(attachments, list):
+        return None
+    for attachment in attachments:
+        if not isinstance(attachment, Mapping):
+            continue
+        attachment_type = str(attachment.get(ATTACHMENT_KEY_TYPE, TEXT_EMPTY)).strip()
+        if attachment_type == "motorSpec":
+            return attachment
     return None
 
 

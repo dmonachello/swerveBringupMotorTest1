@@ -18,11 +18,14 @@ from tkinter import ttk, messagebox
 
 from .can_top_models import (
     BUCKET_CATEGORIES,
+    category_device_defaults,
+    canonicalize_model_for_context,
     DIAGRAM_CATEGORIES,
     DIO_DEVICE_TYPES,
     GENERIC_CATEGORY,
     INTERFACE_CAN,
     INTERFACE_DIO,
+    model_choices_for_context,
     SINGLETON_CATEGORIES,
     SUPPORTED_DEVICE_TYPES,
     SUPPORTED_MANUFACTURERS,
@@ -190,7 +193,10 @@ class NodeDialog(tk.Toplevel):
         self.combo_type.grid(row=9, column=1, sticky="w")
 
         ttk.Label(frame, text=LABEL_MODEL).grid(row=10, column=0, sticky="w")
-        ttk.Entry(frame, textvariable=self.var_motor, width=32).grid(row=10, column=1, sticky="w")
+        self.combo_model = ttk.Combobox(
+            frame, textvariable=self.var_motor, values=(), width=30
+        )
+        self.combo_model.grid(row=10, column=1, sticky="w")
 
         ttk.Label(frame, text="Fwd Limit").grid(row=11, column=0, sticky="w")
         ttk.Entry(frame, textvariable=self.var_fwd, width=12).grid(row=11, column=1, sticky="w")
@@ -231,8 +237,13 @@ class NodeDialog(tk.Toplevel):
         button_row.grid(row=22, column=0, columnspan=2, sticky="e", pady=(8, 0))
         ttk.Button(button_row, text="Cancel", command=self._on_cancel).pack(side="right", padx=(4, 0))
         ttk.Button(button_row, text="OK", command=self._on_ok).pack(side="right")
+        self._context_sync_active = False
         self._sync_device_type_choices()
+        self._sync_model_choices()
         self.var_interface.trace_add("write", self._on_interface_change)
+        self.var_category.trace_add("write", self._on_context_change)
+        self.var_vendor.trace_add("write", self._on_context_change)
+        self.var_type.trace_add("write", self._on_context_change)
 
     def _on_interface_change(self, *_args: object) -> None:
         """
@@ -240,6 +251,14 @@ class NodeDialog(tk.Toplevel):
             _on_interface_change - Update device-type choices for interface.
         """
         self._sync_device_type_choices()
+        self._sync_model_choices()
+
+    def _on_context_change(self, *_args: object) -> None:
+        """
+        NAME
+            _on_context_change - Refresh dependent defaults and model choices.
+        """
+        self._sync_model_choices()
 
     def _sync_device_type_choices(self) -> None:
         """
@@ -253,6 +272,50 @@ class NodeDialog(tk.Toplevel):
                 self.var_type.set(DIO_DEVICE_TYPES[0])
         else:
             self.combo_type["values"] = SUPPORTED_DEVICE_TYPES
+
+    def _sync_model_choices(self) -> None:
+        """
+        NAME
+            _sync_model_choices - Apply context-sensitive model choices and defaults.
+        """
+        if self._context_sync_active:
+            return
+        self._context_sync_active = True
+        try:
+            interface = self.var_interface.get().strip().upper()
+            category = self.var_category.get().strip()
+            vendor = self.var_vendor.get().strip()
+            device_type = self.var_type.get().strip()
+            current_model = self.var_motor.get().strip()
+            default_vendor, default_type, default_model = category_device_defaults(category, interface)
+            if default_vendor:
+                self.var_vendor.set(default_vendor)
+                vendor = default_vendor
+            if default_type:
+                self.var_type.set(default_type)
+                device_type = default_type
+            model_choices = model_choices_for_context(category, vendor, device_type, interface)
+            normalized_model = canonicalize_model_for_context(
+                current_model,
+                category,
+                vendor,
+                device_type,
+                interface,
+            )
+            if model_choices:
+                self.combo_model.configure(state="readonly", values=model_choices)
+                if normalized_model in model_choices:
+                    self.var_motor.set(normalized_model)
+                else:
+                    self.var_motor.set(default_model or model_choices[0])
+            else:
+                self.combo_model.configure(state="normal", values=())
+                if default_model and not current_model:
+                    self.var_motor.set(default_model)
+                elif normalized_model != current_model:
+                    self.var_motor.set(normalized_model)
+        finally:
+            self._context_sync_active = False
 
     def _on_ok(self) -> None:
         """

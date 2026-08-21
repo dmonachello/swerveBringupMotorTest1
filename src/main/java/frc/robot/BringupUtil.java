@@ -20,6 +20,7 @@ import edu.wpi.first.wpilibj.Filesystem;
 import edu.wpi.first.wpilibj.GenericHID;
 import frc.robot.devices.DeviceLifecycleOwnership;
 import frc.robot.devices.DeviceUnit;
+import frc.robot.diag.snapshots.MotorSpecAttachment;
 import frc.robot.registry.RegistrationHeader;
 import java.io.IOException;
 import java.io.Reader;
@@ -193,6 +194,7 @@ public final class BringupUtil {
   private static final String DEVICE_TYPE_MOTOR = "motor";
   private static final String DEVICE_TYPE_LIMIT_SWITCH = "limitSwitch";
   private static final String DEVICE_TYPE_ENCODER_EXTERNAL = "encoderExternal";
+  private static final String DEVICE_TYPE_ROBOT_CONTROLLER = "robotController";
   private static final String DEVICE_TYPE_XBOX_CONTROLLER = "xboxController";
   private static final String DEVICE_VENDOR_NI = "NI";
   private static final String DEVICE_VENDOR_CTRE = "CTRE";
@@ -220,6 +222,8 @@ public final class BringupUtil {
   private static final String MOTOR_SPEC_REV_VORTEX = "REV NEO Vortex";
   private static final String MOTOR_SPEC_CTRE_FALCON_500 = "CTRE Falcon 500";
   private static final String MOTOR_SPEC_CTRE_KRAKEN_X60 = "CTRE Kraken X60";
+  private static final String MESSAGE_PROFILE_MULTIPLE_CONTROLLERS =
+      "Profile '%s' resolves to more than one robot controller (%s)";
   private static final int MFG_NI_ID = 1;
   private static final int MFG_CTRE_ID = 4;
   private static final int MFG_REV_ID = 5;
@@ -378,6 +382,7 @@ public final class BringupUtil {
     try {
       validateProfileCanIdsStrict(profileName, config);
       validateProfileLabelsStrict(profileName, config);
+      validateSingleActiveRobotControllerStrict(profileName, config);
     } catch (JsonParseException ex) {
       BringupPrinter.enqueue("ERROR: cannot activate profile '" + profileName + "': " + ex.getMessage());
       BringupPrinter.enqueue("ERROR: Profile activation aborted. Staying on '" + activeProfile + "'.");
@@ -704,6 +709,7 @@ public final class BringupUtil {
     try {
       validateProfileCanIdsStrict(resolved, config);
       validateProfileLabelsStrict(resolved, config);
+      validateSingleActiveRobotControllerStrict(resolved, config);
     } catch (JsonParseException ex) {
       return ex.getMessage();
     }
@@ -2670,6 +2676,7 @@ public final class BringupUtil {
     try {
       validateProfileCanIdsStrict(resolved, config);
       validateProfileLabelsStrict(resolved, config);
+      validateSingleActiveRobotControllerStrict(resolved, config);
     } catch (JsonParseException ex) {
       return ex.getMessage();
     }
@@ -2786,6 +2793,47 @@ public final class BringupUtil {
     }
   }
 
+  /**
+   * NAME
+   *   validateSingleActiveRobotControllerStrict - Reject profiles with multiple controllers.
+   *
+   * PARAMETERS
+   *   profileName - Profile key being validated.
+   *   config - Profile configuration entry.
+   *
+   * ERRORS
+   *   Throws JsonParseException when more than one robot-controller device is selected.
+   */
+  private static void validateSingleActiveRobotControllerStrict(
+      String profileName,
+      ProfileConfig config) {
+    if (config == null || config.devices == null) {
+      return;
+    }
+    List<String> controllerLabels = new ArrayList<>();
+    for (String label : config.devices) {
+      String lookup = normalizeKey(label);
+      String display = safeText(label);
+      if (lookup.isEmpty()) {
+        continue;
+      }
+      DeviceDefinition def = DEVICE_REGISTRY.get(lookup);
+      if (def == null) {
+        throw new JsonParseException(String.format(MESSAGE_UNKNOWN_DEVICE, profileName, display));
+      }
+      if (isRobotControllerDefinition(def)) {
+        controllerLabels.add(display);
+      }
+    }
+    if (controllerLabels.size() > 1) {
+      throw new JsonParseException(
+          String.format(
+              MESSAGE_PROFILE_MULTIPLE_CONTROLLERS,
+              profileName,
+              String.join(", ", controllerLabels)));
+    }
+  }
+
   private static void validateDeviceRegistryStrict(List<DeviceDefinition> devices) {
     DEVICE_REGISTRY.clear();
     if (devices == null || devices.isEmpty()) {
@@ -2893,6 +2941,7 @@ public final class BringupUtil {
     String deviceInterface = safeText(def.deviceInterface);
     String vendor = resolveVendorName(def);
     String type = resolveDeviceTypeLabel(def);
+    String semanticType = safeText(def.type);
     String motor = resolveMotorModel(def);
     LimitConfig limits = buildLimitConfig(def);
     int manufacturer = def.manufacturer != null ? def.manufacturer : DISABLED_CAN_ID;
@@ -2904,6 +2953,7 @@ public final class BringupUtil {
         deviceInterface,
         vendor,
         type,
+        semanticType,
         label,
         motor,
         limits,
@@ -2938,6 +2988,45 @@ public final class BringupUtil {
 
   private static boolean isRuntimeDevice(DeviceDefinition def) {
     return isCanDevice(def) || isXboxControllerDevice(def) || isLimitSwitch(def);
+  }
+
+  static boolean isRobotControllerType(String type) {
+    String normalized = safeText(type);
+    return DEVICE_TYPE_ROBOT_CONTROLLER.equalsIgnoreCase(normalized)
+        || DEVICE_TYPE_ROBORIO.equalsIgnoreCase(normalized);
+  }
+
+  static boolean isRobotControllerDefinition(DeviceDefinition def) {
+    if (def == null) {
+      return false;
+    }
+    if (isRobotControllerType(def.type)) {
+      return true;
+    }
+    return isRobotControllerType(resolveDeviceTypeLabel(def));
+  }
+
+  public static boolean isRobotControllerEntry(DeviceEntry entry) {
+    if (entry == null) {
+      return false;
+    }
+    if (isRobotControllerType(entry.semanticType)) {
+      return true;
+    }
+    return isRobotControllerType(safeText(entry.type));
+  }
+
+  public static boolean isSingletonLifecycleEntry(DeviceEntry entry) {
+    if (entry == null) {
+      return false;
+    }
+    String type = safeText(entry.type);
+    String semanticType = safeText(entry.semanticType);
+    return DEVICE_TYPE_PDH.equalsIgnoreCase(type)
+        || DEVICE_TYPE_PDP.equalsIgnoreCase(type)
+        || DEVICE_TYPE_XBOX_CONTROLLER.equalsIgnoreCase(type)
+        || DEVICE_TYPE_XBOX_CONTROLLER.equalsIgnoreCase(semanticType)
+        || isRobotControllerEntry(entry);
   }
 
   private static boolean isCanDevice(DeviceDefinition def) {
@@ -3061,7 +3150,7 @@ public final class BringupUtil {
       return DEVICE_TYPE_PIGEON;
     }
     if (devType == DEVTYPE_ROBORIO_ID) {
-      return DEVICE_TYPE_ROBORIO;
+      return DEVICE_TYPE_ROBOT_CONTROLLER;
     }
     String name = def.deviceType != null ? getCanDeviceTypeName(def.deviceType) : null;
     return name != null && !name.isBlank() ? name : LABEL_UNKNOWN;
@@ -3164,6 +3253,32 @@ public final class BringupUtil {
 
   /**
    * NAME
+   *   buildMotorSpecAttachment - Build one shared motor-spec attachment for runtime/report surfaces.
+   *
+   * PARAMETERS
+   *   label - Device label used for spec inference.
+   *   modelOverride - Optional configured motor model override.
+   *
+   * RETURNS
+   *   Attachment populated with either a matched spec or structured missing-spec state.
+   */
+  public static MotorSpecAttachment buildMotorSpecAttachment(String label, String modelOverride) {
+    MotorSpecAttachment attachment = new MotorSpecAttachment();
+    attachment.requestedModel = resolveRequestedMotorSpecModel(label, modelOverride);
+    MotorSpec spec = getMotorSpecForDevice(label, modelOverride);
+    if (spec == null) {
+      return attachment;
+    }
+    attachment.matched = true;
+    attachment.model = spec.model;
+    attachment.nominalV = spec.nominalVoltage;
+    attachment.freeCurrentA = spec.freeCurrentA;
+    attachment.stallCurrentA = spec.stallCurrentA;
+    return attachment;
+  }
+
+  /**
+   * NAME
    *   getCanManufacturerName - Resolve manufacturer ID to name.
    */
   public static String getCanManufacturerName(int id) {
@@ -3212,6 +3327,18 @@ public final class BringupUtil {
       return MOTOR_SPEC_CTRE_FALCON_500;
     }
     return null;
+  }
+
+  /**
+   * NAME
+   *   resolveRequestedMotorSpecModel - Return the configured or inferred motor model request text.
+   */
+  private static String resolveRequestedMotorSpecModel(String label, String modelOverride) {
+    if (modelOverride != null && !modelOverride.isBlank()) {
+      return modelOverride;
+    }
+    String inferred = inferMotorModelFromLabel(label);
+    return inferred != null ? inferred : NT_LABEL_EMPTY;
   }
 
   /**
@@ -3656,6 +3783,7 @@ public final class BringupUtil {
     public final String deviceInterface;
     public final String vendor;
     public final String type;
+    public final String semanticType;
     public final String label;
     public final String motor;
     public final LimitConfig limits;
@@ -3669,6 +3797,7 @@ public final class BringupUtil {
         String deviceInterface,
         String vendor,
         String type,
+        String semanticType,
         String label,
         String motor,
         LimitConfig limits,
@@ -3680,11 +3809,39 @@ public final class BringupUtil {
       this.deviceInterface = deviceInterface;
       this.vendor = vendor;
       this.type = type;
+      this.semanticType = semanticType;
       this.label = label;
       this.motor = motor;
       this.limits = limits != null ? limits : new LimitConfig();
       this.tags = tags != null ? tags : Collections.emptyList();
       this.terminator = terminator;
+    }
+
+    public DeviceEntry(
+        int id,
+        int manufacturer,
+        int deviceType,
+        String deviceInterface,
+        String vendor,
+        String type,
+        String label,
+        String motor,
+        LimitConfig limits,
+        List<String> tags,
+        Boolean terminator) {
+      this(
+          id,
+          manufacturer,
+          deviceType,
+          deviceInterface,
+          vendor,
+          type,
+          type,
+          label,
+          motor,
+          limits,
+          tags,
+          terminator);
     }
   }
 

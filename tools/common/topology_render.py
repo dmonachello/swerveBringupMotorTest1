@@ -36,7 +36,7 @@ def shape_kind_for_category(category: str) -> str:
         return "sensor"
     if cat in ("pdh", "pdp"):
         return "power"
-    if cat in ("roborio", CATEGORY_CANNECT_INJECT, CATEGORY_CANNECT_DIRECT):
+    if cat in ("roborio", "robotcontroller", CATEGORY_CANNECT_INJECT, CATEGORY_CANNECT_DIRECT):
         return "controller"
     if cat == CATEGORY_ANALYZER:
         return "sensor"
@@ -60,7 +60,7 @@ def vendor_key_for_category(category: str, vendor_override: str = "") -> str:
         return "REV"
     if cat in ("krakens", "falcons", "cancoders", "candles", "pdp", "pigeon"):
         return "CTRE"
-    if cat in ("roborio",):
+    if cat in ("roborio", "robotcontroller"):
         return "NI"
     if cat in (CATEGORY_CANNECT_INJECT, CATEGORY_CANNECT_DIRECT):
         return "SWYFT"
@@ -85,7 +85,7 @@ def device_type_key_for_category(category: str, device_type_override: str = "") 
         return "POWERDISTRIBUTIONMODULE"
     if cat in ("candles",):
         return "MISCELLANEOUS"
-    if cat in ("roborio",):
+    if cat in ("roborio", "robotcontroller"):
         return "ROBOTCONTROLLER"
     if cat in (CATEGORY_CANNECT_INJECT, CATEGORY_CANNECT_DIRECT):
         return "MISCELLANEOUS"

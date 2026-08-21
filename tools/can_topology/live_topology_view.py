@@ -38,6 +38,8 @@ from tools.can_nt.passive_discovery_integration_service import (
     DETAIL_SNAPSHOT_INSTANTIATED,
     DETAIL_SNAPSHOT_LAST_SEEN,
     DETAIL_SNAPSHOT_LIFECYCLE_STATE,
+    DETAIL_SNAPSHOT_MOTOR_SPEC_MATCH,
+    DETAIL_SNAPSHOT_MOTOR_SPEC_MODEL,
     DETAIL_SNAPSHOT_NOT_TESTABLE_REASON,
     DETAIL_SNAPSHOT_OVERRIDE_ACTIVE,
     DETAIL_SNAPSHOT_OVERRIDE_FAILURE,
@@ -332,7 +334,7 @@ CATEGORY_CANDLES = "candles"
 CATEGORY_PDH = "pdh"
 CATEGORY_PDP = "pdp"
 CATEGORY_PIGEON = "pigeon"
-CATEGORY_ROBORIO = "roborio"
+CATEGORY_ROBORIO = "robotController"
 CATEGORY_DEVICES = "devices"
 
 VENDOR_CTRE = "CTRE"
@@ -515,6 +517,8 @@ DETAIL_KEY_VEL_RPM = "vel_rpm"
 DETAIL_KEY_POSITION_ROT = "position_rot"
 DETAIL_KEY_POSITION_DELTA_ROT = "position_delta_rot"
 DETAIL_KEY_TEMP_C = "temp_c"
+DETAIL_KEY_MOTOR_SPEC_MATCH = "motor_spec_match"
+DETAIL_KEY_MOTOR_SPEC_MODEL = "motor_spec_model"
 DETAIL_KEY_SELECTED = "selected"
 DETAIL_TITLE_LABEL = "Label"
 DETAIL_TITLE_CAN_ID = "CAN ID"
@@ -548,6 +552,8 @@ DETAIL_TITLE_VEL_RPM = "Vel (RPM)"
 DETAIL_TITLE_POSITION_ROT = "Position (rot)"
 DETAIL_TITLE_POSITION_DELTA_ROT = "Position Delta (rot)"
 DETAIL_TITLE_TEMP_C = "Temp (C)"
+DETAIL_TITLE_MOTOR_SPEC_MATCH = "Motor Spec Match"
+DETAIL_TITLE_MOTOR_SPEC_MODEL = "Motor Spec Model"
 DETAIL_TITLE_SELECTED = "Selected"
 
 
@@ -1402,6 +1408,8 @@ class LiveTopologyView(ttk.Frame):
                 DETAIL_KEY_POSITION_ROT: tk.StringVar(value="--"),
                 DETAIL_KEY_POSITION_DELTA_ROT: tk.StringVar(value="--"),
                 DETAIL_KEY_TEMP_C: tk.StringVar(value="--"),
+                DETAIL_KEY_MOTOR_SPEC_MATCH: tk.StringVar(value="--"),
+                DETAIL_KEY_MOTOR_SPEC_MODEL: tk.StringVar(value="--"),
                 DETAIL_KEY_SELECTED: tk.StringVar(value="--"),
             }
             rows = [
@@ -1437,6 +1445,8 @@ class LiveTopologyView(ttk.Frame):
                 (DETAIL_TITLE_POSITION_ROT, DETAIL_KEY_POSITION_ROT),
                 (DETAIL_TITLE_POSITION_DELTA_ROT, DETAIL_KEY_POSITION_DELTA_ROT),
                 (DETAIL_TITLE_TEMP_C, DETAIL_KEY_TEMP_C),
+                (DETAIL_TITLE_MOTOR_SPEC_MATCH, DETAIL_KEY_MOTOR_SPEC_MATCH),
+                (DETAIL_TITLE_MOTOR_SPEC_MODEL, DETAIL_KEY_MOTOR_SPEC_MODEL),
                 (DETAIL_TITLE_SELECTED, DETAIL_KEY_SELECTED),
             ]
             for idx, (title, key) in enumerate(rows):
@@ -2872,6 +2882,8 @@ class LiveTopologyView(ttk.Frame):
         self._detail_vars[DETAIL_KEY_POSITION_ROT].set(detail_snapshot.get(DETAIL_SNAPSHOT_POSITION_ROT, "--") or "--")
         self._detail_vars[DETAIL_KEY_POSITION_DELTA_ROT].set(detail_snapshot.get(DETAIL_SNAPSHOT_POSITION_DELTA_ROT, "--") or "--")
         self._detail_vars[DETAIL_KEY_TEMP_C].set(detail_snapshot.get(DETAIL_SNAPSHOT_TEMP_C, "--") or "--")
+        self._detail_vars[DETAIL_KEY_MOTOR_SPEC_MATCH].set(detail_snapshot.get(DETAIL_SNAPSHOT_MOTOR_SPEC_MATCH, "--") or "--")
+        self._detail_vars[DETAIL_KEY_MOTOR_SPEC_MODEL].set(detail_snapshot.get(DETAIL_SNAPSHOT_MOTOR_SPEC_MODEL, "--") or "--")
         selected_text = "no"
         if self._selected_label:
             if node.label.strip().lower() == self._selected_label:

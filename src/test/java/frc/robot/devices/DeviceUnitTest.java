@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import frc.robot.devices.ni.RoboRioDevice;
 import frc.robot.diag.snapshots.DeviceSnapshot;
+import frc.robot.manufacturers.ni.util.RoboRioStatusReader;
 import frc.robot.manufacturers.microsoft.XboxControllerDevice;
 import org.junit.jupiter.api.Test;
 
@@ -59,13 +60,119 @@ class DeviceUnitTest {
 
   @Test
   void roboRioSnapshotAlwaysReportsVirtualPresence() {
-    RoboRioDevice device = new RoboRioDevice(0, "roborio");
+    RoboRioDevice device =
+        new RoboRioDevice(
+            0,
+            "roborio",
+            new RoboRioStatusReader(new FakeTelemetrySource()));
 
     DeviceSnapshot snapshot = device.snapshot();
 
     assertTrue(snapshot.present);
     assertEquals("virtual", snapshot.note);
     assertFalse(device.isCreated());
+  }
+
+  private static final class FakeTelemetrySource implements RoboRioStatusReader.TelemetrySource {
+    @Override
+    public double inputVoltage() {
+      return 12.5;
+    }
+
+    @Override
+    public boolean brownedOut() {
+      return false;
+    }
+
+    @Override
+    public double brownoutVoltage() {
+      return 6.3;
+    }
+
+    @Override
+    public double rail3v3Voltage() {
+      return 3.3;
+    }
+
+    @Override
+    public double rail3v3Current() {
+      return 0.1;
+    }
+
+    @Override
+    public boolean rail3v3Enabled() {
+      return true;
+    }
+
+    @Override
+    public int rail3v3FaultCount() {
+      return 0;
+    }
+
+    @Override
+    public double rail5vVoltage() {
+      return 5.0;
+    }
+
+    @Override
+    public double rail5vCurrent() {
+      return 0.2;
+    }
+
+    @Override
+    public boolean rail5vEnabled() {
+      return true;
+    }
+
+    @Override
+    public int rail5vFaultCount() {
+      return 0;
+    }
+
+    @Override
+    public double rail6vVoltage() {
+      return 6.0;
+    }
+
+    @Override
+    public double rail6vCurrent() {
+      return 0.3;
+    }
+
+    @Override
+    public boolean rail6vEnabled() {
+      return true;
+    }
+
+    @Override
+    public int rail6vFaultCount() {
+      return 0;
+    }
+
+    @Override
+    public double canUtilizationPct() {
+      return 0.0;
+    }
+
+    @Override
+    public int canRxErrorCount() {
+      return 0;
+    }
+
+    @Override
+    public int canTxErrorCount() {
+      return 0;
+    }
+
+    @Override
+    public int canBusOffCount() {
+      return 0;
+    }
+
+    @Override
+    public int canTxFullCount() {
+      return 0;
+    }
   }
 
   private static final class FakeDevice implements DeviceUnit {

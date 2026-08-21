@@ -41,7 +41,7 @@ BUCKET_CATEGORIES = [
     "cancoders",
     "candles",
 ]
-SINGLETON_CATEGORIES = ["pdh", "pdp", "pigeon", "roborio"]
+SINGLETON_CATEGORIES = ["pdh", "pdp", "pigeon", "robotController"]
 GENERIC_CATEGORY = "devices"
 
 DEFAULT_MANUFACTURERS = [

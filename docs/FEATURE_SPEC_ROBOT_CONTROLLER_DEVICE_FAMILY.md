@@ -4,10 +4,27 @@ Purpose: define a first-class `robotController` device family that treats contro
 
 ## Status
 
-- Spec/research only.
-- No runtime behavior changes are implemented by this document.
+- Partially implemented.
+- The shared `robotController` family contract is now live for the current NI `roboRIO` path across config/runtime/DSL/topology/reporting surfaces.
+- The remaining planned work in this document is primarily the second concrete implementation:
+  - Limelight `SystemCore` hardware identity confirmation
+  - `SystemCore` device wrapper / status reader / attachment mapping
+  - any `SystemCore`-only capability fields that require real hardware/API verification
 - This spec assumes exactly one active robot-controller device per runtime/profile.
 - This spec allows multiple controller definitions to exist in one config so future profiles can switch between them.
+
+## Implemented Now
+
+Purpose: record the parts of the controller-family design that are already in the codebase.
+
+- semantic `type: robotController` support in shared config/runtime contracts
+- `roboRIO` model support under the generic controller family
+- global config allowance for multiple defined controller devices
+- active-profile validation that rejects more than one selected controller-family device
+- shared controller-family DSL device type and signal exposure for the current `roboRIO` path
+- controller-family runtime/report attachments for power, CAN health, and rail health
+- active-presence-probe support for the current `roboRIO` controller-family implementation
+- topology/editor/controller authoring support for the shared controller family
 
 ## Goal
 
@@ -300,6 +317,14 @@ All controller-family implementations must support these capability categories.
 - topology/runtime surface compatibility
 - stable status-code mapping
 
+### 9. Operational Management
+
+- imaging/provisioning workflow reporting when supported
+- controller recovery/update mode visibility when supported
+- network configuration and troubleshooting status when supported
+- local management surface availability when supported
+- software/image version reporting when supported
+
 ## Probe Contract
 
 Purpose: define how the active presence probe must treat controller-family devices.
@@ -345,6 +370,8 @@ Expected evidence candidates, subject to hardware/API confirmation:
 - IMU telemetry readable
 
 SID_COMMENT: the SystemCore specification lists multiple CAN interfaces, configurable brownout behavior, fault reporting via robot telemetry/onboard indicators, I/O subsystem status, I2C ports, and IMU outputs. Actual field names and software access paths must be verified against real hardware/software APIs before finalizing the probe reader implementation.
+
+SID_COMMENT: current WPILib SystemCore documentation also establishes imaging, provisioning, network troubleshooting, and local management/dashboard workflows as first-class operational surfaces. That strengthens the need for a shared controller operational-management contract instead of treating controller support as telemetry-only.
 
 ## Snapshot Contract
 
@@ -392,6 +419,38 @@ Initial shared signal families should include:
 - `imu_roll`
 
 Platform-specific signals may exist, but shared signals should be preferred for cross-controller portability.
+
+## Operational Management Contract
+
+Purpose: define the shared contract for controller operational workflows that live alongside telemetry and diagnostics.
+
+Controller-family support must cover not only live telemetry, but also the operator/service workflows required to provision, recover, update, and troubleshoot the active controller platform.
+
+Shared operational-management capability areas:
+
+- imaging/provisioning state and required workflow metadata when available
+- software/image version visibility
+- recovery/update mode visibility
+- network configuration and troubleshooting status
+- local controller management surface presence and access hints
+
+For roboRIO, these capabilities may initially be sparse or compatibility-only.
+
+For SystemCore, WPILib documentation already makes these workflows part of the expected platform experience, including:
+
+- SystemCore platform introduction
+- imaging workflow
+- network troubleshooting guidance
+- web dashboard / local management surface
+
+Sources:
+
+- <https://docs.wpilib.org/en/latest/docs/software/systemcore-info/>
+- <https://docs.wpilib.org/en/latest/docs/software/systemcore-info/systemcore-introduction.html>
+- <https://docs.wpilib.org/en/latest/docs/zero-to-robot/step-3/imaging-your-systemcore.html>
+- <https://docs.wpilib.org/en/latest/docs/software/systemcore-info/systemcore-web-dashboard.html>
+
+SID_COMMENT: the current WPILib web-dashboard page is still placeholder/TODO content, so the contract should reserve this capability area now without overcommitting to specific fields until the platform documentation and software stabilize.
 
 ## Topology and UI Contract
 
@@ -470,6 +529,7 @@ Purpose: describe a safe, staged path from today's roboRIO special case to the t
 - add a second controller-family implementation
 - verify real hardware identity fields
 - map SystemCore-specific telemetry into shared controller contract
+- map SystemCore operational-management surfaces into the shared controller contract
 
 ### Stage 5: Profile and Topology Authoring Support
 

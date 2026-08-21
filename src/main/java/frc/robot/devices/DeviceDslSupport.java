@@ -4,6 +4,9 @@ import frc.robot.diag.snapshots.DeviceSnapshot;
 import frc.robot.diag.snapshots.EncoderAttachment;
 import frc.robot.diag.snapshots.ImuAttachment;
 import frc.robot.diag.snapshots.LimitsAttachment;
+import frc.robot.diag.snapshots.RobotControllerBusAttachment;
+import frc.robot.diag.snapshots.RobotControllerPowerAttachment;
+import frc.robot.diag.snapshots.RobotControllerRailsAttachment;
 import frc.robot.manufacturers.ctre.diag.CtreMotorAttachment;
 import frc.robot.manufacturers.ctre.diag.PdpStatusAttachment;
 import frc.robot.manufacturers.rev.diag.PdhStatusAttachment;
@@ -45,6 +48,40 @@ public final class DeviceDslSupport {
   private static final String IMU_SIGNAL_SUPPLY_VOLTAGE =
       DslSignalRegistry.SIGNAL_SUPPLY_VOLTAGE;
   private static final String IMU_SIGNAL_FAULTS = DslSignalRegistry.SIGNAL_FAULTS;
+  private static final String CONTROLLER_SIGNAL_INPUT_VOLTAGE =
+      DslSignalRegistry.SIGNAL_INPUT_VOLTAGE;
+  private static final String CONTROLLER_SIGNAL_BROWNOUT =
+      DslSignalRegistry.SIGNAL_BROWNOUT;
+  private static final String CONTROLLER_SIGNAL_BROWNOUT_VOLTAGE =
+      DslSignalRegistry.SIGNAL_BROWNOUT_VOLTAGE;
+  private static final String CONTROLLER_SIGNAL_CAN_UTILIZATION =
+      DslSignalRegistry.SIGNAL_CAN_UTILIZATION;
+  private static final String CONTROLLER_SIGNAL_CAN_TX_ERROR_COUNT =
+      DslSignalRegistry.SIGNAL_CAN_TX_ERROR_COUNT;
+  private static final String CONTROLLER_SIGNAL_CAN_RX_ERROR_COUNT =
+      DslSignalRegistry.SIGNAL_CAN_RX_ERROR_COUNT;
+  private static final String CONTROLLER_SIGNAL_CAN_BUS_OFF_COUNT =
+      DslSignalRegistry.SIGNAL_CAN_BUS_OFF_COUNT;
+  private static final String CONTROLLER_SIGNAL_CAN_TX_FULL_COUNT =
+      DslSignalRegistry.SIGNAL_CAN_TX_FULL_COUNT;
+  private static final String CONTROLLER_SIGNAL_RAIL_3V3_VOLTAGE =
+      DslSignalRegistry.SIGNAL_RAIL_3V3_VOLTAGE;
+  private static final String CONTROLLER_SIGNAL_RAIL_5V_VOLTAGE =
+      DslSignalRegistry.SIGNAL_RAIL_5V_VOLTAGE;
+  private static final String CONTROLLER_SIGNAL_RAIL_6V_VOLTAGE =
+      DslSignalRegistry.SIGNAL_RAIL_6V_VOLTAGE;
+  private static final String CONTROLLER_SIGNAL_RAIL_3V3_ENABLED =
+      DslSignalRegistry.SIGNAL_RAIL_3V3_ENABLED;
+  private static final String CONTROLLER_SIGNAL_RAIL_5V_ENABLED =
+      DslSignalRegistry.SIGNAL_RAIL_5V_ENABLED;
+  private static final String CONTROLLER_SIGNAL_RAIL_6V_ENABLED =
+      DslSignalRegistry.SIGNAL_RAIL_6V_ENABLED;
+  private static final String CONTROLLER_SIGNAL_RAIL_3V3_FAULT_COUNT =
+      DslSignalRegistry.SIGNAL_RAIL_3V3_FAULT_COUNT;
+  private static final String CONTROLLER_SIGNAL_RAIL_5V_FAULT_COUNT =
+      DslSignalRegistry.SIGNAL_RAIL_5V_FAULT_COUNT;
+  private static final String CONTROLLER_SIGNAL_RAIL_6V_FAULT_COUNT =
+      DslSignalRegistry.SIGNAL_RAIL_6V_FAULT_COUNT;
 
   private DeviceDslSupport() {}
 
@@ -306,6 +343,68 @@ public final class DeviceDslSupport {
         return pdp.channelStickyFault[channelIndex];
       }
       return null;
+    }
+    return null;
+  }
+
+  public static Object readRobotControllerSignal(DeviceUnit device, String signalName) {
+    if (device == null || signalName == null) {
+      return null;
+    }
+    DeviceSnapshot snapshot = device.snapshot();
+    RobotControllerPowerAttachment power = snapshot.getAttachment(RobotControllerPowerAttachment.class);
+    RobotControllerRailsAttachment rails = snapshot.getAttachment(RobotControllerRailsAttachment.class);
+    RobotControllerBusAttachment bus = snapshot.getAttachment(RobotControllerBusAttachment.class);
+    if (CONTROLLER_SIGNAL_INPUT_VOLTAGE.equals(signalName)) {
+      return power != null ? power.inputVoltage : null;
+    }
+    if (CONTROLLER_SIGNAL_BROWNOUT.equals(signalName)) {
+      return power != null ? power.brownout : null;
+    }
+    if (CONTROLLER_SIGNAL_BROWNOUT_VOLTAGE.equals(signalName)) {
+      return power != null ? power.brownoutVoltage : null;
+    }
+    if (CONTROLLER_SIGNAL_CAN_UTILIZATION.equals(signalName)) {
+      return bus != null ? bus.canUtilizationPct : null;
+    }
+    if (CONTROLLER_SIGNAL_CAN_TX_ERROR_COUNT.equals(signalName)) {
+      return bus != null ? bus.canTxErrorCount : null;
+    }
+    if (CONTROLLER_SIGNAL_CAN_RX_ERROR_COUNT.equals(signalName)) {
+      return bus != null ? bus.canRxErrorCount : null;
+    }
+    if (CONTROLLER_SIGNAL_CAN_BUS_OFF_COUNT.equals(signalName)) {
+      return bus != null ? bus.canBusOffCount : null;
+    }
+    if (CONTROLLER_SIGNAL_CAN_TX_FULL_COUNT.equals(signalName)) {
+      return bus != null ? bus.canTxFullCount : null;
+    }
+    if (CONTROLLER_SIGNAL_RAIL_3V3_VOLTAGE.equals(signalName)) {
+      return rails != null ? rails.rail3v3Voltage : null;
+    }
+    if (CONTROLLER_SIGNAL_RAIL_5V_VOLTAGE.equals(signalName)) {
+      return rails != null ? rails.rail5vVoltage : null;
+    }
+    if (CONTROLLER_SIGNAL_RAIL_6V_VOLTAGE.equals(signalName)) {
+      return rails != null ? rails.rail6vVoltage : null;
+    }
+    if (CONTROLLER_SIGNAL_RAIL_3V3_ENABLED.equals(signalName)) {
+      return rails != null ? rails.rail3v3Enabled : null;
+    }
+    if (CONTROLLER_SIGNAL_RAIL_5V_ENABLED.equals(signalName)) {
+      return rails != null ? rails.rail5vEnabled : null;
+    }
+    if (CONTROLLER_SIGNAL_RAIL_6V_ENABLED.equals(signalName)) {
+      return rails != null ? rails.rail6vEnabled : null;
+    }
+    if (CONTROLLER_SIGNAL_RAIL_3V3_FAULT_COUNT.equals(signalName)) {
+      return rails != null ? rails.rail3v3FaultCount : null;
+    }
+    if (CONTROLLER_SIGNAL_RAIL_5V_FAULT_COUNT.equals(signalName)) {
+      return rails != null ? rails.rail5vFaultCount : null;
+    }
+    if (CONTROLLER_SIGNAL_RAIL_6V_FAULT_COUNT.equals(signalName)) {
+      return rails != null ? rails.rail6vFaultCount : null;
     }
     return null;
   }

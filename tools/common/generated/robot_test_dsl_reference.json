@@ -352,6 +352,46 @@
               "sourcePath": "src/main/java/frc/robot/tests/dsl/signals/PDP.devices.md"
             },
             {
+              "id": "topic_device_type_robotController",
+              "title": "robotController",
+              "summary": "Shared robot-controller device family for roboRIO and future SystemCore health, rail, and CAN-controller evidence.",
+              "syntax": [
+                "device \"<label>\"  # resolves to DSL type robotController"
+              ],
+              "details": [
+                "Use this for the active robot controller selected by the current profile.",
+                "Prefer shared controller signals when you want a test to stay portable across roboRIO and future SystemCore support.",
+                "Current shared signals cover input power, brownout state, controller-local CAN health counters, and the 3.3V / 5V / 6V user rails."
+              ],
+              "signals": [
+                "- brownout: boolean | read",
+                "- brownout_voltage: number | read",
+                "- can_bus_off_count: number | read",
+                "- can_rx_error_count: number | read",
+                "- can_tx_error_count: number | read",
+                "- can_tx_full_count: number | read",
+                "- can_utilization: number | read",
+                "- input_voltage: number | read",
+                "- rail_3v3_enabled: boolean | read",
+                "- rail_3v3_fault_count: number | read",
+                "- rail_3v3_voltage: number | read",
+                "- rail_5v_enabled: boolean | read",
+                "- rail_5v_fault_count: number | read",
+                "- rail_5v_voltage: number | read",
+                "- rail_6v_enabled: boolean | read",
+                "- rail_6v_fault_count: number | read",
+                "- rail_6v_voltage: number | read"
+              ],
+              "examples": [
+                "device \"roborio\"",
+                "main:",
+                "    require \"roborio\".input_voltage > 11.5",
+                "    require \"roborio\".brownout == false",
+                "    require \"roborio\".rail_6v_enabled == true"
+              ],
+              "sourcePath": "src/main/java/frc/robot/tests/dsl/signals/robotController.devices.md"
+            },
+            {
               "id": "topic_device_type_TestTimer",
               "title": "TestTimer",
               "summary": "Built-in timing source used for timeouts and elapsed-time gating.",

@@ -3,6 +3,7 @@ package frc.robot;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.google.gson.JsonObject;
@@ -163,6 +164,69 @@ class BringupUtilCurrentConfigJsonTest {
     assertEquals("REV NEO", motor);
   }
 
+  @Test
+  void buildDeviceEntryPreservesSemanticRobotControllerType() throws Exception {
+    Object deviceDefinition = newInstance(CLASS_DEVICE_DEFINITION);
+    setField(deviceDefinition, FIELD_DEVICE_LABEL, "main-controller-rio");
+    setField(deviceDefinition, "id", 0);
+    setField(deviceDefinition, "manufacturer", 1);
+    setField(deviceDefinition, "deviceType", 1);
+    setField(deviceDefinition, "deviceInterface", "CAN");
+    setField(deviceDefinition, "model", "roboRIO");
+    setField(deviceDefinition, "type", "robotController");
+
+    Object entry = invokePrivateStaticMethod("buildDeviceEntry", deviceDefinition);
+    String type = (String) getField(entry, "type");
+    String semanticType = (String) getField(entry, "semanticType");
+
+    assertEquals("robotController", type);
+    assertEquals("robotController", semanticType);
+    assertTrue(BringupUtil.isRobotControllerEntry((BringupUtil.DeviceEntry) entry));
+  }
+
+  @Test
+  void validateSingleActiveRobotControllerStrictRejectsMultipleControllers() throws Exception {
+    captureState();
+
+    Object profileConfig = newInstance(CLASS_PROFILE_CONFIG);
+    setField(profileConfig, FIELD_PROFILE_DEVICES, List.of("main-controller-rio", "main-controller-systemcore"));
+
+    Object rioDefinition = newInstance(CLASS_DEVICE_DEFINITION);
+    setField(rioDefinition, FIELD_DEVICE_LABEL, "main-controller-rio");
+    setField(rioDefinition, "id", 0);
+    setField(rioDefinition, "manufacturer", 1);
+    setField(rioDefinition, "deviceType", 1);
+    setField(rioDefinition, "deviceInterface", "CAN");
+    setField(rioDefinition, "model", "roboRIO");
+    setField(rioDefinition, "type", "robotController");
+
+    Object systemCoreDefinition = newInstance(CLASS_DEVICE_DEFINITION);
+    setField(systemCoreDefinition, FIELD_DEVICE_LABEL, "main-controller-systemcore");
+    setField(systemCoreDefinition, "id", 0);
+    setField(systemCoreDefinition, "manufacturer", 0);
+    setField(systemCoreDefinition, "deviceType", 0);
+    setField(systemCoreDefinition, "deviceInterface", "CAN");
+    setField(systemCoreDefinition, "model", "SystemCore");
+    setField(systemCoreDefinition, "type", "robotController");
+
+    @SuppressWarnings("unchecked")
+    Map<String, Object> deviceRegistry = (Map<String, Object>) getStaticField(FIELD_DEVICE_REGISTRY);
+    deviceRegistry.clear();
+    deviceRegistry.put(normalizeKey("main-controller-rio"), rioDefinition);
+    deviceRegistry.put(normalizeKey("main-controller-systemcore"), systemCoreDefinition);
+
+    Exception ex =
+        assertThrows(
+            Exception.class,
+            () ->
+                invokePrivateStaticMethod(
+                    "validateSingleActiveRobotControllerStrict",
+                    new Class<?>[] {String.class, Class.forName(CLASS_PROFILE_CONFIG)},
+                    new Object[] {"test_profile", profileConfig}));
+
+    assertTrue(ex.getCause().getMessage().contains("more than one robot controller"));
+  }
+
   private void captureState() throws Exception {
     captured = true;
     savedDataVersion = (String) getStaticField(FIELD_CURRENT_DATA_VERSION);
@@ -230,6 +294,15 @@ class BringupUtilCurrentConfigJsonTest {
     Method method = BringupUtil.class.getDeclaredMethod(name, arg.getClass());
     method.setAccessible(true);
     return method.invoke(null, arg);
+  }
+
+  private static Object invokePrivateStaticMethod(
+      String name,
+      Class<?>[] parameterTypes,
+      Object[] args) throws Exception {
+    Method method = BringupUtil.class.getDeclaredMethod(name, parameterTypes);
+    method.setAccessible(true);
+    return method.invoke(null, args);
   }
 
   private static String normalizeKey(String value) {
