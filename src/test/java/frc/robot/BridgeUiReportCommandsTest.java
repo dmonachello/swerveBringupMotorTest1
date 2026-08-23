@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 class BridgeUiReportCommandsTest {
 
   private static final String CMD_PRINT_SUMMARY = "printSummary";
+  private static final String CMD_PRINT_INPUTS = "printInputs";
   private static final String CMD_PRINT_SELECTED_TEST_SOURCE = "printSelectedTestSource";
   private static final String CMD_PRINT_CAN_DIAG = "printCANdiag";
   private static final String CMD_DUMP_REPORT = "dumpReport";
@@ -95,6 +96,18 @@ class BridgeUiReportCommandsTest {
   }
 
   @Test
+  void printInputsEmitsSharedInputsReportText() {
+    TestDeps deps = new TestDeps();
+    BridgeUiReportCommands commands = new BridgeUiReportCommands(deps);
+
+    BridgeUiCommandResult result =
+        commands.execute(ingress(CMD_PRINT_INPUTS, new JsonObject()), 0.0, false);
+
+    assertTrue(result.ok);
+    assertEquals(deps.inputsText, result.outText);
+  }
+
+  @Test
   void dumpReportWriteSuccessIncludesPathMessage() {
     TestDeps deps = new TestDeps();
     deps.writeReportSuccess = true;
@@ -142,6 +155,7 @@ class BridgeUiReportCommandsTest {
     private final String statusText = "status";
     private final String versionText = "version";
     private final String selectedTestSourceText = "selected source";
+    private final String inputsText = "inputs";
 
     @Override
     public String buildStateReportText() {
@@ -164,13 +178,8 @@ class BridgeUiReportCommandsTest {
     }
 
     @Override
-    public double getLastNeoSpeed() {
-      return 0.1;
-    }
-
-    @Override
-    public double getLastKrakenSpeed() {
-      return 0.2;
+    public String buildInputsReportText() {
+      return inputsText;
     }
 
     @Override

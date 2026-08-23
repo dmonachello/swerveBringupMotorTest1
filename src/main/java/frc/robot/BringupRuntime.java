@@ -1731,27 +1731,14 @@ public final class BringupRuntime {
   }
 
   private void replaceCore() {
-    String selectedTestName =
-        core != null ? safeText(core.getSelectedBringupTestName()) : TEXT_EMPTY;
     core = new BringupCore(sampledTelemetry, deviceLifecycle);
     core.setRunTestBindingLabel(runTestBindingLabel);
-    restoreSelectedTestSelection(core, selectedTestName);
     if (diagnostics == null) {
       diagnostics = new DiagnosticsReporter(core, canHealth);
     } else {
       diagnostics.setCore(core);
     }
     initializeDeviceLifecycle(System.currentTimeMillis());
-  }
-
-  static void restoreSelectedTestSelection(BringupCore core, String selectedTestName) {
-    if (core == null) {
-      return;
-    }
-    String selectedName = selectedTestName != null ? selectedTestName.trim() : TEXT_EMPTY;
-    if (!selectedName.isBlank()) {
-      core.selectBringupTestByName(selectedName);
-    }
   }
 
   private JsonArray toJsonArray(List<String> labels) {

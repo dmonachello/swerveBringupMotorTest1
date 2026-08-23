@@ -49,6 +49,7 @@ public class Robot extends TimedRobot {
   private static final String MESSAGE_DISABLED_RUNTIME_STABLE =
       "Disabled: runtime deactivated, outputs stopped, hardware released. Runtime Activate required before motion resumes.";
   private static final String TEXT_EMPTY = "";
+  private static final int REPORT_BATCH_SIZE = 4;
   private static final int POV_UP = 0;
   private static final int POV_RIGHT = 90;
   private static final int POV_DOWN = 180;
@@ -308,12 +309,7 @@ public class Robot extends TimedRobot {
    *   krakenSpeed - Current right-drive value after binding resolution.
    */
   private void printCurrentInputs(double neoSpeed, double krakenSpeed) {
-    runtime.requestTextReport(
-        "Inputs: leftY=" + String.format("%.2f", neoSpeed) +
-        " rightY=" + String.format("%.2f", krakenSpeed) +
-        " (NEO/FLEX=" + String.format("%.2f", neoSpeed) +
-        ", KRAKEN/FALCON=" + String.format("%.2f", krakenSpeed) + ")",
-        4);
+    runtime.requestTextReport(core().buildInputsReportText(), REPORT_BATCH_SIZE);
   }
 
   private void resetCoreForProfile(String reason) {

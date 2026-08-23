@@ -204,12 +204,20 @@ class _ButtonStub:
     def __init__(self) -> None:
         self.disabled = False
         self.pack_calls = []
+        self._packed = False
 
     def state(self, states) -> None:
         self.disabled = "disabled" in tuple(states)
 
     def pack(self, **kwargs) -> None:
         self.pack_calls.append(dict(kwargs))
+        self._packed = True
+
+    def pack_forget(self) -> None:
+        self._packed = False
+
+    def winfo_manager(self) -> str:
+        return "pack" if self._packed else ""
 
 
 class _LabelStub:
@@ -237,6 +245,19 @@ class _PanelStub:
             self.bg = kwargs["bg"]
         if "highlightbackground" in kwargs:
             self.highlightbackground = kwargs["highlightbackground"]
+
+
+class _CanvasStub:
+    def __init__(self) -> None:
+        self.bg = None
+        self.items = {}
+
+    def configure(self, **kwargs) -> None:
+        if "bg" in kwargs:
+            self.bg = kwargs["bg"]
+
+    def itemconfigure(self, item, **kwargs) -> None:
+        self.items[item] = dict(kwargs)
 
 
 class _TextStub:
@@ -2921,6 +2942,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
                 "identity": "MATCHING",
                 "confidence": "HIGH",
                 "state": "ok",
+                "presenceState": "present",
             },
             {
                 "label": "pdp",
@@ -2934,6 +2956,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
                 "identity": "MATCHING",
                 "confidence": "MEDIUM",
                 "state": "degraded",
+                "presenceState": "unknown",
             },
         ]
         ui._selected_evidence_filter_key = lambda: "all"
@@ -2946,7 +2969,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
 
         ui._refresh_evidence_view()
 
-        expected = {"falcon 9": "ok", "pdp": "degraded"}
+        expected = {"falcon 9": "present", "pdp": "unknown"}
         self.assertEqual(expected, evidence_view.snapshot)
         self.assertEqual(expected, live_view.snapshot)
 
@@ -5698,7 +5721,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertEqual("test_minimal_25_9", ui._robot_selected_profile)
         self.assertEqual([True], synced)
 
-    def test_ui_prompts_to_sync_host_profile_context_to_robot_profile(self) -> None:
+    def test_auto_profile_context_sync_does_not_open_prompt(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
         ui._tcp_connected = True
         ui._handshake_done = True
@@ -5717,16 +5740,20 @@ class BringupUiActionMetadataTests(unittest.TestCase):
             "config_names": [],
             "profile_names": [],
         }
+        ui._context_sync_frame = _PanelStub()
+        ui._context_sync_led = _CanvasStub()
+        ui._context_sync_led_item = "led"
 
-        with patch("tools.can_nt.bringup_ui.messagebox.askyesnocancel", return_value=True) as mock_prompt:
+        with patch("tools.can_nt.bringup_ui.messagebox.askyesnocancel") as mock_prompt:
             ui._maybe_prompt_host_profile_context_sync()
 
-        self.assertEqual("test_minimal_25_9", ui._profile_box.get())
-        self.assertEqual("test_minimal_25_9", ui._last_selected_profile)
-        self.assertEqual([("test_minimal_25_9", True)], applied)
-        mock_prompt.assert_called_once()
+        self.assertEqual("2026_no_swyfts", ui._profile_box.get())
+        self.assertEqual("2026_no_swyfts", ui._last_selected_profile)
+        self.assertEqual([], applied)
+        self.assertEqual("#991b1b", ui._context_sync_led.items["led"]["fill"])
+        mock_prompt.assert_not_called()
 
-    def test_ui_prompts_before_switching_from_empty_local_context_to_robot_profile(self) -> None:
+    def test_auto_profile_context_sync_from_empty_local_context_does_not_open_prompt(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
         ui._tcp_connected = True
         ui._handshake_done = True
@@ -5745,16 +5772,20 @@ class BringupUiActionMetadataTests(unittest.TestCase):
             "config_names": [],
             "profile_names": [],
         }
+        ui._context_sync_frame = _PanelStub()
+        ui._context_sync_led = _CanvasStub()
+        ui._context_sync_led_item = "led"
 
-        with patch("tools.can_nt.bringup_ui.messagebox.askyesnocancel", return_value=True) as mock_prompt:
+        with patch("tools.can_nt.bringup_ui.messagebox.askyesnocancel") as mock_prompt:
             ui._maybe_prompt_host_profile_context_sync()
 
-        self.assertEqual("test_minimal_25_9", ui._profile_box.get())
-        self.assertEqual("test_minimal_25_9", ui._last_selected_profile)
-        self.assertEqual([("test_minimal_25_9", True)], applied)
-        mock_prompt.assert_called_once()
+        self.assertEqual(PROFILE_NONE, ui._profile_box.get())
+        self.assertEqual("(none)", ui._last_selected_profile)
+        self.assertEqual([], applied)
+        self.assertEqual("#991b1b", ui._context_sync_led.items["led"]["fill"])
+        mock_prompt.assert_not_called()
 
-    def test_ui_warns_when_robot_profile_is_missing_from_open_local_config(self) -> None:
+    def test_auto_profile_context_sync_does_not_warn_when_robot_profile_is_missing_locally(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
         ui._tcp_connected = True
         ui._handshake_done = True
@@ -5768,16 +5799,20 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._last_profile_mismatch_prompt = None
         applied = []
         ui._apply_profile_selection = lambda name, reload_views: applied.append((name, reload_views))
+        ui._context_sync_frame = _PanelStub()
+        ui._context_sync_led = _CanvasStub()
+        ui._context_sync_led_item = "led"
 
         with patch("tools.can_nt.bringup_ui.messagebox.showwarning") as mock_warning:
             with patch("tools.can_nt.bringup_ui.messagebox.askyesnocancel") as mock_prompt:
                 ui._maybe_prompt_host_profile_context_sync()
 
         self.assertEqual([], applied)
-        mock_warning.assert_called_once()
+        self.assertEqual("#991b1b", ui._context_sync_led.items["led"]["fill"])
+        mock_warning.assert_not_called()
         mock_prompt.assert_not_called()
 
-    def test_ui_warns_when_local_context_is_empty_and_robot_profile_is_missing_locally(self) -> None:
+    def test_auto_profile_context_sync_from_empty_local_context_does_not_warn_when_robot_profile_is_missing_locally(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
         ui._tcp_connected = True
         ui._handshake_done = True
@@ -5791,14 +5826,132 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         ui._last_profile_mismatch_prompt = None
         applied = []
         ui._apply_profile_selection = lambda name, reload_views: applied.append((name, reload_views))
+        ui._context_sync_frame = _PanelStub()
+        ui._context_sync_led = _CanvasStub()
+        ui._context_sync_led_item = "led"
 
         with patch("tools.can_nt.bringup_ui.messagebox.showwarning") as mock_warning:
             with patch("tools.can_nt.bringup_ui.messagebox.askyesnocancel") as mock_prompt:
                 ui._maybe_prompt_host_profile_context_sync()
 
         self.assertEqual([], applied)
-        mock_warning.assert_called_once()
+        self.assertEqual("#991b1b", ui._context_sync_led.items["led"]["fill"])
+        mock_warning.assert_not_called()
         mock_prompt.assert_not_called()
+
+    def test_context_sync_indicator_led_shows_mismatch_when_profiles_mismatch(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._tcp_connected = True
+        ui._handshake_done = True
+        ui._context_sync_frame = _PanelStub()
+        ui._context_sync_led = _CanvasStub()
+        ui._context_sync_led_item = "led"
+        ui._context_sync_state = lambda: type(
+            "ContextSyncStateStub",
+            (),
+            {
+                "out_of_sync": True,
+                "ui_profile": "default",
+                "robot_profile": "test_minimal_25_9",
+                "robot_runtime_profile": "test_minimal_25_9",
+                "ui_test": PROFILE_NONE,
+                "robot_test": "",
+                "summary": "System is out of sync.",
+                "detail": "UI profile=default | robot profile=test_minimal_25_9",
+            },
+        )()
+
+        ui._refresh_context_sync_banner()
+
+        self.assertEqual("#991b1b", ui._context_sync_led.items["led"]["fill"])
+        self.assertEqual("#fef2f2", ui._context_sync_frame.bg)
+
+    def test_context_sync_indicator_led_shows_ok_when_synced(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._tcp_connected = True
+        ui._handshake_done = True
+        ui._context_sync_frame = _PanelStub()
+        ui._context_sync_led = _CanvasStub()
+        ui._context_sync_led_item = "led"
+        ui._context_sync_state = lambda: type(
+            "ContextSyncStateStub",
+            (),
+            {
+                "out_of_sync": False,
+                "ui_profile": "test_minimal_25_9",
+                "robot_profile": "test_minimal_25_9",
+                "robot_runtime_profile": "test_minimal_25_9",
+                "ui_test": "mtrs_limit",
+                "robot_test": "mtrs_limit",
+                "summary": "",
+                "detail": "",
+            },
+        )()
+
+        ui._refresh_context_sync_banner()
+
+        self.assertEqual("#166534", ui._context_sync_led.items["led"]["fill"])
+        self.assertEqual("#dcfce7", ui._context_sync_frame.bg)
+
+    def test_context_sync_signature_ignores_test_difference_when_profile_mismatch_exists(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._context_sync_state = lambda: type(
+            "ContextSyncStateStub",
+            (),
+            {
+                "out_of_sync": True,
+                "ui_profile": "default",
+                "robot_profile": "test_minimal_25_9",
+                "robot_runtime_profile": "test_minimal_25_9",
+                "ui_test": "mtrs_limit",
+                "robot_test": "newTests_123",
+            },
+        )()
+
+        self.assertEqual(
+            ("default", "test_minimal_25_9", "test_minimal_25_9", PROFILE_NONE, PROFILE_NONE),
+            ui._context_sync_signature(),
+        )
+
+    def test_runnable_scope_state_uses_profile_mismatch_detail(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._ui_context_state = lambda: type(
+            "UiContextStateStub",
+            (),
+            {
+                "scope_kind": "manual",
+                "local_selected_profile": PROFILE_NONE,
+                "transport_connected": True,
+                "has_robot_runtime_state": True,
+            },
+        )()
+        ui._context_sync_state = lambda: type(
+            "ContextSyncStateStub",
+            (),
+            {
+                "out_of_sync": True,
+                "ui_profile": PROFILE_NONE,
+                "robot_profile": "test_minimal_25_9",
+                "robot_runtime_profile": "test_minimal_25_9",
+                "ui_test": PROFILE_NONE,
+                "robot_test": "",
+            },
+        )()
+        ui._profile_box = object()
+        ui._manual_active_group_is_empty = lambda: False
+        ui._scope_is_currently_active = lambda: False
+        ui._scope_transition_pending = lambda: False
+        ui._robot_enabled_known = True
+        ui._robot_estopped_known = False
+        ui._robot_mode_known = "teleop"
+
+        state = ui._runnable_scope_state(False)
+
+        self.assertEqual(
+            "Robot profile mismatch: test_minimal_25_9. Resolve mismatch or switch the local profile.",
+            state.detail,
+        )
+        self.assertEqual(state.detail, state.blocked_reason)
 
     def test_profile_selection_is_deferred_until_transport_is_ready(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)

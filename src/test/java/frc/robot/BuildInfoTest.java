@@ -16,6 +16,10 @@ class BuildInfoTest {
     assertEquals("workspace-revision", BuildInfo.BUILD_LABEL_WORKSPACE_REVISION);
     assertFalse(BuildInfo.BUILD_CODE_REVISION.isBlank());
     assertEquals("code-revision", BuildInfo.BUILD_LABEL_CODE_REVISION);
+    assertFalse(BuildInfo.BUILD_TIMESTAMP.isBlank());
+    assertEquals("build-time", BuildInfo.BUILD_LABEL_TIME);
+    assertFalse(BuildInfo.BUILD_COMMIT_TIMESTAMP.isBlank());
+    assertEquals("commit-time", BuildInfo.BUILD_LABEL_COMMIT_TIME);
   }
 
   @Test

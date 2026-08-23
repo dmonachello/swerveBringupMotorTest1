@@ -2,9 +2,9 @@
 
 # Documentation Health Report
 
-- Pages processed: 314
+- Pages processed: 322
 - Broken links: 9
-- Orphan pages: 137
+- Orphan pages: 142
 - Duplicate title families: 14
 - Suggested renames: 14
 

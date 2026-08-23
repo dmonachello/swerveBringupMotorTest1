@@ -1537,6 +1537,135 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
         self.assertEqual("FAILED", row["operability"])
         self.assertEqual("failed", row["state"])
 
+    def test_interpreted_row_marks_cancoder_missing_from_stale_passive_history_without_fresh_counterevidence(self) -> None:
+        passive_device = DeviceRecord(
+            identity=DeviceIdentity(manufacturer=4, device_type=7, device_id=18),
+            expected_status="observed",
+            manufacturer_name="CTRE",
+            device_type_name="CANCoder",
+            model_name="cancoder",
+            profile_label="cancoder",
+            presence_confidence="high",
+            presence_score=92,
+            inventory_confidence="high",
+            inventory_score=90,
+            health_confidence="limited",
+            health_score=65,
+            health="limited",
+            evidence_sources=("passive_can",),
+            evidence_family_keys=(FamilyKey(4, 7, 18, 4, 0),),
+            evidence_family_summaries=("api=4/0 primary_status 100.0Hz",),
+            evidence_gaps=(),
+            notes=(),
+        )
+
+        row = build_interpreted_evidence_row(
+            label="cancoder",
+            presence_entry=None,
+            passive_device=passive_device,
+            visibility_device={
+                "metrics": {
+                    "observerA": {
+                        "msgCount": 23365,
+                        "lastSeenMs": 1000.0,
+                        "framesPerSec": 0.0,
+                    }
+                }
+            },
+            runtime_device=None,
+            console_entry=None,
+            system_console={},
+            manual_entry=None,
+            manual_observation=None,
+            manual_motion=None,
+            probe_pending=False,
+            last_probe_completed_at=0.0,
+            probe_run_count=0,
+            now_s=80.0,
+            visibility_last_seen_text="1.3m",
+            visibility_packet_count_text="23365",
+            visibility_packet_rate_text="0.0/s",
+        )
+
+        self.assertEqual("ABSENT", row["existence"])
+        self.assertEqual("FAILED", row["operability"])
+        self.assertEqual("missing", row["presenceState"])
+        self.assertEqual("failed", row["state"])
+        self.assertIn(
+            "Passive CAN has only stale historical visibility for this device and no fresh corroborating evidence remains; treating it as missing.",
+            row["notesText"],
+        )
+
+    def test_interpreted_row_ignores_stale_runtime_presence_when_cancoder_has_only_stale_passive_history(self) -> None:
+        passive_device = DeviceRecord(
+            identity=DeviceIdentity(manufacturer=4, device_type=7, device_id=18),
+            expected_status="observed",
+            manufacturer_name="CTRE",
+            device_type_name="CANCoder",
+            model_name="cancoder",
+            profile_label="cancoder",
+            presence_confidence="high",
+            presence_score=92,
+            inventory_confidence="high",
+            inventory_score=90,
+            health_confidence="limited",
+            health_score=65,
+            health="limited",
+            evidence_sources=("passive_can",),
+            evidence_family_keys=(FamilyKey(4, 7, 18, 4, 0),),
+            evidence_family_summaries=("api=4/0 primary_status 100.0Hz",),
+            evidence_gaps=(),
+            notes=(),
+        )
+
+        row = build_interpreted_evidence_row(
+            label="cancoder",
+            presence_entry={
+                "bucket": "present",
+                "score": 1.0,
+                "ageText": "79.0s ago",
+                "existence": "PRESENT",
+                "confidence": "HIGH",
+                "source": "localSnapshot",
+                "updatedAtMs": 1000.0,
+            },
+            passive_device=passive_device,
+            visibility_device={
+                "metrics": {
+                    "observerA": {
+                        "msgCount": 28339,
+                        "lastSeenMs": 22000.0,
+                        "framesPerSec": 0.0,
+                    }
+                }
+            },
+            runtime_device={
+                "label": "cancoder",
+                "presenceConfidence": 1.0,
+                "lastSeenMs": 1000.0,
+            },
+            console_entry=None,
+            system_console={},
+            manual_entry=None,
+            manual_observation=None,
+            manual_motion=None,
+            probe_pending=False,
+            last_probe_completed_at=0.0,
+            probe_run_count=0,
+            now_s=80.0,
+            visibility_last_seen_text="58s",
+            visibility_packet_count_text="28339",
+            visibility_packet_rate_text="0.0/s",
+        )
+
+        self.assertEqual("ABSENT", row["existence"])
+        self.assertEqual("FAILED", row["operability"])
+        self.assertEqual("missing", row["presenceState"])
+        self.assertIn(
+            "Runtime presence evidence is stale and is being treated as historical only.",
+            row["notesText"],
+        )
+
     def test_build_evidence_fault_snapshot_freezes_rows_and_rendered_result(self) -> None:
         snapshot = build_evidence_fault_snapshot(
             evidence_rows=[

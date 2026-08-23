@@ -228,12 +228,20 @@ Purpose: Describe the current Selection-pane behavior in the CAN Visibility tab.
 
 - While connected, the UI treats mismatched local-vs-robot profile/test context as an explicit `Out Of Sync` state instead of silently switching either side.
 
-- In `Out Of Sync` state, Bringup Control shows a persistent warning banner with `Resolve...`.
+- In `Out Of Sync` state, Bringup Control shows a compact LED-only header sync indicator beside the profile dropdown instead of a text warning sentence.
+
+  - green: host and robot context match
+  - red: host and robot context differ
+  - neutral: transport or handshake state is not ready yet
 
 - `Resolve...` offers only explicit operator choices:
   - `Yes`: use robot context in the UI only
   - `No`: apply the current UI profile to the robot by deactivating runtime first and then sending profile selection
   - `Cancel`: keep editing locally without changing either side
+
+- The compact sync indicator stays visible in the header at all times.
+
+- The UI does not auto-open the mismatch popup just because robot/runtime state changed; the dialog opens only from a blocked action that requires mismatch resolution.
 
 - `Out Of Sync` does not auto-reactivate runtime after robot-side profile selection.
 
@@ -469,6 +477,10 @@ Current consequence:
 - profile runtime devices are deactivated with the active profile runtime
 
 - app-owned singleton-backed allocations may still remain allocated at app lifetime
+
+- robot-side selected-test state is cleared as part of the runtime/core reset path
+
+- after `Runtime Deactivate`, no robot-selected test may remain armed until the operator explicitly selects or runs one again
 
 - there is not intended to be a separate class of active non-profile runtime devices left untouched by this path
 
@@ -1116,6 +1128,8 @@ Current status panels are computed host-side from:
 
 - `active-group` membership and presence
 
+- host-vs-robot context mismatch state
+
   
 
 Current simplified decision flow:
@@ -1126,7 +1140,9 @@ Current simplified decision flow:
 
 2. If a scope transition is pending, show a resync/not-runnable state.
 
-3. If the robot is E-stopped, disabled, stale, or blocked by scope/test rules, show not-runnable with that reason.
+3. If host-vs-robot profile context is mismatched, the panel remains one of the primary operator-facing places to explain that mismatch.
+
+4. If the robot is E-stopped, disabled, stale, or blocked by scope/test rules, show not-runnable with that reason.
 
 4. If the current scope kind is `selected test`, evaluate selected-test readiness rules.
 
@@ -1151,6 +1167,20 @@ Current important consequence:
   
 
 Purpose: Describe what the right-side group panels actually show.
+
+## Live Topology Lenses
+
+Purpose: Describe the current truth source for each Live Topology lens.
+
+Current behavior:
+
+- `Evidence` is the device-truth lens shared with `CAN Fault Finder` device conclusions.
+
+- `CAN Fault Finder` may add fault-region ranking, suspect boundaries, and next-step detail, but it should not disagree with the Live Topology `Evidence` lens about per-device present/missing/conflict truth.
+
+- `Runtime` is the raw robot-local runtime/presence lens.
+
+- `CAN Visibility` is the raw passive observer visibility lens.
 
   
 
@@ -1311,6 +1341,8 @@ Purpose: Describe common operator scenarios and the code-driven behavior they sh
 - The selected test can be selected and edited offline or while scope is inactive without rewriting `active-group`.
 
 - When the operator highlights a test in the Tests tab, that local choice remains the authoritative `Current Test` in the UI even if the connected robot has not loaded that test into its current runnable test set.
+
+- Runtime/core reset paths do not preserve the robot-side selected test; the host may still show the local current test, but robot-side selection must return to none until an explicit command reloads it.
 
 - In that robot-unknown case, the UI must not keep an older robot-known test as `Current Test`; it should keep the newly selected local test visible and block robot-side selection/run actions with the explicit `not loaded on robot` reason.
 

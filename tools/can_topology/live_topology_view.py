@@ -295,6 +295,8 @@ EVIDENCE_STATE_FAILED = "failed"
 EVIDENCE_STATE_MISSING = "missing"
 EVIDENCE_STATE_UNKNOWN = "unknown"
 EVIDENCE_STATE_IDENTITY = "identity"
+EVIDENCE_PRESENCE_PRESENT = "present"
+EVIDENCE_PRESENCE_CONFLICT = "conflict"
 EVIDENCE_COLOR_OK = "#2f7a2f"
 EVIDENCE_COLOR_DEGRADED = "#d97706"
 EVIDENCE_COLOR_FAILED = "#dc2626"
@@ -1828,7 +1830,7 @@ class LiveTopologyView(ttk.Frame):
     def set_evidence_snapshot(self, evidence_state: Optional[Dict[str, str]]) -> None:
         """
         NAME
-            set_evidence_snapshot - Apply interpreted evidence states for node coloring.
+            set_evidence_snapshot - Apply interpreted device-truth states for node coloring.
         """
         normalized: Dict[str, str] = {}
         if isinstance(evidence_state, dict):
@@ -3617,9 +3619,13 @@ class LiveTopologyView(ttk.Frame):
     def _evidence_fill(self, node: LiveNode) -> Optional[str]:
         """
         NAME
-            _evidence_fill - Resolve fill color from interpreted evidence state.
+            _evidence_fill - Resolve fill color from interpreted device-truth state.
         """
         state = self._evidence_state.get(node.label.lower())
+        if state == EVIDENCE_PRESENCE_PRESENT:
+            return EVIDENCE_COLOR_OK
+        if state == EVIDENCE_PRESENCE_CONFLICT:
+            return EVIDENCE_COLOR_FAILED
         if state == EVIDENCE_STATE_OK:
             return EVIDENCE_COLOR_OK
         if state == EVIDENCE_STATE_DEGRADED:

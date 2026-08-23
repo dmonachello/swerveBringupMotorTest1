@@ -7,18 +7,20 @@ from __future__ import annotations
 
 import json
 import subprocess
+from datetime import datetime
 from hashlib import sha256
 from pathlib import Path
 from time import time
 
-BUILD_GIT_DESCRIBE = "ui-test-sync-passive-visibility-fixes-2026-08-17-1-g2cf6361-dirty"
-BUILD_REVISION = "285"
-BUILD_WORKSPACE_REVISION = "68"
-BUILD_CODE_REVISION = "8562676acca3"
-BUILD_GIT_SHA = "2cf6361"
+BUILD_GIT_DESCRIBE = "robotcontroller-family-checkpoint-2026-08-21-dirty"
+BUILD_REVISION = "286"
+BUILD_WORKSPACE_REVISION = "82"
+BUILD_CODE_REVISION = "72c828ccfbf0"
+BUILD_GIT_SHA = "eeffbd8"
 BUILD_GIT_BRANCH = "main"
 BUILD_GIT_DIRTY = "dirty"
-BUILD_TIMESTAMP = "2026-08-21T11:13:47-04:00"
+BUILD_TIMESTAMP = "2026-08-23T13:57:18-04:00"
+BUILD_COMMIT_TIMESTAMP = "2026-08-21T15:17:58-04:00"
 
 BUILD_LABEL_REVISION = "build-revision"
 BUILD_LABEL_WORKSPACE_REVISION = "workspace-revision"
@@ -28,6 +30,7 @@ BUILD_LABEL_SHA = "git-sha"
 BUILD_LABEL_BRANCH = "git-branch"
 BUILD_LABEL_DIRTY = "git-dirty"
 BUILD_LABEL_TIME = "build-time"
+BUILD_LABEL_COMMIT_TIME = "commit-time"
 
 BUILD_SEPARATOR = ": "
 TEXT_EMPTY = ""
@@ -65,10 +68,12 @@ KEY_SHA = "sha"
 KEY_BRANCH = "branch"
 KEY_DIRTY = "dirty"
 KEY_TIME = "time"
+KEY_COMMIT_TIME = "commit_time"
 VALUE_DIRTY = "dirty"
 VALUE_CLEAN = "clean"
 VALUE_ONE = 1
 VALUE_ZERO = 0
+TIME_SPEC_SECONDS = "seconds"
 STATE_KEY_WORKSPACE_REVISION = "workspaceRevision"
 STATE_KEY_CODE_REVISION = "codeRevision"
 STATE_KEY_UPDATED_AT_MS = "updatedAtMs"
@@ -83,6 +88,7 @@ BUILD_FIELDS_ORDER = (
     BUILD_LABEL_BRANCH,
     BUILD_LABEL_DIRTY,
     BUILD_LABEL_TIME,
+    BUILD_LABEL_COMMIT_TIME,
 )
 
 KEY_BUILD = "build"
@@ -106,6 +112,7 @@ def _generated_build_info() -> dict[str, str]:
         BUILD_LABEL_BRANCH: BUILD_GIT_BRANCH,
         BUILD_LABEL_DIRTY: BUILD_GIT_DIRTY,
         BUILD_LABEL_TIME: BUILD_TIMESTAMP,
+        BUILD_LABEL_COMMIT_TIME: BUILD_COMMIT_TIMESTAMP,
     }
 
 
@@ -221,7 +228,8 @@ def _runtime_git_info() -> dict[str, str] | None:
     sha = _run_git([ARG_REV_PARSE, ARG_SHORT, ARG_HEAD])
     branch = _run_git([ARG_REV_PARSE, ARG_ABBREV_REF, ARG_HEAD])
     dirty = VALUE_DIRTY if _run_git([ARG_STATUS, ARG_PORCELAIN]) else VALUE_CLEAN
-    timestamp = _run_git([ARG_LOG, ARG_LOG_LAST, ARG_FORMAT])
+    commit_timestamp = _run_git([ARG_LOG, ARG_LOG_LAST, ARG_FORMAT])
+    timestamp = datetime.now().astimezone().isoformat(timespec=TIME_SPEC_SECONDS)
     code_revision = _compute_code_revision()
     workspace_revision = _compute_workspace_revision(code_revision)
     if not revision and not sha and not describe:
@@ -237,6 +245,7 @@ def _runtime_git_info() -> dict[str, str] | None:
         KEY_BRANCH: branch or TEXT_UNKNOWN,
         KEY_DIRTY: dirty or TEXT_UNKNOWN,
         KEY_TIME: timestamp or TEXT_UNKNOWN,
+        KEY_COMMIT_TIME: commit_timestamp or TEXT_UNKNOWN,
     }
 
 
@@ -257,6 +266,7 @@ def _load_build_info() -> dict[str, str]:
         BUILD_LABEL_BRANCH: runtime_info[KEY_BRANCH],
         BUILD_LABEL_DIRTY: runtime_info[KEY_DIRTY],
         BUILD_LABEL_TIME: runtime_info[KEY_TIME],
+        BUILD_LABEL_COMMIT_TIME: runtime_info[KEY_COMMIT_TIME],
     }
 
 

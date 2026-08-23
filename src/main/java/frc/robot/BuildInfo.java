@@ -7,14 +7,15 @@ package frc.robot;
 public final class BuildInfo {
   private BuildInfo() {}
 
-  public static final String BUILD_GIT_DESCRIBE = "ui-test-sync-passive-visibility-fixes-2026-08-17-1-g2cf6361-dirty";
-  public static final String BUILD_REVISION = "285";
-  public static final String BUILD_WORKSPACE_REVISION = "68";
-  public static final String BUILD_CODE_REVISION = "8562676acca3";
-  public static final String BUILD_GIT_SHA = "2cf6361";
+  public static final String BUILD_GIT_DESCRIBE = "robotcontroller-family-checkpoint-2026-08-21-dirty";
+  public static final String BUILD_REVISION = "286";
+  public static final String BUILD_WORKSPACE_REVISION = "82";
+  public static final String BUILD_CODE_REVISION = "72c828ccfbf0";
+  public static final String BUILD_GIT_SHA = "eeffbd8";
   public static final String BUILD_GIT_BRANCH = "main";
   public static final String BUILD_GIT_DIRTY = "dirty";
-  public static final String BUILD_TIMESTAMP = "2026-08-21T11:13:47-04:00";
+  public static final String BUILD_TIMESTAMP = "2026-08-23T13:57:18-04:00";
+  public static final String BUILD_COMMIT_TIMESTAMP = "2026-08-21T15:17:58-04:00";
 
   public static final String BUILD_LABEL_REVISION = "build-revision";
   public static final String BUILD_LABEL_WORKSPACE_REVISION = "workspace-revision";
@@ -24,6 +25,7 @@ public final class BuildInfo {
   public static final String BUILD_LABEL_BRANCH = "git-branch";
   public static final String BUILD_LABEL_DIRTY = "git-dirty";
   public static final String BUILD_LABEL_TIME = "build-time";
+  public static final String BUILD_LABEL_COMMIT_TIME = "commit-time";
 
   public static final String BUILD_SEPARATOR = ": ";
   public static final String BOOT_PREFIX = "BOOT ";

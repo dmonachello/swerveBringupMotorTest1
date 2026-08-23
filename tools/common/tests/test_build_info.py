@@ -6,8 +6,10 @@ NAME
 import unittest
 
 from tools.common.build_info import (
+    BUILD_LABEL_COMMIT_TIME,
     BUILD_LABEL_CODE_REVISION,
     BUILD_LABEL_REVISION,
+    BUILD_LABEL_TIME,
     BUILD_LABEL_WORKSPACE_REVISION,
     KEY_BUILD_FIELDS,
     KEY_BUILD_LABEL,
@@ -35,6 +37,19 @@ class BuildInfoTests(unittest.TestCase):
         self.assertTrue(str(fields[1][KEY_BUILD_VALUE]).strip())
         self.assertEqual(BUILD_LABEL_CODE_REVISION, fields[2][KEY_BUILD_LABEL])
         self.assertTrue(str(fields[2][KEY_BUILD_VALUE]).strip())
+
+    def test_build_payload_includes_build_and_commit_time_fields(self) -> None:
+        payload = build_info_payload()
+        fields = payload[KEY_BUILD_FIELDS]
+        labels = [field[KEY_BUILD_LABEL] for field in fields]
+
+        self.assertIn(BUILD_LABEL_TIME, labels)
+        self.assertIn(BUILD_LABEL_COMMIT_TIME, labels)
+
+        build_time_index = labels.index(BUILD_LABEL_TIME)
+        commit_time_index = labels.index(BUILD_LABEL_COMMIT_TIME)
+        self.assertTrue(str(fields[build_time_index][KEY_BUILD_VALUE]).strip())
+        self.assertTrue(str(fields[commit_time_index][KEY_BUILD_VALUE]).strip())
 
 
 if __name__ == "__main__":

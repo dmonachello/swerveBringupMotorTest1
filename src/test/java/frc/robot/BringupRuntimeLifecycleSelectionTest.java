@@ -370,8 +370,9 @@ class BringupRuntimeLifecycleSelectionTest {
   }
 
   @Test
-  void restoreSelectedTestSelectionPreservesNamedTestAcrossCoreReplacement() throws Exception {
-    BringupCore core = new BringupCore(new SampledTelemetrySampler(), new DeviceLifecycleRegistry());
+  void replaceCoreLeavesSelectedTestUnsetAfterRuntimeReset() throws Exception {
+    BringupRuntime runtime = new BringupRuntime(new CanBusHealth(), "runTest");
+    BringupCore core = runtime.getCore();
     List<BringupTest> tests =
         List.of(
             fakeTest("test_minimal_25_9_spark25_leftY"),
@@ -396,9 +397,13 @@ class BringupRuntimeLifecycleSelectionTest {
     refreshSelectableTests.setAccessible(true);
     refreshSelectableTests.invoke(core, "newTests_123");
 
-    BringupRuntime.restoreSelectedTestSelection(core, "newTests_123");
-
     assertEquals("newTests_123", core.getSelectedBringupTestName());
+
+    Method replaceCore = BringupRuntime.class.getDeclaredMethod("replaceCore");
+    replaceCore.setAccessible(true);
+    replaceCore.invoke(runtime);
+
+    assertEquals("", runtime.getCore().getSelectedBringupTestName());
   }
 
   private static DeviceLifecycleRegistry.DeviceLifecycleView deviceLifecycleView(

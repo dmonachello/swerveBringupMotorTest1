@@ -1122,13 +1122,8 @@ public class BridgeUiCommandHandler {
       }
 
       @Override
-      public double getLastNeoSpeed() {
-        return lastNeoSpeed;
-      }
-
-      @Override
-      public double getLastKrakenSpeed() {
-        return lastKrakenSpeed;
+      public String buildInputsReportText() {
+        return core().buildInputsReportText();
       }
 
       @Override
@@ -1402,12 +1397,7 @@ public class BridgeUiCommandHandler {
 
           @Override
           public void printInputs() {
-            String report = String.format(
-                "Inputs: leftY=%.2f rightY=%.2f (NEO/FLEX=%.2f, KRAKEN/FALCON=%.2f)",
-                lastNeoSpeed,
-                lastKrakenSpeed,
-                lastNeoSpeed,
-                lastKrakenSpeed);
+            String report = core().buildInputsReportText();
             runtime.requestTextReport(report, 4);
           }
 
@@ -3215,6 +3205,10 @@ public class BridgeUiCommandHandler {
         .append(BuildInfo.formatBuildLine(BuildInfo.BUILD_LABEL_DIRTY, BuildInfo.BUILD_GIT_DIRTY));
     sb.append(BuildInfo.TEXT_NEWLINE)
         .append(BuildInfo.formatBuildLine(BuildInfo.BUILD_LABEL_TIME, BuildInfo.BUILD_TIMESTAMP));
+    sb.append(BuildInfo.TEXT_NEWLINE)
+        .append(
+            BuildInfo.formatBuildLine(
+                BuildInfo.BUILD_LABEL_COMMIT_TIME, BuildInfo.BUILD_COMMIT_TIMESTAMP));
   }
 
   /**
@@ -3234,6 +3228,9 @@ public class BridgeUiCommandHandler {
     fields.add(buildBuildField(BuildInfo.BUILD_LABEL_BRANCH, BuildInfo.BUILD_GIT_BRANCH));
     fields.add(buildBuildField(BuildInfo.BUILD_LABEL_DIRTY, BuildInfo.BUILD_GIT_DIRTY));
     fields.add(buildBuildField(BuildInfo.BUILD_LABEL_TIME, BuildInfo.BUILD_TIMESTAMP));
+    fields.add(
+        buildBuildField(
+            BuildInfo.BUILD_LABEL_COMMIT_TIME, BuildInfo.BUILD_COMMIT_TIMESTAMP));
     root.add(JSON_KEY_BUILD_FIELDS, fields);
     return root;
   }

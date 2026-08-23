@@ -14,6 +14,7 @@ import subprocess
 import sys
 from hashlib import sha256
 from pathlib import Path
+from datetime import datetime
 from time import time
 from typing import Dict, Iterable, List, Tuple
 
@@ -53,6 +54,7 @@ FIELD_SHA = "sha"
 FIELD_BRANCH = "branch"
 FIELD_DIRTY = "dirty"
 FIELD_TIME = "timestamp"
+FIELD_COMMIT_TIME = "commit_timestamp"
 
 VALUE_UNKNOWN = "unknown"
 VALUE_DIRTY = "dirty"
@@ -66,6 +68,7 @@ PY_KEY_SHA = "BUILD_GIT_SHA"
 PY_KEY_BRANCH = "BUILD_GIT_BRANCH"
 PY_KEY_DIRTY = "BUILD_GIT_DIRTY"
 PY_KEY_TIME = "BUILD_TIMESTAMP"
+PY_KEY_COMMIT_TIME = "BUILD_COMMIT_TIMESTAMP"
 
 JAVA_KEY_DESCRIBE = "BUILD_GIT_DESCRIBE"
 JAVA_KEY_REVISION = "BUILD_REVISION"
@@ -75,6 +78,7 @@ JAVA_KEY_SHA = "BUILD_GIT_SHA"
 JAVA_KEY_BRANCH = "BUILD_GIT_BRANCH"
 JAVA_KEY_DIRTY = "BUILD_GIT_DIRTY"
 JAVA_KEY_TIME = "BUILD_TIMESTAMP"
+JAVA_KEY_COMMIT_TIME = "BUILD_COMMIT_TIMESTAMP"
 
 JAVA_PREFIX_MATCH = "public static final String "
 JAVA_PREFIX_WRITE = "  public static final String "
@@ -96,6 +100,7 @@ LABEL_GIT_SHA = "git-sha"
 LABEL_GIT_BRANCH = "git-branch"
 LABEL_GIT_DIRTY = "git-dirty"
 LABEL_BUILD_TIME = "build-time"
+LABEL_COMMIT_TIME = "commit-time"
 MSG_PREFIX_SEP = " "
 MSG_LABEL_SEP = ": "
 CODE_HASH_LENGTH = 12
@@ -253,7 +258,8 @@ def _load_git_info(persist_workspace_state: bool) -> Dict[str, str]:
     revision = _git_value([ARG_REV_LIST, ARG_COUNT, ARG_HEAD])
     sha = _git_value([ARG_REV_PARSE, ARG_SHORT, ARG_HEAD])
     branch = _git_value([ARG_REV_PARSE, ARG_ABBREV_REF, ARG_HEAD])
-    timestamp = _git_value([ARG_LOG, ARG_LOG_LAST, ARG_FORMAT])
+    commit_timestamp = _git_value([ARG_LOG, ARG_LOG_LAST, ARG_FORMAT])
+    timestamp = datetime.now().astimezone().isoformat(timespec="seconds")
     dirty = _detect_dirty()
     code_revision = _compute_code_revision()
     workspace_revision = _compute_workspace_revision(code_revision, persist_workspace_state)
@@ -268,6 +274,7 @@ def _load_git_info(persist_workspace_state: bool) -> Dict[str, str]:
         FIELD_BRANCH: branch or VALUE_UNKNOWN,
         FIELD_DIRTY: dirty or VALUE_UNKNOWN,
         FIELD_TIME: timestamp or VALUE_UNKNOWN,
+        FIELD_COMMIT_TIME: commit_timestamp or VALUE_UNKNOWN,
     }
 
 
@@ -286,6 +293,7 @@ def _update_python_build_info(path: Path, info: Dict[str, str]) -> None:
         PY_KEY_BRANCH: info[FIELD_BRANCH],
         PY_KEY_DIRTY: info[FIELD_DIRTY],
         PY_KEY_TIME: info[FIELD_TIME],
+        PY_KEY_COMMIT_TIME: info[FIELD_COMMIT_TIME],
     }
     new_lines: List[str] = []
     for line in lines:
@@ -314,6 +322,7 @@ def _update_java_build_info(path: Path, info: Dict[str, str]) -> None:
         JAVA_KEY_BRANCH: info[FIELD_BRANCH],
         JAVA_KEY_DIRTY: info[FIELD_DIRTY],
         JAVA_KEY_TIME: info[FIELD_TIME],
+        JAVA_KEY_COMMIT_TIME: info[FIELD_COMMIT_TIME],
     }
     new_lines: List[str] = []
     for line in lines:
@@ -344,6 +353,7 @@ def _print_info(info: Dict[str, str], dry_run: bool) -> None:
     print(prefix + MSG_PREFIX_SEP + LABEL_GIT_BRANCH + MSG_LABEL_SEP + info[FIELD_BRANCH])
     print(prefix + MSG_PREFIX_SEP + LABEL_GIT_DIRTY + MSG_LABEL_SEP + info[FIELD_DIRTY])
     print(prefix + MSG_PREFIX_SEP + LABEL_BUILD_TIME + MSG_LABEL_SEP + info[FIELD_TIME])
+    print(prefix + MSG_PREFIX_SEP + LABEL_COMMIT_TIME + MSG_LABEL_SEP + info[FIELD_COMMIT_TIME])
 
 
 def main(argv: Iterable[str] | None = None) -> int:

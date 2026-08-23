@@ -861,6 +861,7 @@ PROFILE_CONTEXT_MISSING_LOCAL_FMT = (
     "Local UI profile: '{host}'.\n\n"
     "Open the matching config or switch the robot/UI to a shared profile name."
 )
+RUNNABLE_PROFILE_SYNC_MISMATCH_FMT = "Robot profile mismatch: {robot}. Resolve mismatch or switch the local profile."
 CONTEXT_SYNC_TITLE = "System Out Of Sync"
 CONTEXT_SYNC_SUMMARY = "System is out of sync."
 CONTEXT_SYNC_PROMPT_FMT = (
@@ -876,6 +877,12 @@ CONTEXT_SYNC_BLOCKED_FMT = (
     "The robot context cannot be matched by the currently open local config/test library."
 )
 CONTEXT_SYNC_BUTTON_LABEL = "Resolve..."
+CONTEXT_SYNC_STATUS_OK = "SYNC OK"
+CONTEXT_SYNC_STATUS_WAITING = "SYNC WAITING"
+CONTEXT_SYNC_STATUS_MISMATCH = "SYNC MISMATCH"
+CONTEXT_SYNC_LED_COLOR_OK = "#166534"
+CONTEXT_SYNC_LED_COLOR_WAITING = "#9ca3af"
+CONTEXT_SYNC_LED_COLOR_MISMATCH = "#991b1b"
 CONTEXT_SYNC_ALLOWED_ACTIONS = {"runtimedeactivate", "pushconfig"}
 CONTEXT_SYNC_BLOCKED_ACTIONS = {
     "runtimeactivate",
@@ -2824,6 +2831,32 @@ class BringupControlUI(tk.Tk):
         profile_box.bind("<<ComboboxSelected>>", self._on_profile_selected)
         ttk.Label(header, text="Profile").pack(side="left", padx=(16, 4))
         profile_box.pack(side="left")
+        context_sync_frame = tk.Frame(
+            header,
+            bg=NOTICE_COLOR_INFO_BG,
+            highlightbackground=TEST_SCOPE_PANEL_BORDER,
+            highlightthickness=1,
+            bd=0,
+            padx=4,
+            pady=4,
+        )
+        context_sync_led = tk.Canvas(
+            context_sync_frame,
+            width=12,
+            height=12,
+            highlightthickness=0,
+            bd=0,
+            bg=NOTICE_COLOR_INFO_BG,
+        )
+        context_sync_led_item = context_sync_led.create_oval(
+            2, 2, 10, 10, fill=CONTEXT_SYNC_LED_COLOR_WAITING, outline=CONTEXT_SYNC_LED_COLOR_WAITING
+        )
+        context_sync_led.pack(side="left")
+        self._context_sync_frame = context_sync_frame
+        self._context_sync_led = context_sync_led
+        self._context_sync_led_item = context_sync_led_item
+        self._context_sync_banner_visible = True
+        context_sync_frame.pack(side="left", padx=(6, 0))
         ttk.Button(header, text="Refresh", command=self._refresh_profiles).pack(
             side="left", padx=(6, 0)
         )
@@ -2864,36 +2897,6 @@ class BringupControlUI(tk.Tk):
             textvariable=self._scope_context_var,
             foreground="#374151",
         ).pack(side="left", padx=(12, 0))
-        self._context_sync_banner_var = tk.StringVar(value="")
-        context_sync_frame = tk.Frame(
-            header,
-            bg=NOTICE_COLOR_WARN_BG,
-            highlightbackground=TEST_SCOPE_PANEL_BORDER,
-            highlightthickness=1,
-            bd=0,
-            padx=8,
-            pady=4,
-        )
-        context_sync_label = tk.Label(
-            context_sync_frame,
-            textvariable=self._context_sync_banner_var,
-            bg=NOTICE_COLOR_WARN_BG,
-            fg=NOTICE_COLOR_WARN_FG,
-            anchor="w",
-            justify="left",
-        )
-        context_sync_label.pack(side="left")
-        context_sync_button = ttk.Button(
-            context_sync_frame,
-            text=CONTEXT_SYNC_BUTTON_LABEL,
-            command=lambda: self._show_context_sync_resolution(trigger="banner"),
-        )
-        context_sync_button.pack(side="left", padx=(8, 0))
-        self._context_sync_frame = context_sync_frame
-        self._context_sync_label = context_sync_label
-        self._context_sync_button = context_sync_button
-        self._context_sync_banner_visible = False
-
         self._selected_test_var = tk.StringVar(value=tests[0])
         self._running_text_var = tk.StringVar(value=TEST_LIBRARY_RUNNING_DEFAULT)
         self._last_result_text_var = tk.StringVar(value=TEST_LIBRARY_LAST_RESULT_DEFAULT)
@@ -4927,6 +4930,20 @@ class BringupControlUI(tk.Tk):
             _context_sync_signature - Return one stable mismatch signature for prompt de-duplication.
         """
         state = self._context_sync_state()
+        ui_profile = _normalize_profile_name(getattr(state, "ui_profile", PROFILE_NONE))
+        robot_profile = _normalize_profile_name(getattr(state, "robot_profile", PROFILE_NONE))
+        robot_runtime_profile = _normalize_profile_name(
+            getattr(state, "robot_runtime_profile", PROFILE_NONE)
+        )
+        profile_mismatch = robot_profile != PROFILE_NONE and ui_profile != robot_profile
+        if profile_mismatch:
+            return (
+                ui_profile,
+                robot_profile,
+                robot_runtime_profile,
+                PROFILE_NONE,
+                PROFILE_NONE,
+            )
         return (
             state.ui_profile,
             state.robot_profile,
@@ -4934,6 +4951,20 @@ class BringupControlUI(tk.Tk):
             state.ui_test,
             state.robot_test,
         )
+
+    def _profile_context_mismatch_detail(self) -> str:
+        """
+        NAME
+            _profile_context_mismatch_detail - Return one operator-facing profile mismatch detail line.
+        """
+        state = self._context_sync_state()
+        if not bool(getattr(state, "out_of_sync", False)):
+            return ""
+        ui_profile = _normalize_profile_name(getattr(state, "ui_profile", PROFILE_NONE))
+        robot_profile = _normalize_profile_name(getattr(state, "robot_profile", PROFILE_NONE))
+        if robot_profile == PROFILE_NONE or ui_profile == robot_profile:
+            return ""
+        return RUNNABLE_PROFILE_SYNC_MISMATCH_FMT.format(robot=robot_profile)
 
     def _robot_context_available_locally(self, profile_name: str, test_name: str) -> bool:
         """
@@ -4961,24 +4992,37 @@ class BringupControlUI(tk.Tk):
     def _refresh_context_sync_banner(self) -> None:
         """
         NAME
-            _refresh_context_sync_banner - Render or hide the persistent out-of-sync banner.
+            _refresh_context_sync_banner - Update the compact LED-only sync indicator state.
         """
         frame = self.__dict__.get("_context_sync_frame")
-        banner_var = self.__dict__.get("_context_sync_banner_var")
-        if frame is None or banner_var is None:
+        led = self.__dict__.get("_context_sync_led")
+        led_item = self.__dict__.get("_context_sync_led_item")
+        if frame is None or led is None or led_item is None:
             return
         state = self._context_sync_state()
-        if not state.out_of_sync:
-            banner_var.set("")
-            if self.__dict__.get("_context_sync_banner_visible", False):
-                frame.pack_forget()
-                self._context_sync_banner_visible = False
+        transport_connected = bool(self.__dict__.get("_tcp_connected", False))
+        handshake_ready = bool(self.__dict__.get("_handshake_done", False))
+        if not transport_connected or not handshake_ready:
+            bg = NOTICE_COLOR_INFO_BG
+            led_color = CONTEXT_SYNC_LED_COLOR_WAITING
+        elif state.out_of_sync:
+            bg = NOTICE_COLOR_ERROR_BG
+            led_color = CONTEXT_SYNC_LED_COLOR_MISMATCH
+        else:
+            bg = TEST_SCOPE_PANEL_READY_BG
+            led_color = CONTEXT_SYNC_LED_COLOR_OK
             self._last_context_sync_prompt = None
-            return
-        banner_var.set(f"{state.summary} {state.detail}")
-        if not self.__dict__.get("_context_sync_banner_visible", False):
-            frame.pack(side="left", padx=(12, 0))
-            self._context_sync_banner_visible = True
+        frame.configure(bg=bg)
+        led.configure(bg=bg)
+        led.itemconfigure(led_item, fill=led_color, outline=led_color)
+        self._context_sync_banner_visible = True
+
+    def _refresh_profile_sync_indicator(self) -> None:
+        """
+        NAME
+            _refresh_profile_sync_indicator - Legacy no-op retained for test-safe call sites.
+        """
+        return
 
     def _apply_host_test_context_only(self, test_name: object) -> None:
         """
@@ -5159,7 +5203,7 @@ class BringupControlUI(tk.Tk):
             _runnable_scope_state - Return the shared runnable-scope decision state.
         """
         context = self._ui_context_state()
-        return resolve_runnable_scope_state(
+        state = resolve_runnable_scope_state(
             scope_kind=context.scope_kind,
             local_selected_profile=context.local_selected_profile,
             local_profile_required=self.__dict__.get("_profile_box") is not None,
@@ -5172,6 +5216,22 @@ class BringupControlUI(tk.Tk):
             manual_group_empty=self._manual_active_group_is_empty(),
             scope_active=self._scope_is_currently_active(),
             transition_pending=self._scope_transition_pending(),
+        )
+        mismatch_detail = self._profile_context_mismatch_detail()
+        if not mismatch_detail:
+            return state
+        return RunnableScopeState(
+            scope_kind=state.scope_kind,
+            headline=state.headline,
+            detail=mismatch_detail,
+            level=state.level,
+            blocked_reason=mismatch_detail,
+            activation_notice=state.activation_notice,
+            activation_allowed=state.activation_allowed,
+            deactivation_allowed=state.deactivation_allowed,
+            scope_active=state.scope_active,
+            runtime_state_seen=state.runtime_state_seen,
+            transition_pending=state.transition_pending,
         )
 
     def _scope_transition_pending(self) -> bool:
@@ -5400,14 +5460,11 @@ class BringupControlUI(tk.Tk):
     def _maybe_prompt_host_profile_context_sync(self) -> None:
         """
         NAME
-            _maybe_prompt_host_profile_context_sync - Surface out-of-sync UI/robot context and offer explicit resolution.
+            _maybe_prompt_host_profile_context_sync - Refresh sync indicators without opening an automatic popup.
         """
         if bool(self.__dict__.get("_suppress_host_profile_context_sync", HOST_PROFILE_SYNC_NOT_SUPPRESSED)):
             return
         self._refresh_context_sync_banner()
-        if _normalize_profile_name(self.__dict__.get("_pending_robot_profile_selection", PROFILE_NONE)) != PROFILE_NONE:
-            return
-        self._show_context_sync_resolution(trigger="auto")
 
     def _apply_profile_selection(self, profile_name: object, reload_views: bool) -> None:
         """
@@ -8508,7 +8565,9 @@ class BringupControlUI(tk.Tk):
         filter_key = self._selected_evidence_filter_key()
         shown_rows = [row for row in rows if self._evidence_matches_filter(row, filter_key)]
         evidence_snapshot = {
-            str(row.get("label", NT_VALUE_EMPTY)).strip().lower(): str(row.get("state", EVIDENCE_STATE_UNKNOWN)).strip().lower()
+            str(row.get("label", NT_VALUE_EMPTY)).strip().lower(): str(
+                row.get("presenceState", row.get("state", EVIDENCE_STATE_UNKNOWN))
+            ).strip().lower()
             for row in rows
         }
         evidence_detail_snapshot = {
@@ -11354,7 +11413,7 @@ class BringupControlUI(tk.Tk):
             "  Live overlay is read-only and does not send commands.",
             "",
             "Lens:",
-            "  - Evidence: interpreted device-state lens shared with the Evidence tab.",
+            "  - Evidence: device-truth lens shared with CAN Fault Finder conclusions; Fault Finder adds fault-location detail on top of it.",
             "  - Runtime: direct runtime/presence lens from robot-local state.",
             "  - CAN Visibility: passive observer visibility lens.",
             "",
@@ -14904,20 +14963,7 @@ class BringupControlUI(tk.Tk):
         NAME
             _apply_live_runtime_notice_from_runtime_state - Surface current runtime state directly in Live Topology.
         """
-        state = resolve_runnable_scope_state(
-            scope_kind=self._runnable_scope_kind(),
-            local_selected_profile=self._selected_profile_name(),
-            local_profile_required=self.__dict__.get("_profile_box") is not None,
-            tcp_connected=bool(self.__dict__.get("_tcp_connected", True)),
-            runtime_state_seen=True,
-            stale_state=bool(stale_state),
-            robot_enabled=bool(enabled),
-            robot_estopped=bool(estopped),
-            robot_mode=str(self.__dict__.get("_robot_mode_known", "") or "").strip().lower(),
-            manual_group_empty=self._manual_active_group_is_empty(),
-            scope_active=self._scope_is_currently_active(),
-            transition_pending=self._scope_transition_pending(),
-        )
+        state = self._runnable_scope_state(bool(stale_state))
         if should_clear_runtime_event_notice(
             self.__dict__.get("_runtime_event_notice_text", NT_VALUE_EMPTY),
             state,

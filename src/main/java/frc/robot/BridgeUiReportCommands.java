@@ -25,8 +25,6 @@ final class BridgeUiReportCommands implements BridgeUiCommandDispatcher.CommandF
 
   private static final String JSON_KEY_JSON = "json";
   private static final String MESSAGE_DIAGNOSTICS_UNAVAILABLE = "Diagnostics unavailable.";
-  private static final String TEXT_INPUTS_REPORT_TEMPLATE =
-      "Inputs: leftY=%.2f rightY=%.2f (NEO/FLEX=%.2f, KRAKEN/FALCON=%.2f)";
 
   private static final Set<String> COMMANDS = Set.of(
       CMD_PRINT_STATE,
@@ -56,9 +54,7 @@ final class BridgeUiReportCommands implements BridgeUiCommandDispatcher.CommandF
 
     String buildCANCoderReportText();
 
-    double getLastNeoSpeed();
-
-    double getLastKrakenSpeed();
+    String buildInputsReportText();
 
     String printBindings();
 
@@ -136,9 +132,7 @@ final class BridgeUiReportCommands implements BridgeUiCommandDispatcher.CommandF
         result.outText = emitReport(dependencies.buildCANCoderReportText(), 4);
         break;
       case CMD_PRINT_INPUTS:
-        result.outText = emitReport(
-            buildInputsReportText(dependencies.getLastNeoSpeed(), dependencies.getLastKrakenSpeed()),
-            4);
+        result.outText = emitReport(dependencies.buildInputsReportText(), 4);
         break;
       case CMD_PRINT_BINDINGS:
         result.outText = dependencies.printBindings();
@@ -175,10 +169,6 @@ final class BridgeUiReportCommands implements BridgeUiCommandDispatcher.CommandF
   private String emitReport(String text, int batchSize) {
     dependencies.requestTextReport(text, batchSize);
     return text;
-  }
-
-  private String buildInputsReportText(double neoSpeed, double krakenSpeed) {
-    return String.format(TEXT_INPUTS_REPORT_TEMPLATE, neoSpeed, krakenSpeed, neoSpeed, krakenSpeed);
   }
 
   private void executePrintCanDiag(BridgeUiCommandResult result) {

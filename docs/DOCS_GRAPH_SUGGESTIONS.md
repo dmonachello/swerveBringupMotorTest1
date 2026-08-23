@@ -72,11 +72,11 @@ Purpose: non-destructive suggestions for future in-page linking and navigation u
 ### Alpha Release Readiness
 
 - [[docs/RELEASE_1_0_READINESS.md|RELEASE 1 0 READINESS]]
+- [[docs/RELEASE_STABILIZATION_REVIEW_2026-08-16.md|RELEASE STABILIZATION REVIEW 2026-08-16]]
 - [[docs/FEATURE_SPEC_VERSION_HELPER.md|FEATURE SPEC VERSION HELPER]]
+- [[docs/RELEASE_VALIDATION_PROCEDURE_2026-08-16.md|RELEASE VALIDATION PROCEDURE 2026-08-16]]
 - [[docs/ARCHITECTURE.md|ARCHITECTURE]]
 - [[docs/DSL_INTERPRETER_RUNTIME.md|DSL INTERPRETER RUNTIME]]
-- [[docs/FEATURE_SPEC_BRINGUP_UI_DISCOVERY_FIRST_CONFIG_AUTHORING.md|FEATURE SPEC BRINGUP UI DISCOVERY FIRST CONFIG AUTHORING]]
-- [[docs/FEATURE_SPEC_DSL_CONDITION_STABILITY_AND_RANGE_OPERATORS.md|FEATURE SPEC DSL CONDITION STABILITY AND RANGE OPERATORS]]
 
 ### Application Note: Discovery-First Config Bootstrap
 
@@ -207,7 +207,7 @@ Purpose: non-destructive suggestions for future in-page linking and navigation u
 - Component Model Unification -> docs/SPEC_COMPONENT_MODEL_UNIFICATION.md
 - DSL Device Signal Interface Spec -> docs/SPEC_DSL_DEVICE_SIGNAL_INTERFACE.md
 - Spec: Shared Config API -> docs/SPEC_SHARED_CONFIG_API.md
-- TCP UI Protocol (CLI/GUI Middle Layer) -> docs/TCP_UI_PROTOCOL.md
+- TCP UI Protocol (Historical) -> docs/TCP_UI_PROTOCOL.md
 - Regression Runner User Guide -> docs/USER_GUIDE_REGRESSION_RUNNER.md
 - Robot Test DSL User Guide -> docs/USER_GUIDE_ROBOT_TEST_DSL.md
 

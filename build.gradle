@@ -118,12 +118,8 @@ wpi.java.configureTestTasks(test)
 
 // Configure string concat to always inline compile
 tasks.withType(JavaCompile) {
-    dependsOn tasks.named('updateBuildInfo')
-    options.compilerArgs.add '-XDstringConcat=inline'
-}
-
-tasks.named('deploy') {
     dependsOn tasks.named('updateBuildInfoWrite')
+    options.compilerArgs.add '-XDstringConcat=inline'
 }
 
 tasks.register('emitRobotLocalCommandInventory', JavaExec) {

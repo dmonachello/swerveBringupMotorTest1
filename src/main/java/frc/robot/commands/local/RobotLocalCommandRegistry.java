@@ -270,7 +270,7 @@ public final class RobotLocalCommandRegistry {
         reportGroup.printState()));
     register(rows, reportDefinition(COMMAND_PRINT_HEALTH, "Health", "Print local device health snapshot.", reportGroup.printHealth()));
     register(rows, reportDefinition(COMMAND_PRINT_CANCODER, "CANcoder", "Print CANCoder telemetry report.", reportGroup.printCANcoder()));
-    register(rows, reportDefinition(COMMAND_PRINT_INPUTS, "Inputs", "Print current controller input state.", reportGroup.printInputs()));
+    register(rows, reportDefinition(COMMAND_PRINT_INPUTS, "Inputs", "Print configured controller and digital input state.", reportGroup.printInputs()));
     register(rows, reportDefinition(COMMAND_PRINT_BINDINGS, "Bindings", "Print controller bindings and UI mappings.", reportGroup.printBindings()));
     register(rows, reportDefinition(COMMAND_PRINT_TESTS_INFO, "Tests Info", "Print current test selection details.", reportGroup.printTestsInfo()));
     register(rows, reportDefinition(COMMAND_PRINT_TESTS_OVERVIEW, "Tests Overview", "Print enabled/selected tests.", reportGroup.printTestsOverview()));

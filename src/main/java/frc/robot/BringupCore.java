@@ -5,6 +5,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import edu.wpi.first.wpilibj.Timer;
 import frc.robot.devices.DeviceUnit;
+import frc.robot.devices.ni.DioLimitSwitchDevice;
 import frc.robot.diag.probe.ActiveDevicePresenceProbe;
 import frc.robot.diag.snapshots.ActivePresenceProbeAttachment;
 import frc.robot.diag.snapshots.DeviceSnapshot;
@@ -62,6 +63,25 @@ public final class BringupCore {
   private static final double TEST_START_SEC_NONE = 0.0;
   private static final boolean INSTANTIATE_ALL_DEVICES = true;
   private static final String BUCKET_UNKNOWN = "unknown";
+  private static final String DEVICE_TYPE_XBOX_CONTROLLER = XboxControllerDevice.DEVICE_TYPE;
+  private static final String DEVICE_TYPE_LIMIT_SWITCH = DioLimitSwitchDevice.DEVICE_TYPE;
+  private static final String INPUTS_REPORT_HEADER = "Inputs:";
+  private static final String INPUTS_REPORT_SECTION_CONTROLLERS = "  Controllers:";
+  private static final String INPUTS_REPORT_SECTION_DIGITAL = "  Digital Inputs:";
+  private static final String INPUTS_REPORT_NONE = "  (none)";
+  private static final String INPUTS_REPORT_PRESENT = " present=";
+  private static final String INPUTS_REPORT_PRESSED = " pressed=";
+  private static final String INPUTS_REPORT_USB = " usb=";
+  private static final String INPUTS_REPORT_LEFT_Y = " leftY=";
+  private static final String INPUTS_REPORT_RIGHT_Y = " rightY=";
+  private static final String INPUTS_REPORT_A = " A=";
+  private static final String INPUTS_REPORT_B = " B=";
+  private static final String INPUTS_REPORT_DIO = " DIO=";
+  private static final String INPUTS_REPORT_INVERT = " invert=";
+  private static final String BOOLEAN_YES = "YES";
+  private static final String BOOLEAN_NO = "NO";
+  private static final int FIRST_LIMIT_SWITCH_INDEX = 0;
+  private static final int INPUT_DECIMALS = 2;
   private static final String TEST_RUN_STATE_IDLE = "idle";
   private static final String TEST_RUN_STATE_RUNNING = "running";
   private static final String TEST_RUN_STATE_PASSED = "passed";
@@ -2601,6 +2621,21 @@ public final class BringupCore {
 
   /**
    * NAME
+   *   buildInputsReportText - Build the configured-inputs report string.
+   *
+   * RETURNS
+   *   Fully formatted input-state report driven by configured devices.
+   */
+  public String buildInputsReportText() {
+    StringBuilder sb = new StringBuilder(256);
+    ReportTextUtil.appendLine(sb, INPUTS_REPORT_HEADER);
+    appendConfiguredControllerInputs(sb);
+    appendConfiguredDigitalInputs(sb);
+    return sb.toString();
+  }
+
+  /**
+   * NAME
    *   buildSweepReport - Build a queued sweep report job.
    */
   private DeviceReportJob buildSweepReport() {
@@ -3732,6 +3767,171 @@ public final class BringupCore {
 
   public DeviceLifecycleRegistry.DeviceLifecycleView lifecycleViewForLabel(String label) {
     return deviceLifecycle != null ? deviceLifecycle.viewForLabel(label) : null;
+  }
+
+  /**
+   * NAME
+   *   appendConfiguredControllerInputs - Append configured controller input rows.
+   *
+   * PARAMETERS
+   *   sb - Report builder to append to.
+   */
+  private void appendConfiguredControllerInputs(StringBuilder sb) {
+    ReportTextUtil.appendLine(sb, INPUTS_REPORT_SECTION_CONTROLLERS);
+    boolean appended = false;
+    for (ManufacturerGroup group : manufacturerGroups) {
+      for (DeviceTypeBucket bucket : group.getDeviceBuckets()) {
+        for (DeviceUnit device : bucket.getDevices()) {
+          if (!DEVICE_TYPE_XBOX_CONTROLLER.equals(device.getDeviceType())) {
+            continue;
+          }
+          appended = true;
+          appendControllerInputRow(sb, device);
+        }
+      }
+    }
+    if (!appended) {
+      ReportTextUtil.appendLine(sb, INPUTS_REPORT_NONE);
+    }
+  }
+
+  /**
+   * NAME
+   *   appendConfiguredDigitalInputs - Append configured digital input rows.
+   *
+   * PARAMETERS
+   *   sb - Report builder to append to.
+   */
+  private void appendConfiguredDigitalInputs(StringBuilder sb) {
+    ReportTextUtil.appendLine(sb, INPUTS_REPORT_SECTION_DIGITAL);
+    boolean appended = false;
+    for (ManufacturerGroup group : manufacturerGroups) {
+      for (DeviceTypeBucket bucket : group.getDeviceBuckets()) {
+        for (DeviceUnit device : bucket.getDevices()) {
+          if (!DEVICE_TYPE_LIMIT_SWITCH.equals(device.getDeviceType())) {
+            continue;
+          }
+          appended = true;
+          appendLimitSwitchInputRow(sb, device);
+        }
+      }
+    }
+    if (!appended) {
+      ReportTextUtil.appendLine(sb, INPUTS_REPORT_NONE);
+    }
+  }
+
+  /**
+   * NAME
+   *   appendControllerInputRow - Append one controller input row.
+   *
+   * PARAMETERS
+   *   sb - Report builder to append to.
+   *   device - Configured controller device.
+   */
+  private void appendControllerInputRow(StringBuilder sb, DeviceUnit device) {
+    DeviceSnapshot snapshot = device.snapshot();
+    double leftY = readDeviceDoubleSignal(device, XboxControllerDevice.SIGNAL_LEFT_Y);
+    double rightY = readDeviceDoubleSignal(device, XboxControllerDevice.SIGNAL_RIGHT_Y);
+    boolean buttonA = readDeviceBooleanSignal(device, XboxControllerDevice.SIGNAL_A);
+    boolean buttonB = readDeviceBooleanSignal(device, XboxControllerDevice.SIGNAL_B);
+    ReportTextUtil.appendLine(
+        sb,
+        "  "
+            + device.getLabel()
+            + INPUTS_REPORT_USB
+            + device.getCanId()
+            + INPUTS_REPORT_PRESENT
+            + formatReportBoolean(snapshot.present)
+            + INPUTS_REPORT_LEFT_Y
+            + String.format("%." + INPUT_DECIMALS + "f", leftY)
+            + INPUTS_REPORT_RIGHT_Y
+            + String.format("%." + INPUT_DECIMALS + "f", rightY)
+            + INPUTS_REPORT_A
+            + formatReportBoolean(buttonA)
+            + INPUTS_REPORT_B
+            + formatReportBoolean(buttonB));
+  }
+
+  /**
+   * NAME
+   *   appendLimitSwitchInputRow - Append one digital input row.
+   *
+   * PARAMETERS
+   *   sb - Report builder to append to.
+   *   device - Configured limit switch device.
+   */
+  private void appendLimitSwitchInputRow(StringBuilder sb, DeviceUnit device) {
+    DeviceSnapshot snapshot = device.snapshot();
+    LimitsAttachment limits = snapshot.getAttachment(LimitsAttachment.class);
+    LimitsAttachment.LimitSwitchState state =
+        limits != null
+                && limits.switches != null
+                && !limits.switches.isEmpty()
+                && limits.switches.size() > FIRST_LIMIT_SWITCH_INDEX
+            ? limits.switches.get(FIRST_LIMIT_SWITCH_INDEX)
+            : null;
+    ReportTextUtil.appendLine(
+        sb,
+        "  "
+            + device.getLabel()
+            + INPUTS_REPORT_DIO
+            + device.getCanId()
+            + INPUTS_REPORT_PRESENT
+            + formatReportBoolean(snapshot.present)
+            + INPUTS_REPORT_PRESSED
+            + formatReportBoolean(state != null && Boolean.TRUE.equals(state.closed))
+            + INPUTS_REPORT_INVERT
+            + formatReportBoolean(state != null && state.invert));
+  }
+
+  /**
+   * NAME
+   *   readDeviceDoubleSignal - Read one numeric device signal safely.
+   *
+   * PARAMETERS
+   *   device - Device to query.
+   *   signalName - DSL signal name.
+   *
+   * RETURNS
+   *   Numeric signal value, or zero when unavailable.
+   */
+  private double readDeviceDoubleSignal(DeviceUnit device, String signalName) {
+    Object value = device.readDslSignal(signalName);
+    if (value instanceof Number number) {
+      return number.doubleValue();
+    }
+    return 0.0;
+  }
+
+  /**
+   * NAME
+   *   readDeviceBooleanSignal - Read one boolean device signal safely.
+   *
+   * PARAMETERS
+   *   device - Device to query.
+   *   signalName - DSL signal name.
+   *
+   * RETURNS
+   *   Boolean signal value, or false when unavailable.
+   */
+  private boolean readDeviceBooleanSignal(DeviceUnit device, String signalName) {
+    Object value = device.readDslSignal(signalName);
+    return value instanceof Boolean bool && bool;
+  }
+
+  /**
+   * NAME
+   *   formatReportBoolean - Format a boolean for compact report output.
+   *
+   * PARAMETERS
+   *   value - Boolean value to format.
+   *
+   * RETURNS
+   *   YES or NO.
+   */
+  private String formatReportBoolean(boolean value) {
+    return value ? BOOLEAN_YES : BOOLEAN_NO;
   }
 
   /**

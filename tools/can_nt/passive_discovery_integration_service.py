@@ -266,6 +266,7 @@ PROBE_FRESH_SEC = 15.0
 PROBE_AGING_SEC = 60.0
 INFRA_RUNTIME_FRESH_SEC = 3.0
 VISIBILITY_FRESH_SEC = 3.0
+RUNTIME_PRESENCE_FRESH_SEC = 2.0
 PROBE_STATS_WAITING = "Updates only when Full Probe is run."
 PROBE_STATS_RUNNING = "Full Probe is running now."
 PROBE_STATS_LAST_COMPLETE_FMT = "Last Full Probe completed {age} ago."
@@ -498,6 +499,8 @@ EVIDENCE_NOTE_CONSOLE_DEVICE_TIMEOUT = "Device-targeted stale/timeout console ev
 EVIDENCE_NOTE_CONSOLE_DEVICE_TIMEOUT_CONFLICT = "Fresh targeted console fault evidence conflicts with weak/stale positive presence evidence."
 EVIDENCE_NOTE_INFRA_CONSOLE_MISSING = "Fresh device-targeted console timeout evidence with no fresh positive corroboration is being treated as missing infrastructure presence."
 EVIDENCE_NOTE_INFRA_RUNTIME_LOCAL_ONLY = "Fresh singleton runtime telemetry alone is being treated as robot-local evidence and is not enough to override direct CAN-loss evidence."
+EVIDENCE_NOTE_PASSIVE_HISTORY_MISSING = "Passive CAN has only stale historical visibility for this device and no fresh corroborating evidence remains; treating it as missing."
+EVIDENCE_NOTE_RUNTIME_PRESENCE_STALE = "Runtime presence evidence is stale and is being treated as historical only."
 EVIDENCE_NOTE_NONE = "No major source conflict."
 EVIDENCE_NOTE_RUNTIME_SNAPSHOT_UNCONFIRMED_MOTION = "Runtime scope snapshot says present, but recent motion check and passive CAN did not confirm the motor as physically present."
 ENRICHMENT_SOURCE_CTRE = "ctreHttp"
@@ -1998,13 +2001,22 @@ def build_interpreted_device_state(
         and passive_device is not None
         and passive_expected_status == "missing"
     )
+    runtime_presence_fresh = _runtime_presence_entry_is_fresh(
+        presence_entry if isinstance(presence_entry, Mapping) else None,
+        runtime_device if isinstance(runtime_device, Mapping) else None,
+        now_s,
+    )
     if isinstance(presence_entry, Mapping):
         presence_existence = str(presence_entry.get(PRESENCE_KEY_EXISTENCE, EVIDENCE_STATUS_UNKNOWN)).strip() or EVIDENCE_STATUS_UNKNOWN
         presence_confidence = str(presence_entry.get(PRESENCE_KEY_CONFIDENCE, EVIDENCE_CONFIDENCE_LOW)).strip() or EVIDENCE_CONFIDENCE_LOW
         if presence_existence == EVIDENCE_STATUS_PRESENT:
-            existence = EVIDENCE_STATUS_PRESENT
-            confidence = presence_confidence
-            evidence_state = EVIDENCE_STATE_OK
+            if runtime_presence_fresh:
+                existence = EVIDENCE_STATUS_PRESENT
+                confidence = presence_confidence
+                evidence_state = EVIDENCE_STATE_OK
+            else:
+                confidence = EVIDENCE_CONFIDENCE_LOW
+                notes.append(EVIDENCE_NOTE_RUNTIME_PRESENCE_STALE)
         elif presence_existence == EVIDENCE_STATUS_ABSENT:
             if passive_supports_presence_override and not console_has_error:
                 existence = EVIDENCE_STATUS_PRESENT
@@ -2153,6 +2165,35 @@ def build_interpreted_device_state(
             existence = EVIDENCE_STATUS_ABSENT
             confidence = passive_confidence
             evidence_state = EVIDENCE_STATE_MISSING
+    runtime_presence_claims_present = bool(
+        isinstance(presence_entry, Mapping)
+        and runtime_presence_fresh
+        and str(presence_entry.get(PRESENCE_KEY_EXISTENCE, EVIDENCE_STATUS_UNKNOWN)).strip().upper()
+        == EVIDENCE_STATUS_PRESENT
+    )
+    passive_history_only_missing = bool(
+        not is_infrastructure_device
+        and existence == EVIDENCE_STATUS_UNKNOWN
+        and passive_device is not None
+        and passive_visible
+        and not passive_live_support
+        and _visibility_metrics_have_observer_history(visibility_metrics)
+        and not runtime_presence_claims_present
+        and not (
+            probe_bucket == PRESENCE_VALUE_PRESENT
+            and probe_age_bucket == PROBE_AGE_FRESH
+        )
+        and not (
+            manual_recent_observation
+            and manual_auto_result == MANUAL_AUTO_RESULT_ROTATION
+        )
+    )
+    if passive_history_only_missing:
+        existence = EVIDENCE_STATUS_ABSENT
+        operability = EVIDENCE_STATUS_FAILED
+        confidence = EVIDENCE_CONFIDENCE_MEDIUM
+        evidence_state = EVIDENCE_STATE_MISSING
+        notes.append(EVIDENCE_NOTE_PASSIVE_HISTORY_MISSING)
     if console_has_error:
         if existence == EVIDENCE_STATUS_PRESENT:
             operability = EVIDENCE_STATUS_DEGRADED
@@ -2394,6 +2435,7 @@ def build_interpreted_device_state(
         passive_visible=passive_visible and passive_live_support,
         passive_confidence=passive_confidence,
         runtime_presence_entry=presence_entry if isinstance(presence_entry, Mapping) else None,
+        runtime_presence_fresh=runtime_presence_fresh,
         runtime_infrastructure_present=runtime_infrastructure_present,
         probe_bucket=probe_bucket,
         probe_age_bucket=probe_age_bucket,
@@ -3009,6 +3051,57 @@ def _visibility_metrics_support_live_presence(
     return max_rate_hz > 0.0
 
 
+def _runtime_presence_entry_is_fresh(
+    presence_entry: Optional[Mapping[str, Any]],
+    runtime_device: Optional[Mapping[str, Any]],
+    now_s: float,
+) -> bool:
+    """
+    NAME
+        _runtime_presence_entry_is_fresh - Return whether runtime presence evidence is still fresh enough to count as current counterevidence.
+    """
+    has_runtime_timing = False
+    if isinstance(presence_entry, Mapping):
+        updated_at_ms = presence_entry.get(PRESENCE_KEY_UPDATED_AT_MS)
+        age_seconds = _presence_age_seconds(updated_at_ms, now_s)
+        if isinstance(age_seconds, (int, float)):
+            has_runtime_timing = True
+            return float(age_seconds) <= RUNTIME_PRESENCE_FRESH_SEC
+    if isinstance(runtime_device, Mapping):
+        last_seen_ms = runtime_device.get(RUNTIME_DEVICE_KEY_LAST_SEEN_MS)
+        if isinstance(last_seen_ms, (int, float)) and float(last_seen_ms) > 0.0:
+            has_runtime_timing = True
+            age_sec = max(0.0, float(now_s) - (float(last_seen_ms) / 1000.0))
+            return age_sec <= RUNTIME_PRESENCE_FRESH_SEC
+        if not has_runtime_timing and isinstance(runtime_device.get(RUNTIME_DEVICE_KEY_PRESENCE_CONFIDENCE), (int, float)):
+            return True
+    if isinstance(presence_entry, Mapping):
+        return bool(
+            str(presence_entry.get(PRESENCE_KEY_EXISTENCE, EVIDENCE_STATUS_UNKNOWN)).strip().upper()
+            == EVIDENCE_STATUS_PRESENT
+        )
+    return False
+
+
+def _visibility_metrics_have_observer_history(
+    visibility_metrics: Mapping[str, Any],
+) -> bool:
+    """
+    NAME
+        _visibility_metrics_have_observer_history - Return whether visibility metrics show the passive observer has seen the device before.
+    """
+    for metric_entry in visibility_metrics.values():
+        if not isinstance(metric_entry, Mapping):
+            continue
+        last_seen_ms = metric_entry.get("lastSeenMs")
+        if isinstance(last_seen_ms, (int, float)) and float(last_seen_ms) > 0.0:
+            return True
+        message_count = metric_entry.get("msgCount")
+        if isinstance(message_count, (int, float)) and float(message_count) > 0.0:
+            return True
+    return False
+
+
 def _console_targets_device_failure(console_events: Sequence[object]) -> bool:
     """
     NAME
@@ -3116,6 +3209,7 @@ def _collect_device_source_scores(
     passive_visible: bool,
     passive_confidence: str,
     runtime_presence_entry: Optional[Mapping[str, Any]],
+    runtime_presence_fresh: bool,
     runtime_infrastructure_present: bool,
     probe_bucket: str,
     probe_age_bucket: str,
@@ -3148,12 +3242,18 @@ def _collect_device_source_scores(
         runtime_existence = str(
             runtime_presence_entry.get(PRESENCE_KEY_EXISTENCE, EVIDENCE_STATUS_UNKNOWN)
         ).strip().upper()
-        runtime_present = runtime_existence == EVIDENCE_STATUS_PRESENT
+        runtime_present = runtime_existence == EVIDENCE_STATUS_PRESENT and runtime_presence_fresh
         runtime_absent = runtime_existence == EVIDENCE_STATUS_ABSENT
     if device_type == DEVICE_CLASS_INFRASTRUCTURE and runtime_infrastructure_present:
         source_scores["runtime"] = _source_score(90, PRESENCE_STATE_PRESENT, "Fresh singleton runtime telemetry.")
     elif runtime_present:
         source_scores["runtime"] = _source_score(90, PRESENCE_STATE_PRESENT, "Runtime presence snapshot.")
+    elif (
+        isinstance(runtime_presence_entry, Mapping)
+        and str(runtime_presence_entry.get(PRESENCE_KEY_EXISTENCE, EVIDENCE_STATUS_UNKNOWN)).strip().upper()
+        == EVIDENCE_STATUS_PRESENT
+    ):
+        source_scores["runtime"] = _source_score(25, PRESENCE_STATE_UNKNOWN, "Runtime presence snapshot is stale.")
     elif runtime_absent:
         source_scores["runtime"] = _source_score(0, PRESENCE_STATE_MISSING, "Runtime presence snapshot absent.")
     else:

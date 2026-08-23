@@ -14,6 +14,7 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/FEATURE_SPEC_UI2_TASK_MODE_REORGANIZATION.md|FEATURE SPEC UI2 TASK MODE REORGANIZATION]]
 - [[docs/MOTOR_DIAGNOSIS_SPEC.md|MOTOR DIAGNOSIS SPEC]]
 - [[github chat.md|github chat]]
+- [[CHANGELOG.md|CHANGELOG]]
 - [[Feature Spec - CAN Bus Debug Final Push.md|Feature Spec - CAN Bus Debug Final Push]]
 - [[Feature Spec - Scope-Aware Runtime Activation And Incremental Instantiation.md|Feature Spec - Scope-Aware Runtime Activation And Incremental Instantiation]]
 - [[docs/FEATURE_SPEC_ACTIVE_DEVICE_PRESENCE_CONFIDENCE.md|FEATURE SPEC ACTIVE DEVICE PRESENCE CONFIDENCE]]
@@ -25,7 +26,6 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/FEATURE_SPEC_RUNNABLE_VS_OBSERVED_DEVICE_SCOPE.md|FEATURE SPEC RUNNABLE VS OBSERVED DEVICE SCOPE]]
 - [[docs/FEATURE_SPEC_SCOPE_AWARE_RUNTIME_ACTIVATION_AND_INCREMENTAL_INSTANTIATION.md|FEATURE SPEC SCOPE AWARE RUNTIME ACTIVATION AND INCREMENTAL INSTANTIATION]]
 - [[docs/FEATURE_SPEC_TOPOLOGY_UPGRADE.md|FEATURE SPEC TOPOLOGY UPGRADE]]
-- [[docs/SPEC_NON_MOTOR_DEVICE_TESTING_AND_DSL_INTERVENTION.md|SPEC NON MOTOR DEVICE TESTING AND DSL INTERVENTION]]
 
 ## Hardware
 
@@ -37,6 +37,7 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/FEATURE_SPEC_UI2_TASK_MODE_REORGANIZATION.md|FEATURE SPEC UI2 TASK MODE REORGANIZATION]]
 - [[docs/MOTOR_DIAGNOSIS_SPEC.md|MOTOR DIAGNOSIS SPEC]]
 - [[github chat.md|github chat]]
+- [[CHANGELOG.md|CHANGELOG]]
 - [[Feature Spec - CAN Bus Debug Final Push.md|Feature Spec - CAN Bus Debug Final Push]]
 - [[Feature Spec - Scope-Aware Runtime Activation And Incremental Instantiation.md|Feature Spec - Scope-Aware Runtime Activation And Incremental Instantiation]]
 - [[docs/FEATURE_SPEC_ACTIVE_DEVICE_PRESENCE_CONFIDENCE.md|FEATURE SPEC ACTIVE DEVICE PRESENCE CONFIDENCE]]
@@ -48,7 +49,6 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/FEATURE_SPEC_RUNNABLE_VS_OBSERVED_DEVICE_SCOPE.md|FEATURE SPEC RUNNABLE VS OBSERVED DEVICE SCOPE]]
 - [[docs/FEATURE_SPEC_SCOPE_AWARE_RUNTIME_ACTIVATION_AND_INCREMENTAL_INSTANTIATION.md|FEATURE SPEC SCOPE AWARE RUNTIME ACTIVATION AND INCREMENTAL INSTANTIATION]]
 - [[docs/FEATURE_SPEC_TOPOLOGY_UPGRADE.md|FEATURE SPEC TOPOLOGY UPGRADE]]
-- [[docs/SPEC_NON_MOTOR_DEVICE_TESTING_AND_DSL_INTERVENTION.md|SPEC NON MOTOR DEVICE TESTING AND DSL INTERVENTION]]
 
 ## Evidence
 
@@ -60,6 +60,7 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/FEATURE_SPEC_UI2_TASK_MODE_REORGANIZATION.md|FEATURE SPEC UI2 TASK MODE REORGANIZATION]]
 - [[docs/MOTOR_DIAGNOSIS_SPEC.md|MOTOR DIAGNOSIS SPEC]]
 - [[github chat.md|github chat]]
+- [[CHANGELOG.md|CHANGELOG]]
 - [[Feature Spec - CAN Bus Debug Final Push.md|Feature Spec - CAN Bus Debug Final Push]]
 - [[Feature Spec - Scope-Aware Runtime Activation And Incremental Instantiation.md|Feature Spec - Scope-Aware Runtime Activation And Incremental Instantiation]]
 - [[docs/FEATURE_SPEC_ACTIVE_DEVICE_PRESENCE_CONFIDENCE.md|FEATURE SPEC ACTIVE DEVICE PRESENCE CONFIDENCE]]
@@ -71,7 +72,6 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/FEATURE_SPEC_RUNNABLE_VS_OBSERVED_DEVICE_SCOPE.md|FEATURE SPEC RUNNABLE VS OBSERVED DEVICE SCOPE]]
 - [[docs/FEATURE_SPEC_SCOPE_AWARE_RUNTIME_ACTIVATION_AND_INCREMENTAL_INSTANTIATION.md|FEATURE SPEC SCOPE AWARE RUNTIME ACTIVATION AND INCREMENTAL INSTANTIATION]]
 - [[docs/FEATURE_SPEC_TOPOLOGY_UPGRADE.md|FEATURE SPEC TOPOLOGY UPGRADE]]
-- [[docs/SPEC_NON_MOTOR_DEVICE_TESTING_AND_DSL_INTERVENTION.md|SPEC NON MOTOR DEVICE TESTING AND DSL INTERVENTION]]
 
 ## Tests
 
@@ -83,6 +83,7 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/FEATURE_SPEC_UI2_TASK_MODE_REORGANIZATION.md|FEATURE SPEC UI2 TASK MODE REORGANIZATION]]
 - [[docs/MOTOR_DIAGNOSIS_SPEC.md|MOTOR DIAGNOSIS SPEC]]
 - [[github chat.md|github chat]]
+- [[CHANGELOG.md|CHANGELOG]]
 - [[Feature Spec - CAN Bus Debug Final Push.md|Feature Spec - CAN Bus Debug Final Push]]
 - [[Feature Spec - Scope-Aware Runtime Activation And Incremental Instantiation.md|Feature Spec - Scope-Aware Runtime Activation And Incremental Instantiation]]
 - [[docs/FEATURE_SPEC_ACTIVE_DEVICE_PRESENCE_CONFIDENCE.md|FEATURE SPEC ACTIVE DEVICE PRESENCE CONFIDENCE]]
@@ -94,7 +95,6 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/FEATURE_SPEC_RUNNABLE_VS_OBSERVED_DEVICE_SCOPE.md|FEATURE SPEC RUNNABLE VS OBSERVED DEVICE SCOPE]]
 - [[docs/FEATURE_SPEC_SCOPE_AWARE_RUNTIME_ACTIVATION_AND_INCREMENTAL_INSTANTIATION.md|FEATURE SPEC SCOPE AWARE RUNTIME ACTIVATION AND INCREMENTAL INSTANTIATION]]
 - [[docs/FEATURE_SPEC_TOPOLOGY_UPGRADE.md|FEATURE SPEC TOPOLOGY UPGRADE]]
-- [[docs/SPEC_NON_MOTOR_DEVICE_TESTING_AND_DSL_INTERVENTION.md|SPEC NON MOTOR DEVICE TESTING AND DSL INTERVENTION]]
 
 ## Troubleshooting
 
@@ -106,6 +106,7 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/FEATURE_SPEC_UI2_TASK_MODE_REORGANIZATION.md|FEATURE SPEC UI2 TASK MODE REORGANIZATION]]
 - [[docs/MOTOR_DIAGNOSIS_SPEC.md|MOTOR DIAGNOSIS SPEC]]
 - [[github chat.md|github chat]]
+- [[CHANGELOG.md|CHANGELOG]]
 - [[Feature Spec - CAN Bus Debug Final Push.md|Feature Spec - CAN Bus Debug Final Push]]
 - [[Feature Spec - Scope-Aware Runtime Activation And Incremental Instantiation.md|Feature Spec - Scope-Aware Runtime Activation And Incremental Instantiation]]
 - [[docs/FEATURE_SPEC_ACTIVE_DEVICE_PRESENCE_CONFIDENCE.md|FEATURE SPEC ACTIVE DEVICE PRESENCE CONFIDENCE]]
@@ -117,7 +118,6 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/FEATURE_SPEC_RUNNABLE_VS_OBSERVED_DEVICE_SCOPE.md|FEATURE SPEC RUNNABLE VS OBSERVED DEVICE SCOPE]]
 - [[docs/FEATURE_SPEC_SCOPE_AWARE_RUNTIME_ACTIVATION_AND_INCREMENTAL_INSTANTIATION.md|FEATURE SPEC SCOPE AWARE RUNTIME ACTIVATION AND INCREMENTAL INSTANTIATION]]
 - [[docs/FEATURE_SPEC_TOPOLOGY_UPGRADE.md|FEATURE SPEC TOPOLOGY UPGRADE]]
-- [[docs/SPEC_NON_MOTOR_DEVICE_TESTING_AND_DSL_INTERVENTION.md|SPEC NON MOTOR DEVICE TESTING AND DSL INTERVENTION]]
 
 ## Related Topics
 

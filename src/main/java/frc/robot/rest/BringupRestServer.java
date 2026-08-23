@@ -436,6 +436,7 @@ public final class BringupRestServer {
     build.addProperty(BuildInfo.BUILD_LABEL_BRANCH, BuildInfo.BUILD_GIT_BRANCH);
     build.addProperty(BuildInfo.BUILD_LABEL_DIRTY, BuildInfo.BUILD_GIT_DIRTY);
     build.addProperty(BuildInfo.BUILD_LABEL_TIME, BuildInfo.BUILD_TIMESTAMP);
+    build.addProperty(BuildInfo.BUILD_LABEL_COMMIT_TIME, BuildInfo.BUILD_COMMIT_TIMESTAMP);
     body.add(JSON_KEY_BUILD, build);
     sendJson(exchange, HTTP_OK, body);
   }
