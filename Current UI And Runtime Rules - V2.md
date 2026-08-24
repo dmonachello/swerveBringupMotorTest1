@@ -144,6 +144,36 @@ Purpose: Capture the current shared meaning for runtime report and Evidence-tab 
 
 - A sticky-only condition should not be collapsed into the same operator-facing wording as an active fault.
 
+## Evidence Input/Sensor State
+
+Purpose: Describe the current shared `Input/Sensor State` behavior in the `Evidence` tab.
+
+- The robot runtime-state JSON now includes `inputSensorState`, built from the same robot-owned shared model used by `printInputs`.
+
+- The shared `inputSensorState` model is current-profile-only and currently includes:
+  - `xboxController`
+  - `limitSwitch`
+  - `cancoder` / external encoder
+  - `pigeon` / IMU
+  - `robotController`
+
+- The `Evidence` tab now includes an `Input/Sensor State` subpanel that shows all supported current-profile rows grouped by family instead of only the currently selected device.
+
+- The currently selected Evidence device is highlighted in that panel when present.
+
+- Clicking an `Input/Sensor State` device row updates the shared Evidence selected device and synchronizes the existing summary-table and topology selections.
+
+- The `Evidence` tab now exposes persistent subpanel visibility checkboxes for:
+  - summary
+  - topology
+  - passive
+  - console
+  - enrichment
+  - inspector
+  - input/sensor state
+
+- Those subpanel visibility toggles are stored in host UI preferences, not in profile/config data or robot runtime state.
+
 ## CAN Visibility Selection
 
 Purpose: Describe the current Selection-pane behavior in the CAN Visibility tab.
@@ -1177,6 +1207,11 @@ Current behavior:
 - `Evidence` is the device-truth lens shared with `CAN Fault Finder` device conclusions.
 
 - `CAN Fault Finder` may add fault-region ranking, suspect boundaries, and next-step detail, but it should not disagree with the Live Topology `Evidence` lens about per-device present/missing/conflict truth.
+
+- In the Live Topology `Evidence` lens, `conflict` is a caution state rather than a hard-failure state:
+  - `present` renders green
+  - `conflict` renders orange/yellow
+  - `missing` and `failed` render red
 
 - `Runtime` is the raw robot-local runtime/presence lens.
 

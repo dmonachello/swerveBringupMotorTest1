@@ -758,13 +758,13 @@ class LiveTopologyViewTests(unittest.TestCase):
             view._notice_panel.bg,
         )
 
-    def test_evidence_fill_uses_failed_color_for_conflict_presence_state(self) -> None:
+    def test_evidence_fill_uses_degraded_color_for_conflict_presence_state(self) -> None:
         view = self._make_view()
         node = type("NodeStub", (), {"label": "FALCON 9"})()
         view._evidence_state = {"falcon 9": "conflict"}
 
         self.assertEqual(
-            live_view_module.EVIDENCE_COLOR_FAILED,
+            live_view_module.EVIDENCE_COLOR_DEGRADED,
             view._evidence_fill(node),
         )
 

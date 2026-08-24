@@ -49,13 +49,6 @@
       "mode": "edge"
     },
     {
-      "command": "printNTdiag",
-      "controller": "controller0",
-      "input": "dpad",
-      "id": "DOWN",
-      "mode": "edge"
-    },
-    {
       "command": "printCANdiag",
       "controller": "controller0",
       "input": "dpad",

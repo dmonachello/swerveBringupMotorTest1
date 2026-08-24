@@ -17,6 +17,9 @@ NOTES
 """
 
 import json
+import faulthandler
+import sys
+import threading
 import time
 import tkinter as tk
 import uuid
@@ -579,6 +582,31 @@ LIVE_SOURCE_REST = "rest"
 LIVE_SOURCE_FILE = "file"
 LIVE_CLOCK_FORMAT = "%H:%M:%S"
 LIVE_CLOCK_LABEL = "Clock:"
+HOST_DEBUG_PREFIX = "[HOSTDBG]"
+HOST_DEBUG_CONSOLE_ENABLED = False
+HOST_DEBUG_RUNTIME_ACTIVATE_WINDOW_SEC = 15.0
+HOST_DEBUG_STEP_WARN_SEC = 0.1
+HOST_DEBUG_STEP_INFO_SEC = 0.02
+HOST_DEBUG_POLL_BEGIN = "poll begin"
+HOST_DEBUG_POLL_END = "poll end"
+HOST_DEBUG_RUNTIME_ACTIVATE_BEGIN = "runtime activate requested"
+HOST_DEBUG_RUNTIME_FETCH_SESSION = "fetch session"
+HOST_DEBUG_RUNTIME_FETCH_RUNTIME = "fetch runtime"
+HOST_DEBUG_RUNTIME_FETCH_TESTS = "fetch tests"
+HOST_DEBUG_RUNTIME_APPLY = "apply runtime payload"
+HOST_DEBUG_RUNTIME_SYNC_PROFILE = "sync profile context"
+HOST_DEBUG_RUNTIME_SYNC_TESTS = "sync tests state"
+HOST_DEBUG_RUNTIME_EVENTS = "poll bridge events"
+HOST_DEBUG_RUNTIME_CONNECT = "connect/handshake"
+HOST_DEBUG_RUNTIME_PHASE_FMT = "{name}: {elapsed:.3f}s"
+HOST_DEBUG_RUNTIME_PHASE_EXTRA_FMT = "{name}: {elapsed:.3f}s | {detail}"
+HOST_DEBUG_DETAIL_TAB_FMT = "tab={tab}"
+HOST_DEBUG_DETAIL_CONNECTED_FMT = "connected={connected} handshake={handshake}"
+HOST_DEBUG_DETAIL_RUNTIME_FMT = "runtimeDevices={count} groups={groups}"
+HOST_DEBUG_HEARTBEAT_STALL_SEC = 1.5
+HOST_DEBUG_WATCHDOG_SLEEP_SEC = 0.5
+HOST_DEBUG_WATCHDOG_START = "watchdog armed"
+HOST_DEBUG_WATCHDOG_DUMP = "watchdog stack dump"
 PROFILE_NONE = SHARED_PROFILE_NONE
 NT_UI_STATE_SELECTED_PROFILE = "state/selectedProfile"
 NT_UI_STATE_ACTIVE_RUNTIME_PROFILE = "state/activeRuntimeProfile"
@@ -772,6 +800,7 @@ UI_PREFS_KEY_AUTO_SELECT_DEFAULT_PROFILE = "autoSelectDefaultProfileOnStartup"
 UI_PREFS_KEY_SHOW_VISIBILITY_TAB = "showVisibilityTab"
 UI_PREFS_KEY_SHOW_WALL_CLOCK = "showWallClock"
 UI_PREFS_KEY_THEME = "theme"
+UI_PREFS_KEY_EVIDENCE_PANELS = "evidencePanels"
 
 # Constants (visibility UI).
 VIS_TAB_LABEL = "CAN Visibility"
@@ -1308,6 +1337,7 @@ EVIDENCE_PROBE_TEXT = "Full Probe (Manual One-Shot)"
 EVIDENCE_MANUAL_TEXT = "Manual Test (Operator / Motion)"
 EVIDENCE_ENRICHMENT_TEXT = "Enrichment Evidence (Host Corroboration)"
 EVIDENCE_NOTES_TEXT = "Conflicts / Notes"
+EVIDENCE_INPUT_SENSOR_TEXT = "Input/Sensor State"
 EVIDENCE_LABEL_EXISTENCE = "Existence"
 EVIDENCE_LABEL_OPERABILITY = "Operability"
 EVIDENCE_LABEL_IDENTITY = "Identity"
@@ -1328,6 +1358,71 @@ EVIDENCE_CAN_TEXT_ERROR_SPIKE = "error spike"
 EVIDENCE_CAN_TEXT_TX_FULL = "tx full"
 EVIDENCE_CONSOLE_SCOPE_DEVICES = "devices"
 EVIDENCE_CONSOLE_SCOPE_SYSTEM = "system"
+EVIDENCE_PANEL_KEY_SUMMARY = "summary"
+EVIDENCE_PANEL_KEY_TOPOLOGY = "topology"
+EVIDENCE_PANEL_KEY_PASSIVE = "passive"
+EVIDENCE_PANEL_KEY_CONSOLE = "console"
+EVIDENCE_PANEL_KEY_ENRICHMENT = "enrichment"
+EVIDENCE_PANEL_KEY_INSPECTOR = "inspector"
+EVIDENCE_PANEL_KEY_INPUT_SENSOR = "inputSensor"
+EVIDENCE_PANEL_PREF_DEFAULTS = {
+    EVIDENCE_PANEL_KEY_SUMMARY: True,
+    EVIDENCE_PANEL_KEY_TOPOLOGY: True,
+    EVIDENCE_PANEL_KEY_PASSIVE: True,
+    EVIDENCE_PANEL_KEY_CONSOLE: True,
+    EVIDENCE_PANEL_KEY_ENRICHMENT: True,
+    EVIDENCE_PANEL_KEY_INSPECTOR: True,
+    EVIDENCE_PANEL_KEY_INPUT_SENSOR: True,
+}
+EVIDENCE_PANEL_CHECKBOX_ORDER = (
+    EVIDENCE_PANEL_KEY_SUMMARY,
+    EVIDENCE_PANEL_KEY_TOPOLOGY,
+    EVIDENCE_PANEL_KEY_PASSIVE,
+    EVIDENCE_PANEL_KEY_CONSOLE,
+    EVIDENCE_PANEL_KEY_ENRICHMENT,
+    EVIDENCE_PANEL_KEY_INSPECTOR,
+    EVIDENCE_PANEL_KEY_INPUT_SENSOR,
+)
+EVIDENCE_PANEL_CHECKBOX_LABELS = {
+    EVIDENCE_PANEL_KEY_SUMMARY: "Summary",
+    EVIDENCE_PANEL_KEY_TOPOLOGY: "Topology",
+    EVIDENCE_PANEL_KEY_PASSIVE: "Passive",
+    EVIDENCE_PANEL_KEY_CONSOLE: "Console",
+    EVIDENCE_PANEL_KEY_ENRICHMENT: "Enrichment",
+    EVIDENCE_PANEL_KEY_INSPECTOR: "Inspector",
+    EVIDENCE_PANEL_KEY_INPUT_SENSOR: "Input/Sensor State",
+}
+EVIDENCE_INPUT_SENSOR_COL_MODEL = "Model"
+EVIDENCE_INPUT_SENSOR_COL_PRESENT = "Present"
+EVIDENCE_INPUT_SENSOR_COL_CONFIDENCE = "Confidence"
+EVIDENCE_INPUT_SENSOR_COL_STATE = "State"
+EVIDENCE_INPUT_SENSOR_COL_NOTES = "Notes"
+EVIDENCE_INPUT_SENSOR_STATE_NONE = "--"
+EVIDENCE_INPUT_SENSOR_SECTION_DEFAULT = "Other"
+EVIDENCE_INPUT_SENSOR_TREE_SHOW = "tree headings"
+EVIDENCE_INPUT_SENSOR_TREE_HEIGHT = 10
+EVIDENCE_INPUT_SENSOR_COL_MODEL_WIDTH = 110
+EVIDENCE_INPUT_SENSOR_COL_PRESENT_WIDTH = 70
+EVIDENCE_INPUT_SENSOR_COL_CONFIDENCE_WIDTH = 90
+EVIDENCE_INPUT_SENSOR_COL_STATE_WIDTH = 520
+EVIDENCE_INPUT_SENSOR_COL_NOTES_WIDTH = 180
+EVIDENCE_INPUT_SENSOR_SUMMARY_SEPARATOR = " | "
+EVIDENCE_INPUT_SENSOR_PARENT_PREFIX = "family:"
+EVIDENCE_INPUT_SENSOR_ROW_PREFIX = "device:"
+EVIDENCE_INPUT_SENSOR_SELECTION_SOURCE_NONE = NT_VALUE_EMPTY
+RUNTIME_KEY_INPUT_SENSOR_STATE = "inputSensorState"
+INPUT_SENSOR_STATE_KEY_SECTIONS = "sections"
+INPUT_SENSOR_STATE_KEY_KEY = "key"
+INPUT_SENSOR_STATE_KEY_TITLE = "title"
+INPUT_SENSOR_STATE_KEY_ROWS = "rows"
+INPUT_SENSOR_STATE_KEY_LABEL = "label"
+INPUT_SENSOR_STATE_KEY_MODEL = "model"
+INPUT_SENSOR_STATE_KEY_PRESENT = "present"
+INPUT_SENSOR_STATE_KEY_CONFIDENCE = "stateConfidence"
+INPUT_SENSOR_STATE_KEY_SELECTED = "selected"
+INPUT_SENSOR_STATE_KEY_NOTES = "notes"
+INPUT_SENSOR_STATE_KEY_FIELDS = "fields"
+INPUT_SENSOR_STATE_FIELD_KEY_TEXT = "text"
 EVIDENCE_EVENT_TYPE_BUS_FAULT = "BUS_FAULT_SUSPECTED"
 EVIDENCE_TEXT_DEVICE_TIMEOUT = "timeout"
 EVIDENCE_TEXT_STALE = "stale"
@@ -2005,6 +2100,21 @@ def _load_ui_theme_pref() -> str:
     return theme_name
 
 
+def _load_ui_evidence_panel_prefs() -> Dict[str, bool]:
+    """
+    NAME
+        _load_ui_evidence_panel_prefs - Load Evidence-tab subpanel visibility preferences.
+    """
+    payload = _load_ui_prefs_payload()
+    raw_panels = payload.get(UI_PREFS_KEY_EVIDENCE_PANELS, {})
+    result: Dict[str, bool] = dict(EVIDENCE_PANEL_PREF_DEFAULTS)
+    if isinstance(raw_panels, dict):
+        for key in EVIDENCE_PANEL_PREF_DEFAULTS:
+            if key in raw_panels:
+                result[key] = bool(raw_panels.get(key))
+    return result
+
+
 def _action_sections() -> List[Tuple[str, List[Tuple[str, Optional[str]]]]]:
     """
     NAME
@@ -2550,10 +2660,23 @@ class BringupControlUI(tk.Tk):
         self._evidence_rows_by_label: Dict[str, Dict[str, Any]] = {}
         self._evidence_detail_vars: Dict[str, tk.StringVar] = {}
         self._evidence_text_widgets: Dict[str, tk.Text] = {}
+        self._evidence_text_section_frames: Dict[str, ttk.LabelFrame] = {}
         self._evidence_selected_title_var = tk.StringVar(value=NT_VALUE_EMPTY)
         self._evidence_syncing_selection = False
         self._evidence_pending_row_label = NT_VALUE_EMPTY
         self._evidence_pending_node_label = NT_VALUE_EMPTY
+        self._evidence_input_sensor_table: Optional[ttk.Treeview] = None
+        self._evidence_input_sensor_frame: Optional[ttk.LabelFrame] = None
+        self._evidence_input_sensor_rows_by_item: Dict[str, str] = {}
+        self._evidence_input_sensor_programmatic_label = EVIDENCE_INPUT_SENSOR_SELECTION_SOURCE_NONE
+        self._evidence_left_sections: Optional[ttk.Panedwindow] = None
+        self._evidence_inspector_sections: Optional[ttk.Panedwindow] = None
+        self._evidence_top_pane: Optional[ttk.Panedwindow] = None
+        self._evidence_body_pane: Optional[ttk.Panedwindow] = None
+        self._evidence_topology_frame: Optional[ttk.Frame] = None
+        self._evidence_left_column: Optional[ttk.Frame] = None
+        self._evidence_inspector_frame: Optional[ttk.Frame] = None
+        self._evidence_table_frame: Optional[ttk.LabelFrame] = None
         self._evidence_manual_results: Dict[str, Dict[str, Any]] = {}
         self._evidence_eval_budget = 2
         self._evidence_eval_class_order = [
@@ -2618,6 +2741,7 @@ class BringupControlUI(tk.Tk):
         self._runtime_state_hz = DEFAULT_RUNTIME_STATE_RATE_HZ
         self._runtime_state_interval = 1.0 / self._runtime_state_hz
         self._runtime_state_last_poll = 0.0
+        self._runtime_state_refresh_pending = False
         self._runtime_state_pending_seq: Optional[int] = None
         self._runtime_state_pending_at = 0.0
         self._runtime_state_timeout_sec = 0.6
@@ -2640,6 +2764,9 @@ class BringupControlUI(tk.Tk):
         self._latest_runtime_state_payload: Dict[str, Any] = {}
         self._latest_tests_state_payload: Dict[str, Any] = {}
         self._latest_runtime_devices: Dict[str, Dict[str, Any]] = {}
+        self._host_debug_until = 0.0
+        self._host_debug_heartbeat_at = time.time()
+        self._host_debug_watchdog_generation = 0
         self._presence_overrides_file: Dict[str, str] = {}
         self._presence_timeline: List[Dict[str, Any]] = []
         self._presence_timeline_start = PRESENCE_TIME_NONE
@@ -2696,6 +2823,7 @@ class BringupControlUI(tk.Tk):
         self._ui_show_visibility_tab = _load_ui_show_visibility_tab_pref()
         self._ui_show_wall_clock = _load_ui_show_wall_clock_pref()
         self._ui_theme_name = _load_ui_theme_pref()
+        self._ui_evidence_panel_prefs = _load_ui_evidence_panel_prefs()
         self._theme_palette = get_ui_theme_palette(self._ui_theme_name)
         self._ttk_style = ttk.Style(self)
         self._ui_pref_vars: Dict[str, tk.BooleanVar] = {}
@@ -3788,14 +3916,28 @@ class BringupControlUI(tk.Tk):
             textvariable=self._evidence_enrichment_status_var,
         ).pack(side=VIS_PACK_SIDE_RIGHT, padx=(0, 8))
 
+        controls = ttk.Frame(parent)
+        controls.pack(fill=VIS_FILL_X, padx=8, pady=(6, 0))
+        ttk.Label(controls, text="Panels:").pack(side=VIS_PACK_SIDE_LEFT, padx=(0, 8))
+        for key in EVIDENCE_PANEL_CHECKBOX_ORDER:
+            var = tk.BooleanVar(value=bool(self._ui_evidence_panel_prefs.get(key, True)))
+            self._ui_pref_vars[f"evidence.{key}"] = var
+            ttk.Checkbutton(
+                controls,
+                text=EVIDENCE_PANEL_CHECKBOX_LABELS[key],
+                variable=var,
+                command=lambda panel_key=key: self._on_evidence_panel_pref_toggled(panel_key),
+            ).pack(side=VIS_PACK_SIDE_LEFT, padx=(0, 8))
+
         body = ttk.Panedwindow(parent, orient="vertical")
         body.pack(fill=VIS_FILL_BOTH, expand=True, padx=8, pady=8)
+        self._evidence_body_pane = body
 
         top = ttk.Panedwindow(body, orient="horizontal")
-        body.add(top, weight=EVIDENCE_LAYOUT_TOP_WEIGHT)
+        self._evidence_top_pane = top
 
         left_column = ttk.Frame(top)
-        top.add(left_column, weight=EVIDENCE_TOPOLOGY_WEIGHT)
+        self._evidence_left_column = left_column
 
         topology_frame = ttk.Frame(left_column)
         topology_frame.configure(
@@ -3803,7 +3945,7 @@ class BringupControlUI(tk.Tk):
             height=EVIDENCE_TOPOLOGY_FRAME_HEIGHT,
         )
         topology_frame.pack_propagate(False)
-        topology_frame.pack(fill=VIS_FILL_X, expand=False)
+        self._evidence_topology_frame = topology_frame
         profile_name = self._profile_box.get() if hasattr(self, "_profile_box") else ""
         self._evidence_live_view = LiveTopologyView(
             topology_frame,
@@ -3829,14 +3971,14 @@ class BringupControlUI(tk.Tk):
         self._evidence_live_view.pack(fill=VIS_FILL_BOTH, expand=True)
 
         left_sections = ttk.Panedwindow(left_column, orient="vertical")
-        left_sections.pack(fill=VIS_FILL_BOTH, expand=True, pady=(8, 0))
+        self._evidence_left_sections = left_sections
 
         inspector = ttk.Frame(top, padding=(8, 0, 0, 0))
-        top.add(inspector, weight=EVIDENCE_INSPECTOR_WEIGHT)
+        self._evidence_inspector_frame = inspector
         self._build_evidence_inspector(inspector, left_sections)
 
         table_frame = ttk.LabelFrame(body, text="Device Summary", padding=VIS_PAD_TABLE)
-        body.add(table_frame, weight=EVIDENCE_LAYOUT_BOTTOM_WEIGHT)
+        self._evidence_table_frame = table_frame
         table_header = ttk.Frame(table_frame)
         table_header.pack(fill=VIS_FILL_X, pady=(0, 6))
         ttk.Label(table_header, textvariable=self._evidence_summary_var).pack(side=VIS_PACK_SIDE_LEFT)
@@ -3880,6 +4022,7 @@ class BringupControlUI(tk.Tk):
         self._evidence_table.configure(yscrollcommand=evidence_scroll.set)
         self._configure_evidence_table_columns(self._evidence_table)
         self._evidence_table.bind("<<TreeviewSelect>>", self._on_evidence_row_selected)
+        self._rebuild_evidence_panel_layout()
 
     def _build_evidence_inspector(
         self,
@@ -3980,6 +4123,7 @@ class BringupControlUI(tk.Tk):
             pack_pady=(0, 8),
         )
         sections = ttk.Panedwindow(parent, orient="vertical")
+        self._evidence_inspector_sections = sections
         sections.pack(fill=VIS_FILL_BOTH, expand=True)
         for title in (
             EVIDENCE_ENRICHMENT_TEXT,
@@ -4015,6 +4159,7 @@ class BringupControlUI(tk.Tk):
                 include_manual_buttons=(title == EVIDENCE_MANUAL_TEXT),
             )
         if left_sections is not None:
+            self._build_evidence_input_sensor_section(left_sections)
             self._build_evidence_text_section(
                 left_sections,
                 EVIDENCE_PRESENCE_TEXT,
@@ -4058,6 +4203,7 @@ class BringupControlUI(tk.Tk):
             parent.add(frame, weight=paned_weight)
         else:
             frame.pack(fill=VIS_FILL_X, pady=pack_pady)
+        self._evidence_text_section_frames[title] = frame
         if include_manual_buttons:
             buttons = ttk.Frame(frame)
             buttons.pack(fill=VIS_FILL_X, pady=(0, 6))
@@ -4084,6 +4230,368 @@ class BringupControlUI(tk.Tk):
         text.pack(fill=VIS_FILL_BOTH, expand=True)
         text.configure(state="disabled")
         self._evidence_text_widgets[title] = text
+
+    def _build_evidence_input_sensor_section(self, parent: ttk.Panedwindow) -> None:
+        """
+        NAME
+            _build_evidence_input_sensor_section - Build the Evidence input/sensor state tree section.
+        """
+        frame = ttk.LabelFrame(parent, text=EVIDENCE_INPUT_SENSOR_TEXT, padding=6)
+        parent.add(frame, weight=EVIDENCE_INSPECTOR_PANED_WEIGHT_DEFAULT)
+        self._evidence_input_sensor_frame = frame
+        table = ttk.Treeview(
+            frame,
+            columns=(
+                EVIDENCE_INPUT_SENSOR_COL_MODEL,
+                EVIDENCE_INPUT_SENSOR_COL_PRESENT,
+                EVIDENCE_INPUT_SENSOR_COL_CONFIDENCE,
+                EVIDENCE_INPUT_SENSOR_COL_STATE,
+                EVIDENCE_INPUT_SENSOR_COL_NOTES,
+            ),
+            show=EVIDENCE_INPUT_SENSOR_TREE_SHOW,
+            height=EVIDENCE_INPUT_SENSOR_TREE_HEIGHT,
+        )
+        table.pack(side=VIS_PACK_SIDE_LEFT, fill=VIS_FILL_BOTH, expand=True)
+        table.heading("#0", text=EVIDENCE_COL_DEVICE, anchor=VIS_TREE_ANCHOR_W)
+        table.column("#0", width=VIS_COL_DEVICE_WIDTH, anchor=VIS_TREE_ANCHOR_W, stretch=True)
+        table.heading(EVIDENCE_INPUT_SENSOR_COL_MODEL, text=EVIDENCE_INPUT_SENSOR_COL_MODEL, anchor=VIS_TREE_ANCHOR_W)
+        table.column(
+            EVIDENCE_INPUT_SENSOR_COL_MODEL,
+            width=EVIDENCE_INPUT_SENSOR_COL_MODEL_WIDTH,
+            anchor=VIS_TREE_ANCHOR_W,
+            stretch=False,
+        )
+        table.heading(EVIDENCE_INPUT_SENSOR_COL_PRESENT, text=EVIDENCE_INPUT_SENSOR_COL_PRESENT, anchor=VIS_TREE_ANCHOR_CENTER)
+        table.column(
+            EVIDENCE_INPUT_SENSOR_COL_PRESENT,
+            width=EVIDENCE_INPUT_SENSOR_COL_PRESENT_WIDTH,
+            anchor=VIS_TREE_ANCHOR_CENTER,
+            stretch=False,
+        )
+        table.heading(EVIDENCE_INPUT_SENSOR_COL_CONFIDENCE, text=EVIDENCE_INPUT_SENSOR_COL_CONFIDENCE, anchor=VIS_TREE_ANCHOR_CENTER)
+        table.column(
+            EVIDENCE_INPUT_SENSOR_COL_CONFIDENCE,
+            width=EVIDENCE_INPUT_SENSOR_COL_CONFIDENCE_WIDTH,
+            anchor=VIS_TREE_ANCHOR_CENTER,
+            stretch=False,
+        )
+        table.heading(EVIDENCE_INPUT_SENSOR_COL_STATE, text=EVIDENCE_INPUT_SENSOR_COL_STATE, anchor=VIS_TREE_ANCHOR_W)
+        table.column(
+            EVIDENCE_INPUT_SENSOR_COL_STATE,
+            width=EVIDENCE_INPUT_SENSOR_COL_STATE_WIDTH,
+            anchor=VIS_TREE_ANCHOR_W,
+            stretch=True,
+        )
+        table.heading(EVIDENCE_INPUT_SENSOR_COL_NOTES, text=EVIDENCE_INPUT_SENSOR_COL_NOTES, anchor=VIS_TREE_ANCHOR_W)
+        table.column(
+            EVIDENCE_INPUT_SENSOR_COL_NOTES,
+            width=EVIDENCE_INPUT_SENSOR_COL_NOTES_WIDTH,
+            anchor=VIS_TREE_ANCHOR_W,
+            stretch=True,
+        )
+        scroll = ttk.Scrollbar(frame, orient=VIS_SCROLLBAR_ORIENT, command=table.yview)
+        scroll.pack(side=VIS_PACK_SIDE_RIGHT, fill=VIS_FILL_Y)
+        table.configure(yscrollcommand=scroll.set)
+        table.bind("<<TreeviewSelect>>", self._on_evidence_input_sensor_row_selected)
+        self._evidence_input_sensor_table = table
+
+    def _evidence_panel_pref_enabled(self, key: str) -> bool:
+        """
+        NAME
+            _evidence_panel_pref_enabled - Return whether one Evidence subpanel should be visible.
+        """
+        return bool(self._ui_evidence_panel_prefs.get(key, EVIDENCE_PANEL_PREF_DEFAULTS.get(key, True)))
+
+    def _on_evidence_panel_pref_toggled(self, key: str) -> None:
+        """
+        NAME
+            _on_evidence_panel_pref_toggled - Persist one Evidence subpanel visibility change and rebuild layout.
+        """
+        var = self._ui_pref_vars.get(f"evidence.{key}")
+        if var is not None and hasattr(var, "get"):
+            self._ui_evidence_panel_prefs[key] = bool(var.get())
+        self._save_ui_command_prefs()
+        self._rebuild_evidence_panel_layout()
+
+    def _set_evidence_pane_visible(
+        self,
+        parent: Optional[ttk.Panedwindow],
+        widget: Optional[tk.Widget],
+        visible: bool,
+        weight: int,
+    ) -> None:
+        """
+        NAME
+            _set_evidence_pane_visible - Show or hide one Panedwindow child in place.
+        """
+        if parent is None or widget is None:
+            return
+        pane_names = tuple(str(name) for name in parent.panes())
+        widget_name = str(widget)
+        is_visible = widget_name in pane_names
+        if visible and not is_visible:
+            parent.add(widget, weight=weight)
+        elif not visible and is_visible:
+            parent.forget(widget)
+
+    def _evidence_left_sections_visible(self) -> bool:
+        """
+        NAME
+            _evidence_left_sections_visible - Return whether the left Evidence stack should be shown.
+        """
+        return (
+            self._evidence_panel_pref_enabled(EVIDENCE_PANEL_KEY_INPUT_SENSOR)
+            or self._evidence_panel_pref_enabled(EVIDENCE_PANEL_KEY_CONSOLE)
+            or self._evidence_panel_pref_enabled(EVIDENCE_PANEL_KEY_PASSIVE)
+        )
+
+    def _schedule_evidence_view_refresh(self) -> None:
+        """
+        NAME
+            _schedule_evidence_view_refresh - Queue one deferred Evidence refresh without stacking duplicates.
+        """
+        self._evidence_refresh_dirty = True
+        if not self._evidence_tab_active():
+            return
+        if bool(self.__dict__.get("_evidence_refresh_pending", False)):
+            return
+        self._evidence_refresh_pending = True
+
+        def _run_refresh() -> None:
+            self._evidence_refresh_pending = False
+            self._evidence_refresh_dirty = False
+            self._refresh_evidence_view()
+
+        self.after_idle(_run_refresh)
+
+    def _rebuild_evidence_panel_layout(self) -> None:
+        """
+        NAME
+            _rebuild_evidence_panel_layout - Reflow Evidence subpanels from current visibility preferences.
+        """
+        top_pane = self.__dict__.get("_evidence_top_pane")
+        body_pane = self.__dict__.get("_evidence_body_pane")
+        left_column = self.__dict__.get("_evidence_left_column")
+        left_sections = self.__dict__.get("_evidence_left_sections")
+        inspector = self.__dict__.get("_evidence_inspector_frame")
+        topology_frame = self.__dict__.get("_evidence_topology_frame")
+        table_frame = self.__dict__.get("_evidence_table_frame")
+        inspector_sections = self.__dict__.get("_evidence_inspector_sections")
+
+        self._set_evidence_pane_visible(
+            left_sections,
+            self._evidence_text_section_frames.get(EVIDENCE_BUS_HEALTH_TEXT),
+            self._evidence_panel_pref_enabled(EVIDENCE_PANEL_KEY_CONSOLE),
+            EVIDENCE_INSPECTOR_PANED_WEIGHT_DEFAULT,
+        )
+        self._set_evidence_pane_visible(
+            left_sections,
+            self._evidence_input_sensor_frame,
+            self._evidence_panel_pref_enabled(EVIDENCE_PANEL_KEY_INPUT_SENSOR),
+            EVIDENCE_INSPECTOR_PANED_WEIGHT_DEFAULT,
+        )
+        self._set_evidence_pane_visible(
+            left_sections,
+            self._evidence_text_section_frames.get(EVIDENCE_PASSIVE_TEXT),
+            self._evidence_panel_pref_enabled(EVIDENCE_PANEL_KEY_PASSIVE),
+            EVIDENCE_INSPECTOR_PANED_WEIGHT_DEFAULT,
+        )
+
+        self._set_evidence_pane_visible(
+            inspector_sections,
+            self._evidence_text_section_frames.get(EVIDENCE_ENRICHMENT_TEXT),
+            self._evidence_panel_pref_enabled(EVIDENCE_PANEL_KEY_ENRICHMENT),
+            EVIDENCE_INSPECTOR_PANED_WEIGHT_DEFAULT,
+        )
+        self._set_evidence_pane_visible(
+            inspector_sections,
+            self._evidence_text_section_frames.get(EVIDENCE_CONSOLE_TEXT),
+            self._evidence_panel_pref_enabled(EVIDENCE_PANEL_KEY_CONSOLE),
+            EVIDENCE_INSPECTOR_PANED_WEIGHT_DEFAULT,
+        )
+
+        if left_column is not None and topology_frame is not None:
+            topology_managed = bool(topology_frame.winfo_manager())
+            topology_visible = self._evidence_panel_pref_enabled(EVIDENCE_PANEL_KEY_TOPOLOGY)
+            if topology_visible and not topology_managed:
+                topology_frame.pack(fill=VIS_FILL_X, expand=False)
+            elif not topology_visible and topology_managed:
+                topology_frame.pack_forget()
+        if left_column is not None and left_sections is not None:
+            left_sections_managed = bool(left_sections.winfo_manager())
+            left_sections_visible = self._evidence_left_sections_visible()
+            if left_sections_visible and not left_sections_managed:
+                left_sections.pack(fill=VIS_FILL_BOTH, expand=True, pady=(8, 0))
+            elif not left_sections_visible and left_sections_managed:
+                left_sections.pack_forget()
+
+        left_column_visible = bool(
+            self._evidence_panel_pref_enabled(EVIDENCE_PANEL_KEY_TOPOLOGY)
+            or self._evidence_left_sections_visible()
+        )
+        self._set_evidence_pane_visible(top_pane, left_column, left_column_visible, EVIDENCE_TOPOLOGY_WEIGHT)
+        self._set_evidence_pane_visible(
+            top_pane,
+            inspector,
+            self._evidence_panel_pref_enabled(EVIDENCE_PANEL_KEY_INSPECTOR),
+            EVIDENCE_INSPECTOR_WEIGHT,
+        )
+
+        top_visible = bool(tuple(str(name) for name in top_pane.panes())) if top_pane is not None else False
+        self._set_evidence_pane_visible(body_pane, top_pane, top_visible, EVIDENCE_LAYOUT_TOP_WEIGHT)
+        self._set_evidence_pane_visible(
+            body_pane,
+            table_frame,
+            self._evidence_panel_pref_enabled(EVIDENCE_PANEL_KEY_SUMMARY),
+            EVIDENCE_LAYOUT_BOTTOM_WEIGHT,
+        )
+
+    def _runtime_input_sensor_state_sections(self) -> List[Dict[str, Any]]:
+        """
+        NAME
+            _runtime_input_sensor_state_sections - Return the latest runtime-backed input/sensor sections.
+        """
+        payload = self.__dict__.get("_latest_runtime_state_payload", {})
+        state = payload.get(RUNTIME_KEY_INPUT_SENSOR_STATE) if isinstance(payload, dict) else None
+        sections = state.get(INPUT_SENSOR_STATE_KEY_SECTIONS) if isinstance(state, dict) else None
+        return list(sections) if isinstance(sections, list) else []
+
+    def _build_input_sensor_state_summary(self, row: Dict[str, Any]) -> str:
+        """
+        NAME
+            _build_input_sensor_state_summary - Build one compact field summary for the input/sensor tree.
+        """
+        values: List[str] = []
+        fields = row.get(INPUT_SENSOR_STATE_KEY_FIELDS)
+        if isinstance(fields, list):
+            for field in fields:
+                if not isinstance(field, dict):
+                    continue
+                text_value = str(field.get(INPUT_SENSOR_STATE_FIELD_KEY_TEXT, "") or "").strip()
+                if text_value:
+                    values.append(text_value)
+        return EVIDENCE_INPUT_SENSOR_SUMMARY_SEPARATOR.join(values) if values else EVIDENCE_INPUT_SENSOR_STATE_NONE
+
+    def _refresh_evidence_input_sensor_panel(self) -> None:
+        """
+        NAME
+            _refresh_evidence_input_sensor_panel - Rebuild the shared input/sensor tree from runtime state.
+        """
+        table = self.__dict__.get("_evidence_input_sensor_table")
+        if table is None:
+            return
+        selected_label = str(self.__dict__.get("_evidence_selected_label", "") or "").strip().lower()
+        existing = table.selection()
+        self._evidence_input_sensor_rows_by_item = {}
+        for row_id in table.get_children():
+            table.delete(row_id)
+        for section in self._runtime_input_sensor_state_sections():
+            if not isinstance(section, dict):
+                continue
+            section_key = str(section.get(INPUT_SENSOR_STATE_KEY_KEY, "") or "").strip() or EVIDENCE_INPUT_SENSOR_SECTION_DEFAULT
+            section_title = str(section.get(INPUT_SENSOR_STATE_KEY_TITLE, "") or "").strip() or EVIDENCE_INPUT_SENSOR_SECTION_DEFAULT
+            parent_id = table.insert(
+                VIS_TREE_ROOT,
+                VIS_TREE_END,
+                iid=f"{EVIDENCE_INPUT_SENSOR_PARENT_PREFIX}{section_key}",
+                text=section_title,
+                values=(EVIDENCE_INPUT_SENSOR_STATE_NONE, EVIDENCE_INPUT_SENSOR_STATE_NONE, EVIDENCE_INPUT_SENSOR_STATE_NONE, EVIDENCE_INPUT_SENSOR_STATE_NONE, EVIDENCE_INPUT_SENSOR_STATE_NONE),
+                open=True,
+            )
+            rows = section.get(INPUT_SENSOR_STATE_KEY_ROWS)
+            if not isinstance(rows, list):
+                continue
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                label = str(row.get(INPUT_SENSOR_STATE_KEY_LABEL, "") or "").strip()
+                if not label:
+                    continue
+                item_id = table.insert(
+                    parent_id,
+                    VIS_TREE_END,
+                    iid=f"{EVIDENCE_INPUT_SENSOR_ROW_PREFIX}{label.strip().lower()}",
+                    text=label,
+                    values=(
+                        str(row.get(INPUT_SENSOR_STATE_KEY_MODEL, "") or ""),
+                        EVIDENCE_STATUS_PRESENT if bool(row.get(INPUT_SENSOR_STATE_KEY_PRESENT)) else EVIDENCE_STATUS_ABSENT,
+                        str(row.get(INPUT_SENSOR_STATE_KEY_CONFIDENCE, EVIDENCE_STATUS_UNKNOWN) or EVIDENCE_STATUS_UNKNOWN),
+                        self._build_input_sensor_state_summary(row),
+                        str(row.get(INPUT_SENSOR_STATE_KEY_NOTES, "") or EVIDENCE_INPUT_SENSOR_STATE_NONE),
+                    ),
+                )
+                self._evidence_input_sensor_rows_by_item[item_id] = label
+                if label.strip().lower() == selected_label or bool(row.get(INPUT_SENSOR_STATE_KEY_SELECTED)):
+                    table.selection_set(item_id)
+                    table.focus(item_id)
+        if existing and not table.selection():
+            return
+
+    def _apply_evidence_input_sensor_selection_by_label(self, label: str) -> None:
+        """
+        NAME
+            _apply_evidence_input_sensor_selection_by_label - Sync shared Evidence selection into the input/sensor tree.
+        """
+        table = self.__dict__.get("_evidence_input_sensor_table")
+        if table is None:
+            return
+        if not self._evidence_tab_active():
+            return
+        clean_label = str(label or "").strip().lower()
+        if not clean_label:
+            return
+        self._evidence_input_sensor_programmatic_label = clean_label
+        self._evidence_syncing_selection = True
+        try:
+            for item_id, item_label in self._evidence_input_sensor_rows_by_item.items():
+                if str(item_label or "").strip().lower() == clean_label:
+                    table.selection_set(item_id)
+                    table.focus(item_id)
+                    table.see(item_id)
+                    break
+        finally:
+            after_idle = getattr(self, "after_idle", None)
+            if callable(after_idle):
+                after_idle(self._clear_evidence_input_sensor_programmatic_selection)
+            else:
+                self._clear_evidence_input_sensor_programmatic_selection()
+
+    def _clear_evidence_input_sensor_programmatic_selection(self) -> None:
+        """
+        NAME
+            _clear_evidence_input_sensor_programmatic_selection - Clear the deferred guard for input/sensor tree sync.
+        """
+        self._evidence_syncing_selection = False
+        self._evidence_input_sensor_programmatic_label = EVIDENCE_INPUT_SENSOR_SELECTION_SOURCE_NONE
+
+    def _on_evidence_input_sensor_row_selected(self, event: tk.Event) -> None:
+        """
+        NAME
+            _on_evidence_input_sensor_row_selected - Sync input/sensor tree selection into shared Evidence selection.
+        """
+        if self._evidence_syncing_selection:
+            return
+        if not self._evidence_tab_active():
+            return
+        widget = event.widget
+        if not isinstance(widget, ttk.Treeview):
+            return
+        selection = widget.selection()
+        if not selection:
+            return
+        label = self._evidence_input_sensor_rows_by_item.get(selection[0], "")
+        if not label:
+            return
+        clean_label = str(label).strip().lower()
+        if clean_label == self._evidence_input_sensor_programmatic_label:
+            return
+        self._apply_evidence_selection(label)
+        if self._evidence_pending_row_label != label:
+            self._evidence_pending_row_label = label
+            self.after_idle(lambda target=label: self._apply_evidence_table_selection_by_label(target))
+        if self._evidence_pending_node_label != label:
+            self._evidence_pending_node_label = label
+            self.after_idle(lambda target=label: self._apply_evidence_topology_selection_by_label(target))
 
     def _evidence_section_key_for_title(self, title: str) -> str:
         """
@@ -4157,6 +4665,36 @@ class BringupControlUI(tk.Tk):
         """
         return self._current_right_tab_text() == EVIDENCE_TAB_LABEL
 
+    def _current_runtime_live_view(self) -> Optional[LiveTopologyView]:
+        """
+        NAME
+            _current_runtime_live_view - Return the currently visible topology-backed live view.
+        """
+        current_tab = self._current_right_tab_text()
+        if current_tab == LIVE_TOPOLOGY_TAB_LABEL:
+            return self.__dict__.get("_live_view")
+        if current_tab == CAN_FAULT_FINDER_TAB_LABEL:
+            return self.__dict__.get("_fault_finder_live_view")
+        if current_tab == VIS_TAB_LABEL:
+            return self.__dict__.get("_visibility_live_view")
+        if current_tab == EVIDENCE_TAB_LABEL:
+            return self.__dict__.get("_evidence_live_view")
+        return None
+
+    def _sync_current_runtime_live_view_from_latest_state(self) -> None:
+        """
+        NAME
+            _sync_current_runtime_live_view_from_latest_state - Push the latest cached runtime payload into the visible topology tab.
+        """
+        live_view = self._current_runtime_live_view()
+        if live_view is None:
+            return
+        payload = self.__dict__.get("_latest_runtime_state_payload", {})
+        if not isinstance(payload, dict) or not payload:
+            live_view.update_runtime_state(None)
+            return
+        live_view.update_runtime_state(payload)
+
     def _scope_context_kind(self) -> str:
         """
         NAME
@@ -4196,9 +4734,13 @@ class BringupControlUI(tk.Tk):
         self._sync_test_selection_visibility()
         self._refresh_scope_context_label()
         self._refresh_selected_test_scope_status()
+        self._sync_current_runtime_live_view_from_latest_state()
         self._fit_current_topology_tab()
         if self._evidence_tab_active():
-            self._refresh_evidence_view()
+            if bool(self.__dict__.get("_evidence_refresh_dirty", False)):
+                self._schedule_evidence_view_refresh()
+            else:
+                self._refresh_evidence_view()
 
     def _fit_current_topology_tab(self) -> None:
         """
@@ -4536,6 +5078,30 @@ class BringupControlUI(tk.Tk):
                 if label:
                     required_devices.append(label)
         return required_devices
+
+    def _selected_test_exists_locally(self, selected_name: str) -> bool:
+        """
+        NAME
+            _selected_test_exists_locally - Return whether the selected DSL test still exists in local/editor-backed sources.
+        """
+        clean_name = str(selected_name or "").strip()
+        if not clean_name or clean_name == PROFILE_NONE:
+            return False
+        current_source_name = str(self.__dict__.get("_selected_test_source_name", "") or "").strip()
+        if current_source_name == clean_name:
+            return True
+        try:
+            payload = self._current_materialized_profiles_payload()
+            store = robot_test_dsl_store_from_root_payload(payload)
+        except Exception:
+            store = None
+        tests_by_name = getattr(store, "tests_by_name", {}) if store is not None else {}
+        if isinstance(tests_by_name, dict) and clean_name in tests_by_name:
+            return True
+        try:
+            return clean_name in list_external_library_test_names()
+        except Exception:
+            return False
 
     def _runtime_device_for_label(self, label: object) -> Dict[str, Any]:
         """
@@ -5440,7 +6006,7 @@ class BringupControlUI(tk.Tk):
                     live_view.reload_profile(name)
         self._last_profile_context = name
         self._last_profile_context_reload_token = current_reload_token
-        self.after_idle(self._refresh_evidence_view)
+        self._schedule_evidence_view_refresh()
 
     def _apply_host_profile_context_only(self, profile_name: object, reload_views: bool) -> None:
         """
@@ -6225,6 +6791,7 @@ class BringupControlUI(tk.Tk):
         self._latest_runtime_state_payload = {}
         self._latest_runtime_devices = {}
         self._evidence_probe_results_by_label = {}
+        self._evidence_manual_results = {}
         self._evidence_eval_cursor_class_index = 0
         self._evidence_eval_cursor_device_index = 0
         self._evidence_eval_generation = NT_VALUE_EMPTY
@@ -7959,24 +8526,20 @@ class BringupControlUI(tk.Tk):
         passive_expected = str(getattr(passive_device, "expected_status", NT_VALUE_EMPTY)).strip().lower() if passive_device is not None else NT_VALUE_EMPTY
         presence_bucket = NT_VALUE_EMPTY
         presence_existence = NT_VALUE_EMPTY
-        presence_updated_at = 0.0
         if isinstance(presence_entry, dict):
             presence_bucket = str(presence_entry.get(PRESENCE_KEY_BUCKET, NT_VALUE_EMPTY)).strip().lower()
             presence_existence = str(presence_entry.get(PRESENCE_KEY_EXISTENCE, NT_VALUE_EMPTY)).strip().upper()
-            raw_updated_at = presence_entry.get("updatedAtMs")
-            if isinstance(raw_updated_at, (int, float)):
-                presence_updated_at = float(raw_updated_at)
-        runtime_last_seen_ms = 0.0
         runtime_presence_conf = 0.0
         runtime_lifecycle = NT_VALUE_EMPTY
+        runtime_probe_bucket = NT_VALUE_EMPTY
+        runtime_probe_score = VIS_LAST_SEEN_UNKNOWN
         if isinstance(runtime_device, dict):
-            raw_last_seen_ms = runtime_device.get(VIS_KEY_LAST_SEEN_MS)
-            if isinstance(raw_last_seen_ms, (int, float)):
-                runtime_last_seen_ms = float(raw_last_seen_ms)
             raw_presence_conf = runtime_device.get("presenceConfidence")
             if isinstance(raw_presence_conf, (int, float)):
                 runtime_presence_conf = float(raw_presence_conf)
             runtime_lifecycle = str(runtime_device.get("lifecycleState", NT_VALUE_EMPTY)).strip().lower()
+            runtime_probe_bucket = _format_runtime_probe_bucket(runtime_device)
+            runtime_probe_score = _format_runtime_probe_score(runtime_device)
         console_summary = NT_VALUE_EMPTY
         console_has_error = False
         console_has_warn = False
@@ -7996,11 +8559,10 @@ class BringupControlUI(tk.Tk):
             passive_expected,
             presence_bucket,
             presence_existence,
-            presence_updated_at,
-            self._latest_visibility_seen_ms(visibility_device),
-            runtime_last_seen_ms,
             runtime_presence_conf,
             runtime_lifecycle,
+            runtime_probe_bucket,
+            runtime_probe_score,
             console_summary,
             console_has_error,
             console_has_warn,
@@ -8021,13 +8583,13 @@ class BringupControlUI(tk.Tk):
             return EVIDENCE_DIRTY_PRIORITY_SCOPE, EVIDENCE_DIRTY_REASON_PROFILE
         if previous_fingerprint == current_fingerprint:
             return None, NT_VALUE_EMPTY
-        if previous_fingerprint[9:13] != current_fingerprint[9:13]:
+        if previous_fingerprint[8:12] != current_fingerprint[8:12]:
             return EVIDENCE_DIRTY_PRIORITY_CONSOLE, EVIDENCE_DIRTY_REASON_CONSOLE
-        if previous_fingerprint[0:6] != current_fingerprint[0:6]:
+        if previous_fingerprint[0:4] != current_fingerprint[0:4]:
             return EVIDENCE_DIRTY_PRIORITY_PRESENCE, EVIDENCE_DIRTY_REASON_PASSIVE
-        if previous_fingerprint[6:9] != current_fingerprint[6:9]:
+        if previous_fingerprint[4:8] != current_fingerprint[4:8]:
             return EVIDENCE_DIRTY_PRIORITY_PRESENCE, EVIDENCE_DIRTY_REASON_RUNTIME
-        if previous_fingerprint[13] != current_fingerprint[13]:
+        if previous_fingerprint[12] != current_fingerprint[12]:
             return EVIDENCE_DIRTY_PRIORITY_SCOPE, EVIDENCE_DIRTY_REASON_MANUAL
         return EVIDENCE_DIRTY_PRIORITY_SCOPE, EVIDENCE_DIRTY_REASON_SCOPE
 
@@ -8421,6 +8983,15 @@ class BringupControlUI(tk.Tk):
         rows.sort(key=lambda row: str(row.get("label", NT_VALUE_EMPTY)).lower())
         return rows
 
+    def _row_has_completed_evidence_evaluation(self, row: Dict[str, Any]) -> bool:
+        """
+        NAME
+            _row_has_completed_evidence_evaluation - Return whether one evidence row has completed at least one real evaluation pass.
+        """
+        if not isinstance(row, dict):
+            return False
+        return row.get(INTERPRET_KEY_LAST_EVALUATION_AT) is not None
+
     def _evidence_matches_filter(self, row: Dict[str, Any], filter_key: str) -> bool:
         """
         NAME
@@ -8541,6 +9112,7 @@ class BringupControlUI(tk.Tk):
         self._set_evidence_text(EVIDENCE_PROBE_TEXT, str(row.get("probeText", EVIDENCE_SOURCE_NONE)))
         self._set_evidence_text(EVIDENCE_MANUAL_TEXT, str(row.get("manualText", EVIDENCE_MANUAL_PLACEHOLDER)))
         self._set_evidence_text(EVIDENCE_NOTES_TEXT, str(row.get("notesText", EVIDENCE_NOTE_NONE)))
+        self._apply_evidence_input_sensor_selection_by_label(clean_label)
 
     def _refresh_evidence_view(self) -> None:
         """
@@ -8559,6 +9131,7 @@ class BringupControlUI(tk.Tk):
         for row_id in table.get_children():
             table.delete(row_id)
         rows = self._build_evidence_rows()
+        self._refresh_evidence_input_sensor_panel()
         self._evidence_rows_by_label = {
             str(row.get("label", NT_VALUE_EMPTY)).strip().lower(): row for row in rows
         }
@@ -8569,11 +9142,14 @@ class BringupControlUI(tk.Tk):
                 row.get("presenceState", row.get("state", EVIDENCE_STATE_UNKNOWN))
             ).strip().lower()
             for row in rows
+            if self._row_has_completed_evidence_evaluation(row)
+            and str(row.get("label", NT_VALUE_EMPTY)).strip()
         }
         evidence_detail_snapshot = {
             str(row.get("label", NT_VALUE_EMPTY)).strip().lower(): build_interpreted_device_detail_snapshot(row)
             for row in rows
-            if str(row.get("label", NT_VALUE_EMPTY)).strip()
+            if self._row_has_completed_evidence_evaluation(row)
+            and str(row.get("label", NT_VALUE_EMPTY)).strip()
         }
         for topology_view in self._iter_live_views():
             if hasattr(topology_view, "set_evidence_snapshot"):
@@ -9631,6 +10207,7 @@ class BringupControlUI(tk.Tk):
                 UI_PREFS_KEY_SHOW_VISIBILITY_TAB: self._ui_show_visibility_tab,
                 UI_PREFS_KEY_SHOW_WALL_CLOCK: self._ui_show_wall_clock,
                 UI_PREFS_KEY_THEME: self._ui_theme_name,
+                UI_PREFS_KEY_EVIDENCE_PANELS: self._ui_evidence_panel_prefs,
             },
         )
 
@@ -11470,6 +12047,94 @@ class BringupControlUI(tk.Tk):
             self._lines = lines[-max_lines:]
         self._render_log_lines(self.__dict__.get("_output"), self._lines)
 
+    def _host_debug_active(self) -> bool:
+        """
+        NAME
+            _host_debug_active - Return whether temporary host timing diagnostics are enabled.
+        """
+        if not HOST_DEBUG_CONSOLE_ENABLED:
+            return False
+        deadline = float(self.__dict__.get("_host_debug_until", 0.0) or 0.0)
+        return deadline > time.time()
+
+    def _host_debug_log(self, message: str) -> None:
+        """
+        NAME
+            _host_debug_log - Print one immediate host-side timing diagnostic to the launch console.
+        """
+        if not HOST_DEBUG_CONSOLE_ENABLED:
+            return
+        # Re-enable this print when host-console timing diagnostics are needed again.
+        print(f"{timestamp_hms()} {HOST_DEBUG_PREFIX} {str(message or '').strip()}", flush=True)
+
+    def _host_debug_heartbeat(self) -> None:
+        """
+        NAME
+            _host_debug_heartbeat - Mark recent host UI progress for the temporary watchdog.
+        """
+        self._host_debug_heartbeat_at = time.time()
+
+    def _start_host_debug_watchdog(self) -> None:
+        """
+        NAME
+            _start_host_debug_watchdog - Start one temporary stack-dump watchdog for activation-time freezes.
+        """
+        if not HOST_DEBUG_CONSOLE_ENABLED:
+            return
+        self._host_debug_watchdog_generation = int(
+            self.__dict__.get("_host_debug_watchdog_generation", 0) or 0
+        ) + 1
+        generation = self._host_debug_watchdog_generation
+        deadline = float(self.__dict__.get("_host_debug_until", 0.0) or 0.0)
+        self._host_debug_log(HOST_DEBUG_WATCHDOG_START)
+
+        def _watch() -> None:
+            dumped = False
+            while generation == int(self.__dict__.get("_host_debug_watchdog_generation", 0) or 0):
+                now = time.time()
+                if now >= deadline:
+                    return
+                heartbeat_at = float(self.__dict__.get("_host_debug_heartbeat_at", 0.0) or 0.0)
+                if heartbeat_at > 0.0 and (now - heartbeat_at) >= HOST_DEBUG_HEARTBEAT_STALL_SEC:
+                    if not dumped:
+                        dumped = True
+                        self._host_debug_log(HOST_DEBUG_WATCHDOG_DUMP)
+                        try:
+                            faulthandler.dump_traceback(file=sys.stderr, all_threads=True)
+                        except Exception as exc:
+                            self._host_debug_log(f"{HOST_DEBUG_WATCHDOG_DUMP} failed: {exc}")
+                    time.sleep(HOST_DEBUG_WATCHDOG_SLEEP_SEC)
+                    continue
+                dumped = False
+                time.sleep(HOST_DEBUG_WATCHDOG_SLEEP_SEC)
+
+        thread = threading.Thread(
+            target=_watch,
+            name="bringup-ui-host-debug-watchdog",
+            daemon=True,
+        )
+        thread.start()
+
+    def _host_debug_log_phase(self, name: str, started_at: float, detail: str = "") -> None:
+        """
+        NAME
+            _host_debug_log_phase - Print one timed host-side phase when diagnostics are active or slow.
+        """
+        elapsed = max(0.0, time.time() - float(started_at))
+        should_log = self._host_debug_active() or elapsed >= HOST_DEBUG_STEP_WARN_SEC
+        if not should_log and elapsed < HOST_DEBUG_STEP_INFO_SEC:
+            return
+        if str(detail or "").strip():
+            self._host_debug_log(
+                HOST_DEBUG_RUNTIME_PHASE_EXTRA_FMT.format(
+                    name=name,
+                    elapsed=elapsed,
+                    detail=str(detail or "").strip(),
+                )
+            )
+            return
+        self._host_debug_log(HOST_DEBUG_RUNTIME_PHASE_FMT.format(name=name, elapsed=elapsed))
+
     def _append_test_output(self, line: str) -> None:
         """
         NAME
@@ -11740,12 +12405,14 @@ class BringupControlUI(tk.Tk):
         NAME
             _request_runtime_state_refresh - Force the next runtime-state poll and issue it immediately when possible.
         """
+        if self._host_debug_active():
+            self._host_debug_log("runtime refresh requested")
         self._runtime_state_backoff = 1.0
         self._runtime_state_idle_count = 0
         self._runtime_state_pause_until = None
         self._runtime_state_last_poll = 0.0
+        self._runtime_state_refresh_pending = True
         self._runtime_state_pending_seq = None
-        self._fetch_runtime_state_snapshot(show_output=False, log_blocked=False)
 
     def _send_handshake(self, reset: bool, force: bool = False, log: bool = True) -> None:
         """
@@ -11984,7 +12651,7 @@ class BringupControlUI(tk.Tk):
         if str(command or "").strip().lower() == "activepresenceprobe":
             self._evidence_probe_pending = True
             self._evidence_probe_run_count += 1
-            self.after_idle(self._refresh_evidence_view)
+            self._schedule_evidence_view_refresh()
         self._last_cmd = (command, args)
         seq = send_tracked_command(
             self._session,
@@ -12067,6 +12734,13 @@ class BringupControlUI(tk.Tk):
         """
         selected_name = self._selected_test_name()
         loaded_to_robot = self.__dict__.get("_tests_active_group_loaded_to_robot")
+        selected_row = self._selected_test_row(selected_name)
+        if (
+            selected_row is None
+            and loaded_to_robot is not False
+            and self._selected_test_exists_locally(selected_name)
+        ):
+            selected_row = {}
         derived_loaded_to_robot = self._selected_test_required_membership_loaded_to_robot()
         if derived_loaded_to_robot is not None and not (
             loaded_to_robot is True and derived_loaded_to_robot is False
@@ -12079,7 +12753,7 @@ class BringupControlUI(tk.Tk):
             runtime_block_reason=self._test_runtime_block_reason(),
             scope_active=self._scope_is_currently_active(),
             loaded_to_robot=loaded_to_robot,
-            selected_row=self._selected_test_row(selected_name),
+            selected_row=selected_row,
         )
 
     def _selected_test_panel_state(self) -> SelectedTestPanelState:
@@ -14084,6 +14758,13 @@ class BringupControlUI(tk.Tk):
         if profile_name:
             args[KEY_NAME] = profile_name
         args[KEY_COMMAND_MEMBERSHIP_MODE] = membership_mode
+        self._host_debug_until = time.time() + HOST_DEBUG_RUNTIME_ACTIVATE_WINDOW_SEC
+        self._host_debug_heartbeat()
+        self._start_host_debug_watchdog()
+        self._host_debug_log(
+            f"{HOST_DEBUG_RUNTIME_ACTIVATE_BEGIN} | "
+            + HOST_DEBUG_DETAIL_TAB_FMT.format(tab=self._current_right_tab_text() or NT_VALUE_EMPTY)
+        )
         self._append_output(
             f"{timestamp_hms()} {OUTPUT_RUNTIME_ACTIVATE_FMT.format(profile=profile_name)}"
         )
@@ -14283,8 +14964,24 @@ class BringupControlUI(tk.Tk):
         NAME
             _poll_runtime_ui_state - Poll REST session/runtime inputs and update output log.
         """
+        poll_started_at = time.time()
+        self._host_debug_heartbeat()
+        pending_runtime_refresh = bool(
+            self.__dict__.get("_runtime_state_refresh_pending", False)
+        )
         self._live_clock_var.set(time.strftime(LIVE_CLOCK_FORMAT))
         now = time.time()
+        if self._host_debug_active():
+            self._host_debug_log(
+                f"{HOST_DEBUG_POLL_BEGIN} | "
+                + HOST_DEBUG_DETAIL_TAB_FMT.format(tab=self._current_right_tab_text() or NT_VALUE_EMPTY)
+                + " | "
+                + HOST_DEBUG_DETAIL_CONNECTED_FMT.format(
+                    connected=bool(self._tcp_connected),
+                    handshake=bool(self._handshake_done),
+                )
+            )
+        connect_started_at = time.time()
         if not self._tcp_connected and self._auto_connect_enabled:
             if (now - self._last_connect_attempt) > 1.0:
                 self._last_connect_attempt = now
@@ -14293,6 +14990,7 @@ class BringupControlUI(tk.Tk):
             self._tcp_connected = connect(self._session)
         if self._tcp_connected:
             self._handshake_done = self._session.handshake_done()
+        self._host_debug_log_phase(HOST_DEBUG_RUNTIME_CONNECT, connect_started_at)
         if self._tcp_connected != self._prev_tcp_connected:
             if self._tcp_connected:
                 self._notify_ui_failure(
@@ -14319,17 +15017,37 @@ class BringupControlUI(tk.Tk):
             self._last_keepalive = 0.0
             self._ui_table = None
             self._tests_table = None
+        events_started_at = time.time()
         for event in self._session.poll_events():
             self._handle_tcp_response(event)
+        self._host_debug_log_phase(HOST_DEBUG_RUNTIME_EVENTS, events_started_at)
 
         session_snapshot: Dict[str, Any] = {}
         runtime_snapshot: Dict[str, Any] = {}
         tests_snapshot: Dict[str, Any] = {}
         runtime_state_available = False
         if self._tcp_connected:
+            session_fetch_started_at = time.time()
             session_snapshot = self._session.fetch_session_snapshot()
+            self._host_debug_log_phase(HOST_DEBUG_RUNTIME_FETCH_SESSION, session_fetch_started_at)
+            runtime_fetch_started_at = time.time()
             runtime_snapshot = self._session.fetch_runtime_state()
+            runtime_detail = HOST_DEBUG_DETAIL_RUNTIME_FMT.format(
+                count=len(runtime_snapshot.get("devices", []))
+                if isinstance(runtime_snapshot.get("devices"), list)
+                else 0,
+                groups=len(runtime_snapshot.get("groups", []))
+                if isinstance(runtime_snapshot.get("groups"), list)
+                else 0,
+            ) if isinstance(runtime_snapshot, dict) else ""
+            self._host_debug_log_phase(
+                HOST_DEBUG_RUNTIME_FETCH_RUNTIME,
+                runtime_fetch_started_at,
+                runtime_detail,
+            )
+            tests_fetch_started_at = time.time()
             tests_snapshot = self._session.fetch_tests_state()
+            self._host_debug_log_phase(HOST_DEBUG_RUNTIME_FETCH_TESTS, tests_fetch_started_at)
             fetched_at_ms = time.time() * 1000.0
             self._latest_tests_state_payload = dict(tests_snapshot or {})
             cached_runtime_snapshot = self.__dict__.get("_latest_runtime_state_payload", {})
@@ -14349,7 +15067,10 @@ class BringupControlUI(tk.Tk):
             self._tests_table = _RestTableAdapter.from_tests_state(tests_snapshot)
             if isinstance(runtime_snapshot, dict) and runtime_snapshot:
                 runtime_state_available = True
+                self._runtime_state_refresh_pending = False
+                apply_started_at = time.time()
                 self._apply_runtime_state_payload(runtime_snapshot)
+                self._host_debug_log_phase(HOST_DEBUG_RUNTIME_APPLY, apply_started_at)
         if self._ui_table is not None:
             session_id = self._ui_table.getEntry("state/sessionId").getString("")
             if session_id:
@@ -14369,7 +15090,9 @@ class BringupControlUI(tk.Tk):
             ):
                 self._pending_robot_profile_selection = PROFILE_NONE
             self._maybe_send_pending_robot_profile_selection()
+            sync_profile_started_at = time.time()
             self._sync_diagnostic_profile_context(reload_views=True)
+            self._host_debug_log_phase(HOST_DEBUG_RUNTIME_SYNC_PROFILE, sync_profile_started_at)
             self._maybe_prompt_host_profile_context_sync()
             nt_connected = self._tcp_connected
         else:
@@ -14385,6 +15108,7 @@ class BringupControlUI(tk.Tk):
         self._robot_estopped_known = estopped
         self._robot_mode_known = str(mode or "disabled").strip().lower()
         if self._tests_table is not None:
+            tests_sync_started_at = time.time()
             selected_name = str(
                 self._tests_table.getEntry("selectedName").getString("") or ""
             ).strip()
@@ -14433,6 +15157,7 @@ class BringupControlUI(tk.Tk):
                     running += " [run all]"
             self._running_text_var.set(f"Running: {running}")
             self._refresh_test_result_status()
+            self._host_debug_log_phase(HOST_DEBUG_RUNTIME_SYNC_TESTS, tests_sync_started_at)
         if not runtime_state_available and self._is_connected is not None:
             try:
                 nt_connected = bool(self._is_connected())
@@ -14511,7 +15236,7 @@ class BringupControlUI(tk.Tk):
                 self._log_poll_inflight = True
                 self._log_poll_seq = seq
                 self._last_log_poll = now
-        self._poll_live_overlay(now)
+        self._poll_live_overlay(now, runtime_state_fetched_this_cycle=bool(self._tcp_connected))
         self._poll_presence_overrides()
         self._poll_visibility_snapshot(now)
         self._update_action_enabled()
@@ -14523,9 +15248,13 @@ class BringupControlUI(tk.Tk):
             and not self._log_poll_inflight
         )
         interval = self._poll_interval_idle if idle else self._poll_interval_active
+        if pending_runtime_refresh:
+            interval = 0.0
+        self._host_debug_log_phase(HOST_DEBUG_POLL_END, poll_started_at)
+        self._host_debug_heartbeat()
         self.after(int(interval * 1000), self._poll_runtime_ui_state)
 
-    def _poll_live_overlay(self, now: float) -> None:
+    def _poll_live_overlay(self, now: float, *, runtime_state_fetched_this_cycle: bool = False) -> None:
         """
         NAME
             _poll_live_overlay - Poll runtime state for runtime-backed topology/evidence panels.
@@ -14547,6 +15276,8 @@ class BringupControlUI(tk.Tk):
         self._runtime_state_last_poll = now
         source = self._live_source_var.get()
         if source == LIVE_SOURCE_FILE:
+            return
+        if runtime_state_fetched_this_cycle:
             return
         self._fetch_runtime_state_snapshot(show_output=False, log_blocked=False)
 
@@ -14920,15 +15651,35 @@ class BringupControlUI(tk.Tk):
                 stale_motion_labels.append(label_key)
         for label_key in stale_motion_labels:
             self._manual_motion_checks.pop(label_key, None)
-        live_views = self._iter_live_views()
-        if not live_views:
+        live_view = self._current_runtime_live_view()
+        if live_view is None:
+            panels_started_at = time.time()
+            self._refresh_tests_active_group_panel()
+            self._refresh_selected_test_scope_status()
+            self._schedule_evidence_view_refresh()
+            self._host_debug_log_phase(
+                HOST_DEBUG_RUNTIME_APPLY,
+                panels_started_at,
+                "no visible live view",
+            )
             return
         changed = False
-        for live_view in live_views:
-            changed = live_view.update_runtime_state(payload) or changed
+        live_view_started_at = time.time()
+        changed = live_view.update_runtime_state(payload) or changed
+        self._host_debug_log_phase(
+            HOST_DEBUG_RUNTIME_APPLY,
+            live_view_started_at,
+            "visible live view updated",
+        )
+        panels_started_at = time.time()
         self._refresh_tests_active_group_panel()
         self._refresh_selected_test_scope_status()
-        self._refresh_evidence_view()
+        self._schedule_evidence_view_refresh()
+        self._host_debug_log_phase(
+            HOST_DEBUG_RUNTIME_APPLY,
+            panels_started_at,
+            "panels refreshed",
+        )
         if changed:
             self._runtime_state_backoff = 1.0
             self._runtime_state_idle_count = 0
@@ -15191,7 +15942,7 @@ class BringupControlUI(tk.Tk):
                     self._evidence_last_probe_complete_seq = seq_value
                     self._evidence_probe_complete_count += 1
                     self._evidence_last_probe_completed_at = time.time()
-                    self.after_idle(self._refresh_evidence_view)
+                    self._schedule_evidence_view_refresh()
             if command_lower in {
                 "addmotor",
                 "addall",

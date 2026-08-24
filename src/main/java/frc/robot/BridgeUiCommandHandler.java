@@ -149,6 +149,7 @@ public class BridgeUiCommandHandler {
   private static final String TEXT_RUNTIME_STATE_HEADER = "=== Runtime State ===";
   private static final String TEXT_RUNTIME_STATE_GROUPS = "groups:";
   private static final String TEXT_RUNTIME_STATE_SELECTED_DEVICE = "selectedDevice:";
+  private static final String JSON_KEY_INPUT_SENSOR_STATE = "inputSensorState";
   private static final String TEXT_RUNTIME_STATE_DEVICES = "devices:";
   private static final String TEXT_RUNTIME_STATE_NONE = "(none)";
   private static final String TEXT_RUNTIME_STATE_ENABLED_PREFIX = " enabled=";
@@ -3646,6 +3647,11 @@ public class BridgeUiCommandHandler {
     }
     root.add("groups", groups);
     root.add("selectedDevice", buildSelectedDeviceJson());
+    root.add(
+        JSON_KEY_INPUT_SENSOR_STATE,
+        core() != null
+            ? core().buildInputSensorStateJson(bridgeSelected().device != null ? bridgeSelected().device : "")
+            : new JsonObject());
     root.add("devices", buildRuntimeStateDevices(nowMs));
     return root;
   }

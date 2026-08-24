@@ -206,6 +206,80 @@ It is a state-interpretation confidence for this input/sensor-state feature.
 
 Purpose: define the full first-pass data contract.
 
+## Current DSL Coverage
+
+Purpose: record which families already have usable DSL type/signal support and where this spec goes beyond that current contract.
+
+The first-pass device families in this spec are already supported in the DSL type system, either directly or through canonical type aliases.
+
+Current DSL coverage:
+
+- `xboxController`
+  - native DSL type: `xboxController`
+  - current signal coverage includes:
+    - buttons
+    - D-pad directions
+    - stick axes
+    - trigger axes
+- `limitSwitch`
+  - native DSL type: `limitSwitch`
+  - current signal coverage includes:
+    - `pressed`
+- `cancoder`
+  - current DSL normalization accepts `CANCoder` and maps it to canonical type `encoderExternal`
+  - current signal coverage includes:
+    - `position`
+    - `position_actual`
+    - `position_delta`
+    - `position_delta_max_abs`
+    - `velocity`
+    - `velocity_actual`
+    - `velocity_actual_max_abs`
+- `pigeon`
+  - current DSL normalization accepts `Pigeon` and maps it to canonical type `imu`
+  - current signal coverage includes:
+    - `yaw`
+    - `pitch`
+    - `roll`
+    - delta variants
+    - max-abs delta variants
+    - angular velocity signals
+    - acceleration signals
+    - `supply_voltage`
+    - `faults`
+- `robotController`
+  - native DSL type: `robotController`
+  - compatibility aliases currently include:
+    - `roboRIO`
+    - `SystemCore`
+  - current signal coverage includes:
+    - `input_voltage`
+    - `brownout`
+    - `brownout_voltage`
+    - CAN utilization and counter signals
+    - 3.3V / 5V / 6V rail voltage signals
+    - 3.3V / 5V / 6V rail enabled signals
+    - 3.3V / 5V / 6V rail fault-count signals
+
+Important distinction:
+
+- current DSL support means tests can already read relevant core signals from these families
+- this spec goes further than the current DSL contract by defining a richer shared report/UI state model
+- not every field in this spec is currently exposed as a DSL signal, and that is acceptable
+
+Examples of fields that are part of this spec but not implied by current DSL support:
+
+- `limitSwitch.transitionCountSinceActivate`
+- `limitSwitch.lastChangeSec`
+- `limitSwitch.proofState`
+- shared per-row `stateConfidence`
+- report/UI-specific `notes`
+
+Therefore implementation must not assume:
+
+- that every `printInputs` field needs to become a DSL signal
+- or that existing DSL support alone is sufficient to satisfy this spec's report/UI contract
+
 ### Xbox Controller
 
 Required now:

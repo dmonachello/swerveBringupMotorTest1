@@ -5,7 +5,8 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import edu.wpi.first.wpilibj.Timer;
 import frc.robot.devices.DeviceUnit;
-import frc.robot.devices.ni.DioLimitSwitchDevice;
+import frc.robot.diag.input.InputSensorStateModel;
+import frc.robot.diag.input.InputSensorStateModelBuilder;
 import frc.robot.diag.probe.ActiveDevicePresenceProbe;
 import frc.robot.diag.snapshots.ActivePresenceProbeAttachment;
 import frc.robot.diag.snapshots.DeviceSnapshot;
@@ -63,25 +64,25 @@ public final class BringupCore {
   private static final double TEST_START_SEC_NONE = 0.0;
   private static final boolean INSTANTIATE_ALL_DEVICES = true;
   private static final String BUCKET_UNKNOWN = "unknown";
-  private static final String DEVICE_TYPE_XBOX_CONTROLLER = XboxControllerDevice.DEVICE_TYPE;
-  private static final String DEVICE_TYPE_LIMIT_SWITCH = DioLimitSwitchDevice.DEVICE_TYPE;
   private static final String INPUTS_REPORT_HEADER = "Inputs:";
-  private static final String INPUTS_REPORT_SECTION_CONTROLLERS = "  Controllers:";
-  private static final String INPUTS_REPORT_SECTION_DIGITAL = "  Digital Inputs:";
+  private static final String INPUTS_REPORT_SECTION_CONTROLLERS = "  Operator Controls:";
+  private static final String INPUTS_REPORT_SECTION_DIGITAL = "  Contact Inputs:";
+  private static final String INPUTS_REPORT_SECTION_POSITION_SENSORS = "  Position Sensors:";
+  private static final String INPUTS_REPORT_SECTION_IMU_SENSORS = "  IMU Sensors:";
+  private static final String INPUTS_REPORT_SECTION_CONTROLLER_STATE = "  Controller State:";
+  private static final String INPUTS_REPORT_SECTION_KEY_OPERATOR_CONTROLS =
+      InputSensorStateModelBuilder.SECTION_OPERATOR_CONTROLS_KEY;
+  private static final String INPUTS_REPORT_SECTION_KEY_CONTACT_INPUTS =
+      InputSensorStateModelBuilder.SECTION_CONTACT_INPUTS_KEY;
+  private static final String INPUTS_REPORT_SECTION_KEY_POSITION_SENSORS =
+      InputSensorStateModelBuilder.SECTION_POSITION_SENSORS_KEY;
+  private static final String INPUTS_REPORT_SECTION_KEY_IMU_SENSORS =
+      InputSensorStateModelBuilder.SECTION_IMU_SENSORS_KEY;
+  private static final String INPUTS_REPORT_SECTION_KEY_CONTROLLER_STATE =
+      InputSensorStateModelBuilder.SECTION_CONTROLLER_STATE_KEY;
   private static final String INPUTS_REPORT_NONE = "  (none)";
-  private static final String INPUTS_REPORT_PRESENT = " present=";
-  private static final String INPUTS_REPORT_PRESSED = " pressed=";
-  private static final String INPUTS_REPORT_USB = " usb=";
-  private static final String INPUTS_REPORT_LEFT_Y = " leftY=";
-  private static final String INPUTS_REPORT_RIGHT_Y = " rightY=";
-  private static final String INPUTS_REPORT_A = " A=";
-  private static final String INPUTS_REPORT_B = " B=";
-  private static final String INPUTS_REPORT_DIO = " DIO=";
-  private static final String INPUTS_REPORT_INVERT = " invert=";
-  private static final String BOOLEAN_YES = "YES";
-  private static final String BOOLEAN_NO = "NO";
-  private static final int FIRST_LIMIT_SWITCH_INDEX = 0;
-  private static final int INPUT_DECIMALS = 2;
+  private static final String INPUTS_REPORT_FIELD_SEPARATOR = " ";
+  private static final String INPUTS_REPORT_NOTE_PREFIX = " note=";
   private static final String TEST_RUN_STATE_IDLE = "idle";
   private static final String TEST_RUN_STATE_RUNNING = "running";
   private static final String TEST_RUN_STATE_PASSED = "passed";
@@ -127,6 +128,8 @@ public final class BringupCore {
   private long lastCANCoderPrintMs = 0L;
   private final Deque<ReportJobBase> reportQueue = new ArrayDeque<>();
   private ReportJobBase activeReport = null;
+  private final InputSensorStateModelBuilder inputSensorStateModelBuilder =
+      new InputSensorStateModelBuilder();
   private final List<DeviceUnit> testDevices = new ArrayList<>();
   private int nextTestIndex = 0;
   private final List<BringupTest> bringupTests = new ArrayList<>();
@@ -2627,10 +2630,74 @@ public final class BringupCore {
    *   Fully formatted input-state report driven by configured devices.
    */
   public String buildInputsReportText() {
-    StringBuilder sb = new StringBuilder(256);
+    return buildInputsReportText(buildInputSensorStateModel());
+  }
+
+  /**
+   * NAME
+   *   buildInputSensorStateModel - Build the shared current-profile input/sensor state model.
+   *
+   * RETURNS
+   *   Shared sectioned model for report and UI consumers.
+   */
+  public InputSensorStateModel buildInputSensorStateModel() {
+    return buildInputSensorStateModel("");
+  }
+
+  /**
+   * NAME
+   *   buildInputSensorStateModel - Build the shared current-profile input/sensor state model.
+   *
+   * PARAMETERS
+   *   selectedLabel - Optional selected device label for row highlighting.
+   *
+   * RETURNS
+   *   Shared sectioned model for report and UI consumers.
+   */
+  public InputSensorStateModel buildInputSensorStateModel(String selectedLabel) {
+    return inputSensorStateModelBuilder.build(manufacturerGroups, selectedLabel);
+  }
+
+  /**
+   * NAME
+   *   buildInputSensorStateJson - Build the shared current-profile input/sensor state JSON model.
+   *
+   * RETURNS
+   *   JSON object carrying the same sectioned model used by text-report rendering.
+   */
+  public JsonObject buildInputSensorStateJson() {
+    return buildInputSensorStateJson("");
+  }
+
+  /**
+   * NAME
+   *   buildInputSensorStateJson - Build the shared current-profile input/sensor state JSON model.
+   *
+   * PARAMETERS
+   *   selectedLabel - Optional selected device label for row highlighting.
+   *
+   * RETURNS
+   *   JSON object carrying the same sectioned model used by text-report rendering.
+   */
+  public JsonObject buildInputSensorStateJson(String selectedLabel) {
+    JsonElement element = GSON.toJsonTree(buildInputSensorStateModel(selectedLabel));
+    return element != null && element.isJsonObject() ? element.getAsJsonObject() : new JsonObject();
+  }
+
+  /**
+   * NAME
+   *   buildInputsReportText - Format one shared input/sensor state model as report text.
+   *
+   * PARAMETERS
+   *   model - shared model to render.
+   *
+   * RETURNS
+   *   Fully formatted input-state report text.
+   */
+  public String buildInputsReportText(InputSensorStateModel model) {
+    StringBuilder sb = new StringBuilder(512);
     ReportTextUtil.appendLine(sb, INPUTS_REPORT_HEADER);
-    appendConfiguredControllerInputs(sb);
-    appendConfiguredDigitalInputs(sb);
+    appendInputSensorSections(sb, model);
     return sb.toString();
   }
 
@@ -3771,167 +3838,88 @@ public final class BringupCore {
 
   /**
    * NAME
-   *   appendConfiguredControllerInputs - Append configured controller input rows.
+   *   appendInputSensorSections - Append one shared input/sensor state model.
    *
    * PARAMETERS
    *   sb - Report builder to append to.
+   *   model - Shared view-model to render.
    */
-  private void appendConfiguredControllerInputs(StringBuilder sb) {
-    ReportTextUtil.appendLine(sb, INPUTS_REPORT_SECTION_CONTROLLERS);
-    boolean appended = false;
-    for (ManufacturerGroup group : manufacturerGroups) {
-      for (DeviceTypeBucket bucket : group.getDeviceBuckets()) {
-        for (DeviceUnit device : bucket.getDevices()) {
-          if (!DEVICE_TYPE_XBOX_CONTROLLER.equals(device.getDeviceType())) {
-            continue;
-          }
-          appended = true;
-          appendControllerInputRow(sb, device);
-        }
+  private void appendInputSensorSections(StringBuilder sb, InputSensorStateModel model) {
+    if (model == null || model.sections == null || model.sections.isEmpty()) {
+      ReportTextUtil.appendLine(sb, INPUTS_REPORT_NONE);
+      return;
+    }
+    for (InputSensorStateModel.Section section : model.sections) {
+      String title = resolveInputSectionTitle(section != null ? section.key : "");
+      if (title == null || title.isBlank()) {
+        title = "  " + (section != null ? section.title : "") + ":";
+      }
+      ReportTextUtil.appendLine(sb, title);
+      if (section == null || section.rows == null || section.rows.isEmpty()) {
+        ReportTextUtil.appendLine(sb, INPUTS_REPORT_NONE);
+        continue;
+      }
+      for (InputSensorStateModel.Row row : section.rows) {
+        appendInputSensorRow(sb, row);
       }
     }
-    if (!appended) {
-      ReportTextUtil.appendLine(sb, INPUTS_REPORT_NONE);
-    }
   }
 
   /**
    * NAME
-   *   appendConfiguredDigitalInputs - Append configured digital input rows.
+   *   resolveInputSectionTitle - Map one shared section key to report title text.
+   *
+   * PARAMETERS
+   *   key - Shared section identifier.
+   *
+   * RETURNS
+   *   Report title text, or null when unknown.
+   */
+  private String resolveInputSectionTitle(String key) {
+    if (INPUTS_REPORT_SECTION_KEY_OPERATOR_CONTROLS.equals(key)) {
+      return INPUTS_REPORT_SECTION_CONTROLLERS;
+    }
+    if (INPUTS_REPORT_SECTION_KEY_CONTACT_INPUTS.equals(key)) {
+      return INPUTS_REPORT_SECTION_DIGITAL;
+    }
+    if (INPUTS_REPORT_SECTION_KEY_POSITION_SENSORS.equals(key)) {
+      return INPUTS_REPORT_SECTION_POSITION_SENSORS;
+    }
+    if (INPUTS_REPORT_SECTION_KEY_IMU_SENSORS.equals(key)) {
+      return INPUTS_REPORT_SECTION_IMU_SENSORS;
+    }
+    if (INPUTS_REPORT_SECTION_KEY_CONTROLLER_STATE.equals(key)) {
+      return INPUTS_REPORT_SECTION_CONTROLLER_STATE;
+    }
+    return null;
+  }
+
+  /**
+   * NAME
+   *   appendInputSensorRow - Append one shared input/sensor state row.
    *
    * PARAMETERS
    *   sb - Report builder to append to.
+   *   row - Shared row to render.
    */
-  private void appendConfiguredDigitalInputs(StringBuilder sb) {
-    ReportTextUtil.appendLine(sb, INPUTS_REPORT_SECTION_DIGITAL);
-    boolean appended = false;
-    for (ManufacturerGroup group : manufacturerGroups) {
-      for (DeviceTypeBucket bucket : group.getDeviceBuckets()) {
-        for (DeviceUnit device : bucket.getDevices()) {
-          if (!DEVICE_TYPE_LIMIT_SWITCH.equals(device.getDeviceType())) {
-            continue;
-          }
-          appended = true;
-          appendLimitSwitchInputRow(sb, device);
+  private void appendInputSensorRow(StringBuilder sb, InputSensorStateModel.Row row) {
+    if (row == null) {
+      return;
+    }
+    StringBuilder line = new StringBuilder(192);
+    line.append("  ").append(row.label);
+    if (row.fields != null) {
+      for (InputSensorStateModel.Field field : row.fields) {
+        if (field == null || field.text == null || field.text.isBlank()) {
+          continue;
         }
+        line.append(INPUTS_REPORT_FIELD_SEPARATOR).append(field.text);
       }
     }
-    if (!appended) {
-      ReportTextUtil.appendLine(sb, INPUTS_REPORT_NONE);
+    if (row.notes != null && !row.notes.isBlank()) {
+      line.append(INPUTS_REPORT_NOTE_PREFIX).append(row.notes);
     }
-  }
-
-  /**
-   * NAME
-   *   appendControllerInputRow - Append one controller input row.
-   *
-   * PARAMETERS
-   *   sb - Report builder to append to.
-   *   device - Configured controller device.
-   */
-  private void appendControllerInputRow(StringBuilder sb, DeviceUnit device) {
-    DeviceSnapshot snapshot = device.snapshot();
-    double leftY = readDeviceDoubleSignal(device, XboxControllerDevice.SIGNAL_LEFT_Y);
-    double rightY = readDeviceDoubleSignal(device, XboxControllerDevice.SIGNAL_RIGHT_Y);
-    boolean buttonA = readDeviceBooleanSignal(device, XboxControllerDevice.SIGNAL_A);
-    boolean buttonB = readDeviceBooleanSignal(device, XboxControllerDevice.SIGNAL_B);
-    ReportTextUtil.appendLine(
-        sb,
-        "  "
-            + device.getLabel()
-            + INPUTS_REPORT_USB
-            + device.getCanId()
-            + INPUTS_REPORT_PRESENT
-            + formatReportBoolean(snapshot.present)
-            + INPUTS_REPORT_LEFT_Y
-            + String.format("%." + INPUT_DECIMALS + "f", leftY)
-            + INPUTS_REPORT_RIGHT_Y
-            + String.format("%." + INPUT_DECIMALS + "f", rightY)
-            + INPUTS_REPORT_A
-            + formatReportBoolean(buttonA)
-            + INPUTS_REPORT_B
-            + formatReportBoolean(buttonB));
-  }
-
-  /**
-   * NAME
-   *   appendLimitSwitchInputRow - Append one digital input row.
-   *
-   * PARAMETERS
-   *   sb - Report builder to append to.
-   *   device - Configured limit switch device.
-   */
-  private void appendLimitSwitchInputRow(StringBuilder sb, DeviceUnit device) {
-    DeviceSnapshot snapshot = device.snapshot();
-    LimitsAttachment limits = snapshot.getAttachment(LimitsAttachment.class);
-    LimitsAttachment.LimitSwitchState state =
-        limits != null
-                && limits.switches != null
-                && !limits.switches.isEmpty()
-                && limits.switches.size() > FIRST_LIMIT_SWITCH_INDEX
-            ? limits.switches.get(FIRST_LIMIT_SWITCH_INDEX)
-            : null;
-    ReportTextUtil.appendLine(
-        sb,
-        "  "
-            + device.getLabel()
-            + INPUTS_REPORT_DIO
-            + device.getCanId()
-            + INPUTS_REPORT_PRESENT
-            + formatReportBoolean(snapshot.present)
-            + INPUTS_REPORT_PRESSED
-            + formatReportBoolean(state != null && Boolean.TRUE.equals(state.closed))
-            + INPUTS_REPORT_INVERT
-            + formatReportBoolean(state != null && state.invert));
-  }
-
-  /**
-   * NAME
-   *   readDeviceDoubleSignal - Read one numeric device signal safely.
-   *
-   * PARAMETERS
-   *   device - Device to query.
-   *   signalName - DSL signal name.
-   *
-   * RETURNS
-   *   Numeric signal value, or zero when unavailable.
-   */
-  private double readDeviceDoubleSignal(DeviceUnit device, String signalName) {
-    Object value = device.readDslSignal(signalName);
-    if (value instanceof Number number) {
-      return number.doubleValue();
-    }
-    return 0.0;
-  }
-
-  /**
-   * NAME
-   *   readDeviceBooleanSignal - Read one boolean device signal safely.
-   *
-   * PARAMETERS
-   *   device - Device to query.
-   *   signalName - DSL signal name.
-   *
-   * RETURNS
-   *   Boolean signal value, or false when unavailable.
-   */
-  private boolean readDeviceBooleanSignal(DeviceUnit device, String signalName) {
-    Object value = device.readDslSignal(signalName);
-    return value instanceof Boolean bool && bool;
-  }
-
-  /**
-   * NAME
-   *   formatReportBoolean - Format a boolean for compact report output.
-   *
-   * PARAMETERS
-   *   value - Boolean value to format.
-   *
-   * RETURNS
-   *   YES or NO.
-   */
-  private String formatReportBoolean(boolean value) {
-    return value ? BOOLEAN_YES : BOOLEAN_NO;
+    ReportTextUtil.appendLine(sb, line.toString());
   }
 
   /**

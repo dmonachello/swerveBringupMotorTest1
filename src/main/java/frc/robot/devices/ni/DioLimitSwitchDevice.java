@@ -1,6 +1,7 @@
 package frc.robot.devices.ni;
 
 import edu.wpi.first.wpilibj.DigitalInput;
+import edu.wpi.first.wpilibj.Timer;
 import frc.robot.BringupUtil;
 import frc.robot.devices.DeviceDslSupport;
 import frc.robot.devices.DeviceUnit;
@@ -30,12 +31,19 @@ public final class DioLimitSwitchDevice implements DeviceUnit {
 
   private static final String VENDOR = "NI";
   private static final String NOTE_VIRTUAL = "dioInput";
+  private static final double TIME_NONE = -1.0;
+  private static final int TRANSITIONS_NONE = 0;
+  private static final int TRANSITIONS_PARTIAL = 1;
+  private static final int TRANSITIONS_PROVEN = 2;
 
   private final int dioChannel;
   private final String label;
   private final boolean invert;
   private DigitalInput input;
   private boolean created;
+  private Boolean lastObservedClosed;
+  private double lastChangeTimestampSec = TIME_NONE;
+  private int transitionCountSinceActivate = TRANSITIONS_NONE;
 
   public DioLimitSwitchDevice(int dioChannel, String label, boolean invert) {
     this.dioChannel = dioChannel;
@@ -75,6 +83,9 @@ public final class DioLimitSwitchDevice implements DeviceUnit {
     }
     input = BringupUtil.acquireSharedDioInput(dioChannel);
     created = true;
+    lastObservedClosed = null;
+    lastChangeTimestampSec = TIME_NONE;
+    transitionCountSinceActivate = TRANSITIONS_NONE;
   }
 
   @Override
@@ -82,6 +93,9 @@ public final class DioLimitSwitchDevice implements DeviceUnit {
     BringupUtil.releaseSharedDioInput(input);
     input = null;
     created = false;
+    lastObservedClosed = null;
+    lastChangeTimestampSec = TIME_NONE;
+    transitionCountSinceActivate = TRANSITIONS_NONE;
   }
 
   @Override
@@ -96,12 +110,19 @@ public final class DioLimitSwitchDevice implements DeviceUnit {
     snap.label = label;
     snap.present = created;
     snap.note = NOTE_VIRTUAL;
+    Boolean closed = BringupUtil.readLimitInput(input, invert);
+    double nowSec = Timer.getFPGATimestamp();
+    updateTransitionTracking(closed, nowSec);
     LimitsAttachment limits = new LimitsAttachment();
     LimitsAttachment.LimitSwitchState state = new LimitsAttachment.LimitSwitchState();
     state.label = label;
     state.dio = dioChannel;
     state.invert = invert;
-    state.closed = BringupUtil.readLimitInput(input, invert);
+    state.closed = closed;
+    state.lastChangeSec = lastChangeTimestampSec >= 0.0 ? nowSec - lastChangeTimestampSec : null;
+    state.transitionCountSinceActivate = transitionCountSinceActivate;
+    state.changedSinceActivate = transitionCountSinceActivate > TRANSITIONS_NONE;
+    state.proofState = resolveProofState(closed);
     limits.switches.add(state);
     snap.addAttachment(limits);
     return snap;
@@ -110,5 +131,51 @@ public final class DioLimitSwitchDevice implements DeviceUnit {
   @Override
   public Object readDslSignal(String signalName) {
     return DeviceDslSupport.readLimitSwitchSignal(this, signalName);
+  }
+
+  /**
+   * NAME
+   *   updateTransitionTracking - Record transition state for the current activation session.
+   *
+   * PARAMETERS
+   *   closed - current logical switch state.
+   *   nowSec - current FPGA timestamp.
+   */
+  private void updateTransitionTracking(Boolean closed, double nowSec) {
+    if (closed == null) {
+      return;
+    }
+    if (lastObservedClosed == null) {
+      lastObservedClosed = closed;
+      return;
+    }
+    if (!closed.equals(lastObservedClosed)) {
+      transitionCountSinceActivate++;
+      lastChangeTimestampSec = nowSec;
+      lastObservedClosed = closed;
+    }
+  }
+
+  /**
+   * NAME
+   *   resolveProofState - Summarize behavioral proof state for the current session.
+   *
+   * PARAMETERS
+   *   closed - current logical switch state.
+   *
+   * RETURNS
+   *   One shared operator-facing proof token.
+   */
+  private String resolveProofState(Boolean closed) {
+    if (!created || closed == null) {
+      return LimitsAttachment.PROOF_STATE_UNKNOWN;
+    }
+    if (transitionCountSinceActivate >= TRANSITIONS_PROVEN) {
+      return LimitsAttachment.PROOF_STATE_PROVEN;
+    }
+    if (transitionCountSinceActivate >= TRANSITIONS_PARTIAL) {
+      return LimitsAttachment.PROOF_STATE_PARTIAL;
+    }
+    return LimitsAttachment.PROOF_STATE_UNPROVEN;
   }
 }

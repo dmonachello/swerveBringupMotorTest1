@@ -3625,7 +3625,7 @@ class LiveTopologyView(ttk.Frame):
         if state == EVIDENCE_PRESENCE_PRESENT:
             return EVIDENCE_COLOR_OK
         if state == EVIDENCE_PRESENCE_CONFLICT:
-            return EVIDENCE_COLOR_FAILED
+            return EVIDENCE_COLOR_DEGRADED
         if state == EVIDENCE_STATE_OK:
             return EVIDENCE_COLOR_OK
         if state == EVIDENCE_STATE_DEGRADED:
