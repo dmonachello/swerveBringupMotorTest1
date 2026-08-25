@@ -1796,6 +1796,16 @@ OUTPUT_SANITIZE_DROP_CATEGORIES = {
     UNICODE_CATEGORY_CONTROL,
     UNICODE_CATEGORY_FORMAT,
 }
+OUTPUT_ENCODING_UTF16LE = "utf-16le"
+OUTPUT_ENCODING_UTF8 = "utf-8"
+OUTPUT_ENCODING_ERROR_MODE_IGNORE = "ignore"
+OUTPUT_CHAR_NUL = "\x00"
+OUTPUT_CHAR_NEWLINE = "\n"
+OUTPUT_CHAR_CARRIAGE_RETURN = "\r"
+OUTPUT_MOJIBAKE_SUSPECT_CODEPOINT_MIN = 0x0100
+OUTPUT_MOJIBAKE_MIN_SUSPECT_CHARS = 8
+OUTPUT_MOJIBAKE_MIN_SUSPECT_RATIO = 0.30
+OUTPUT_MOJIBAKE_RECOVERED_PRINTABLE_MIN_RATIO = 0.70
 
 
 def _normalize_host_action_row(row: Dict[str, Any], default_source: str, default_kind: str) -> Dict[str, Any]:
@@ -1895,12 +1905,53 @@ def _sanitize_stream_output_line(line: object) -> str:
     text = str(line or "")
     if not text:
         return ""
+    text = _recover_utf16le_mojibake_text(text)
     cleaned_chars: List[str] = []
     for char in text:
         if unicodedata.category(char) in OUTPUT_SANITIZE_DROP_CATEGORIES:
             continue
         cleaned_chars.append(char)
     return "".join(cleaned_chars)
+
+
+def _recover_utf16le_mojibake_text(text: str) -> str:
+    """
+    NAME
+        _recover_utf16le_mojibake_text - Recover a common UTF-16LE mojibake pattern from streamed logs.
+
+    DESCRIPTION
+        Some vendor timeout/error lines can arrive as UTF-16LE-like mojibake where
+        printable ASCII bytes were interpreted as wide Unicode code points. Detect
+        that shape conservatively, attempt recovery, and keep the original text
+        when the candidate does not look materially better.
+    """
+    if not text:
+        return ""
+    total_chars = len(text)
+    suspect_chars = sum(1 for char in text if ord(char) >= OUTPUT_MOJIBAKE_SUSPECT_CODEPOINT_MIN)
+    if suspect_chars < OUTPUT_MOJIBAKE_MIN_SUSPECT_CHARS:
+        return text
+    suspect_ratio = float(suspect_chars) / float(total_chars)
+    if suspect_ratio < OUTPUT_MOJIBAKE_MIN_SUSPECT_RATIO:
+        return text
+    try:
+        recovered = text.encode(
+            OUTPUT_ENCODING_UTF16LE,
+            errors=OUTPUT_ENCODING_ERROR_MODE_IGNORE,
+        ).decode(
+            OUTPUT_ENCODING_UTF8,
+            errors=OUTPUT_ENCODING_ERROR_MODE_IGNORE,
+        )
+    except Exception:
+        return text
+    recovered = recovered.replace(OUTPUT_CHAR_NUL, "")
+    if not recovered:
+        return text
+    printable_chars = sum(1 for char in recovered if char.isprintable() or char in {OUTPUT_CHAR_NEWLINE, OUTPUT_CHAR_CARRIAGE_RETURN})
+    printable_ratio = float(printable_chars) / float(len(recovered))
+    if printable_ratio < OUTPUT_MOJIBAKE_RECOVERED_PRINTABLE_MIN_RATIO:
+        return text
+    return recovered
 
 
 ACTIONS_BY_NAME, HOST_UI_SECTIONS = _load_generated_command_metadata()
@@ -5470,8 +5521,51 @@ class BringupControlUI(tk.Tk):
         NAME
             _robot_selected_test_name - Return the robot-reported selected test or PROFILE_NONE.
         """
+        tests_table = self.__dict__.get("_tests_table")
+        if tests_table is not None:
+            try:
+                selected_name = str(
+                    tests_table.getEntry("selectedName").getString("") or ""
+                ).strip()
+            except Exception:
+                selected_name = ""
+            if not selected_name:
+                try:
+                    selected_name = str(self._resolve_selected_from_rows() or "").strip()
+                except Exception:
+                    selected_name = ""
+            if selected_name:
+                return selected_name
+        payload = self.__dict__.get("_latest_tests_state_payload", {})
+        if isinstance(payload, dict):
+            selected_name = str(payload.get("selectedName", "") or "").strip()
+            if not selected_name:
+                rows = payload.get("rows")
+                if isinstance(rows, list):
+                    for row in rows:
+                        if not isinstance(row, dict):
+                            continue
+                        if bool(row.get("selected")):
+                            selected_name = str(row.get("name", "") or "").strip()
+                            if selected_name:
+                                break
+            if selected_name:
+                return selected_name
         name = str(self.__dict__.get("_last_robot_selected_test_name", "") or "").strip()
         return name if name else PROFILE_NONE
+
+    def _effective_selected_test_loaded_to_robot(self) -> Optional[bool]:
+        """
+        NAME
+            _effective_selected_test_loaded_to_robot - Return the live membership truth with cached intent fallback.
+        """
+        cached_loaded = self.__dict__.get("_tests_active_group_loaded_to_robot")
+        derived_loaded = self._selected_test_required_membership_loaded_to_robot()
+        if derived_loaded is True:
+            return True
+        if derived_loaded is False and cached_loaded is not True:
+            return False
+        return cached_loaded
 
     def _context_sync_state(self) -> ContextSyncState:
         """
@@ -12037,14 +12131,26 @@ class BringupControlUI(tk.Tk):
         NAME
             _append_output - Append a line to the output log.
         """
-        lines = self.__dict__.get("_lines")
-        if lines is None:
-            lines = []
-            self._lines = lines
-        lines.append(line)
+        self._append_output_lines([line])
+
+    def _append_output_lines(self, lines: List[str]) -> None:
+        """
+        NAME
+            _append_output_lines - Append multiple lines to the output log with one widget refresh.
+        """
+        entries = self.__dict__.get("_lines")
+        if entries is None:
+            entries = []
+            self._lines = entries
+        appended = False
+        for entry in lines:
+            entries.append(str(entry))
+            appended = True
+        if not appended:
+            return
         max_lines = int(self.__dict__.get("_max_lines", 200))
-        if len(lines) > max_lines:
-            self._lines = lines[-max_lines:]
+        if len(entries) > max_lines:
+            self._lines = entries[-max_lines:]
         self._render_log_lines(self.__dict__.get("_output"), self._lines)
 
     def _host_debug_active(self) -> bool:
@@ -12140,17 +12246,29 @@ class BringupControlUI(tk.Tk):
         NAME
             _append_test_output - Append a line to the Tests-tab activity log.
         """
-        line = _sanitize_stream_output_line(line)
-        if not line.strip():
+        self._append_test_output_lines([line])
+
+    def _append_test_output_lines(self, lines: List[str]) -> None:
+        """
+        NAME
+            _append_test_output_lines - Append multiple lines to the Tests-tab activity log with one widget refresh.
+        """
+        entries = self.__dict__.get("_test_lines")
+        if entries is None:
+            entries = []
+            self._test_lines = entries
+        appended = False
+        for line in lines:
+            clean_line = _sanitize_stream_output_line(line)
+            if not clean_line.strip():
+                continue
+            entries.append(clean_line)
+            appended = True
+        if not appended:
             return
-        lines = self.__dict__.get("_test_lines")
-        if lines is None:
-            lines = []
-            self._test_lines = lines
-        lines.append(line)
         max_lines = int(self.__dict__.get("_max_lines", 200))
-        if len(lines) > max_lines:
-            self._test_lines = lines[-max_lines:]
+        if len(entries) > max_lines:
+            self._test_lines = entries[-max_lines:]
         self._render_log_lines(self.__dict__.get("_test_output"), self._test_lines)
 
     def _render_log_lines(self, widget: Optional[tk.Text], lines: List[str]) -> None:
@@ -12733,20 +12851,15 @@ class BringupControlUI(tk.Tk):
             _selected_test_scope_state - Return the shared selected-test readiness state.
         """
         selected_name = self._selected_test_name()
-        loaded_to_robot = self.__dict__.get("_tests_active_group_loaded_to_robot")
+        cached_loaded_to_robot = self.__dict__.get("_tests_active_group_loaded_to_robot")
+        loaded_to_robot = self._effective_selected_test_loaded_to_robot()
         selected_row = self._selected_test_row(selected_name)
         if (
             selected_row is None
-            and loaded_to_robot is not False
+            and cached_loaded_to_robot is not False
             and self._selected_test_exists_locally(selected_name)
         ):
             selected_row = {}
-        derived_loaded_to_robot = self._selected_test_required_membership_loaded_to_robot()
-        if derived_loaded_to_robot is not None and not (
-            loaded_to_robot is True and derived_loaded_to_robot is False
-        ):
-            loaded_to_robot = derived_loaded_to_robot
-            self._tests_active_group_loaded_to_robot = derived_loaded_to_robot
         return resolve_selected_test_scope_state(
             selected_name=selected_name,
             active_group_rows=list(self.__dict__.get("_tests_active_group_rows", [])),
@@ -15578,9 +15691,6 @@ class BringupControlUI(tk.Tk):
         self._latest_runtime_devices = latest_runtime_devices
         self._maybe_complete_scope_transition_wait(payload)
         self._merge_cached_active_probe_results_into_runtime_devices()
-        derived_loaded_to_robot = self._selected_test_required_membership_loaded_to_robot()
-        if derived_loaded_to_robot is not None:
-            self._tests_active_group_loaded_to_robot = derived_loaded_to_robot
         self._log_manual_duty_runtime_mismatch()
         now_sec = time.time()
         for label_key, device in latest_runtime_devices.items():
@@ -15831,13 +15941,17 @@ class BringupControlUI(tk.Tk):
                 if isinstance(last_cmd, tuple) and last_cmd:
                     mirror_to_test = self._is_test_activity_command(str(last_cmd[0]))
                 if text:
+                    output_lines: List[str] = []
+                    test_lines: List[str] = []
                     for line in text.splitlines():
                         line = _sanitize_stream_output_line(line)
                         if self._should_skip_out_line(line):
                             continue
-                        self._append_output(line)
+                        output_lines.append(line)
                         if mirror_to_test or self._is_test_activity_output_line(line):
-                            self._append_test_output(line)
+                            test_lines.append(line)
+                    self._append_output_lines(output_lines)
+                    self._append_test_output_lines(test_lines)
                 self._log_poll_inflight = False
                 self._log_poll_seq = None
             elif msg_type == "ack":
@@ -15881,12 +15995,16 @@ class BringupControlUI(tk.Tk):
             if self._is_test_activity_command(name):
                 self._append_test_output(header)
             if text:
+                output_lines: List[str] = []
+                test_lines: List[str] = []
                 for line in text.splitlines():
                     line = _sanitize_stream_output_line(line)
                     self._remember_out_line(line)
-                    self._append_output(f"  {line}")
+                    output_lines.append(f"  {line}")
                     if self._is_test_activity_command(name):
-                        self._append_test_output(f"  {line}")
+                        test_lines.append(f"  {line}")
+                self._append_output_lines(output_lines)
+                self._append_test_output_lines(test_lines)
             if json_payload:
                 self._append_output("  json: " + str(json_payload))
                 if self._is_test_activity_command(name):

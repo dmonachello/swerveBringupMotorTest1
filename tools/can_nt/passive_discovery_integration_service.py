@@ -185,6 +185,9 @@ CONSOLE_SEVERITY_FATAL = "FATAL"
 CONSOLE_SEVERITY_INFO = "INFO"
 CONSOLE_EVENT_BUS_FAULT = "BUS_FAULT_SUSPECTED"
 CONSOLE_EVENT_CAN_TIMEOUT = "CAN_TIMEOUT"
+CONSOLE_EVENT_CAN_FRAME_TOO_STALE = "CAN_FRAME_TOO_STALE"
+CONSOLE_EVENT_CAN_MESSAGE_NOT_FOUND = "CAN_MESSAGE_NOT_FOUND"
+CONSOLE_EVENT_DEVICE_FW_QUERY_FAIL = "DEVICE_FW_QUERY_FAIL"
 CONSOLE_EVENT_TALON_STALE = "TALON_STATUS_SIGNAL_STALE"
 CONSOLE_EVENT_SPARK_TIMEOUT = "SPARK_STATUS_TIMEOUT"
 CONSOLE_EVENT_SPARK_FW_QUERY_FAIL = "SPARK_FW_QUERY_FAIL"
@@ -499,6 +502,8 @@ EVIDENCE_NOTE_CONSOLE_DEVICE_TIMEOUT = "Device-targeted stale/timeout console ev
 EVIDENCE_NOTE_CONSOLE_DEVICE_TIMEOUT_CONFLICT = "Fresh targeted console fault evidence conflicts with weak/stale positive presence evidence."
 EVIDENCE_NOTE_INFRA_CONSOLE_MISSING = "Fresh device-targeted console timeout evidence with no fresh positive corroboration is being treated as missing infrastructure presence."
 EVIDENCE_NOTE_INFRA_RUNTIME_LOCAL_ONLY = "Fresh singleton runtime telemetry alone is being treated as robot-local evidence and is not enough to override direct CAN-loss evidence."
+EVIDENCE_NOTE_CAN_CONSOLE_MISSING = "Fresh device-targeted console timeout evidence with no fresh positive corroboration is being treated as missing CAN-device presence."
+EVIDENCE_NOTE_CAN_RUNTIME_LOCAL_ONLY = "Fresh runtime-local presence alone is not enough to override direct CAN-loss evidence for this CAN device."
 EVIDENCE_NOTE_PASSIVE_HISTORY_MISSING = "Passive CAN has only stale historical visibility for this device and no fresh corroborating evidence remains; treating it as missing."
 EVIDENCE_NOTE_RUNTIME_PRESENCE_STALE = "Runtime presence evidence is stale and is being treated as historical only."
 EVIDENCE_NOTE_NONE = "No major source conflict."
@@ -1450,6 +1455,9 @@ def _console_vendor_from_event_type(event_type: str) -> str:
         CONSOLE_EVENT_RECOVERED,
         CONSOLE_EVENT_ERROR_SPIKE,
         CONSOLE_EVENT_CAN_TIMEOUT,
+        CONSOLE_EVENT_CAN_FRAME_TOO_STALE,
+        CONSOLE_EVENT_CAN_MESSAGE_NOT_FOUND,
+        CONSOLE_EVENT_DEVICE_FW_QUERY_FAIL,
         CONSOLE_EVENT_BUS_FAULT,
     }:
         return CONSOLE_VENDOR_UNKNOWN
@@ -1502,7 +1510,13 @@ def _console_fault_family_from_event_type(event_type: str, scope: str) -> str:
         return CONSOLE_FAULT_FAMILY_CTRE_TIMEOUT
     if event_name in {CONSOLE_EVENT_SPARK_TIMEOUT, CONSOLE_EVENT_SPARK_FW_QUERY_FAIL, CONSOLE_EVENT_PDH_TIMEOUT}:
         return CONSOLE_FAULT_FAMILY_REV_TIMEOUT
-    if event_name in {CONSOLE_EVENT_CAN_TIMEOUT, CONSOLE_EVENT_SPARK_WRONG_DEVICE}:
+    if event_name in {
+        CONSOLE_EVENT_CAN_TIMEOUT,
+        CONSOLE_EVENT_CAN_FRAME_TOO_STALE,
+        CONSOLE_EVENT_CAN_MESSAGE_NOT_FOUND,
+        CONSOLE_EVENT_DEVICE_FW_QUERY_FAIL,
+        CONSOLE_EVENT_SPARK_WRONG_DEVICE,
+    }:
         return CONSOLE_FAULT_FAMILY_DEVICE_STALE
     if event_name == CONSOLE_EVENT_HIGH_UTIL:
         return CONSOLE_FAULT_FAMILY_HIGH_UTIL
@@ -2006,6 +2020,11 @@ def build_interpreted_device_state(
         runtime_device if isinstance(runtime_device, Mapping) else None,
         now_s,
     )
+    runtime_presence_from_local_snapshot = bool(
+        isinstance(presence_entry, Mapping)
+        and str(presence_entry.get(PRESENCE_KEY_SOURCE, EVIDENCE_SOURCE_NONE)).strip() == EVIDENCE_SOURCE_LOCAL_SNAPSHOT
+        and str(presence_entry.get(PRESENCE_KEY_EXISTENCE, EVIDENCE_STATUS_UNKNOWN)).strip().upper() == EVIDENCE_STATUS_PRESENT
+    )
     if isinstance(presence_entry, Mapping):
         presence_existence = str(presence_entry.get(PRESENCE_KEY_EXISTENCE, EVIDENCE_STATUS_UNKNOWN)).strip() or EVIDENCE_STATUS_UNKNOWN
         presence_confidence = str(presence_entry.get(PRESENCE_KEY_CONFIDENCE, EVIDENCE_CONFIDENCE_LOW)).strip() or EVIDENCE_CONFIDENCE_LOW
@@ -2242,15 +2261,25 @@ def build_interpreted_device_state(
         and probe_bucket != PRESENCE_VALUE_PRESENT
         and not manual_recent_operability
     )
+    runtime_can_only_positive = bool(
+        not is_infrastructure_device
+        and runtime_presence_from_local_snapshot
+        and not passive_live_support
+        and probe_bucket != PRESENCE_VALUE_PRESENT
+        and not manual_recent_operability
+    )
     if _console_should_demote_existence(
         console_entry=console_entry,
         console_targets_failure=console_targets_failure,
         stronger_positive_contradiction=stronger_positive_contradiction,
     ):
         if existence == EVIDENCE_STATUS_PRESENT:
-            existence = EVIDENCE_STATUS_CONFLICT
-            evidence_conflicted = True
-            notes.append(EVIDENCE_NOTE_CONSOLE_DEVICE_TIMEOUT_CONFLICT)
+            if runtime_can_only_positive:
+                confidence = EVIDENCE_CONFIDENCE_LOW
+            else:
+                existence = EVIDENCE_STATUS_CONFLICT
+                evidence_conflicted = True
+                notes.append(EVIDENCE_NOTE_CONSOLE_DEVICE_TIMEOUT_CONFLICT)
         elif existence == EVIDENCE_STATUS_UNKNOWN:
             confidence = EVIDENCE_CONFIDENCE_LOW
     if (
@@ -2266,7 +2295,40 @@ def build_interpreted_device_state(
         notes.append(EVIDENCE_NOTE_INFRA_CONSOLE_MISSING)
         if runtime_infrastructure_only_positive:
             notes.append(EVIDENCE_NOTE_INFRA_RUNTIME_LOCAL_ONLY)
-    if bool(system_console.get(CONSOLE_KEY_SYSTEM_CONFLICT)):
+    if (
+        not is_infrastructure_device
+        and console_targets_failure
+        and not stronger_positive_contradiction
+        and (existence == EVIDENCE_STATUS_UNKNOWN or runtime_can_only_positive)
+    ):
+        existence = EVIDENCE_STATUS_ABSENT
+        operability = EVIDENCE_STATUS_FAILED
+        confidence = EVIDENCE_CONFIDENCE_MEDIUM
+        evidence_state = EVIDENCE_STATE_FAILED
+        notes.append(EVIDENCE_NOTE_CAN_CONSOLE_MISSING)
+        if runtime_can_only_positive:
+            notes.append(EVIDENCE_NOTE_CAN_RUNTIME_LOCAL_ONLY)
+    system_console_conflict_relevant = bool(
+        console_targets_failure
+        or (
+            not is_infrastructure_device
+            and (
+                passive_device is not None
+                or isinstance(visibility_device, Mapping)
+            )
+        )
+        or (
+            is_infrastructure_device
+            and (
+                passive_infrastructure_missing
+                or (
+                    not runtime_infrastructure_present
+                    and requires_can_visible_infrastructure_presence
+                )
+            )
+        )
+    )
+    if bool(system_console.get(CONSOLE_KEY_SYSTEM_CONFLICT)) and system_console_conflict_relevant:
         notes.append("System-level console fault may reflect broader CAN isolation.")
         evidence_conflicted = True
         if confidence == EVIDENCE_CONFIDENCE_HIGH and probe_bucket != PRESENCE_VALUE_ABSENT:
@@ -2373,11 +2435,6 @@ def build_interpreted_device_state(
                 notes.append("Motor commanded with little current and no motion; possible electrical/output-path issue.")
             else:
                 notes.append(EVIDENCE_MOTION_NOTE_NO_ROTATION)
-    runtime_presence_from_local_snapshot = bool(
-        isinstance(presence_entry, Mapping)
-        and str(presence_entry.get(PRESENCE_KEY_SOURCE, EVIDENCE_SOURCE_NONE)).strip() == EVIDENCE_SOURCE_LOCAL_SNAPSHOT
-        and str(presence_entry.get(PRESENCE_KEY_EXISTENCE, EVIDENCE_STATUS_UNKNOWN)).strip().upper() == EVIDENCE_STATUS_PRESENT
-    )
     motion_like_runtime_device = bool(
         not is_infrastructure_device
         and (

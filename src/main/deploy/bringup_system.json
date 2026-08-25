@@ -324,8 +324,8 @@
       "type": ""
     }
   ],
-  "data_version": "2026-08-21_151255",
-  "data_hash": "9ece8a9700bcbd53de4fe51fab6f0ff1df73179f446a7ba9f3f49e6487a4275b",
+  "data_version": "2026-08-25_094708",
+  "data_hash": "808ca561b0f8652dbe90261b3c2d4eb835b231a9623c087e2d0d2c36ac2ebbc5",
   "default_profile": "test_minimal_25_9",
   "bridgeConfig": {
     "schemaVersion": 2,

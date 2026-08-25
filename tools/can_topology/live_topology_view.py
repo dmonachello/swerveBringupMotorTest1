@@ -148,8 +148,12 @@ from tools.common.motor_runtime_verdict import (
 from tools.can_nt.visibility_constants import (
     VIS_KEY_AVAILABLE,
     VIS_KEY_DEVICES,
+    VIS_KEY_FRAMES_PER_SEC,
     VIS_KEY_ID,
     VIS_KEY_LABEL,
+    VIS_KEY_LAST_SEEN_MS,
+    VIS_KEY_METRICS,
+    VIS_KEY_MSG_COUNT,
     VIS_KEY_SOURCES,
     VIS_KEY_VISIBILITY,
     VIS_VISIBLE_TRUE,
@@ -2001,6 +2005,32 @@ class LiveTopologyView(ttk.Frame):
             label = str(device.get(VIS_KEY_LABEL, EMPTY_STRING)).strip()
             if not label:
                 continue
+            metrics = device.get(VIS_KEY_METRICS)
+            if isinstance(metrics, dict) and available_ids:
+                any_metric_history = False
+                any_live_metric = False
+                saw_metric_entry = False
+                for src_id in available_ids:
+                    metric_entry = metrics.get(src_id)
+                    if not isinstance(metric_entry, dict):
+                        continue
+                    saw_metric_entry = True
+                    message_count = metric_entry.get(VIS_KEY_MSG_COUNT)
+                    last_seen_ms = metric_entry.get(VIS_KEY_LAST_SEEN_MS)
+                    frames_per_sec = metric_entry.get(VIS_KEY_FRAMES_PER_SEC)
+                    if (
+                        isinstance(message_count, (int, float))
+                        and float(message_count) > 0.0
+                    ) or (
+                        isinstance(last_seen_ms, (int, float))
+                        and float(last_seen_ms) > 0.0
+                    ):
+                        any_metric_history = True
+                    if isinstance(frames_per_sec, (int, float)) and float(frames_per_sec) > 0.0:
+                        any_live_metric = True
+                if saw_metric_entry and not any_live_metric:
+                    state_map[label.lower()] = VIS_STATE_NONE
+                    continue
             visibility = device.get(VIS_KEY_VISIBILITY)
             if not isinstance(visibility, dict):
                 continue

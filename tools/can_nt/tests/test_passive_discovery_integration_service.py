@@ -1139,6 +1139,112 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
         )
         self.assertIn("Passive CAN observation is stale or no longer emitting traffic at a non-zero rate.", row["notesText"])
 
+    def test_interpreted_row_marks_can_motor_missing_when_only_runtime_local_snapshot_remains_against_fresh_console_faults(self) -> None:
+        passive_device = DeviceRecord(
+            identity=DeviceIdentity(manufacturer=4, device_type=2, device_id=9),
+            expected_status="observed",
+            manufacturer_name="CTRE",
+            device_type_name="TalonFX",
+            model_name="falcon",
+            profile_label="FALCON 9",
+            presence_confidence="medium",
+            presence_score=78,
+            inventory_confidence="medium",
+            inventory_score=70,
+            health_confidence="limited",
+            health_score=65,
+            health="limited",
+            evidence_sources=("passive_can",),
+            evidence_family_keys=(FamilyKey(4, 2, 9, 6, 0),),
+            evidence_family_summaries=("api=6/0 primary_status 100.0Hz",),
+            evidence_gaps=(),
+            notes=(),
+        )
+
+        row = build_interpreted_evidence_row(
+            label="FALCON 9",
+            presence_entry={
+                "bucket": "present",
+                "score": 1.0,
+                "ageText": "0.0s ago",
+                "existence": "PRESENT",
+                "confidence": "HIGH",
+                "source": "localSnapshot",
+                "message": "Runtime snapshot indicates device present.",
+            },
+            passive_device=passive_device,
+            visibility_device={
+                "metrics": {
+                    "observerA": {
+                        "msgCount": 269924,
+                        "lastSeenMs": 22000.0,
+                        "framesPerSec": 0.0,
+                    }
+                }
+            },
+            runtime_device={
+                "label": "FALCON 9",
+                "cmdDuty": 0.0,
+                "appliedDuty": 0.0,
+                "velRpm": 0.0,
+                "positionRot": 0.0,
+                "motorCurrentA": 0.0,
+                "attachments": [
+                    {
+                        "type": ATTACHMENT_TYPE_ACTIVE_PRESENCE_PROBE,
+                        "bucket": "waiting",
+                        "score": 0,
+                        "maxScore": 100,
+                        "updatedAtMs": 1000.0,
+                        "status": "waiting",
+                        "message": "Probe not run.",
+                    }
+                ],
+            },
+            console_entry={
+                "summary": "[WARN] TALON_STATUS_SIGNAL_STALE",
+                "events": [
+                    '[WARN] TALON_STATUS_SIGNAL_STALE: CAN message is stale, data is valid but old. talon fx 9 ("") Status Signal SupplyVoltage'
+                ],
+                "hasError": False,
+                "hasWarn": True,
+                "totalCount": 3,
+                "freshness": "fresh",
+                "records": [
+                    {
+                        "scope": "device",
+                        "faultFamily": "ctre_stale_status_signal",
+                        "freshness": "fresh",
+                        "totalCount": 3,
+                    }
+                ],
+            },
+            system_console={},
+            manual_entry=None,
+            manual_observation=None,
+            manual_motion=None,
+            probe_pending=False,
+            last_probe_completed_at=0.0,
+            probe_run_count=0,
+            now_s=80.0,
+            visibility_last_seen_text="58s",
+            visibility_packet_count_text="269924",
+            visibility_packet_rate_text="0.0/s",
+        )
+
+        self.assertEqual("ABSENT", row["existence"])
+        self.assertEqual("FAILED", row["operability"])
+        self.assertEqual("failed", row["state"])
+        self.assertEqual("missing", row["presenceState"])
+        self.assertIn(
+            "Fresh device-targeted console timeout evidence with no fresh positive corroboration is being treated as missing CAN-device presence.",
+            row["notesText"],
+        )
+        self.assertIn(
+            "Fresh runtime-local presence alone is not enough to override direct CAN-loss evidence for this CAN device.",
+            row["notesText"],
+        )
+
     def test_interpreted_row_does_not_mark_roborio_missing_only_from_scope_absence(self) -> None:
         row = build_interpreted_evidence_row(
             label="roborio",
@@ -1169,6 +1275,86 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
             "Infrastructure device is outside the current motion-test scope",
             row["notesText"],
         )
+
+    def test_interpreted_row_does_not_degrade_non_can_local_device_from_system_can_conflict_only(self) -> None:
+        row = build_interpreted_evidence_row(
+            label="controller0",
+            presence_entry={
+                "bucket": "present",
+                "score": 1.0,
+                "ageText": "0.0s ago",
+                "existence": "PRESENT",
+                "confidence": "HIGH",
+                "source": "localSnapshot",
+                "updatedAtMs": 79000.0,
+            },
+            passive_device=None,
+            visibility_device=None,
+            runtime_device={
+                "label": "controller0",
+                "presenceConfidence": 1.0,
+                "lastSeenMs": 79000.0,
+            },
+            console_entry=None,
+            system_console={"systemConflict": True},
+            manual_entry=None,
+            manual_observation=None,
+            manual_motion=None,
+            probe_pending=False,
+            last_probe_completed_at=0.0,
+            probe_run_count=0,
+            now_s=80.0,
+        )
+
+        self.assertEqual("PRESENT", row["existence"])
+        self.assertEqual("UNKNOWN", row["operability"])
+        self.assertEqual("ok", row["state"])
+        self.assertFalse(row["conflicted"])
+        self.assertEqual("No major source conflict.", row["notesText"])
+
+    def test_interpreted_row_does_not_degrade_runtime_present_roborio_from_system_can_conflict_only(self) -> None:
+        row = build_interpreted_evidence_row(
+            label="roborio",
+            presence_entry={
+                "bucket": "present",
+                "score": 1.0,
+                "ageText": "0.0s ago",
+                "existence": "PRESENT",
+                "confidence": "HIGH",
+                "source": "localSnapshot",
+                "updatedAtMs": 79000.0,
+            },
+            passive_device=None,
+            visibility_device={
+                "metrics": {
+                    "observerA": {
+                        "msgCount": 12858,
+                        "lastSeenMs": 79000.0,
+                        "framesPerSec": 48.8,
+                    }
+                }
+            },
+            runtime_device={
+                "label": "roborio",
+                "lastSeenMs": 79000.0,
+                "inputV": 12.2,
+            },
+            console_entry=None,
+            system_console={"systemConflict": True},
+            manual_entry=None,
+            manual_observation=None,
+            manual_motion=None,
+            probe_pending=False,
+            last_probe_completed_at=0.0,
+            probe_run_count=0,
+            now_s=80.0,
+        )
+
+        self.assertEqual("PRESENT", row["existence"])
+        self.assertEqual("UNKNOWN", row["operability"])
+        self.assertEqual("ok", row["state"])
+        self.assertFalse(row["conflicted"])
+        self.assertEqual("No major source conflict.", row["notesText"])
 
     def test_interpreted_row_marks_infrastructure_present_from_visibility_metrics(self) -> None:
         row = build_interpreted_evidence_row(

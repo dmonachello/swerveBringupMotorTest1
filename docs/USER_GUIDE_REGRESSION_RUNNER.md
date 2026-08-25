@@ -545,7 +545,8 @@ python tools/can_nt/scripts/run_regressions.py --suite local
 ```
 
 If local changes touched a major user-visible surface, the `changelog-guard`
-step will require `CHANGELOG.md` to be updated.
+step will auto-seed `CHANGELOG.md` if it is still unchanged. Review that seeded
+entry before commit if you want release-quality wording.
 
 ### 15.2 While Working on DSL Code
 

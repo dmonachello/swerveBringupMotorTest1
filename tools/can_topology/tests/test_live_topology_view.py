@@ -887,6 +887,44 @@ class LiveTopologyViewTests(unittest.TestCase):
             view._live_fill(node, 0),
         )
 
+    def test_set_visibility_snapshot_demotes_true_visibility_when_metrics_are_history_only(self) -> None:
+        view = self._make_view()
+        redraw_calls = []
+        view._redraw = lambda *_args, **_kwargs: redraw_calls.append(True)
+
+        view.set_visibility_snapshot(
+            {
+                live_view_module.VIS_KEY_SOURCES: [
+                    {
+                        live_view_module.VIS_KEY_ID: "observerA",
+                        live_view_module.VIS_KEY_LABEL: "analyzer0",
+                        live_view_module.VIS_KEY_AVAILABLE: True,
+                    }
+                ],
+                live_view_module.VIS_KEY_DEVICES: [
+                    {
+                        live_view_module.VIS_KEY_LABEL: "pdp",
+                        live_view_module.VIS_KEY_VISIBILITY: {
+                            "observerA": live_view_module.VIS_VISIBLE_TRUE,
+                        },
+                        live_view_module.VIS_KEY_METRICS: {
+                            "observerA": {
+                                live_view_module.VIS_KEY_MSG_COUNT: 0,
+                                live_view_module.VIS_KEY_LAST_SEEN_MS: 0,
+                                live_view_module.VIS_KEY_FRAMES_PER_SEC: 0.0,
+                            }
+                        },
+                    }
+                ],
+            }
+        )
+
+        self.assertEqual(
+            live_view_module.VIS_STATE_NONE,
+            view._visibility_state["pdp"],
+        )
+        self.assertEqual(1, len(redraw_calls))
+
     def test_runtime_notice_prefers_disabled_over_activation_blocker(self) -> None:
         view = self._make_view()
         notices = []

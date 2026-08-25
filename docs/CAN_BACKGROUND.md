@@ -1,29 +1,35 @@
-# CAN Bus Background (FRC)
+# CAN bus background (FRC)
 
-This document is a practical, field-focused overview of CAN on FRC robots. It is structured as both a reference and a living discovery guide.
+This is a practical, field-focused overview of CAN on FRC robots. It works as both a reference and a discovery guide.
 
 ## Scope
+
 - Explain how CAN works in the FRC context.
 - Document known addressing and packet structure details.
 - Provide a repeatable process for discovering and documenting unknown traffic.
 - Offer troubleshooting guidance for common failures.
 
-## How CAN Works (FRC)
+## How CAN works (FRC)
+
 CAN is a multi-drop, differential serial bus. Every device shares two wires (CANH/CANL) and takes turns transmitting short frames. Arbitration happens by ID: lower numeric IDs win priority and transmit first; losing devices back off automatically.
 
 Key properties:
+
 - Multi-drop: one bus, many devices.
 - Differential signaling: noise-resistant when wiring is correct.
 - Priority by ID: lower IDs win arbitration.
 - Short frames: small payloads sent frequently.
 
 In practice:
+
 - Devices publish status frames at fixed rates.
 - Controllers receive command frames from the roboRIO.
 - The bus is healthy only if every device can transmit and receive without errors.
 
-## CAN Addressing (FRC)
+## CAN addressing (FRC)
+
 FRC uses extended 29-bit CAN IDs with a standardized layout. The arbitration ID is split into these fields:
+
 - Device Type (5 bits)
 - Manufacturer (8 bits)
 - API Identifier (10 bits), broken into:
@@ -32,6 +38,7 @@ FRC uses extended 29-bit CAN IDs with a standardized layout. The arbitration ID 
 - Device Number (6 bits), often called the "CAN ID" set in vendor tools
 
 Bit widths and ranges:
+
 - Device Number is 6 bits (0-63).
 - Manufacturer is 8 bits.
 - Device Type is 5 bits.
@@ -41,96 +48,118 @@ These fields define the full CAN address used for arbitration and message routin
 
 Source: WPILib FRC CAN Device Specifications and WPILib CAN Java API.
 
-### Packet Structure (FRC Specific)
+### Packet structure (FRC specific)
+
 - Arbitration ID: 29-bit extended ID using the field layout above.
 - Payload: 0 to 8 data bytes (classic CAN).
 - Priority: lower IDs win arbitration on the bus.
 
 Source: WPILib FRC CAN Device Specifications and general CAN frame references.
 
-### Device Number (CAN ID)
+### Device number (CAN ID)
+
 - Device Number is a 6-bit value used to distinguish multiple devices of the same type.
 - Devices should default to ID 0; ID 0x3F may be reserved for device-specific broadcast.
 
 Source: WPILib FRC CAN Device Specifications.
 
-### Broadcast and Heartbeat
+### Broadcast and heartbeat
+
 - Broadcast messages set Device Type = 0 and Manufacturer = 0. Broadcast API Class is 0.
 - Defined broadcast messages include Disable, System Halt, System Reset, Device Assign, Device Query, Heartbeat, Sync, Update, Firmware Version, Enumerate, and System Resume.
 - The roboRIO provides a universal CAN heartbeat every 20 ms. The spec defines its CAN ID (0x01011840) and payload layout, including match state and enable/disable fields.
 
 Source: WPILib FRC CAN Device Specifications.
 
-## Discovery Process (How We Learn More)
-This project treats CAN reverse engineering as a structured process. The goal is to improve documentation over time without breaking the tool.
+## Discovery process
+
+This project treats CAN reverse engineering as a structured process. The point is to improve the docs over time without destabilizing the tool.
 
 ### Step 1: Inventory
+
 - Capture a baseline of all (manufacturer, device type, device id, api class, api index).
 - Record counts and rates per pair.
 
 ### Step 2: Controlled Experiments
+
 - Change one variable at a time (enable one motor, apply constant duty, stop, reverse).
 - Capture a new inventory and PCAP for each experiment.
 
 ### Step 3: Diff
+
 - Compare inventories to identify frames that appear or change rate.
 - Mark likely command frames vs periodic status frames.
 
 ### Step 4: Fingerprints
+
 - Track which bytes change and how often.
 - Store fingerprints for future decoding and cross-checking.
 
 ### Step 5: Document
+
 - Update this file with confirmed field meanings.
 - Label hypotheses explicitly until verified.
 
-## Troubleshooting Workflow
+## Troubleshooting workflow
+
 ### 1) Check bus health (roboRIO)
+
 - Look at bus utilization, RX/TX errors, and bus-off count.
 - Any rising error counts = wiring or termination first.
 
 ### 2) Check device health (local API)
+
 - If a device is present locally, CAN wiring is likely OK for that device.
 - If a device reports resets or sticky faults, check power and wiring.
 
 ### 3) Check PC sniffer (optional)
+
 - If the sniffer sees traffic but the robot does not, check software/profile instantiation.
 - If the sniffer sees nothing, check wiring and sniffer tap points.
 
-## What "Bus Off" Means
+## What "bus off" means
+
 Bus-off is a safety shutdown by the CAN controller after too many errors. It is almost always a wiring or termination failure. Stop debugging devices until this is fixed.
 
-## How Utilization Matters
+## How utilization matters
+
 High utilization means the bus is near capacity. Symptoms include:
+
 - rising TX full counts
 - delayed or missing frames
 - devices that appear intermittently
 
 If utilization is high, reduce status frame rates or disconnect unused devices.
 
-## CAN Best Practices (FRC)
+## CAN best practices (FRC)
+
 - Keep CANH/CANL twisted the entire length.
 - Use secure connectors; avoid loose or single-strand terminals.
 - Check power wiring separately from CAN.
 - Use a consistent device labeling scheme in profiles.
 
-## Swyft Devices (Ethernet-Style Cabling)
+## Swyft devices (Ethernet-style cabling)
+
 Some devices use Ethernet-style cabling (RJ45) to carry CAN signals. These are still CAN devices, but the physical connectors are different.
 
 What to know:
+
 - The cable looks like Ethernet, but the signal is still CAN (not TCP/IP).
 - Miswired pinouts or non-standard patch cables can break the bus.
 - Long or low-quality cables increase susceptibility to noise.
 
 Practical tips:
+
 - Use the vendor-recommended pinout and cables only.
 - Avoid mixing generic Ethernet patch cables unless explicitly supported.
 - Confirm the device's CANH/CANL mapping before troubleshooting the rest of the bus.
 
-## FRC Constants (Manufacturer, Device Type, API)
+## FRC constants (manufacturer, device type, API)
+
 FRC assigns constants for the fields inside the 29-bit arbitration ID.
 
 ### Manufacturer IDs (assigned values)
+
 - 0: Broadcast
 - 1: NI
 - 2: Luminary Micro
@@ -156,7 +185,8 @@ FRC assigns constants for the fields inside the 29-bit arbitration ID.
 
 Source: WPILib FRC CAN Device Specifications.
 
-### Device Types (assigned values)
+### Device types (assigned values)
+
 - 0: Broadcast Messages
 - 1: Robot Controller
 - 2: Motor Controller
@@ -176,14 +206,16 @@ Source: WPILib FRC CAN Device Specifications.
 
 Source: WPILib FRC CAN Device Specifications.
 
-### API Class and API Index (from spec examples)
+### API class and API index (from spec examples)
+
 The FRC spec provides example API Class and Index tables for a CAN motor controller.
 - API Class examples: Voltage Control (0), Speed Control (1), Voltage Compensation (2), Position Control (3), Current Control (4), Status (5), Periodic Status (6), Configuration (7), Ack (8).
 - API Index examples: Enable (0), Disable (1), Set Setpoint (2), P (3), I (4), D (5), Set Reference (6), Trusted Enable (7), Trusted Set No Ack (8), Trusted Set Setpoint No Ack (10), Set Setpoint No Ack (11).
 
 Source: WPILib FRC CAN Device Specifications.
 
-## Quick Checklist
+## Quick checklist
+
 - [ ] Two terminations only.
 - [ ] CANH and CANL not swapped.
 - [ ] No duplicate IDs.
@@ -191,16 +223,19 @@ Source: WPILib FRC CAN Device Specifications.
 - [ ] Utilization below saturation.
 - [ ] Sniffer sees traffic (if used).
 
-## Related Docs
+## Related docs
+
 - `README.md` for the bringup workflow and button bindings.
 - `AI_DIAGNOSIS.md` for interpreting `bringup_report.json`.
 - `ARCHITECTURE.md` for layered design details.
 
-## API Class/Index Examples (Unverified)
-These are additional hypotheses collected from field observations. They are not guaranteed across vendors.
-They are intentionally retained to guide future experiments, but they should not be treated as canonical.
+## API class/index examples (unverified)
 
-### API Class (example for motor controllers)
+These are additional hypotheses collected from field observations. They are not guaranteed across vendors.
+They are worth keeping because they guide future experiments, but they should not be treated as canonical.
+
+### API class (example for motor controllers)
+
 - 0: Voltage Control Mode
 - 1: Speed Control Mode
 - 2: Voltage Compensation Mode
@@ -211,7 +246,8 @@ They are intentionally retained to guide future experiments, but they should not
 - 7: Configuration
 - 8: Ack
 
-### API Index (example within a control class)
+### API index (example within a control class)
+
 - 0: Enable Control
 - 1: Disable Control
 - 2: Set Setpoint
@@ -224,8 +260,10 @@ They are intentionally retained to guide future experiments, but they should not
 - 10: Trusted Set Setpoint No Ack
 - 11: Set Setpoint No Ack
 
-## Sources and Further Reading
-These are the primary references used for the verified sections above. Additional vendor docs and field captures should be added here as they are verified.
+## Sources and further reading
+
+These are the main references behind the verified sections above. Add vendor docs and field captures here once they have been checked.
+
 - WPILib FRC CAN Device Specifications (addressing, device types, manufacturer IDs, broadcast messages, heartbeat layout): https://docs.wpilib.org/en/stable/docs/software/can-devices/can-specification.html
 - WPILib CAN Java API (field bit widths and API ID size): https://github.wpilib.org/allwpilib/docs/release/java/edu/wpi/first/wpilibj/CAN.html
 - General CAN frame references (payload size and frame layout): https://www.autopi.io/blog/can-bus-explained/
@@ -233,20 +271,25 @@ These are the primary references used for the verified sections above. Additiona
 - REV Hardware Client: https://docs.revrobotics.com/rev-hardware-client
 - CTRE Tuner X: https://store.ctr-electronics.com/software/
 
-## Dissector-Driven Inferences (New)
-These are practical inferences we can make directly from the Wireshark dissector fields and tags:
+## Dissector-driven inferences
+
+These are practical inferences we can make directly from Wireshark dissector fields and tags:
+
 - Broadcast vs device-specific frames: Broadcast messages apply to all devices; device-specific frames target a single CAN ID.
 - RoboRIO heartbeat presence: Heartbeat frames confirm the roboRIO is transmitting and the bus is alive. Missing heartbeat points to a bus-level issue.
 - Misaddressed devices: Unexpected manufacturer/device-type combinations often indicate a misconfigured ID or an unknown device on the bus.
 - Priority hotspots: Arbitration ID trends can show which device IDs and API classes dominate traffic bursts.
 
-## Appendix: Spec Notes (Paraphrased, Complete)
-These are paraphrased notes extracted from the FRC CAN specifications. They are intentionally verbose so we do not lose any detail that has been captured so far.
+## Appendix: spec notes (paraphrased, complete)
 
-### Protected Frames
+These are paraphrased notes from the FRC CAN specifications. They stay intentionally verbose so details do not get lost.
+
+### Protected frames
+
 - Actuator-control CAN nodes (motor controllers, relays, pneumatics controllers, etc.) must verify the robot is enabled and commands originate from the roboRIO.
 
-### Broadcast Messages (by API Index)
+### Broadcast messages (by API index)
+
 - Disable (0)
 - System Halt (1)
 - System Reset (2)
@@ -260,7 +303,8 @@ These are paraphrased notes extracted from the FRC CAN specifications. They are 
 - System Resume (10)
 - Devices should disable immediately when receiving Disable (arbID 0). Other broadcast messages are optional.
 
-### Requirements for FRC CAN Nodes
+### Requirements for FRC CAN nodes
+
 - Use arbitration IDs that match the prescribed FRC format:
   - Valid, issued CAN Device Type.
   - Valid, issued Manufacturer ID.
@@ -270,7 +314,8 @@ These are paraphrased notes extracted from the FRC CAN specifications. They are 
 - If controlling actuators, confirm the robot is issuing commands, is enabled, and is still present.
 - Provide software library support for LabVIEW, C++, and Java (or coordinate with FIRST/control system partners).
 
-### Universal Heartbeat (RoboRIO)
+### Universal heartbeat (roboRIO)
+
 - The roboRIO sends a universal CAN heartbeat every 20 ms.
 - Full CAN ID: `0x01011840` (NI manufacturer, Robot Controller type, Device ID 0, API ID `0x061`).
 - 8-byte payload with a packed bitfield layout. Fields and widths:

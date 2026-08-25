@@ -71,6 +71,7 @@ from tools.can_nt.bringup_ui import (
     _action_sections,
     _format_runtime_probe_score,
     _merge_host_ui_actions,
+    _sanitize_stream_output_line,
     VIS_TAG_GUESSED_LABEL,
     VIS_TAG_GUESSED_MODEL,
     VIS_TAG_GUESSED_TYPE,
@@ -3715,6 +3716,39 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertIsNone(widget.moved_to)
         self.assertEqual(["end"], widget.see_calls)
 
+    def test_append_output_lines_batches_multiple_entries_into_one_render(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        render_calls = []
+        ui._lines = []
+        ui._max_lines = 10
+        ui._output = object()
+        ui._render_log_lines = lambda widget, lines: render_calls.append((widget, list(lines)))
+
+        ui._append_output_lines(["one", "two", "three"])
+
+        self.assertEqual(["one", "two", "three"], ui._lines)
+        self.assertEqual([(ui._output, ["one", "two", "three"])], render_calls)
+
+    def test_sanitize_stream_output_line_recovers_utf16le_mojibake_timeout_text(self) -> None:
+        line = (
+            "氀 䐀攀瘀椀挀攀吀攀洀瀀 ＀￾￾෾਀＀￾￾￾￾￾￾￾䗾刀刀伀刀 ＀￾⃾ⴀ㄀　　㌀ "
+            "＀￾⃾䌀䄀一 昀爀愀洀攀 渀漀琀 爀攀挀攀椀瘀攀搀⼀琀漀漀ⴀ猀琀愀氀攀⸀"
+        )
+
+        sanitized = _sanitize_stream_output_line(line)
+
+        self.assertIn("ERROR", sanitized)
+        self.assertIn("-1003", sanitized)
+        self.assertIn("CAN frame not received/too-stale.", sanitized)
+        self.assertNotIn("氀", sanitized)
+
+    def test_sanitize_stream_output_line_keeps_normal_ascii_text_unchanged(self) -> None:
+        line = "[CAN] High utilization: 100.0%"
+
+        sanitized = _sanitize_stream_output_line(line)
+
+        self.assertEqual(line, sanitized)
+
     def test_restart_visibility_can_sniffer_requests_restart_and_refreshes_snapshot(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
         output_lines: list[str] = []
@@ -5085,6 +5119,8 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         test_lines = []
         ui._append_output = output_lines.append
         ui._append_test_output = test_lines.append
+        ui._append_output_lines = output_lines.extend
+        ui._append_test_output_lines = test_lines.extend
         ui._runtime_state_pending_seq = None
         ui._is_handshake_required = lambda _event: False
         ui._handle_handshake_required = lambda: None
@@ -5134,6 +5170,8 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         test_lines = []
         ui._append_output = output_lines.append
         ui._append_test_output = test_lines.append
+        ui._append_output_lines = output_lines.extend
+        ui._append_test_output_lines = test_lines.extend
         ui._runtime_state_pending_seq = None
         ui._is_handshake_required = lambda _event: False
         ui._handle_handshake_required = lambda: None
@@ -5188,6 +5226,8 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         test_lines = []
         ui._append_output = output_lines.append
         ui._append_test_output = test_lines.append
+        ui._append_output_lines = output_lines.extend
+        ui._append_test_output_lines = test_lines.extend
         ui._runtime_state_pending_seq = None
         ui._is_handshake_required = lambda _event: False
         ui._handle_handshake_required = lambda: None
@@ -8926,7 +8966,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
 
         self.assertTrue(state.ready)
         self.assertEqual("", state.inactive_reason)
-        self.assertTrue(ui._tests_active_group_loaded_to_robot)
+        self.assertFalse(ui._tests_active_group_loaded_to_robot)
 
     def test_selected_test_scope_state_keeps_cached_true_until_runtime_membership_refresh_catches_up(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
@@ -8951,6 +8991,19 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertFalse(state.ready)
         self.assertEqual("selected test scope ready - not activated", state.inactive_reason)
         self.assertTrue(ui._tests_active_group_loaded_to_robot)
+
+    def test_robot_selected_test_name_prefers_latest_tests_state_payload_over_stale_cache(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._tests_table = None
+        ui._latest_tests_state_payload = {
+            "rows": [
+                {"name": "test_minimal_25_9_spark25_leftY", "selected": False},
+                {"name": "newTests_123", "selected": True},
+            ]
+        }
+        ui._last_robot_selected_test_name = "stale_cached_name"
+
+        self.assertEqual("newTests_123", ui._robot_selected_test_name())
 
     def test_selected_test_scope_state_treats_local_test_as_existing_after_runtime_deactivate(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)

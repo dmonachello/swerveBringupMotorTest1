@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Provide a current top-level guide to the robot bringup harness, PC-side diagnostics tools, and the supported operator surfaces in this repository.
+This is the top-level guide to the robot bringup harness, the PC-side diagnostics tools, and the operator surfaces supported in this repo.
 
 ## Status
 
@@ -27,9 +27,9 @@ Key safety rule:
 
 - the PC tool is **read-only on CAN**
 
-## Current Architecture
+## Current architecture
 
-The current architecture is a client/server model:
+The system uses a client/server model:
 
 - the **robot is the server** and owns actuation
 - the **PC tools are clients** for commands, logs, and diagnostics
@@ -43,9 +43,9 @@ Important data boundaries:
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the detailed architecture.
 
-## Main Surfaces
+## Main surfaces
 
-Purpose: list the operator-facing tools that matter today.
+These are the operator-facing tools that matter today.
 
 - **Bringup Control UI**
   - Windows-friendly Tk UI for runtime control, logs, live topology, evidence, tests, and CAN visibility
@@ -61,18 +61,18 @@ Related docs:
 - [docs/OPERATOR_SURFACES.md](docs/OPERATOR_SURFACES.md)
 - [docs/FEATURE_MATRIX.md](docs/FEATURE_MATRIX.md)
 
-## Main Files
+## Main files
 
-Purpose: identify the primary code and config entry points.
+These are the main code and config entry points.
 
-### Robot Side
+### Robot side
 
 - `src/main/java/frc/robot/RobotV2.java`
 - `src/main/java/frc/robot/BringupCore.java`
 - `src/main/java/frc/robot/BringupRuntime.java`
 - `src/main/java/frc/robot/BridgeUiCommandHandler.java`
 
-### Host Side
+### Host side
 
 - `tools/can_nt/bringup_ui.py`
 - `tools/can_nt/bridge_cli.py`
@@ -80,12 +80,12 @@ Purpose: identify the primary code and config entry points.
 - `tools/can_topology/can_top_editor.py`
 - `tools/can_topology/live_topology_view.py`
 
-### Shared Config
+### Shared config
 
 - `src/main/deploy/bringup_system.json`
 - `src/main/deploy/bringup_bindings.json`
 
-## What The System Does Well Today
+## What the system does well today
 
 - staged robot bringup with controlled actuation
 - profile-backed device and group configuration
@@ -95,16 +95,16 @@ Purpose: identify the primary code and config entry points.
 - topology-aware live views and editor tooling
 - growing regression coverage across shared host behavior
 
-## What To Be Careful About
+## What to be careful about
 
 - this repo still contains multiple historical workflows and helper paths
 - not every feature is equally mature
 - the project is not yet packaged as a finished 1.0 operator product
 - some docs and feature specs describe in-progress or future work, not always current supported behavior
 
-## Recommended Starting Path
+## Recommended starting path
 
-Purpose: give a practical current entry path without pretending the release is more finished than it is.
+This is the practical entry path without pretending the release is more finished than it is.
 
 1. Read [docs/SETUP.md](docs/SETUP.md).
 2. Read [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
@@ -112,9 +112,9 @@ Purpose: give a practical current entry path without pretending the release is m
 4. Validate/sync config before using the robot workflow.
 5. Use either the Bringup Control UI or Bridge CLI as the main runtime surface.
 
-## Windows-First Host Workflow
+## Windows-first host workflow
 
-Purpose: describe the most relevant host assumptions.
+This section covers the host assumptions that matter most.
 
 The PC-side tools are primarily intended for a Windows Driver Station or development laptop.
 
@@ -130,9 +130,9 @@ See:
 - [docs/SETUP.md](/abs/path/c:/Users/dmona/swerve3/docs/SETUP.md)
 - [docs/TESTING_WINDOWS_OFFLINE.md](/abs/path/c:/Users/dmona/swerve3/docs/TESTING_WINDOWS_OFFLINE.md)
 
-## Configuration Model
+## Configuration model
 
-Purpose: explain the core shared config at a high level.
+This is the shared config model at a high level.
 
 `src/main/deploy/bringup_system.json` is the main system config file and contains:
 
@@ -152,9 +152,9 @@ See:
 - [docs/bringup_profiles_schema.md](/abs/path/c:/Users/dmona/swerve3/docs/bringup_profiles_schema.md)
 - [docs/PROFILE_SCHEMA_REFACTOR.md](/abs/path/c:/Users/dmona/swerve3/docs/PROFILE_SCHEMA_REFACTOR.md)
 
-## Safety Model
+## Safety model
 
-Purpose: summarize the main safety and ownership rules.
+These are the main safety and ownership rules.
 
 - the robot owns actuation
 - the Xbox controller has highest priority over host clients
@@ -168,40 +168,40 @@ See:
 - [docs/ARCHITECTURE.md](/abs/path/c:/Users/dmona/swerve3/docs/ARCHITECTURE.md)
 - [docs/TCP_UI_PROTOCOL.md](/abs/path/c:/Users/dmona/swerve3/docs/TCP_UI_PROTOCOL.md)
 
-## Current Validation Commands
+## Current validation commands
 
-Purpose: list the current commonly used repo checks.
+These are the repo checks people use most often.
 
-### Python Regressions
+### Python regressions
 
 ```powershell
 python tools/can_nt/scripts/bridge_cli_v1_group_targeting_regression.py
 python tools/can_nt/scripts/bridge_cli_group_targeting_4m2g3t_regression.py
 ```
 
-### Robot-Connected Non-Motion Regression
+### Robot-connected non-motion regression
 
 ```powershell
 python tools/can_nt/scripts/bridge_cli_robot_non_motion_regression.py --rio 172.22.11.2
 ```
 
-### Java Unit Tests
+### Java unit tests
 
 ```powershell
 .\gradlew.bat test
 ```
 
-### Config Validation / Sync
+### Config validation / sync
 
 ```powershell
 python -m tools.validate_sync
 ```
 
-## Documentation Index
+## Documentation index
 
-Purpose: point to the most important docs first.
+These are the docs worth opening first.
 
-### Start Here
+### Start here
 
 - [docs/SETUP.md](/abs/path/c:/Users/dmona/swerve3/docs/SETUP.md)
 - [docs/USER_GUIDE.md](/abs/path/c:/Users/dmona/swerve3/docs/USER_GUIDE.md)
@@ -209,12 +209,12 @@ Purpose: point to the most important docs first.
 - [docs/OPERATOR_SURFACES.md](/abs/path/c:/Users/dmona/swerve3/docs/OPERATOR_SURFACES.md)
 - [docs/TESTING.md](/abs/path/c:/Users/dmona/swerve3/docs/TESTING.md)
 
-### Release / Readiness
+### Release / readiness
 
 - [docs/ALPHA_RELEASE_READINESS.md](/abs/path/c:/Users/dmona/swerve3/docs/ALPHA_RELEASE_READINESS.md)
 - [docs/RELEASE_1_0_READINESS.md](/abs/path/c:/Users/dmona/swerve3/docs/RELEASE_1_0_READINESS.md)
 
-### Contracts / Protocols
+### Contracts / protocols
 
 - [docs/TCP_UI_PROTOCOL.md](/abs/path/c:/Users/dmona/swerve3/docs/TCP_UI_PROTOCOL.md)
 - [docs/NT_CONTRACT.md](/abs/path/c:/Users/dmona/swerve3/docs/NT_CONTRACT.md)
@@ -222,9 +222,9 @@ Purpose: point to the most important docs first.
 
 ## Notes
 
-Purpose: clarify what this README is and is not.
+This section clarifies what this README is and is not.
 
-This README is intentionally a current top-level orientation document.
+This README is intentionally a top-level orientation document.
 
 It does not try to fully describe:
 

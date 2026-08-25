@@ -2,6 +2,15 @@
 
 All notable user-facing changes are documented in this file.
 
+## 2026-08-25
+
+### Improved - 2026-08-25
+
+- Changed the changelog guard so major worktree changes now auto-seed
+  `CHANGELOG.md` by default instead of only failing the local regression run.
+  Strict fail-only behavior remains available through
+  `python tools/can_nt/scripts/changelog_guard.py --check-only`.
+
 ## 2026-08-16
 
 ### Added - 2026-08-16

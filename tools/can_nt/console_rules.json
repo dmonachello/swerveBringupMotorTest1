@@ -23,6 +23,21 @@
       "device_id_group": 1
     },
     {
+      "name": "CAN_FRAME_TOO_STALE_DEVICE",
+      "regex": "CAN frame not received/too-stale\\. Check the CAN bus wiring, CAN bus utilization, and power to the device\\..*\\s(\\d+)\\s+\\(.*\\)",
+      "severity": "WARN",
+      "scope": "device",
+      "event_type": "CAN_FRAME_TOO_STALE",
+      "device_id_group": 1
+    },
+    {
+      "name": "CAN_FRAME_TOO_STALE",
+      "regex": "CAN frame not received/too-stale\\. Check the CAN bus wiring, CAN bus utilization, and power to the device\\.",
+      "severity": "WARN",
+      "scope": "system",
+      "event_type": "CAN_FRAME_TOO_STALE"
+    },
+    {
       "name": "LOOP_OVERRUN",
       "regex": "Loop time of\\s+\\d+\\.\\d+s overrun",
       "severity": "WARN",
@@ -61,6 +76,21 @@
       "device_id_group": 1
     },
     {
+      "name": "DEVICE_FW_QUERY_FAIL_DEVICE",
+      "regex": "Device firmware could not be retrieved\\. Check that the device is running v6 firmware, the device ID is correct, the specified CAN bus is correct, and the device is powered\\..*\\s(\\d+)\\s+\\(.*\\)",
+      "severity": "WARN",
+      "scope": "device",
+      "event_type": "DEVICE_FW_QUERY_FAIL",
+      "device_id_group": 1
+    },
+    {
+      "name": "DEVICE_FW_QUERY_FAIL",
+      "regex": "Device firmware could not be retrieved\\. Check that the device is running v6 firmware, the device ID is correct, the specified CAN bus is correct, and the device is powered\\.",
+      "severity": "WARN",
+      "scope": "system",
+      "event_type": "DEVICE_FW_QUERY_FAIL"
+    },
+    {
       "name": "SPARK_WRONG_DEVICE",
       "regex": "CANSparkMax object created for CAN ID (\\d+), which is not a SPARK MAX",
       "severity": "WARN",
@@ -90,6 +120,13 @@
       "severity": "ERROR",
       "scope": "system",
       "event_type": "HAL_CAN_RECEIVE_TIMEOUT"
+    },
+    {
+      "name": "CAN_MESSAGE_NOT_FOUND",
+      "regex": "^CAN:\\s*Message not found$",
+      "severity": "WARN",
+      "scope": "system",
+      "event_type": "CAN_MESSAGE_NOT_FOUND"
     }
   ]
 }

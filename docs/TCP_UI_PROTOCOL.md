@@ -1,30 +1,30 @@
-# TCP UI Protocol (Historical)
+# TCP UI protocol (historical)
 
-Purpose: Preserve the retired TCP UI command-channel contract for historical reference only.
+This document preserves the retired TCP UI command-channel contract for historical reference only.
 
 Supported bringup flows no longer use this transport. The current supported host/robot command path is the REST session layer used by `tools/can_nt/bridge_session.py` and started by `RobotV2`.
 
 ## Scope
 
-Purpose: State what this document covers and what it does not.
+This section states what the document covers and what it does not.
 
 - Covers the former robot TCP UI command channel used by earlier GUI and CLI revisions.
 - Covers framing, request/response schemas, state and session rules, and error behavior.
 - Covers real exchange transcripts based on the current implementation.
 - Does not redefine CLI grammar; CLI text-to-command mapping remains in `docs/BRIDGE_CLI_DESIGN.md`.
 - For copy/paste operational examples, see `docs/TCP_UI_PROTOCOL_QUICK_REF.md`.
-## Layer Model
 
+## Layer model
 
-Purpose: Clarify the stack from bytes on the socket to operator commands.
+This is the stack from bytes on the socket to operator commands.
 
 - Bottom layer: plain TCP byte stream.
 - Middle layer: UTF-8, line-delimited JSON messages (one JSON object per line).
 - Top layer: CLI text commands mapped to robot command names and argument objects.
 
-## Wire Framing
+## Wire framing
 
-Purpose: Define message boundaries and parse behavior on both ends.
+This section defines message boundaries and parse behavior on both ends.
 
 - Client send framing: JSON payload plus trailing newline (`\n`).
 - Server receive framing: `readLine()` per inbound command line.
@@ -38,9 +38,9 @@ Implementation anchors:
 - Server framing/parsing: `src/main/java/frc/robot/ui/TcpUiServer.java`.
 - Client framing/parsing: `tools/can_nt/bridge_session.py`.
 
-## Message Types
+## Message types
 
-Purpose: Define the JSON envelope types used on this channel.
+This section defines the JSON envelope types used on this channel.
 
 - `cmd`: client-to-robot command envelope.
 - `ack`: robot-to-client acknowledgement envelope.
@@ -52,9 +52,9 @@ Notes:
 - The robot parser does not require a `type` field in inbound requests; it reads `seq`, `name`, `args`, `ts`, `clientId`.
 - The Python `BridgeSession` currently parses and returns only `ack` and `out` events.
 
-## Request Schema (`cmd`)
+## Request schema (`cmd`)
 
-Purpose: Document accepted inbound fields and defaults.
+This section documents accepted inbound fields and defaults.
 
 Inbound request object fields as parsed by `TcpUiServer.parseCommand`:
 
@@ -70,9 +70,9 @@ Canonical request shape used by shared client:
 {"type":"cmd","seq":12,"name":"showStatus","args":{},"ts":1713555001.2,"clientId":"cli-abc"}
 ```
 
-## Response Schema (`ack` / `out`)
+## Response schema (`ack` / `out`)
 
-Purpose: Define stable response fields returned for each accepted command.
+This section defines the stable response fields returned for each accepted command.
 
 ACK fields:
 
@@ -103,9 +103,9 @@ Important detail:
 
 - `out.json` is a JSON-encoded string field, not a nested object. Clients that need structure must parse it.
 
-## Session, Lock, and Handshake Contract
+## Session, lock, and handshake contract
 
-Purpose: Define required ordering and ownership semantics for clients.
+This section defines required ordering and ownership semantics for clients.
 
 - `uiHandshake` is required before most commands.
 - `uiHandshake`, `uiDisconnect`, and `uiPing` are allowed without prior handshake.
@@ -122,9 +122,9 @@ Handshake OUT `json` payload fields:
 - `minNextSeq` (number)
 - `protocolVersion` (number, currently `1`)
 
-## Sequencing and Duplicate Handling
+## Sequencing and duplicate handling
 
-Purpose: Describe server behavior when requests are retransmitted.
+This section describes server behavior when requests are retransmitted.
 
 - Duplicate handling is per `clientId`.
 - If a command arrives with `seq <=` last seen seq for that client:
@@ -132,9 +132,9 @@ Purpose: Describe server behavior when requests are retransmitted.
   - Otherwise duplicate is dropped.
 - Handshake response may include `minNextSeq` so clients can jump ahead safely.
 
-## Disabled and Safety Gating
+## Disabled and safety gating
 
-Purpose: Clarify command acceptance under disabled/E-Stop and stop-latch conditions.
+This section clarifies command acceptance under disabled/E-Stop and stop-latch conditions.
 
 - If robot is disabled and command is not allow-listed, command fails with:
   - `Robot disabled.` or `Robot disabled (E-Stop).`
@@ -142,9 +142,9 @@ Purpose: Clarify command acceptance under disabled/E-Stop and stop-latch conditi
   - `Stop latch active ... Clear from Xbox or UI to resume.`
 - A substantial read/config subset is allowed while disabled (for example `showStatus`, group config commands, profile activate/reload/apply, `uiPollLog`, `uiPing`).
 
-## Actual Exchange Transcripts
+## Actual exchange transcripts
 
-Purpose: Provide realistic on-wire examples matching current robot/client behavior.
+These are realistic on-wire examples that match robot/client behavior.
 
 ### 1) Successful handshake
 
@@ -208,34 +208,34 @@ R->C {"type":"ack","seq":6,"name":"uiDisconnect","status":"ok","message":"UI loc
 R->C {"type":"out","seq":6,"name":"uiDisconnect","text":"OK","ts":1713555005.000,"sessionId":"9d6f...","state":{"enabled":false,"estopped":false,"mode":"disabled"}}
 ```
 
-## CLI Mapping Note
+## CLI mapping note
 
-Purpose: Link top-layer CLI text to middle-layer command names.
+This links top-layer CLI text to middle-layer command names.
 
 - CLI command text is parsed locally, then mapped to `cmd.name` + `cmd.args`.
 - Mapping examples are defined in `docs/BRIDGE_CLI_DESIGN.md` under "Command Mapping (Robot TCP)".
 
 ## Tradeoffs
 
-Purpose: Record protocol design tradeoffs relevant to operations and tooling.
+These are the protocol tradeoffs that matter for operations and tooling.
 
 - Line-delimited JSON is easy to debug and script, but carries no binary framing checksums.
 - `out.json` as a string preserves backward compatibility, but requires second-stage parse.
 - Dual `ack` + `out` lines keep command lifecycle explicit, but double message count.
 - `clientId` lock ownership is simple and robust, but prevents concurrent control clients.
 
-## Future Extensions
+## Future extensions
 
-Purpose: List additive-compatible protocol improvements.
+These are additive-compatible protocol improvements.
 
 - Add explicit `protocolVersion` field to ACK/OUT top-level envelope.
 - Add structured transport error schema beyond `{"type":"error","message":...}`.
 - Add optional capability discovery command for supported command names/args.
 - Add optional keepalive timeout advisory in handshake JSON payload.
 
-## Normative References
+## Normative references
 
-Purpose: Point to implementation and design sources that define current behavior.
+These implementation and design sources define the current behavior.
 
 - `src/main/java/frc/robot/ui/TcpUiServer.java`
 - `src/main/java/frc/robot/BridgeUiCommandHandler.java`

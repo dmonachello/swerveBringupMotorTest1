@@ -9,7 +9,7 @@ during local regression runs and major pushes.
 
 ## Status
 
-Implemented V1.
+Implemented V2.
 
 ## Problem
 
@@ -29,13 +29,12 @@ That causes two problems:
 
 ## Non-Goals
 
-- automatic changelog text generation in the gate itself
 - release-note quality review by script alone
 - perfect semantic classification of every possible file change
 
 ## Major Change Definition
 
-V1 treats a change as major when the worktree includes changes in one or more
+V2 treats a change as major when the worktree includes changes in one or more
 of these product surfaces:
 
 - robot-side runtime code under `src/main/java/`
@@ -45,7 +44,7 @@ of these product surfaces:
 - shipped deploy config under `src/main/deploy/`
 - supported workflow examples under `docs/examples/`
 
-V1 intentionally does not require a changelog update for:
+V2 intentionally does not require a changelog update for:
 
 - pure test-only changes
 - regression fixture-only changes
@@ -54,13 +53,13 @@ V1 intentionally does not require a changelog update for:
 
 ## Rule
 
-If a major change is present in the worktree, `CHANGELOG.md` must also be
-modified in the same worktree before the local regression bundle is considered
-green.
+If a major change is present in the worktree, the changelog guard must leave
+the worktree with `CHANGELOG.md` updated before the local regression bundle is
+considered green.
 
 ## Enforcement
 
-V1 enforcement is a local deterministic guard script:
+V2 enforcement is a local deterministic guard script:
 
 - `python tools/can_nt/scripts/changelog_guard.py`
 
@@ -69,7 +68,9 @@ The script:
 - inspects tracked modified files relative to `HEAD`
 - includes untracked files
 - checks whether any changed path matches the major-change surface
-- fails if a major change exists and `CHANGELOG.md` is unchanged
+- auto-writes a dated changelog seed when a major change exists and
+  `CHANGELOG.md` is unchanged
+- supports strict fail-only mode with `--check-only`
 
 ## Unified Runner Integration
 
@@ -82,7 +83,13 @@ That means:
 
 ## Operator Workflow
 
-When the guard fails:
+When the guard runs in default mode:
+
+1. detect whether the changed files represent a guarded major surface
+2. if yes and `CHANGELOG.md` is unchanged, auto-seed a dated changelog entry
+3. review and refine the seeded changelog text before commit when needed
+
+When the guard runs in `--check-only` mode:
 
 1. decide whether the changed files represent a real user-facing change
 2. if yes, update `CHANGELOG.md`
@@ -91,13 +98,13 @@ When the guard fails:
 ## Tradeoffs
 
 - path-based enforcement is simple and reliable, but conservative
-- some internal changes may require a human to decide whether the changelog
-  entry should be short or extensive
+- auto-seeded entries prevent missed changelog updates, but still need human
+  cleanup before release-quality publication
 
 ## Future Extensions
 
 - commit-range mode for CI
 - staged-only mode for pre-commit hooks
 - changelog section validation
-- optional integration with the changelog generator skill
+- richer classification than the current generic auto-seeded `Changed` section
 
