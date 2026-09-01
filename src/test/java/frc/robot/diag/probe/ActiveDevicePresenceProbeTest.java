@@ -147,4 +147,15 @@ class ActiveDevicePresenceProbeTest {
             Double.NaN,
             new double[] {0.0}));
   }
+
+  @Test
+  void incrementalRunWithNullCoreCompletesWithFailureSession() {
+    ActiveDevicePresenceProbe probe = new ActiveDevicePresenceProbe();
+
+    ActiveDevicePresenceProbe.ProbeStepResult step = probe.beginRun(null, true).advance();
+
+    assertTrue(step.complete);
+    assertEquals("error", step.session.status);
+    assertEquals("incremental", step.session.mode);
+  }
 }

@@ -35,6 +35,7 @@ public final class CtreCANCoderDevice implements DeviceUnit {
   private final String label;
   private final BringupUtil.LimitConfig limitConfig;
   private final java.util.List<DigitalInput> limitInputs = new java.util.ArrayList<>();
+  private final CtreReadFailureCooldown readFailureCooldown = new CtreReadFailureCooldown();
   private CANcoder device;
 
   /**
@@ -189,10 +190,35 @@ public final class CtreCANCoderDevice implements DeviceUnit {
       addLimitAttachment(snap);
       return snap;
     }
-    DeviceSnapshot snap = CtreCANCoderReader.read(device, canId);
-    snap.label = label;
-    addLimitAttachment(snap);
-    return snap;
+    if (readFailureCooldown.isActive()) {
+      DeviceSnapshot snap = new DeviceSnapshot();
+      snap.vendor = "CTRE";
+      snap.deviceType = getDeviceType();
+      snap.canId = canId;
+      snap.present = false;
+      snap.note = "read failed: " + readFailureCooldown.unavailableNote();
+      snap.label = label;
+      addLimitAttachment(snap);
+      return snap;
+    }
+    try {
+      DeviceSnapshot snap = CtreCANCoderReader.read(device, canId);
+      readFailureCooldown.clear();
+      snap.label = label;
+      addLimitAttachment(snap);
+      return snap;
+    } catch (RuntimeException ex) {
+      readFailureCooldown.recordFailure(ex);
+      DeviceSnapshot snap = new DeviceSnapshot();
+      snap.vendor = "CTRE";
+      snap.deviceType = getDeviceType();
+      snap.canId = canId;
+      snap.present = false;
+      snap.note = "read failed: " + ex.getMessage();
+      snap.label = label;
+      addLimitAttachment(snap);
+      return snap;
+    }
   }
 
   /**

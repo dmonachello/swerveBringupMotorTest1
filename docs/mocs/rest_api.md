@@ -8,7 +8,6 @@ Purpose: hub page for related documentation in this topic cluster.
 
 - [[CHANGELOG.md|CHANGELOG]]
 - [[README.md|README]]
-- [[docs/ARCHITECTURE.md|ARCHITECTURE]]
 - [[docs/FEATURE_SPEC_BRINGUP_REST_PORT_IMPLEMENTATION_PLAN.md|FEATURE SPEC BRINGUP REST PORT IMPLEMENTATION PLAN]]
 - [[docs/SPEC_LAYERED_ARCHITECTURE_REFACTOR.md|SPEC LAYERED ARCHITECTURE REFACTOR]]
 - [[notes/research/vendor_diagnostics/2026-07-07_rev_usb_gateway_attack_plan.md|2026-07-07 rev usb gateway attack plan]]
@@ -24,13 +23,13 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/SPEC_REMOVE_NETWORKTABLES_COMPLETE.md|SPEC REMOVE NETWORKTABLES COMPLETE]]
 - [[docs/TCP_UI_PROTOCOL.md|TCP UI PROTOCOL]]
 - [[docs/WORKFLOW_01_NEW_ROBOT_BRINGUP.md|WORKFLOW 01 NEW ROBOT BRINGUP]]
+- [[Feature Spec Authoritative Evidence Fusion.md|Feature Spec Authoritative Evidence Fusion]]
 - [[Host TCP Command Serialization Layer.md|Host TCP Command Serialization Layer]]
 
 ## Endpoints
 
 - [[CHANGELOG.md|CHANGELOG]]
 - [[README.md|README]]
-- [[docs/ARCHITECTURE.md|ARCHITECTURE]]
 - [[docs/FEATURE_SPEC_BRINGUP_REST_PORT_IMPLEMENTATION_PLAN.md|FEATURE SPEC BRINGUP REST PORT IMPLEMENTATION PLAN]]
 - [[docs/SPEC_LAYERED_ARCHITECTURE_REFACTOR.md|SPEC LAYERED ARCHITECTURE REFACTOR]]
 - [[notes/research/vendor_diagnostics/2026-07-07_rev_usb_gateway_attack_plan.md|2026-07-07 rev usb gateway attack plan]]
@@ -47,13 +46,13 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/TCP_UI_PROTOCOL.md|TCP UI PROTOCOL]]
 - [[docs/WORKFLOW_01_NEW_ROBOT_BRINGUP.md|WORKFLOW 01 NEW ROBOT BRINGUP]]
 - [[notes/research/dut-review.md|dut-review]]
+- [[Feature Spec Authoritative Evidence Fusion.md|Feature Spec Authoritative Evidence Fusion]]
 - [[Host TCP Command Serialization Layer.md|Host TCP Command Serialization Layer]]
 
 ## Protocol
 
 - [[CHANGELOG.md|CHANGELOG]]
 - [[README.md|README]]
-- [[docs/ARCHITECTURE.md|ARCHITECTURE]]
 - [[docs/FEATURE_SPEC_BRINGUP_REST_PORT_IMPLEMENTATION_PLAN.md|FEATURE SPEC BRINGUP REST PORT IMPLEMENTATION PLAN]]
 - [[docs/SPEC_LAYERED_ARCHITECTURE_REFACTOR.md|SPEC LAYERED ARCHITECTURE REFACTOR]]
 - [[notes/research/vendor_diagnostics/2026-07-07_rev_usb_gateway_attack_plan.md|2026-07-07 rev usb gateway attack plan]]
@@ -76,7 +75,6 @@ Purpose: hub page for related documentation in this topic cluster.
 
 - [[CHANGELOG.md|CHANGELOG]]
 - [[README.md|README]]
-- [[docs/ARCHITECTURE.md|ARCHITECTURE]]
 - [[docs/FEATURE_SPEC_BRINGUP_REST_PORT_IMPLEMENTATION_PLAN.md|FEATURE SPEC BRINGUP REST PORT IMPLEMENTATION PLAN]]
 - [[docs/SPEC_LAYERED_ARCHITECTURE_REFACTOR.md|SPEC LAYERED ARCHITECTURE REFACTOR]]
 - [[notes/research/vendor_diagnostics/2026-07-07_rev_usb_gateway_attack_plan.md|2026-07-07 rev usb gateway attack plan]]
@@ -93,6 +91,7 @@ Purpose: hub page for related documentation in this topic cluster.
 - [[docs/TCP_UI_PROTOCOL.md|TCP UI PROTOCOL]]
 - [[docs/WORKFLOW_01_NEW_ROBOT_BRINGUP.md|WORKFLOW 01 NEW ROBOT BRINGUP]]
 - [[notes/research/dut-review.md|dut-review]]
+- [[Feature Spec Authoritative Evidence Fusion.md|Feature Spec Authoritative Evidence Fusion]]
 - [[Host TCP Command Serialization Layer.md|Host TCP Command Serialization Layer]]
 
 ## Related Topics

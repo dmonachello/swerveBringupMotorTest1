@@ -28,7 +28,7 @@ final class BridgeUiRuntimeCommands implements BridgeUiCommandDispatcher.Command
   private static final String MESSAGE_PROFILE_STAGE_FAILED_PREFIX =
       "Failed to stage selected profile for incremental bringup: ";
   private static final String MESSAGE_ADD_ALL =
-      "Instantiated all configured devices. Use active add to populate active-group.";
+      "Instantiated enabled active-group devices only.";
   private static final String MESSAGE_CLEAR_FAULTS = "Cleared device faults (current + sticky).";
   private static final String MESSAGE_STOP_LATCH_CLEARED = "Stop latch cleared.";
   private static final String MESSAGE_STOP_LATCH_NOT_ACTIVE = "Stop latch not active.";

@@ -75,26 +75,17 @@ Purpose: non-destructive suggestions for future in-page linking and navigation u
 - [[docs/RELEASE_STABILIZATION_REVIEW_2026-08-16.md|RELEASE STABILIZATION REVIEW 2026-08-16]]
 - [[docs/FEATURE_SPEC_VERSION_HELPER.md|FEATURE SPEC VERSION HELPER]]
 - [[docs/RELEASE_VALIDATION_PROCEDURE_2026-08-16.md|RELEASE VALIDATION PROCEDURE 2026-08-16]]
-- [[docs/ARCHITECTURE.md|ARCHITECTURE]]
 - [[docs/DSL_INTERPRETER_RUNTIME.md|DSL INTERPRETER RUNTIME]]
+- [[docs/FEATURE_MATRIX.md|FEATURE MATRIX]]
 
 ### Application Note: Discovery-First Config Bootstrap
 
 - [[docs/FEATURE_SPEC_BRINGUP_UI_DISCOVERY_FIRST_CONFIG_AUTHORING.md|FEATURE SPEC BRINGUP UI DISCOVERY FIRST CONFIG AUTHORING]]
 - [[docs/TEST_PROCEDURE_FULL_ROBOT_FROM_SCRATCH_V3.md|TEST PROCEDURE FULL ROBOT FROM SCRATCH V3]]
-- [[docs/USER_GUIDE.md|USER GUIDE]]
 - [[docs/WORKFLOW_01_NEW_ROBOT_BRINGUP.md|WORKFLOW 01 NEW ROBOT BRINGUP]]
 - [[docs/TEST_PROCEDURE_ZERO_CONFIG.md|TEST PROCEDURE ZERO CONFIG]]
 - [[docs/FEATURE_SPEC_CLI_CANONICAL_COMMANDS_NOVICE_FIRST.md|FEATURE SPEC CLI CANONICAL COMMANDS NOVICE FIRST]]
-
-### Architecture
-
-- [[docs/SPEC_LAYERED_ARCHITECTURE_REFACTOR.md|SPEC LAYERED ARCHITECTURE REFACTOR]]
-- [[docs/BRIDGE_RUNTIME_ARCH.md|BRIDGE RUNTIME ARCH]]
-- [[docs/COMMAND_HANDLER_ARCHITECTURE.md|COMMAND HANDLER ARCHITECTURE]]
-- [[docs/HOST_SOFTWARE_ARCHITECTURE.md|HOST SOFTWARE ARCHITECTURE]]
-- [[docs/STATUS_REVIEW_2026-08-03.md|STATUS REVIEW 2026-08-03]]
-- [[docs/historical/SPEC_ROBOT_DIAGNOSTIC_ARCHITECTURE_V0_5.md|SPEC ROBOT DIAGNOSTIC ARCHITECTURE V0 5]]
+- [[docs/FEATURE_SPEC_CONFIG_RECOVERY.md|FEATURE SPEC CONFIG RECOVERY]]
 
 ### BRIDGE CLI DESIGN
 
@@ -116,12 +107,12 @@ Purpose: non-destructive suggestions for future in-page linking and navigation u
 
 ### Bridge Runtime Architecture
 
-- [[docs/ARCHITECTURE.md|ARCHITECTURE]]
 - [[docs/DSL_INTERPRETER_RUNTIME.md|DSL INTERPRETER RUNTIME]]
 - [[docs/GROUPS_GUIDE.md|GROUPS GUIDE]]
 - [[docs/SPEC_LAYERED_ARCHITECTURE_REFACTOR.md|SPEC LAYERED ARCHITECTURE REFACTOR]]
 - [[docs/BRIDGE_CLI_DESIGN.md|BRIDGE CLI DESIGN]]
 - [[docs/BRIDGE_CLI_FULL_SPEC.md|BRIDGE CLI FULL SPEC]]
+- [[docs/CLI_Spec.md|CLI Spec]]
 
 ### Bringup Label Link Map
 
@@ -159,7 +150,7 @@ Purpose: non-destructive suggestions for future in-page linking and navigation u
 - [[docs/CLI_Spec.md|CLI Spec]]
 - [[docs/FEATURE_SPEC_CAN_BREAK_CHECK_PHASE1.md|FEATURE SPEC CAN BREAK CHECK PHASE1]]
 
-### CAN Bus Background (FRC)
+### CAN bus background (FRC)
 
 - [[docs/CAN Bus DIagnostic Feature Specification.md|CAN Bus DIagnostic Feature Specification]]
 - [[docs/FEATURE_SPEC_CAN_BUS_DEBUG_FINAL_PUSH.md|FEATURE SPEC CAN BUS DEBUG FINAL PUSH]]
@@ -172,10 +163,10 @@ Purpose: non-destructive suggestions for future in-page linking and navigation u
 
 - [[docs/CLI_TEST_AUTHORING_USER_GUIDE.md|CLI TEST AUTHORING USER GUIDE]]
 - [[docs/GROUPS_GUIDE.md|GROUPS GUIDE]]
-- [[docs/USER_GUIDE.md|USER GUIDE]]
 - [[docs/USER_GUIDE_ROBOT_TEST_DSL.md|USER GUIDE ROBOT TEST DSL]]
 - [[docs/CLI_USER_MANUAL.md|CLI USER MANUAL]]
 - [[docs/USER_GUIDE_ADD_ROBOT_LOCAL_COMMAND.md|USER GUIDE ADD ROBOT LOCAL COMMAND]]
+- [[docs/USER_GUIDE_REGRESSION_RUNNER.md|USER GUIDE REGRESSION RUNNER]]
 
 ### CLI GRAMMAR UNIFICATION SPEC
 
@@ -185,6 +176,15 @@ Purpose: non-destructive suggestions for future in-page linking and navigation u
 - [[docs/FEATURE_SPEC_CLI_USABILITY.md|FEATURE SPEC CLI USABILITY]]
 - [[docs/FEATURE_SPEC_CLI_WIZARDS.md|FEATURE SPEC CLI WIZARDS]]
 - [[docs/FEATURE_SPEC_ROBOT_TEST_DSL_CLI.md|FEATURE SPEC ROBOT TEST DSL CLI]]
+
+### CLI Reference Manual
+
+- [[docs/CLI_USER_MANUAL.md|CLI USER MANUAL]]
+- [[docs/GROUPS_GUIDE.md|GROUPS GUIDE]]
+- [[docs/BRIDGE_CLI_DESIGN.md|BRIDGE CLI DESIGN]]
+- [[docs/BRIDGE_CLI_FULL_SPEC.md|BRIDGE CLI FULL SPEC]]
+- [[docs/CLI_FUNCTIONAL_AREAS_USER_GUIDE.md|CLI FUNCTIONAL AREAS USER GUIDE]]
+- [[docs/CLI_GRAMMAR_UNIFICATION_SPEC.md|CLI GRAMMAR UNIFICATION SPEC]]
 
 ## Wiki Link Suggestions
 
@@ -207,7 +207,7 @@ Purpose: non-destructive suggestions for future in-page linking and navigation u
 - Component Model Unification -> docs/SPEC_COMPONENT_MODEL_UNIFICATION.md
 - DSL Device Signal Interface Spec -> docs/SPEC_DSL_DEVICE_SIGNAL_INTERFACE.md
 - Spec: Shared Config API -> docs/SPEC_SHARED_CONFIG_API.md
-- TCP UI Protocol (Historical) -> docs/TCP_UI_PROTOCOL.md
+- TCP UI protocol (historical) -> docs/TCP_UI_PROTOCOL.md
 - Regression Runner User Guide -> docs/USER_GUIDE_REGRESSION_RUNNER.md
 - Robot Test DSL User Guide -> docs/USER_GUIDE_ROBOT_TEST_DSL.md
 
@@ -220,23 +220,17 @@ Purpose: non-destructive suggestions for future in-page linking and navigation u
 
 - Feature Spec: Bridge UI + CLI Test Authoring (No Direct JSON Editing) -> docs/FEATURE_SPEC_TEST_AUTHORING.md
 
-### Architecture
-
-- OPERATOR SURFACES -> docs/OPERATOR_SURFACES.md
-- reverse-engineering -> notes/research/reverse-engineering.md
-
 ### BRIDGE CLI DESIGN
 
 - Feature Spec: Bridge UI + CLI Test Authoring (No Direct JSON Editing) -> docs/FEATURE_SPEC_TEST_AUTHORING.md
 
-### CAN Bus Background (FRC)
+### CAN bus background (FRC)
 
 - reverse-engineering -> notes/research/reverse-engineering.md
 
 ### CLI Functional Areas User Guide
 
 - Feature Spec: Bridge UI + CLI Test Authoring (No Direct JSON Editing) -> docs/FEATURE_SPEC_TEST_AUTHORING.md
-- User Guide -> docs/USER_GUIDE.md
 
 ### CLI Reference Manual
 
@@ -246,7 +240,6 @@ Purpose: non-destructive suggestions for future in-page linking and navigation u
 
 - Group and Targeting Spec (V1 Final) -> docs/FEATURE_SPEC_GROUP_AND_TARGETING_V1.md
 - Feature Spec: Bridge UI + CLI Test Authoring (No Direct JSON Editing) -> docs/FEATURE_SPEC_TEST_AUTHORING.md
-- User Guide -> docs/USER_GUIDE.md
 - Robot Test DSL User Guide -> docs/USER_GUIDE_ROBOT_TEST_DSL.md
 
 ### CLI USER MANUAL
@@ -289,3 +282,7 @@ Purpose: non-destructive suggestions for future in-page linking and navigation u
 ### Feature Spec: CAN Evidence UI
 
 - reverse-engineering -> notes/research/reverse-engineering.md
+
+### Feature Spec: Changelog Publication Policy
+
+- Regression Runner User Guide -> docs/USER_GUIDE_REGRESSION_RUNNER.md

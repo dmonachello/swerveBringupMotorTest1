@@ -102,7 +102,10 @@ public final class BringupCore {
   private static final String MESSAGE_TEST_BLOCKED_NO_DEVICES =
       "test blocked (no devices instantiated; click Runtime Activate if runtime is inactive).";
   private static final String MESSAGE_TEST_BLOCKED_DEVICES =
-      "test blocked (device(s) not instantiated): ";
+      "test blocked (device(s) not ready): ";
+  private static final String MESSAGE_TEST_BLOCKED_REASON_SEPARATOR = "; ";
+  private static final String MESSAGE_TEST_BLOCKED_LABEL_REASON_SEPARATOR = ": ";
+  private static final String MESSAGE_TEST_BLOCKED_GENERIC_REASON = "device not ready";
   private static final String WARNING_SET_DUTY_FAILED_PREFIX =
       "Warning: failed to set duty for device ";
   private static final String WARNING_INSTANTIATE_FAILED_PREFIX =
@@ -1034,6 +1037,18 @@ public final class BringupCore {
     addAllDevices();
   }
 
+  boolean previousAddAll() {
+    return prevAddAll;
+  }
+
+  void setPreviousAddAll(boolean value) {
+    prevAddAll = value;
+  }
+
+  void resetNextMotorGroupIndex() {
+    nextMotorGroupIndex = 0;
+  }
+
   /**
    * NAME
    *   reloadActiveProfileRuntime - Fully replace runtime state from active profile.
@@ -1110,7 +1125,7 @@ public final class BringupCore {
    * SIDE EFFECTS
    *   Stops any active test and rebuilds test selection state.
    */
-  private void syncProfileRuntimeFromRegistry() {
+  void syncProfileRuntimeFromRegistry() {
     long activeGeneration = BringupUtil.getActiveProfileGeneration();
     if (loadedProfileGeneration == activeGeneration) {
       return;
@@ -3349,6 +3364,20 @@ public final class BringupCore {
 
   /**
    * NAME
+   *   startActivePresenceProbeRun - Create an incremental active-probe run.
+   *
+   * PARAMETERS
+   *   preclearSticky - Whether sticky faults may be cleared during this probe pass.
+   *
+   * RETURNS
+   *   Incremental probe run state for repeated stepping by the command executor.
+   */
+  public ActiveDevicePresenceProbe.ProbeRun startActivePresenceProbeRun(boolean preclearSticky) {
+    return activePresenceProbe.beginRun(this, preclearSticky);
+  }
+
+  /**
+   * NAME
    *   refreshActivePresenceProbeCache - Refresh cached active-probe evidence.
    *
    * PARAMETERS
@@ -3365,8 +3394,20 @@ public final class BringupCore {
       boolean preclearSticky) {
     ActiveDevicePresenceProbe.ProbeSessionResult session =
         activePresenceProbe.runOnce(this, preclearSticky);
-    cacheActivePresenceProbeSession(session, System.currentTimeMillis());
+    storeActivePresenceProbeSession(session);
     return session;
+  }
+
+  /**
+   * NAME
+   *   storeActivePresenceProbeSession - Publish and cache a completed probe session.
+   *
+   * PARAMETERS
+   *   session - Completed active-probe session result.
+   */
+  public void storeActivePresenceProbeSession(
+      ActiveDevicePresenceProbe.ProbeSessionResult session) {
+    cacheActivePresenceProbeSession(session, System.currentTimeMillis());
   }
 
   /**
@@ -3697,12 +3738,19 @@ public final class BringupCore {
     }
     List<String> missing = new ArrayList<>();
     for (String label : labels) {
-      if (!testContext.isDeviceTestable(label)) {
-        missing.add(label);
+      DeviceLifecycleRegistry.DeviceLifecycleView lifecycle = testContext.deviceLifecycleView(label);
+      DeviceActionability.Evaluation evaluation =
+          DeviceActionability.evaluate(lifecycle, false, false);
+      if (!evaluation.testOperable) {
+        String reason = evaluation.blockedReasonText;
+        if (reason == null || reason.isBlank()) {
+          reason = MESSAGE_TEST_BLOCKED_GENERIC_REASON;
+        }
+        missing.add(label + MESSAGE_TEST_BLOCKED_LABEL_REASON_SEPARATOR + reason);
       }
     }
     if (!missing.isEmpty()) {
-      return MESSAGE_TEST_BLOCKED_DEVICES + String.join(", ", missing);
+      return MESSAGE_TEST_BLOCKED_DEVICES + String.join(MESSAGE_TEST_BLOCKED_REASON_SEPARATOR, missing);
     }
     return null;
   }

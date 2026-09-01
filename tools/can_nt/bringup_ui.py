@@ -57,13 +57,15 @@ from .passive_discovery_integration_service import (
     TEXT_EMPTY,
     build_evidence_fault_snapshot,
     build_interpreted_evidence_row,
+    build_interpreted_evidence_snapshot,
     classify_device_type,
+    build_shadow_fusion_results,
     build_console_snapshot_from_entries as build_console_snapshot_from_entries_shared,
     build_enrichment_run_snapshot,
     build_live_passive_result,
     build_passive_device_detail_snapshot,
     build_passive_visibility_deep_dive_text,
-    build_interpreted_device_detail_snapshot,
+    has_completed_interpreted_evidence_evaluation,
     build_manual_snapshot,
     build_runtime_probe_snapshot,
     build_runtime_presence_catalog,
@@ -76,12 +78,14 @@ from .passive_discovery_integration_service import (
     index_run_result_by_identity,
     load_profile_device_catalog,
     normalize_evidence_engine_status,
+    passive_visibility_evidence_packet_count,
     resolve_passive_visibility_device_record,
     section_engine_label,
     INTERPRET_KEY_CONFLICTED,
     INTERPRET_KEY_CONSOLE,
     INTERPRET_KEY_CONSOLE_TEXT,
     INTERPRET_KEY_CONFIDENCE,
+    INTERPRET_KEY_COMMUNICATION,
     INTERPRET_KEY_DEVICE_TYPE,
     INTERPRET_KEY_ENRICHMENT_TEXT,
     INTERPRET_KEY_EXISTENCE,
@@ -100,6 +104,7 @@ from .passive_discovery_integration_service import (
     INTERPRET_KEY_DIRTY_REASONS,
     INTERPRET_KEY_NOTES_TEXT,
     INTERPRET_KEY_OPERABILITY,
+    INTERPRET_KEY_OVERALL,
     INTERPRET_KEY_PASSIVE,
     INTERPRET_KEY_PASSIVE_TEXT,
     INTERPRET_KEY_PRESENCE_REASONS,
@@ -109,8 +114,11 @@ from .passive_discovery_integration_service import (
     INTERPRET_KEY_PROBE,
     INTERPRET_KEY_PROBE_SCORE,
     INTERPRET_KEY_PROBE_TEXT,
+    INTERPRET_KEY_SHADOW_RESULT,
     INTERPRET_KEY_SOURCE_SCORES,
     INTERPRET_KEY_STATE,
+    INTERPRETED_SNAPSHOT_KEY_DEVICES,
+    INTERPRETED_SNAPSHOT_KEY_ROW,
     DEVICE_CLASS_INFRASTRUCTURE,
     DEVICE_CLASS_MOTION,
     DEVICE_CLASS_UNPROFILED,
@@ -670,6 +678,8 @@ OUTPUT_SELECTED_PROFILE_PREFIX = "Selected profile: "
 OUTPUT_GROUP_RUN_FMT = "CMD groupRunTest \"{group}\""
 OUTPUT_OWNER_REQUIRED = "Owning control client required. Use Reconnect UI Session to reclaim control."
 SCOPE_TRANSITION_WAIT_TIMEOUT_SEC = 3.0
+RUNTIME_ACTIVATE_TIMEOUT_SEC = 8.0
+SCOPE_TRANSITION_WAIT_TIMEOUT_RUNTIME_ACTIVATE_SEC = RUNTIME_ACTIVATE_TIMEOUT_SEC
 DOWNLOAD_FILENAME = "bringup_system.downloaded.json"
 CONFIG_FILE_TYPES = (("JSON files", "*.json"), ("All files", "*.*"))
 CONFIG_FILE_DEFAULT_EXTENSION = ".json"
@@ -1338,10 +1348,18 @@ EVIDENCE_MANUAL_TEXT = "Manual Test (Operator / Motion)"
 EVIDENCE_ENRICHMENT_TEXT = "Enrichment Evidence (Host Corroboration)"
 EVIDENCE_NOTES_TEXT = "Conflicts / Notes"
 EVIDENCE_INPUT_SENSOR_TEXT = "Input/Sensor State"
+EVIDENCE_LABEL_OVERALL = "Overall"
 EVIDENCE_LABEL_EXISTENCE = "Existence"
+EVIDENCE_LABEL_COMMUNICATION = "Communication"
 EVIDENCE_LABEL_OPERABILITY = "Operability"
 EVIDENCE_LABEL_IDENTITY = "Identity"
 EVIDENCE_LABEL_CONFIDENCE = "Confidence"
+EVIDENCE_SHADOW_KEY_DIMENSIONS = "dimensions"
+EVIDENCE_SHADOW_KEY_VALUE = "value"
+EVIDENCE_SHADOW_DIMENSION_EXISTENCE = "existence"
+EVIDENCE_SHADOW_DIMENSION_COMMUNICATION = "communication"
+EVIDENCE_SHADOW_DIMENSION_OPERABILITY = "operability"
+EVIDENCE_SHADOW_DIMENSION_IDENTITY = "identity"
 EVIDENCE_LABEL_PASSIVE = "Passive"
 EVIDENCE_LABEL_CONSOLE = "Console"
 EVIDENCE_LABEL_PROBE = "Probe"
@@ -1356,6 +1374,11 @@ EVIDENCE_CAN_TEXT_RECOVERED = "utilization recovered"
 EVIDENCE_CAN_TEXT_BUS_OFF = "bus off"
 EVIDENCE_CAN_TEXT_ERROR_SPIKE = "error spike"
 EVIDENCE_CAN_TEXT_TX_FULL = "tx full"
+EVIDENCE_CAN_TEXT_HAL_TIMEOUT = "hal_can_receive_timeout"
+EVIDENCE_CAN_TEXT_CAN_TIMEOUT = "can_receive_timeout"
+EVIDENCE_CAN_TEXT_FRAME_TOO_STALE = "can_frame_too_stale"
+EVIDENCE_CAN_TEXT_DEVICE_FW_QUERY_FAIL = "device_fw_query_fail"
+EVIDENCE_CAN_TEXT_BUS_FAULT_SUSPECTED = "bus_fault_suspected"
 EVIDENCE_CONSOLE_SCOPE_DEVICES = "devices"
 EVIDENCE_CONSOLE_SCOPE_SYSTEM = "system"
 EVIDENCE_PANEL_KEY_SUMMARY = "summary"
@@ -1452,6 +1475,9 @@ ATTACHMENT_TYPE_PRESENCE_CHECK = "presenceCheck"
 ATTACHMENT_TYPE_ACTIVE_PRESENCE_PROBE = "activePresenceProbe"
 ATTACHMENT_TYPE_REV_MOTOR = "revMotor"
 ATTACHMENT_TYPE_CTRE_MOTOR = "ctreMotor"
+CMD_ACTIVE_PRESENCE_PROBE = ATTACHMENT_TYPE_ACTIVE_PRESENCE_PROBE
+CMD_ACTIVE_PRESENCE_PROBE_LOWER = "activepresenceprobe"
+ACTIVE_PRESENCE_PROBE_TIMEOUT_SEC = 20.0
 RUNTIME_PRESENCE_KEY_BUCKET = "bucket"
 RUNTIME_PRESENCE_KEY_STATUS = "status"
 RUNTIME_PRESENCE_KEY_SOURCE = "source"
@@ -1484,6 +1510,10 @@ CMD_SHOW_RUNTIME_STATE = "showRuntimeState"
 CMD_SHOW_LIFECYCLE_STATE = "showLifecycleState"
 CMD_RUNTIME_ACTIVATE = "runtimeActivate"
 CMD_RUNTIME_DEACTIVATE = "runtimeDeactivate"
+LONG_RUNNING_REST_COMMANDS = {
+    CMD_ACTIVE_PRESENCE_PROBE_LOWER,
+    CMD_RUNTIME_ACTIVATE.lower(),
+}
 CMD_LIFECYCLE_ACTIVATE = "lifecycleActivate"
 CMD_LIFECYCLE_DEACTIVATE_ACTIVE = "lifecycleDeactivateActive"
 KEY_COMMAND_MODE = "mode"
@@ -1754,7 +1784,7 @@ HIDDEN_LEFT_RAIL_COMMANDS = {
     "toggleEnabled",
 }
 TEST_ACTIVITY_COMMANDS = {
-    "activepresenceprobe",
+    CMD_ACTIVE_PRESENCE_PROBE_LOWER,
     "dumpreport",
     "printcancoder",
     "printcandiag",
@@ -4135,7 +4165,9 @@ class BringupControlUI(tk.Tk):
             pady=(2, 0),
         )
         self._evidence_detail_vars = {
+            EVIDENCE_LABEL_OVERALL: tk.StringVar(value=EVIDENCE_STATUS_UNKNOWN),
             EVIDENCE_LABEL_EXISTENCE: tk.StringVar(value=EVIDENCE_STATUS_UNKNOWN),
+            EVIDENCE_LABEL_COMMUNICATION: tk.StringVar(value=EVIDENCE_STATUS_UNKNOWN),
             EVIDENCE_LABEL_OPERABILITY: tk.StringVar(value=EVIDENCE_STATUS_UNKNOWN),
             EVIDENCE_LABEL_IDENTITY: tk.StringVar(value=EVIDENCE_STATUS_UNKNOWN),
             EVIDENCE_LABEL_CONFIDENCE: tk.StringVar(value=EVIDENCE_CONFIDENCE_LOW),
@@ -4152,7 +4184,9 @@ class BringupControlUI(tk.Tk):
         interpretation.pack(fill=VIS_FILL_X, pady=(8, 8))
         for row_index, key in enumerate(
             (
+                EVIDENCE_LABEL_OVERALL,
                 EVIDENCE_LABEL_EXISTENCE,
+                EVIDENCE_LABEL_COMMUNICATION,
                 EVIDENCE_LABEL_OPERABILITY,
                 EVIDENCE_LABEL_IDENTITY,
                 EVIDENCE_LABEL_CONFIDENCE,
@@ -4413,6 +4447,13 @@ class BringupControlUI(tk.Tk):
             self._evidence_refresh_dirty = False
             self._refresh_evidence_view()
 
+        after_idle_callback = self.__dict__.get("after_idle")
+        if callable(after_idle_callback):
+            after_idle_callback(_run_refresh)
+            return
+        if "_w" not in self.__dict__:
+            _run_refresh()
+            return
         self.after_idle(_run_refresh)
 
     def _rebuild_evidence_panel_layout(self) -> None:
@@ -4740,6 +4781,8 @@ class BringupControlUI(tk.Tk):
         live_view = self._current_runtime_live_view()
         if live_view is None:
             return
+        if not hasattr(live_view, "update_runtime_state"):
+            return
         payload = self.__dict__.get("_latest_runtime_state_payload", {})
         if not isinstance(payload, dict) or not payload:
             live_view.update_runtime_state(None)
@@ -4928,6 +4971,11 @@ class BringupControlUI(tk.Tk):
             self._group_owner_mode = GROUP_SOURCE_MANUAL
             return
         self._group_owner_mode = GROUP_SOURCE_SELECTED_TEST
+        selected_name = self._selected_test_name()
+        if not selected_name or selected_name == PROFILE_NONE:
+            self._sync_selected_test_devices_panel_local(loaded_to_robot=None)
+            self._refresh_selected_test_scope_status()
+            return
         self._load_selected_test_into_active_group(force_replace=True)
 
     def _runtime_active_group_payload(self) -> Dict[str, Any]:
@@ -5198,6 +5246,12 @@ class BringupControlUI(tk.Tk):
             _load_selected_test_into_active_group - Replace robot active-group membership with the selected test devices.
         """
         rows = self._selected_test_required_rows()
+        if not rows:
+            self._tests_active_group_rows = rows
+            self._tests_active_group_membership_key = tuple()
+            self._tests_active_group_loaded_to_robot = None
+            self._refresh_tests_active_group_panel()
+            return
         membership_key = self._tests_active_group_membership_key_for_rows(rows)
         changed = membership_key != tuple(self.__dict__.get("_tests_active_group_membership_key", tuple()))
         if not force_replace and not changed:
@@ -5617,6 +5671,8 @@ class BringupControlUI(tk.Tk):
         NAME
             _profile_context_mismatch_detail - Return one operator-facing profile mismatch detail line.
         """
+        if not bool(self.__dict__.get("_robot_enabled_known", True)):
+            return ""
         state = self._context_sync_state()
         if not bool(getattr(state, "out_of_sync", False)):
             return ""
@@ -5785,8 +5841,12 @@ class BringupControlUI(tk.Tk):
         if not state.out_of_sync:
             return False
         clean_command = str(command_name or "").strip().lower()
-        if clean_command == "runtest" and self._only_selected_test_context_differs(state):
-            return False
+        if self._only_selected_test_context_differs(state):
+            current_tab = self._current_right_tab_text()
+            if current_tab != TEST_LIBRARY_TAB_LABEL:
+                return False
+            if clean_command in {"runtest", CMD_RUNTIME_ACTIVATE.lower()}:
+                return False
         return clean_command in CONTEXT_SYNC_BLOCKED_ACTIONS
 
     def _only_selected_test_context_differs(self, state: ContextSyncState) -> bool:
@@ -5910,7 +5970,12 @@ class BringupControlUI(tk.Tk):
         if started_at <= 0.0:
             self._scope_transition_started_at = time.time()
             return True
-        if (time.time() - started_at) > SCOPE_TRANSITION_WAIT_TIMEOUT_SEC:
+        tracker = self.__dict__.get("_tracker")
+        if tracker is not None and callable(getattr(tracker, "is_pending", None)):
+            if tracker.is_pending():
+                self._scope_transition_started_at = time.time()
+                return True
+        if (time.time() - started_at) > self._scope_transition_timeout_sec():
             self._clear_scope_transition_wait()
             return False
         return True
@@ -5983,9 +6048,11 @@ class BringupControlUI(tk.Tk):
         lifecycle_state = str(runtime_device.get("lifecycleState", NT_VALUE_EMPTY)).strip().lower()
         if lifecycle_state == "controlled-active":
             return True
-        if bool(runtime_device.get("testable", False)):
+        if bool(runtime_device.get("manualOperable", False)):
             return True
-        if bool(runtime_device.get("instantiated", False)):
+        if bool(runtime_device.get("testOperable", False)):
+            return True
+        if bool(runtime_device.get("testable", False)):
             return True
         active_group_label = str(runtime_device.get("activeGroupLabel", NT_VALUE_EMPTY)).strip().lower()
         return active_group_label == GROUP_ACTIVE_NAME
@@ -6855,7 +6922,10 @@ class BringupControlUI(tk.Tk):
             if hasattr(live_view, "set_override_action_state"):
                 live_view.set_override_action_state(override_state)
 
-    def _reset_ui_session_runtime_context(self) -> None:
+    def _reset_ui_session_runtime_context(
+        self,
+        preserve_cached_runtime: bool = False,
+    ) -> None:
         """
         NAME
             _reset_ui_session_runtime_context - Drop session-scoped runtime/UI caches after session generation changes.
@@ -6882,8 +6952,11 @@ class BringupControlUI(tk.Tk):
         self._last_sent_seq = None
         self._runtime_state_notice_text = NT_VALUE_EMPTY
         self._runtime_event_notice_text = NT_VALUE_EMPTY
-        self._latest_runtime_state_payload = {}
-        self._latest_runtime_devices = {}
+        if not preserve_cached_runtime:
+            self._latest_runtime_state_payload = {}
+            self._latest_runtime_devices = {}
+        self._robot_selected_profile = PROFILE_NONE
+        self._robot_active_runtime_profile = PROFILE_NONE
         self._evidence_probe_results_by_label = {}
         self._evidence_manual_results = {}
         self._evidence_eval_cursor_class_index = 0
@@ -6913,16 +6986,26 @@ class BringupControlUI(tk.Tk):
                 "Manual duty popup closed: UI session/runtime context reset.",
                 stop_motor=True,
             )
+        if "_profile_box" in self.__dict__:
+            self._sync_diagnostic_profile_context(reload_views=True)
         self._refresh_tests_active_group_panel()
         self._refresh_output_runtime_notice()
         self._refresh_selected_test_scope_status()
         self._refresh_evidence_view()
         self._update_action_enabled()
+        runtime_payload = None
+        if preserve_cached_runtime:
+            cached_payload = self.__dict__.get("_latest_runtime_state_payload", {})
+            if isinstance(cached_payload, dict) and cached_payload:
+                runtime_payload = dict(cached_payload)
         for live_view in self._iter_live_views():
-            live_view.update_runtime_state(None)
+            live_view.update_runtime_state(runtime_payload)
             live_view.set_manual_test_observations({})
-            live_view.clear_runtime_state_notice()
-            live_view.clear_runtime_notice()
+            if preserve_cached_runtime:
+                live_view.clear_runtime_notice()
+            else:
+                live_view.clear_runtime_state_notice()
+                live_view.clear_runtime_notice()
 
     def _apply_robot_ui_session_id(self, session_id: str) -> None:
         """
@@ -8009,24 +8092,64 @@ class BringupControlUI(tk.Tk):
         NAME
             _build_evidence_can_bus_health_text - Build one operator-facing CAN-bus health summary from system console evidence.
         """
-        system_events = (
-            system_console.get(EVIDENCE_CONSOLE_SCOPE_SYSTEM, [])
-            if isinstance(system_console, dict)
-            else []
-        )
-        if not isinstance(system_events, list) or not system_events:
+        if not isinstance(system_console, dict):
             return EVIDENCE_BUS_HEALTH_EMPTY_TEXT
-        normalized = [str(entry or "").strip() for entry in system_events if str(entry or "").strip()]
+        stats = system_console.get("stats", {})
+        records = system_console.get("records", [])
+        system_events = system_console.get(EVIDENCE_CONSOLE_SCOPE_SYSTEM, [])
+        device_rows = system_console.get(EVIDENCE_CONSOLE_SCOPE_DEVICES, {})
+        normalized_system = [
+            str(entry or "").strip() for entry in system_events if str(entry or "").strip()
+        ] if isinstance(system_events, list) else []
+        normalized_device = []
+        if isinstance(device_rows, dict):
+            for row in device_rows.values():
+                if not isinstance(row, dict):
+                    continue
+                events = row.get("events", [])
+                if not isinstance(events, list):
+                    continue
+                normalized_device.extend(
+                    str(entry or "").strip() for entry in events if str(entry or "").strip()
+                )
+        normalized = normalized_system + normalized_device
+        if not normalized:
+            return EVIDENCE_BUS_HEALTH_EMPTY_TEXT
         lower_events = [entry.lower() for entry in normalized]
         high_util_count = sum(EVIDENCE_CAN_TEXT_HIGH_UTIL in entry for entry in lower_events)
         recovered_count = sum(EVIDENCE_CAN_TEXT_RECOVERED in entry for entry in lower_events)
         bus_off_count = sum(EVIDENCE_CAN_TEXT_BUS_OFF in entry for entry in lower_events)
         error_spike_count = sum(EVIDENCE_CAN_TEXT_ERROR_SPIKE in entry for entry in lower_events)
         tx_full_count = sum(EVIDENCE_CAN_TEXT_TX_FULL in entry for entry in lower_events)
+        controller_fault_count = sum(
+            (
+                EVIDENCE_CAN_TEXT_HAL_TIMEOUT in entry
+                or EVIDENCE_CAN_TEXT_CAN_TIMEOUT in entry
+                or EVIDENCE_CAN_TEXT_FRAME_TOO_STALE in entry
+                or EVIDENCE_CAN_TEXT_DEVICE_FW_QUERY_FAIL in entry
+                or "spark_status_timeout" in entry
+                or "spark_fw_query_fail" in entry
+                or "pdp_status_reader_timeout" in entry
+                or "pdh_status_reader_timeout" in entry
+                or EVIDENCE_CAN_TEXT_BUS_FAULT_SUSPECTED in entry
+            )
+            for entry in lower_events
+        )
+        total_active = int(stats.get("totalCount", len(normalized)) or len(normalized)) if isinstance(stats, dict) else len(normalized)
+        device_active = int(stats.get("deviceEventCount", 0) or 0) if isinstance(stats, dict) else 0
+        system_active = int(stats.get("systemEventCount", len(normalized_system)) or len(normalized_system)) if isinstance(stats, dict) else len(normalized_system)
+        unclassified_active = int(stats.get("unclassifiedEventCount", 0) or 0) if isinstance(stats, dict) else 0
         if bus_off_count > 0:
             overall = EVIDENCE_BUS_HEALTH_CRITICAL
             impact = "Bus-off evidence can invalidate device freshness and per-device confidence."
-        elif error_spike_count > 0 or tx_full_count > 0 or bool(system_console.get("systemConflict")):
+        elif (
+            error_spike_count > 0
+            or tx_full_count > 0
+            or controller_fault_count > 0
+            or device_active > 0
+            or unclassified_active > 0
+            or bool(system_console.get("systemConflict"))
+        ):
             overall = EVIDENCE_BUS_HEALTH_DEGRADED
             impact = "CAN errors/contention may reduce confidence in timing and device-level conclusions."
         elif high_util_count > 0:
@@ -8037,15 +8160,26 @@ class BringupControlUI(tk.Tk):
             impact = EVIDENCE_BUS_HEALTH_OK_IMPACT
         summary = (
             f"Overall Health={overall}"
-            f"{EVIDENCE_NOTE_SEPARATOR}Active Events={len(normalized)}"
+            f"{EVIDENCE_NOTE_SEPARATOR}Active Events={total_active}"
+            f"{EVIDENCE_NOTE_SEPARATOR}DeviceEvents={device_active}"
+            f"{EVIDENCE_NOTE_SEPARATOR}SystemEvents={system_active}"
+            f"{EVIDENCE_NOTE_SEPARATOR}Unclassified={unclassified_active}"
             f"{EVIDENCE_NOTE_SEPARATOR}HighUtil={high_util_count}"
             f"{EVIDENCE_NOTE_SEPARATOR}Recovered={recovered_count}"
             f"{EVIDENCE_NOTE_SEPARATOR}ErrorSpike={error_spike_count}"
             f"{EVIDENCE_NOTE_SEPARATOR}TxFull={tx_full_count}"
+            f"{EVIDENCE_NOTE_SEPARATOR}ControllerFault={controller_fault_count}"
             f"{EVIDENCE_NOTE_SEPARATOR}BusOff={bus_off_count}"
         )
         lines = [summary, impact]
-        lines.extend(normalized[:4])
+        if device_active > 0:
+            lines.append(
+                f"Device-targeted active console events are included in this health summary ({device_active})."
+            )
+        if isinstance(records, list):
+            lines.extend(normalized[:4])
+        else:
+            lines.extend(normalized[:4])
         return "\n".join(lines)
 
     def _manual_evidence_for_label(self, label: str) -> Optional[Dict[str, Any]]:
@@ -8256,6 +8390,7 @@ class BringupControlUI(tk.Tk):
         runtime_device: Optional[Dict[str, Any]],
         console_entry: Optional[Dict[str, Any]],
         system_console: Dict[str, Any],
+        shadow_result: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         NAME
@@ -8283,6 +8418,7 @@ class BringupControlUI(tk.Tk):
             probe_pending=bool(self.__dict__.get("_evidence_probe_pending", False)),
             last_probe_completed_at=float(self.__dict__.get("_evidence_last_probe_completed_at", 0.0) or 0.0),
             probe_run_count=int(self.__dict__.get("_evidence_probe_run_count", 0) or 0),
+            shadow_result=shadow_result,
             now_s=time.time(),
             visibility_identity_text=self._format_visibility_identity(visibility_device or {}),
             visibility_last_seen_text=self._format_visibility_last_seen(metrics),
@@ -8514,6 +8650,17 @@ class BringupControlUI(tk.Tk):
             raw_console_devices = console_snapshot.get(EVIDENCE_CONSOLE_SCOPE_DEVICES)
             if isinstance(raw_console_devices, dict):
                 console_devices = raw_console_devices
+        shadow_results = build_shadow_fusion_results(
+            profile_devices=profile_devices,
+            runtime_devices=self._latest_runtime_devices,
+            presence_entries_by_label=presence_entries_by_label,
+            passive_devices_by_identity=passive_devices_by_identity,
+            visibility_devices_by_label=visibility_devices,
+            console_devices_by_label=console_devices,
+            manual_results_by_label=self.__dict__.get("_evidence_manual_results", {}),
+            manual_observations_by_label=self.__dict__.get("_manual_test_observations", {}),
+            now_s=time.time(),
+        )
         rows: List[Dict[str, Any]] = []
         for labels in grouped_labels.values():
             for label_key in labels:
@@ -8534,6 +8681,7 @@ class BringupControlUI(tk.Tk):
                     self._latest_runtime_devices.get(label_key),
                     console_devices.get(label_key),
                     console_snapshot,
+                    shadow_results.get(label_key),
                 )
                 rows.append(dict(row))
         rows.sort(key=lambda row: str(row.get("label", NT_VALUE_EMPTY)).lower())
@@ -8618,6 +8766,10 @@ class BringupControlUI(tk.Tk):
         del label_key
         passive_score = int(getattr(passive_device, "presence_score", 0) or 0) if passive_device is not None else 0
         passive_expected = str(getattr(passive_device, "expected_status", NT_VALUE_EMPTY)).strip().lower() if passive_device is not None else NT_VALUE_EMPTY
+        passive_evidence_packets = passive_visibility_evidence_packet_count(
+            passive_device=passive_device,
+            visibility_device=visibility_device,
+        )
         presence_bucket = NT_VALUE_EMPTY
         presence_existence = NT_VALUE_EMPTY
         if isinstance(presence_entry, dict):
@@ -8651,6 +8803,7 @@ class BringupControlUI(tk.Tk):
         return (
             passive_score,
             passive_expected,
+            passive_evidence_packets,
             presence_bucket,
             presence_existence,
             runtime_presence_conf,
@@ -8677,13 +8830,13 @@ class BringupControlUI(tk.Tk):
             return EVIDENCE_DIRTY_PRIORITY_SCOPE, EVIDENCE_DIRTY_REASON_PROFILE
         if previous_fingerprint == current_fingerprint:
             return None, NT_VALUE_EMPTY
-        if previous_fingerprint[8:12] != current_fingerprint[8:12]:
+        if previous_fingerprint[9:13] != current_fingerprint[9:13]:
             return EVIDENCE_DIRTY_PRIORITY_CONSOLE, EVIDENCE_DIRTY_REASON_CONSOLE
-        if previous_fingerprint[0:4] != current_fingerprint[0:4]:
+        if previous_fingerprint[0:5] != current_fingerprint[0:5]:
             return EVIDENCE_DIRTY_PRIORITY_PRESENCE, EVIDENCE_DIRTY_REASON_PASSIVE
-        if previous_fingerprint[4:8] != current_fingerprint[4:8]:
+        if previous_fingerprint[5:9] != current_fingerprint[5:9]:
             return EVIDENCE_DIRTY_PRIORITY_PRESENCE, EVIDENCE_DIRTY_REASON_RUNTIME
-        if previous_fingerprint[12] != current_fingerprint[12]:
+        if previous_fingerprint[13] != current_fingerprint[13]:
             return EVIDENCE_DIRTY_PRIORITY_SCOPE, EVIDENCE_DIRTY_REASON_MANUAL
         return EVIDENCE_DIRTY_PRIORITY_SCOPE, EVIDENCE_DIRTY_REASON_SCOPE
 
@@ -8853,7 +9006,9 @@ class BringupControlUI(tk.Tk):
             INTERPRET_KEY_PROBE: EVIDENCE_SOURCE_NONE,
             INTERPRET_KEY_PROBE_SCORE: EVIDENCE_SOURCE_NONE,
             INTERPRET_KEY_MANUAL: EVIDENCE_MANUAL_PLACEHOLDER,
+            INTERPRET_KEY_OVERALL: EVIDENCE_STATUS_UNKNOWN,
             INTERPRET_KEY_EXISTENCE: EVIDENCE_STATUS_UNKNOWN,
+            INTERPRET_KEY_COMMUNICATION: EVIDENCE_STATUS_UNKNOWN,
             INTERPRET_KEY_OPERABILITY: EVIDENCE_STATUS_UNKNOWN,
             INTERPRET_KEY_IDENTITY: EVIDENCE_STATUS_UNKNOWN,
             INTERPRET_KEY_CONFIDENCE: EVIDENCE_CONFIDENCE_LOW,
@@ -8871,6 +9026,7 @@ class BringupControlUI(tk.Tk):
             INTERPRET_KEY_PRESENCE_REASONS: ["Evaluator has not reached this device in the current incremental pass yet."],
             "freshness": "stale",
             INTERPRET_KEY_SOURCE_SCORES: {},
+            INTERPRET_KEY_SHADOW_RESULT: {},
             INTERPRET_KEY_DIRTY: True,
             INTERPRET_KEY_DIRTY_REASONS: [EVIDENCE_DIRTY_REASON_PROFILE],
             INTERPRET_KEY_LAST_KNOWN_GOOD_AT: None,
@@ -9018,6 +9174,18 @@ class BringupControlUI(tk.Tk):
             raw_console_devices = console_snapshot.get(EVIDENCE_CONSOLE_SCOPE_DEVICES)
             if isinstance(raw_console_devices, dict):
                 console_devices = raw_console_devices
+        manual_test_observations = self.__dict__.get("_manual_test_observations", {})
+        shadow_results = build_shadow_fusion_results(
+            profile_devices=self._profile_devices,
+            runtime_devices=self._latest_runtime_devices,
+            presence_entries_by_label=presence_entries_by_label,
+            passive_devices_by_identity=passive_devices_by_identity,
+            visibility_devices_by_label=visibility_devices,
+            console_devices_by_label=console_devices,
+            manual_results_by_label=self.__dict__.get("_evidence_manual_results", {}),
+            manual_observations_by_label=manual_test_observations if isinstance(manual_test_observations, dict) else {},
+            now_s=time.time(),
+        )
         self._update_evidence_dirty_from_sources(
             grouped_labels=grouped_labels,
             presence_entries_by_label=presence_entries_by_label,
@@ -9049,6 +9217,7 @@ class BringupControlUI(tk.Tk):
                 self._latest_runtime_devices.get(label_key),
                 console_devices.get(label_key),
                 console_snapshot,
+                shadow_results.get(label_key),
             )
             dirty_reasons = self._clear_evidence_dirty(label_key)
             self._evidence_eval_cache[label_key] = self._finalize_evidence_row_state(
@@ -9082,9 +9251,7 @@ class BringupControlUI(tk.Tk):
         NAME
             _row_has_completed_evidence_evaluation - Return whether one evidence row has completed at least one real evaluation pass.
         """
-        if not isinstance(row, dict):
-            return False
-        return row.get(INTERPRET_KEY_LAST_EVALUATION_AT) is not None
+        return has_completed_interpreted_evidence_evaluation(row)
 
     def _evidence_matches_filter(self, row: Dict[str, Any], filter_key: str) -> bool:
         """
@@ -9190,9 +9357,21 @@ class BringupControlUI(tk.Tk):
                 self._set_evidence_text(section, EVIDENCE_SOURCE_NONE)
             return
         self._evidence_selected_title_var.set(str(row.get("label", NT_VALUE_EMPTY)))
-        self._evidence_detail_vars[EVIDENCE_LABEL_EXISTENCE].set(str(row.get("existence", EVIDENCE_STATUS_UNKNOWN)))
-        self._evidence_detail_vars[EVIDENCE_LABEL_OPERABILITY].set(str(row.get("operability", EVIDENCE_STATUS_UNKNOWN)))
-        self._evidence_detail_vars[EVIDENCE_LABEL_IDENTITY].set(str(row.get("identity", EVIDENCE_STATUS_UNKNOWN)))
+        shadow_result = row.get(INTERPRET_KEY_SHADOW_RESULT, {})
+        shadow_dimensions = (
+            shadow_result.get(EVIDENCE_SHADOW_KEY_DIMENSIONS, {})
+            if isinstance(shadow_result, dict)
+            else {}
+        )
+        shadow_existence = shadow_dimensions.get(EVIDENCE_SHADOW_DIMENSION_EXISTENCE, {})
+        shadow_communication = shadow_dimensions.get(EVIDENCE_SHADOW_DIMENSION_COMMUNICATION, {})
+        shadow_operability = shadow_dimensions.get(EVIDENCE_SHADOW_DIMENSION_OPERABILITY, {})
+        shadow_identity = shadow_dimensions.get(EVIDENCE_SHADOW_DIMENSION_IDENTITY, {})
+        self._evidence_detail_vars[EVIDENCE_LABEL_OVERALL].set(str(row.get(INTERPRET_KEY_OVERALL, EVIDENCE_STATUS_UNKNOWN)))
+        self._evidence_detail_vars[EVIDENCE_LABEL_EXISTENCE].set(str(shadow_existence.get(EVIDENCE_SHADOW_KEY_VALUE, EVIDENCE_STATUS_UNKNOWN)))
+        self._evidence_detail_vars[EVIDENCE_LABEL_COMMUNICATION].set(str(shadow_communication.get(EVIDENCE_SHADOW_KEY_VALUE, EVIDENCE_STATUS_UNKNOWN)))
+        self._evidence_detail_vars[EVIDENCE_LABEL_OPERABILITY].set(str(shadow_operability.get(EVIDENCE_SHADOW_KEY_VALUE, EVIDENCE_STATUS_UNKNOWN)))
+        self._evidence_detail_vars[EVIDENCE_LABEL_IDENTITY].set(str(shadow_identity.get(EVIDENCE_SHADOW_KEY_VALUE, EVIDENCE_STATUS_UNKNOWN)))
         self._evidence_detail_vars[EVIDENCE_LABEL_CONFIDENCE].set(str(row.get("confidence", EVIDENCE_CONFIDENCE_LOW)))
         console_snapshot = self._collect_console_snapshot()
         self._set_evidence_text(
@@ -9226,30 +9405,31 @@ class BringupControlUI(tk.Tk):
             table.delete(row_id)
         rows = self._build_evidence_rows()
         self._refresh_evidence_input_sensor_panel()
+        evidence_snapshot = build_interpreted_evidence_snapshot(
+            evidence_rows=rows,
+            engine_label=str(
+                self._evidence_engine_status.get("engineLabel", ENGINE_LABEL_LEGACY)
+            ).strip()
+            or ENGINE_LABEL_LEGACY,
+            generated_at_s=time.time(),
+        )
+        snapshot_devices = evidence_snapshot.get(INTERPRETED_SNAPSHOT_KEY_DEVICES, {})
+        if not isinstance(snapshot_devices, dict):
+            snapshot_devices = {}
         self._evidence_rows_by_label = {
-            str(row.get("label", NT_VALUE_EMPTY)).strip().lower(): row for row in rows
+            label_key: dict(device_entry.get(INTERPRETED_SNAPSHOT_KEY_ROW, {}))
+            for label_key, device_entry in snapshot_devices.items()
+            if isinstance(device_entry, dict)
         }
         filter_key = self._selected_evidence_filter_key()
-        shown_rows = [row for row in rows if self._evidence_matches_filter(row, filter_key)]
-        evidence_snapshot = {
-            str(row.get("label", NT_VALUE_EMPTY)).strip().lower(): str(
-                row.get("presenceState", row.get("state", EVIDENCE_STATE_UNKNOWN))
-            ).strip().lower()
-            for row in rows
-            if self._row_has_completed_evidence_evaluation(row)
-            and str(row.get("label", NT_VALUE_EMPTY)).strip()
-        }
-        evidence_detail_snapshot = {
-            str(row.get("label", NT_VALUE_EMPTY)).strip().lower(): build_interpreted_device_detail_snapshot(row)
-            for row in rows
-            if self._row_has_completed_evidence_evaluation(row)
-            and str(row.get("label", NT_VALUE_EMPTY)).strip()
-        }
+        shown_rows = [
+            row
+            for row in self._evidence_rows_by_label.values()
+            if self._evidence_matches_filter(row, filter_key)
+        ]
         for topology_view in self._iter_live_views():
             if hasattr(topology_view, "set_evidence_snapshot"):
                 topology_view.set_evidence_snapshot(evidence_snapshot)
-            if hasattr(topology_view, "set_evidence_detail_snapshot"):
-                topology_view.set_evidence_detail_snapshot(evidence_detail_snapshot)
         for row in shown_rows:
             table.insert(
                 VIS_TREE_ROOT,
@@ -10301,7 +10481,12 @@ class BringupControlUI(tk.Tk):
                 UI_PREFS_KEY_SHOW_VISIBILITY_TAB: self._ui_show_visibility_tab,
                 UI_PREFS_KEY_SHOW_WALL_CLOCK: self._ui_show_wall_clock,
                 UI_PREFS_KEY_THEME: self._ui_theme_name,
-                UI_PREFS_KEY_EVIDENCE_PANELS: self._ui_evidence_panel_prefs,
+                UI_PREFS_KEY_EVIDENCE_PANELS: dict(
+                    self.__dict__.get(
+                        "_ui_evidence_panel_prefs",
+                        EVIDENCE_PANEL_PREF_DEFAULTS,
+                    )
+                ),
             },
         )
 
@@ -12391,6 +12576,46 @@ class BringupControlUI(tk.Tk):
         command = str(name or "").strip().lower()
         return command in TEST_ACTIVITY_COMMANDS
 
+    def _command_timeout_override_sec(self, name: object) -> Optional[float]:
+        """
+        NAME
+            _command_timeout_override_sec - Return a command-specific tracker timeout override when needed.
+        """
+        command = str(name or "").strip().lower()
+        if command == CMD_ACTIVE_PRESENCE_PROBE_LOWER:
+            return ACTIVE_PRESENCE_PROBE_TIMEOUT_SEC
+        if command == CMD_RUNTIME_ACTIVATE.lower():
+            return RUNTIME_ACTIVATE_TIMEOUT_SEC
+        return None
+
+    def _scope_transition_timeout_sec(self) -> float:
+        """
+        NAME
+            _scope_transition_timeout_sec - Return the current transition confirmation timeout.
+        """
+        if self.__dict__.get("_pending_runtime_active_expected") is True:
+            return SCOPE_TRANSITION_WAIT_TIMEOUT_RUNTIME_ACTIVATE_SEC
+        return SCOPE_TRANSITION_WAIT_TIMEOUT_SEC
+
+    def _pending_long_running_rest_command(self) -> bool:
+        """
+        NAME
+            _pending_long_running_rest_command - Return whether the current pending command should suppress aggressive REST polling.
+        """
+        tracker = self.__dict__.get("_tracker")
+        if tracker is None or not hasattr(tracker, "is_pending") or not tracker.is_pending():
+            return False
+        pending_name = ""
+        pending_name_fn = getattr(tracker, "pending_command_name", None)
+        if callable(pending_name_fn):
+            pending_name = str(pending_name_fn() or "").strip().lower()
+        elif hasattr(tracker, "last_command"):
+            try:
+                pending_name = str((tracker.last_command() or ("", None))[0] or "").strip().lower()
+            except Exception:
+                pending_name = ""
+        return pending_name in LONG_RUNNING_REST_COMMANDS
+
     def _is_test_activity_output_line(self, line: object) -> bool:
         """
         NAME
@@ -12766,7 +12991,7 @@ class BringupControlUI(tk.Tk):
         self._append_output(f"{ts} CMD {command}")
         if self._is_test_activity_command(command):
             self._append_test_output(f"{ts} CMD {command}")
-        if str(command or "").strip().lower() == "activepresenceprobe":
+        if str(command or "").strip().lower() == CMD_ACTIVE_PRESENCE_PROBE_LOWER:
             self._evidence_probe_pending = True
             self._evidence_probe_run_count += 1
             self._schedule_evidence_view_refresh()
@@ -12778,6 +13003,7 @@ class BringupControlUI(tk.Tk):
             args,
             sender=lambda session, command_name, command_args: send_command(session, command_name, command_args),
             now=time.time(),
+            timeout_sec=self._command_timeout_override_sec(command),
         )
         if seq is not None:
             self._last_sent_seq = seq
@@ -14882,6 +15108,11 @@ class BringupControlUI(tk.Tk):
             f"{timestamp_hms()} {OUTPUT_RUNTIME_ACTIVATE_FMT.format(profile=profile_name)}"
         )
         self._last_cmd = (CMD_RUNTIME_ACTIVATE, args)
+        self._begin_scope_transition_wait(
+            runtime_active_expected=True,
+            controlled_lifecycle_expected=True,
+            expected_member_labels=self._current_scope_expected_member_labels(),
+        )
         seq = send_tracked_command(
             self._session,
             self._tracker,
@@ -14896,6 +15127,8 @@ class BringupControlUI(tk.Tk):
         )
         if seq is not None:
             self._last_sent_seq = seq
+            return
+        self._clear_scope_transition_wait()
 
     def _lifecycle_activate_from_ui(self) -> None:
         """
@@ -15094,12 +15327,13 @@ class BringupControlUI(tk.Tk):
                     handshake=bool(self._handshake_done),
                 )
             )
+        pending_long_command = self._pending_long_running_rest_command()
         connect_started_at = time.time()
         if not self._tcp_connected and self._auto_connect_enabled:
             if (now - self._last_connect_attempt) > 1.0:
                 self._last_connect_attempt = now
                 self._tcp_connected = connect(self._session)
-        elif self._tcp_connected and self._auto_connect_enabled:
+        elif self._tcp_connected and self._auto_connect_enabled and not pending_long_command:
             self._tcp_connected = connect(self._session)
         if self._tcp_connected:
             self._handshake_done = self._session.handshake_done()
@@ -15113,7 +15347,7 @@ class BringupControlUI(tk.Tk):
                     "REST session reconnected.",
                 )
             else:
-                self._reset_ui_session_runtime_context()
+                self._reset_ui_session_runtime_context(preserve_cached_runtime=True)
                 self._robot_ui_session_id = None
                 self._notify_ui_failure(
                     "tcp",
@@ -15128,7 +15362,15 @@ class BringupControlUI(tk.Tk):
             self._handshake_inflight = False
             self._session.reset_handshake()
             self._last_keepalive = 0.0
-            self._ui_table = None
+            cached_runtime_snapshot = self.__dict__.get("_latest_runtime_state_payload", {})
+            if isinstance(cached_runtime_snapshot, dict) and cached_runtime_snapshot:
+                self._ui_table = _RestTableAdapter.from_runtime_state(
+                    {},
+                    dict(cached_runtime_snapshot),
+                    fetched_at_ms=time.time() * 1000.0,
+                )
+            else:
+                self._ui_table = None
             self._tests_table = None
         events_started_at = time.time()
         for event in self._session.poll_events():
@@ -15139,7 +15381,11 @@ class BringupControlUI(tk.Tk):
         runtime_snapshot: Dict[str, Any] = {}
         tests_snapshot: Dict[str, Any] = {}
         runtime_state_available = False
-        if self._tcp_connected:
+        fetched_at_ms = time.time() * 1000.0
+        cached_runtime_snapshot = self.__dict__.get("_latest_runtime_state_payload", {})
+        if not isinstance(cached_runtime_snapshot, dict):
+            cached_runtime_snapshot = {}
+        if self._tcp_connected and not pending_long_command:
             session_fetch_started_at = time.time()
             session_snapshot = self._session.fetch_session_snapshot()
             self._host_debug_log_phase(HOST_DEBUG_RUNTIME_FETCH_SESSION, session_fetch_started_at)
@@ -15163,27 +15409,26 @@ class BringupControlUI(tk.Tk):
             self._host_debug_log_phase(HOST_DEBUG_RUNTIME_FETCH_TESTS, tests_fetch_started_at)
             fetched_at_ms = time.time() * 1000.0
             self._latest_tests_state_payload = dict(tests_snapshot or {})
-            cached_runtime_snapshot = self.__dict__.get("_latest_runtime_state_payload", {})
-            if not isinstance(cached_runtime_snapshot, dict):
-                cached_runtime_snapshot = {}
-            runtime_table_payload: Dict[str, Any] = {}
-            if isinstance(runtime_snapshot, dict) and runtime_snapshot:
-                runtime_table_payload = dict(runtime_snapshot)
-            elif cached_runtime_snapshot:
-                runtime_table_payload = dict(cached_runtime_snapshot)
-            if runtime_table_payload:
-                self._ui_table = _RestTableAdapter.from_runtime_state(
-                    session_snapshot,
-                    runtime_table_payload,
-                    fetched_at_ms=fetched_at_ms,
-                )
-            self._tests_table = _RestTableAdapter.from_tests_state(tests_snapshot)
-            if isinstance(runtime_snapshot, dict) and runtime_snapshot:
-                runtime_state_available = True
-                self._runtime_state_refresh_pending = False
-                apply_started_at = time.time()
-                self._apply_runtime_state_payload(runtime_snapshot)
-                self._host_debug_log_phase(HOST_DEBUG_RUNTIME_APPLY, apply_started_at)
+        elif pending_long_command and self._host_debug_active():
+            self._host_debug_log("poll fetch suppressed: long-running command pending")
+        runtime_table_payload: Dict[str, Any] = {}
+        if isinstance(runtime_snapshot, dict) and runtime_snapshot:
+            runtime_table_payload = dict(runtime_snapshot)
+        elif cached_runtime_snapshot:
+            runtime_table_payload = dict(cached_runtime_snapshot)
+        if runtime_table_payload:
+            self._ui_table = _RestTableAdapter.from_runtime_state(
+                session_snapshot,
+                runtime_table_payload,
+                fetched_at_ms=fetched_at_ms,
+            )
+        self._tests_table = _RestTableAdapter.from_tests_state(tests_snapshot)
+        if isinstance(runtime_snapshot, dict) and runtime_snapshot:
+            runtime_state_available = True
+            self._runtime_state_refresh_pending = False
+            apply_started_at = time.time()
+            self._apply_runtime_state_payload(runtime_snapshot)
+            self._host_debug_log_phase(HOST_DEBUG_RUNTIME_APPLY, apply_started_at)
         if self._ui_table is not None:
             session_id = self._ui_table.getEntry("state/sessionId").getString("")
             if session_id:
@@ -15250,13 +15495,21 @@ class BringupControlUI(tk.Tk):
             robot_selected_changed = selected_name != str(
                 self.__dict__.get("_last_robot_selected_test_name", "") or ""
             )
+            local_selected_test_is_authoritative = bool(
+                current_ui_selected
+                and current_ui_selected != PROFILE_NONE
+                and current_ui_selected == last_ui_intent
+            )
             ui_selection_drifted_from_robot = bool(
                 selected_name
                 and current_ui_selected != selected_name
                 and current_ui_selected != last_ui_intent
             )
             self._last_robot_selected_test_name = selected_name
-            if selected_name and (robot_selected_changed or ui_selection_drifted_from_robot):
+            if selected_name and (
+                ui_selection_drifted_from_robot
+                or (robot_selected_changed and not local_selected_test_is_authoritative)
+            ):
                 self._sync_test_selection(selected_name)
             active_name = self._tests_table.getEntry("activeName").getString("")
             active_status = self._tests_table.getEntry("activeStatus").getString("")
@@ -15349,7 +15602,13 @@ class BringupControlUI(tk.Tk):
                 self._log_poll_inflight = True
                 self._log_poll_seq = seq
                 self._last_log_poll = now
-        self._poll_live_overlay(now, runtime_state_fetched_this_cycle=bool(self._tcp_connected))
+        try:
+            self._poll_live_overlay(
+                now,
+                runtime_state_fetched_this_cycle=bool(self._tcp_connected),
+            )
+        except TypeError:
+            self._poll_live_overlay(now)
         self._poll_presence_overrides()
         self._poll_visibility_snapshot(now)
         self._update_action_enabled()
@@ -15824,7 +16083,22 @@ class BringupControlUI(tk.Tk):
         NAME
             _apply_live_runtime_notice_from_runtime_state - Surface current runtime state directly in Live Topology.
         """
+        runtime_state_seen_missing = "_runtime_state_seen" not in self.__dict__
+        robot_enabled_missing = "_robot_enabled_known" not in self.__dict__
+        robot_estopped_missing = "_robot_estopped_known" not in self.__dict__
+        if runtime_state_seen_missing:
+            self.__dict__["_runtime_state_seen"] = True
+        if robot_enabled_missing:
+            self.__dict__["_robot_enabled_known"] = bool(enabled)
+        if robot_estopped_missing:
+            self.__dict__["_robot_estopped_known"] = bool(estopped)
         state = self._runnable_scope_state(bool(stale_state))
+        if runtime_state_seen_missing:
+            self.__dict__.pop("_runtime_state_seen", None)
+        if robot_enabled_missing:
+            self.__dict__.pop("_robot_enabled_known", None)
+        if robot_estopped_missing:
+            self.__dict__.pop("_robot_estopped_known", None)
         if should_clear_runtime_event_notice(
             self.__dict__.get("_runtime_event_notice_text", NT_VALUE_EMPTY),
             state,
@@ -16050,8 +16324,9 @@ class BringupControlUI(tk.Tk):
             command_lower = str(event.name or "").strip().lower()
             if command_lower == "deactivateselectedtestdevices" and msg_type == "ack":
                 if str(event.status or "").strip().lower() == "ok":
-                    self._clear_test_selection_ui()
-            if command_lower == "activepresenceprobe":
+                    self._tests_active_group_loaded_to_robot = None
+                    self._refresh_selected_test_scope_status()
+            if command_lower == CMD_ACTIVE_PRESENCE_PROBE_LOWER:
                 self._evidence_probe_pending = False
                 if isinstance(data, dict):
                     self._cache_active_probe_results_from_command(data)
@@ -16060,7 +16335,10 @@ class BringupControlUI(tk.Tk):
                     self._evidence_last_probe_complete_seq = seq_value
                     self._evidence_probe_complete_count += 1
                     self._evidence_last_probe_completed_at = time.time()
-                    self._schedule_evidence_view_refresh()
+                    if self._evidence_tab_active():
+                        self._schedule_evidence_view_refresh()
+                    else:
+                        self._refresh_evidence_view()
             if command_lower in {
                 "addmotor",
                 "addall",
@@ -16075,7 +16353,7 @@ class BringupControlUI(tk.Tk):
                 "groupreplacemembers",
                 "activateselectedtestdevices",
                 "deactivateselectedtestdevices",
-                "activepresenceprobe",
+                CMD_ACTIVE_PRESENCE_PROBE_LOWER,
             }:
                 self.after_idle(self._request_runtime_state_refresh)
             if not self._tracker.is_pending():
@@ -16119,7 +16397,11 @@ class BringupControlUI(tk.Tk):
             for live_view in self._iter_live_views():
                 live_view.clear_runtime_notice()
         if command == "runtimeactivate" and state == "ok":
-            self._begin_scope_transition_wait(runtime_active_expected=True)
+            self._begin_scope_transition_wait(
+                runtime_active_expected=True,
+                controlled_lifecycle_expected=True,
+                expected_member_labels=self._current_scope_expected_member_labels(),
+            )
             self._clear_runtime_event_notice()
         elif command == "runtimedeactivate" and state == "ok":
             self._begin_scope_transition_wait(runtime_active_expected=False, expected_member_labels=[])
@@ -16323,25 +16605,49 @@ class BringupControlUI(tk.Tk):
         NAME
             _sync_test_dropdown_values - Track the authoritative set of robot-known test names.
         """
-        values = [str(name).strip() for name in names if str(name).strip()]
-        current_selection = str(self._selected_test_var.get() or "").strip()
-        if not values:
-            values = [PROFILE_NONE]
-        self._known_test_names = values
-        if not current_selection or (
-            values == [PROFILE_NONE] and current_selection != PROFILE_NONE
+        selected_test_var = self.__dict__.get("_selected_test_var")
+        if selected_test_var is None or not hasattr(selected_test_var, "get") or not hasattr(
+            selected_test_var, "set"
         ):
+            self._known_test_names = [str(name).strip() for name in names if str(name).strip()] or [
+                PROFILE_NONE
+            ]
+            return
+        values = [str(name).strip() for name in names if str(name).strip()]
+        current_selection = str(selected_test_var.get() or "").strip()
+        preferred = str(
+            self.__dict__.get("_last_ui_selected_test_intent", "") or ""
+        ).strip()
+        if not preferred:
+            preferred = str(self.__dict__.get("_last_selected_test", "") or "").strip()
+        if not preferred:
             preferred = str(
-                self.__dict__.get("_last_ui_selected_test_intent", "") or ""
+                self.__dict__.get("_last_robot_selected_test_name", "") or ""
             ).strip()
-            if not preferred:
-                preferred = str(self.__dict__.get("_last_selected_test", "") or "").strip()
-            if not preferred:
-                preferred = str(
-                    self.__dict__.get("_last_robot_selected_test_name", "") or ""
-                ).strip()
+        if not values:
+            self._known_test_names = [PROFILE_NONE]
+            if current_selection and current_selection != PROFILE_NONE:
+                return
+            if preferred and preferred != PROFILE_NONE:
+                selected_test_var.set(preferred)
+                self._last_selected_test = preferred
+                self._sync_test_library_entry_to_selected_test(preferred)
+                self._sync_selected_test_devices_panel_local()
+                self._refresh_selected_test_scope_status()
+                self._refresh_context_sync_banner()
+                return
+            selected_test_var.set(PROFILE_NONE)
+            self._last_selected_test = PROFILE_NONE
+            self._last_ui_selected_test_intent = ""
+            self._sync_test_library_entry_to_selected_test(PROFILE_NONE)
+            self._sync_selected_test_devices_panel_local()
+            self._refresh_selected_test_scope_status()
+            self._refresh_context_sync_banner()
+            return
+        self._known_test_names = values
+        if not current_selection:
             selected_value = preferred if preferred in values else values[0]
-            self._selected_test_var.set(selected_value)
+            selected_test_var.set(selected_value)
             self._last_selected_test = selected_value
             if selected_value == PROFILE_NONE:
                 self._last_ui_selected_test_intent = ""

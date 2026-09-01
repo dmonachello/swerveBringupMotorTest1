@@ -32,6 +32,7 @@ import java.util.List;
 public final class RevSparkMaxNeo550Device implements DeviceUnit {
   private static final long CURRENT_WINDOW_MS = 500L;
   private static final double CURRENT_NONZERO_THRESHOLD_A = 0.05;
+  private static final String SNAPSHOT_NOTE_CREATE_FAILED_PREFIX = "create failed: ";
   private static final String SNAPSHOT_NOTE_NOT_ADDED = "not added";
   private static final String SNAPSHOT_NOTE_CLOSED = "closed";
   private static final String SNAPSHOT_NOTE_READ_FAILED_PREFIX = "read failed: ";
@@ -56,6 +57,8 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
   private final String motorModelOverride;
   private final BringupUtil.LimitConfig limitConfig;
   private final java.util.List<DigitalInput> limitInputs = new java.util.ArrayList<>();
+  private final RevReadFailureCooldown createFailureCooldown = new RevReadFailureCooldown();
+  private final RevReadFailureCooldown readFailureCooldown = new RevReadFailureCooldown();
   private SparkMax device;
   private boolean closed = false;
   private boolean altEncoderConfigured = false;
@@ -142,10 +145,14 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
   public void ensureCreated() {
     if (device != null && !closed) {
       BringupUtil.claimDeviceInstance(this);
+      createFailureCooldown.clear();
       initLimitInputs();
       return;
     }
     initLimitInputs();
+    if (createFailureCooldown.isActive()) {
+      return;
+    }
     if (device != null) {
       if (!releaseDeviceHandle(ACTION_RECREATE)) {
         return;
@@ -154,13 +161,21 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
     if (!BringupUtil.claimDeviceInstance(this)) {
       return;
     }
-    device = new SparkMax(canId, MotorType.kBrushless);
-    closed = false;
-    device.pauseFollowerMode();
-    device.configure(
-        new SparkMaxConfig(),
-        ResetMode.kResetSafeParameters,
-        PersistMode.kNoPersistParameters);
+    try {
+      device = new SparkMax(canId, MotorType.kBrushless);
+      closed = false;
+      device.pauseFollowerMode();
+      device.configure(
+          new SparkMaxConfig(),
+          ResetMode.kResetSafeParameters,
+          PersistMode.kNoPersistParameters);
+      createFailureCooldown.clear();
+      readFailureCooldown.clear();
+    } catch (RuntimeException ex) {
+      createFailureCooldown.recordFailure(ex);
+      readFailureCooldown.recordFailure(ex);
+      discardDeviceHandleAfterCreateFailure();
+    }
   }
 
   /**
@@ -316,18 +331,28 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
   @Override
   public DeviceSnapshot snapshot(SnapshotDetail detail) {
     if (device == null || closed) {
+      if (createFailureCooldown.isActive()) {
+        return snapshotUnavailable(
+            SNAPSHOT_NOTE_CREATE_FAILED_PREFIX + createFailureCooldown.unavailableNote());
+      }
       return snapshotUnavailable(SNAPSHOT_NOTE_NOT_ADDED);
+    }
+    if (readFailureCooldown.isActive()) {
+      return snapshotUnavailable(SNAPSHOT_NOTE_READ_FAILED_PREFIX + readFailureCooldown.unavailableNote());
     }
     try {
       DeviceSnapshot snap = RevSparkMaxReader.read(device, canId, detail);
+      readFailureCooldown.clear();
       snap.deviceType = getDeviceType();
       snap.label = label;
       addLimitAttachment(snap);
       return snap;
     } catch (IllegalStateException ex) {
       handleClosed(ACTION_SNAPSHOT, ex);
+      readFailureCooldown.recordFailure(ex);
       return snapshotUnavailable(SNAPSHOT_NOTE_CLOSED);
     } catch (RuntimeException ex) {
+      readFailureCooldown.recordFailure(ex);
       return snapshotUnavailable(SNAPSHOT_NOTE_READ_FAILED_PREFIX + ex.getMessage());
     }
   }
@@ -343,10 +368,19 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
               if (device == null || closed) {
                 return null;
               }
+              if (readFailureCooldown.isActive()) {
+                return null;
+              }
               try {
-                return device.getOutputCurrent();
+                Double value = device.getOutputCurrent();
+                readFailureCooldown.clear();
+                return value;
               } catch (IllegalStateException ex) {
                 handleClosed(ACTION_SAMPLED_CURRENT, ex);
+                readFailureCooldown.recordFailure(ex);
+                return null;
+              } catch (RuntimeException ex) {
+                readFailureCooldown.recordFailure(ex);
                 return null;
               }
             }));
@@ -364,6 +398,19 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
     return snap;
   }
 
+  private void discardDeviceHandleAfterCreateFailure() {
+    if (device != null) {
+      try {
+        device.close();
+      } catch (Exception ignored) {
+        // Ignore cleanup failures after a failed create/configure attempt.
+      }
+    }
+    device = null;
+    closed = true;
+    BringupUtil.releaseDeviceInstance(this);
+  }
+
   /**
    * NAME
    * getPositionRotations
@@ -376,12 +423,22 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
    */
   @Override
   public Double getPositionRotations() {
-    if (device == null) {
+    if (device == null || closed) {
+      return null;
+    }
+    if (createFailureCooldown.isActive() || readFailureCooldown.isActive()) {
       return null;
     }
     try {
-      return device.getEncoder().getPosition();
+      Double value = device.getEncoder().getPosition();
+      readFailureCooldown.clear();
+      return value;
     } catch (Exception ex) {
+      if (ex instanceof RuntimeException runtimeException) {
+        readFailureCooldown.recordFailure(runtimeException);
+      } else {
+        readFailureCooldown.recordFailure(ex.getMessage());
+      }
       return null;
     }
   }
@@ -517,20 +574,26 @@ public final class RevSparkMaxNeo550Device implements DeviceUnit {
    * Reconfigures the alternate encoder CPR when it changes.
    */
   private Double readAlternateEncoder(Integer countsPerRev) {
-    if (device == null) {
+    if (device == null || closed) {
+      return null;
+    }
+    if (createFailureCooldown.isActive() || readFailureCooldown.isActive()) {
       return null;
     }
     int cpr = countsPerRev != null && countsPerRev > 0 ? countsPerRev.intValue() : 8192;
-    if (!altEncoderConfigured || altEncoderCpr != cpr) {
-      SparkMaxConfig config = new SparkMaxConfig();
-      config.alternateEncoder.setSparkMaxDataPortConfig().countsPerRevolution(cpr);
-      device.configureAsync(config, ResetMode.kNoResetSafeParameters, PersistMode.kNoPersistParameters);
-      altEncoderConfigured = true;
-      altEncoderCpr = cpr;
-    }
     try {
-      return device.getAlternateEncoder().getPosition();
-    } catch (Exception ex) {
+      if (!altEncoderConfigured || altEncoderCpr != cpr) {
+        SparkMaxConfig config = new SparkMaxConfig();
+        config.alternateEncoder.setSparkMaxDataPortConfig().countsPerRevolution(cpr);
+        device.configureAsync(config, ResetMode.kNoResetSafeParameters, PersistMode.kNoPersistParameters);
+        altEncoderConfigured = true;
+        altEncoderCpr = cpr;
+      }
+      Double value = device.getAlternateEncoder().getPosition();
+      readFailureCooldown.clear();
+      return value;
+    } catch (RuntimeException ex) {
+      readFailureCooldown.recordFailure(ex);
       return null;
     }
   }

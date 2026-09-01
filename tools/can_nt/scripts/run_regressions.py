@@ -77,6 +77,49 @@ MSG_BASELINE = "BASELINE"
 MSG_NOTE = "NOTE"
 MSG_REFRESHED = "REFRESHED"
 MSG_HISTORY = "HISTORY"
+MSG_PLAN = "PLAN"
+MSG_TARGETS = "TARGETS"
+
+TEXT_MODE_UNITTEST = "unittest"
+TEXT_FLAG_MODULE = "-m"
+TEXT_FLAG_TESTS = "--tests"
+TEXT_PREFIX_SCRIPT = "script="
+TEXT_PREFIX_MODULE = "module="
+TEXT_PREFIX_GRADLE_TEST = "gradle-test="
+TEXT_PREFIX_ARGV = "argv="
+TEXT_EMPTY = ""
+
+
+def _describe_command_targets(argv: Sequence[str]) -> tuple[str, ...]:
+    """
+    NAME
+        _describe_command_targets - Return a short stable summary of what one command exercises.
+    """
+    argv_list = [str(part) for part in argv]
+    if len(argv_list) >= 4 and argv_list[1] == TEXT_FLAG_MODULE and argv_list[2] == TEXT_MODE_UNITTEST:
+        return tuple(f"{TEXT_PREFIX_MODULE}{target}" for target in argv_list[3:] if str(target).strip())
+    if len(argv_list) >= 2 and str(argv_list[1]).lower().endswith(".py"):
+        return (f"{TEXT_PREFIX_SCRIPT}{Path(argv_list[1]).name}",)
+    if TEXT_FLAG_TESTS in argv_list:
+        selector_index = argv_list.index(TEXT_FLAG_TESTS) + 1
+        if selector_index < len(argv_list):
+            return (f"{TEXT_PREFIX_GRADLE_TEST}{argv_list[selector_index]}",)
+    return (f"{TEXT_PREFIX_ARGV}{' '.join(argv_list[1:])}",) if len(argv_list) > 1 else (TEXT_EMPTY,)
+
+
+def print_suite_plan(suite_name: str, commands: Sequence[RegressionCommand]) -> None:
+    """
+    NAME
+        print_suite_plan - Emit a concise up-front summary of the selected regression suite.
+    """
+    print(f"{MSG_PLAN}: suite={suite_name} commands={len(commands)}")
+    for command in commands:
+        print(f"{MSG_PLAN}: {command.label} mode={command.mode}")
+        targets = tuple(item for item in _describe_command_targets(command.argv) if item)
+        if targets:
+            print(f"{MSG_TARGETS}: {', '.join(targets)}")
+        if command.features:
+            print(f"{MSG_FEATURES}: {', '.join(command.features)}")
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -109,6 +152,10 @@ def print_result(result: RegressionResult, comparison: RegressionComparison, ver
     outcome = MSG_PASS if result.ok else MSG_FAIL
     print(f"[{outcome}] {result.label}: exit={result.exit_code} mode={result.mode} dur={result.duration_sec:.2f}s")
     print(f"{MSG_COMMAND}: {' '.join(result.argv)}")
+    if verbose:
+        targets = tuple(item for item in _describe_command_targets(result.argv) if item)
+        if targets:
+            print(f"{MSG_TARGETS}: {', '.join(targets)}")
     if result.features:
         print(f"{MSG_FEATURES}: {', '.join(result.features)}")
     print(f"{MSG_STATUS}: {comparison.status}")
@@ -143,6 +190,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"ERROR: {ex}")
         return EXIT_USAGE
 
+    if bool(args.verbose):
+        print_suite_plan(str(args.suite), commands)
     results = run_commands(commands, verbose=bool(args.verbose))
     metadata = collect_run_metadata()
     baseline = None if bool(args.refresh_expected) else load_suite_baseline(str(args.suite))

@@ -171,6 +171,11 @@ RUNTIME_GROUP_KEY_MEMBERS = "members"
 RUNTIME_GROUP_KEY_LABEL = "label"
 RUNTIME_GROUP_KEY_ENABLED = "enabled"
 RUNTIME_GROUP_KEY_BINDING_ACTIVE = "bindingActive"
+RUNTIME_DEVICE_KEY_MANUAL_OPERABLE = "manualOperable"
+RUNTIME_DEVICE_KEY_TEST_OPERABLE = "testOperable"
+RUNTIME_DEVICE_KEY_TESTABLE = "testable"
+RUNTIME_DEVICE_KEY_INSTANTIATED = "instantiated"
+RUNTIME_DEVICE_KEY_LIFECYCLE_STATE = "lifecycleState"
 RUNTIME_FETCH_SOURCE_REST = "rest_runtime_state"
 RUNTIME_FETCH_BLOCK_NOT_CONNECTED = "Not connected: runtime state unavailable."
 RUNTIME_FETCH_BLOCK_HANDSHAKE = "Runtime state unavailable: waiting for UI session handshake."
@@ -662,6 +667,20 @@ def resolve_runnable_scope_state(
         local_profile_required=local_profile_required,
         robot_mode=robot_mode,
     )
+    if transition_pending:
+        return RunnableScopeState(
+            scope_kind=normalized_scope,
+            headline=RUNNABLE_PANEL_WAITING_HEADLINE,
+            detail=RUNNABLE_SCOPE_PANEL_RESYNC_DETAIL,
+            level=RUNNABLE_STATE_LEVEL_NEUTRAL,
+            blocked_reason=RUNNABLE_SCOPE_PANEL_RESYNC_DETAIL,
+            activation_notice=activation_notice,
+            activation_allowed=False,
+            deactivation_allowed=False,
+            scope_active=scope_active,
+            runtime_state_seen=bool(runtime_state_seen),
+            transition_pending=True,
+        )
     if not tcp_connected:
         return RunnableScopeState(
             scope_kind=normalized_scope,
@@ -689,20 +708,6 @@ def resolve_runnable_scope_state(
             scope_active=False,
             runtime_state_seen=False,
             transition_pending=False,
-        )
-    if transition_pending:
-        return RunnableScopeState(
-            scope_kind=normalized_scope,
-            headline=RUNNABLE_PANEL_WAITING_HEADLINE,
-            detail=RUNNABLE_SCOPE_PANEL_RESYNC_DETAIL,
-            level=RUNNABLE_STATE_LEVEL_NEUTRAL,
-            blocked_reason=RUNNABLE_SCOPE_PANEL_RESYNC_DETAIL,
-            activation_notice=activation_notice,
-            activation_allowed=False,
-            deactivation_allowed=False,
-            scope_active=scope_active,
-            runtime_state_seen=True,
-            transition_pending=True,
         )
     if stale_state:
         return RunnableScopeState(
@@ -1437,11 +1442,16 @@ def resolve_manual_duty_scope_state(
         )
     if controlled_lifecycle_active:
         lifecycle_state = str(
-            runtime_device.get("lifecycleState", "")
+            runtime_device.get(RUNTIME_DEVICE_KEY_LIFECYCLE_STATE, "")
         ).strip()
         allowed = lifecycle_state == SCOPE_MEMBERSHIP_RUNTIME_STATE_CONTROLLED_ACTIVE
     else:
-        allowed = bool(runtime_device.get("testable", False))
+        allowed = bool(
+            runtime_device.get(
+                RUNTIME_DEVICE_KEY_MANUAL_OPERABLE,
+                runtime_device.get(RUNTIME_DEVICE_KEY_TESTABLE, False),
+            )
+        )
     return ManualDutyScopeState(
         allowed=allowed,
         blocked_reason="" if allowed else MANUAL_DUTY_BLOCKED_CONTROLLED_SCOPE_TEXT,
@@ -1455,12 +1465,14 @@ def _runtime_device_confirms_manual_duty_ready(runtime_device: object) -> bool:
     """
     if not isinstance(runtime_device, dict):
         return False
-    lifecycle_state = str(runtime_device.get("lifecycleState", "")).strip().lower()
+    lifecycle_state = str(runtime_device.get(RUNTIME_DEVICE_KEY_LIFECYCLE_STATE, "")).strip().lower()
     if lifecycle_state == SCOPE_MEMBERSHIP_RUNTIME_STATE_CONTROLLED_ACTIVE:
         return True
-    if bool(runtime_device.get("testable", False)):
+    if bool(runtime_device.get(RUNTIME_DEVICE_KEY_MANUAL_OPERABLE, False)):
         return True
-    return bool(runtime_device.get("instantiated", False))
+    if bool(runtime_device.get(RUNTIME_DEVICE_KEY_TEST_OPERABLE, False)):
+        return True
+    return bool(runtime_device.get(RUNTIME_DEVICE_KEY_TESTABLE, False))
 
 
 def _all_targets_confirm_manual_duty_ready(

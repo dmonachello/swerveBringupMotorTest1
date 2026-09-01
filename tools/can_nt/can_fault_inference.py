@@ -80,6 +80,14 @@ ROW_KEY_PROBE = "probe"
 ROW_KEY_STATE = "state"
 ROW_KEY_SOURCE_SCORES = "sourceScores"
 ROW_KEY_MANUAL_TEXT = "manualText"
+ROW_KEY_SHADOW_RESULT = "shadowResult"
+SHADOW_KEY_DIMENSIONS = "dimensions"
+SHADOW_KEY_CONFLICT = "conflict"
+SHADOW_KEY_VALUE = "value"
+SHADOW_DIMENSION_COMMUNICATION = "communication"
+SHADOW_DIMENSION_EXISTENCE = "existence"
+SHADOW_DIMENSION_IDENTITY = "identity"
+SHADOW_DIMENSION_OPERABILITY = "operability"
 PASSIVE_TOKEN_PRESENCE_PREFIX = "presence="
 PASSIVE_TOKEN_SCORE_PREFIX = "score="
 PASSIVE_TOKEN_PACKET_PREFIX = "packets="
@@ -120,6 +128,9 @@ VALUE_FAILED = "FAILED"
 VALUE_DEGRADED = "DEGRADED"
 VALUE_CONFLICT = "CONFLICT"
 VALUE_UNKNOWN = "UNKNOWN"
+VALUE_HEALTHY = "HEALTHY"
+VALUE_WORKING = "WORKING"
+VALUE_UNPROVEN = "UNPROVEN"
 
 STATE_FAILED = "failed"
 STATE_MISSING = "missing"
@@ -198,6 +209,68 @@ def _row_label(row: Mapping[str, Any]) -> str:
     return _clean_text(row.get(KEY_LABEL))
 
 
+def _shadow_dimensions(row: Mapping[str, Any]) -> Mapping[str, Any]:
+    shadow_result = row.get(ROW_KEY_SHADOW_RESULT)
+    if not isinstance(shadow_result, Mapping):
+        return {}
+    dimensions = shadow_result.get(SHADOW_KEY_DIMENSIONS)
+    return dimensions if isinstance(dimensions, Mapping) else {}
+
+
+def _shadow_dimension_entry(row: Mapping[str, Any], dimension_name: str) -> Mapping[str, Any]:
+    dimensions = _shadow_dimensions(row)
+    entry = dimensions.get(dimension_name)
+    return entry if isinstance(entry, Mapping) else {}
+
+
+def _shadow_dimension_value(row: Mapping[str, Any], dimension_name: str) -> str:
+    return _clean_text(_shadow_dimension_entry(row, dimension_name).get(SHADOW_KEY_VALUE)).upper()
+
+
+def _shadow_dimension_conflict(row: Mapping[str, Any], dimension_name: str) -> bool:
+    return bool(_shadow_dimension_entry(row, dimension_name).get(SHADOW_KEY_CONFLICT))
+
+
+def _row_existence_value(row: Mapping[str, Any]) -> str:
+    shadow_value = _shadow_dimension_value(row, SHADOW_DIMENSION_EXISTENCE)
+    if shadow_value:
+        return shadow_value
+    return _clean_text(row.get(ROW_KEY_EXISTENCE)).upper()
+
+
+def _row_communication_value(row: Mapping[str, Any]) -> str:
+    shadow_value = _shadow_dimension_value(row, SHADOW_DIMENSION_COMMUNICATION)
+    if shadow_value:
+        return shadow_value
+    return VALUE_UNKNOWN
+
+
+def _row_operability_value(row: Mapping[str, Any]) -> str:
+    shadow_value = _shadow_dimension_value(row, SHADOW_DIMENSION_OPERABILITY)
+    if shadow_value:
+        return shadow_value
+    return _clean_text(row.get(ROW_KEY_OPERABILITY)).upper()
+
+
+def _row_identity_value(row: Mapping[str, Any]) -> str:
+    shadow_value = _shadow_dimension_value(row, SHADOW_DIMENSION_IDENTITY)
+    if shadow_value:
+        return shadow_value
+    return VALUE_UNKNOWN
+
+
+def _row_has_shadow_conflict(row: Mapping[str, Any]) -> bool:
+    for dimension_name in (
+        SHADOW_DIMENSION_EXISTENCE,
+        SHADOW_DIMENSION_COMMUNICATION,
+        SHADOW_DIMENSION_OPERABILITY,
+        SHADOW_DIMENSION_IDENTITY,
+    ):
+        if _shadow_dimension_conflict(row, dimension_name):
+            return True
+    return False
+
+
 def _is_infrastructure_label(label: object) -> bool:
     return _clean_text(label).lower() in INFRASTRUCTURE_LABELS
 
@@ -209,13 +282,13 @@ def _is_infrastructure_row(row: Mapping[str, Any]) -> bool:
 def _is_healthy_motion_row(row: Mapping[str, Any]) -> bool:
     if _is_infrastructure_row(row):
         return False
-    existence = _clean_text(row.get(ROW_KEY_EXISTENCE)).upper()
-    operability = _clean_text(row.get(ROW_KEY_OPERABILITY)).upper()
+    existence = _row_existence_value(row)
+    operability = _row_operability_value(row)
     state = _clean_text(row.get(ROW_KEY_STATE)).lower()
     confidence = _clean_text(row.get(ROW_KEY_CONFIDENCE)).upper()
     return (
         existence == VALUE_PRESENT
-        and operability in {"OK", VALUE_UNKNOWN}
+        and operability in {"OK", VALUE_UNKNOWN, VALUE_WORKING, VALUE_UNPROVEN}
         and state in {"ok", STATE_UNKNOWN}
         and confidence in {CONFIDENCE_HIGH, CONFIDENCE_MEDIUM}
     )
@@ -453,10 +526,10 @@ def _has_strong_current_positive_counterevidence(row: Mapping[str, Any]) -> bool
 
 
 def _infrastructure_bucket(row: Mapping[str, Any]) -> str:
-    existence = _clean_text(row.get(ROW_KEY_EXISTENCE)).upper()
+    existence = _row_existence_value(row)
     state = _clean_text(row.get(ROW_KEY_STATE)).lower()
     presence_state = _clean_text(row.get(ROW_KEY_PRESENCE_STATE)).lower()
-    conflicted = bool(row.get(ROW_KEY_CONFLICTED))
+    conflicted = bool(row.get(ROW_KEY_CONFLICTED)) or _row_has_shadow_conflict(row)
     observer_present = _observer_indicates_presence(row)
     if conflicted:
         return KEY_INFRA_CONFLICT
@@ -475,12 +548,15 @@ def _infrastructure_bucket(row: Mapping[str, Any]) -> str:
 
 def _is_affected_row(row: Mapping[str, Any]) -> bool:
     state = _clean_text(row.get(ROW_KEY_STATE)).lower()
-    existence = _clean_text(row.get(ROW_KEY_EXISTENCE)).upper()
-    operability = _clean_text(row.get(ROW_KEY_OPERABILITY)).upper()
+    existence = _row_existence_value(row)
+    communication = _row_communication_value(row)
+    operability = _row_operability_value(row)
     presence_state = _clean_text(row.get(ROW_KEY_PRESENCE_STATE)).lower()
     strong_positive_counterevidence = _has_strong_current_positive_counterevidence(row)
     passive_visibility_decay = _passive_visibility_decay_with_console_failure(row)
     if operability in {VALUE_FAILED, VALUE_CONFLICT}:
+        return True
+    if communication == VALUE_FAILED:
         return True
     if state == STATE_FAILED:
         return True
@@ -511,8 +587,13 @@ def _is_degraded_row(row: Mapping[str, Any]) -> bool:
     if _is_affected_row(row):
         return True
     state = _clean_text(row.get(ROW_KEY_STATE)).lower()
-    operability = _clean_text(row.get(ROW_KEY_OPERABILITY)).upper()
-    return state == STATE_DEGRADED or operability == VALUE_DEGRADED
+    operability = _row_operability_value(row)
+    communication = _row_communication_value(row)
+    return (
+        state == STATE_DEGRADED
+        or operability == VALUE_DEGRADED
+        or communication == VALUE_DEGRADED
+    )
 
 
 def _row_support(row: Mapping[str, Any]) -> List[str]:

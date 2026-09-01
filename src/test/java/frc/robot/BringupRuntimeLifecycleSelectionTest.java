@@ -2,6 +2,7 @@ package frc.robot;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertIterableEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -11,12 +12,17 @@ import frc.robot.diag.lifecycle.runtime.DeviceRuntimeState;
 import frc.robot.devices.DeviceLifecycleOwnership;
 import frc.robot.devices.DeviceUnit;
 import frc.robot.diag.snapshots.DeviceSnapshot;
+import frc.robot.registry.RegistrationHeader;
 import frc.robot.tests.BringupTest;
+import frc.robot.telemetry.SampledSignalNames;
+import frc.robot.telemetry.SampledSignalReader;
+import frc.robot.telemetry.SampledSignalRegistration;
 import frc.robot.telemetry.SampledTelemetrySampler;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -29,6 +35,11 @@ class BringupRuntimeLifecycleSelectionTest {
   private static final String PROFILE_ACTIVE = "activeProfile";
   private static final String PROFILE_SELECTED = "selectedProfile";
   private static final String PROFILE_DEFAULT = "defaultProfile";
+  private static final String TEST_VENDOR = "TEST";
+  private static final String TEST_DEVICE_TYPE = "motor";
+  private static final String TEST_SIGNAL_NAME = SampledSignalNames.CURRENT_ACTUAL;
+  private static final long TEST_WINDOW_MS = 1000L;
+  private static final double TEST_NONZERO_THRESHOLD = 0.01;
 
   @Test
   void resolveLifecycleProfileNameUsesActiveProfileFirst() {
@@ -92,8 +103,8 @@ class BringupRuntimeLifecycleSelectionTest {
   }
 
   @Test
-  void resolveLifecycleDeviceInScopeFallsBackToLegacyRuntimeWhenLifecycleInactive() {
-    assertTrue(
+  void resolveLifecycleDeviceInScopeRequiresControlledScopeWhenLifecycleInactive() {
+    assertFalse(
         BringupRuntime.resolveLifecycleDeviceInScope(
             true,
             false,
@@ -155,6 +166,23 @@ class BringupRuntimeLifecycleSelectionTest {
             false,
             true,
             new DeviceRuntimeState()));
+  }
+
+  @Test
+  void enabledActiveGroupLabelsReturnsEnabledMembersOnly() throws Exception {
+    BringupRuntime runtime = new BringupRuntime(new CanBusHealth(), "runTest");
+    Field bridgeGroupsField = BringupRuntime.class.getDeclaredField("bridgeGroups");
+    bridgeGroupsField.setAccessible(true);
+    BridgeGroupManager bridgeGroups = (BridgeGroupManager) bridgeGroupsField.get(runtime);
+    bridgeGroups.createGroup("active-group");
+    bridgeGroups.addMember("active-group", "FALCON 9", true);
+    bridgeGroups.addMember("active-group", "SPARKMAX/NEO 25", true);
+    bridgeGroups.addMember("active-group", "SPARKMAX/NEO 7", true);
+    bridgeGroups.setMemberEnabled("active-group", "SPARKMAX/NEO 7", false);
+
+    assertIterableEquals(
+        List.of("FALCON 9", "SPARKMAX/NEO 25"),
+        runtime.enabledActiveGroupLabels());
   }
 
   @Test
@@ -230,6 +258,119 @@ class BringupRuntimeLifecycleSelectionTest {
     assertTrue(groups.hasDevice("active-group", "SPARKMAX/NEO 25"));
     assertFalse(
         groups.getGroup("active-group").members.get("sparkmax/neo 25").enabled);
+  }
+
+  @Test
+  void sampleTelemetryDevicesUsesEnabledBudget() {
+    BringupRuntime runtime = new BringupRuntime(new CanBusHealth(), "runTest");
+    AtomicInteger readsOne = new AtomicInteger();
+    AtomicInteger readsTwo = new AtomicInteger();
+    DeviceUnit deviceOne = new RuntimeTestDevice(1, "one", () -> {
+      readsOne.incrementAndGet();
+      return 1.0;
+    });
+    DeviceUnit deviceTwo = new RuntimeTestDevice(2, "two", () -> {
+      readsTwo.incrementAndGet();
+      return 2.0;
+    });
+
+    runtime.sampleTelemetryDevices(List.of(deviceOne, deviceTwo), 1000L, true);
+
+    assertEquals(1, readsOne.get());
+    assertEquals(0, readsTwo.get());
+    assertEquals(
+        1,
+        runtime.getSampledTelemetry().getDeviceSummaries(deviceOne).get(TEST_SIGNAL_NAME).sampleCount);
+    assertEquals(
+        0,
+        runtime.getSampledTelemetry().getDeviceSummaries(deviceTwo).get(TEST_SIGNAL_NAME).sampleCount);
+  }
+
+  @Test
+  void sampleTelemetryDevicesUsesDisabledBudget() {
+    BringupRuntime runtime = new BringupRuntime(new CanBusHealth(), "runTest");
+    AtomicInteger readsOne = new AtomicInteger();
+    AtomicInteger readsTwo = new AtomicInteger();
+    DeviceUnit deviceOne = new RuntimeTestDevice(1, "one", () -> {
+      readsOne.incrementAndGet();
+      return 1.0;
+    });
+    DeviceUnit deviceTwo = new RuntimeTestDevice(2, "two", () -> {
+      readsTwo.incrementAndGet();
+      return 2.0;
+    });
+
+    runtime.sampleTelemetryDevices(List.of(deviceOne, deviceTwo), 1000L, false);
+
+    assertEquals(1, readsOne.get());
+    assertEquals(1, readsTwo.get());
+  }
+
+  private static final class RuntimeTestDevice implements DeviceUnit {
+    private final int canId;
+    private final String label;
+    private final SampledSignalReader reader;
+
+    private RuntimeTestDevice(int canId, String label, SampledSignalReader reader) {
+      this.canId = canId;
+      this.label = label;
+      this.reader = reader;
+    }
+
+    @Override
+    public int getCanId() {
+      return canId;
+    }
+
+    @Override
+    public String getDeviceType() {
+      return TEST_DEVICE_TYPE;
+    }
+
+    @Override
+    public String getLabel() {
+      return label;
+    }
+
+    @Override
+    public boolean isCreated() {
+      return true;
+    }
+
+    @Override
+    public void ensureCreated() {}
+
+    @Override
+    public void close() {}
+
+    @Override
+    public void clearFaults() {}
+
+    @Override
+    public DeviceSnapshot snapshot() {
+      DeviceSnapshot snap = new DeviceSnapshot();
+      snap.label = label;
+      snap.canId = canId;
+      snap.deviceType = TEST_DEVICE_TYPE;
+      snap.vendor = TEST_VENDOR;
+      snap.present = true;
+      return snap;
+    }
+
+    @Override
+    public RegistrationHeader getHeader() {
+      return new RegistrationHeader(label, TEST_VENDOR, TEST_DEVICE_TYPE, "", "", "", "");
+    }
+
+    @Override
+    public List<SampledSignalRegistration> getSampledSignalRegistrations() {
+      return List.of(
+          new SampledSignalRegistration(
+              TEST_SIGNAL_NAME,
+              TEST_WINDOW_MS,
+              TEST_NONZERO_THRESHOLD,
+              reader));
+    }
   }
 
   @Test
@@ -367,6 +508,56 @@ class BringupRuntimeLifecycleSelectionTest {
             "Presence score below threshold; device is not present.");
 
     assertFalse(BringupRuntime.isLifecycleViewEligibleForActivation(lifecycle));
+  }
+
+  @Test
+  void periodicSnapshotPlanAdvancesRoundRobinAcrossEligibleDevices() {
+    BringupRuntime.PeriodicSnapshotPlan first =
+        BringupRuntime.selectPeriodicSnapshotPlan(
+            List.of("falcon 9", "sparkmax/neo 25", "sparkmax/neo 7"),
+            0,
+            1);
+    BringupRuntime.PeriodicSnapshotPlan second =
+        BringupRuntime.selectPeriodicSnapshotPlan(
+            List.of("falcon 9", "sparkmax/neo 25", "sparkmax/neo 7"),
+            first.nextCursor(),
+            1);
+    BringupRuntime.PeriodicSnapshotPlan third =
+        BringupRuntime.selectPeriodicSnapshotPlan(
+            List.of("falcon 9", "sparkmax/neo 25", "sparkmax/neo 7"),
+            second.nextCursor(),
+            1);
+
+    assertEquals(List.of("falcon 9"), first.selectedLabels());
+    assertEquals(List.of("sparkmax/neo 25"), second.selectedLabels());
+    assertEquals(List.of("sparkmax/neo 7"), third.selectedLabels());
+    assertEquals(1, first.nextCursor());
+    assertEquals(2, second.nextCursor());
+    assertEquals(0, third.nextCursor());
+  }
+
+  @Test
+  void periodicSnapshotPlanCapsSelectionToEligibleCount() {
+    BringupRuntime.PeriodicSnapshotPlan plan =
+        BringupRuntime.selectPeriodicSnapshotPlan(
+            List.of("cancoder", "pigeon 2"),
+            1,
+            4);
+
+    assertEquals(List.of("pigeon 2", "cancoder"), plan.selectedLabels());
+    assertEquals(1, plan.nextCursor());
+  }
+
+  @Test
+  void periodicSnapshotPlanReturnsEmptySelectionWhenBudgetIsZero() {
+    BringupRuntime.PeriodicSnapshotPlan plan =
+        BringupRuntime.selectPeriodicSnapshotPlan(
+            List.of("roborio"),
+            0,
+            0);
+
+    assertEquals(List.of(), plan.selectedLabels());
+    assertEquals(0, plan.nextCursor());
   }
 
   @Test

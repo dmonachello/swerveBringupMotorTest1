@@ -13,11 +13,14 @@ import frc.robot.devices.ctre.CtreTalonFxDevice;
 import frc.robot.diag.snapshots.DeviceSnapshot;
 import frc.robot.diag.snapshots.LimitsAttachment;
 import frc.robot.diag.snapshots.MotorSpecAttachment;
+import frc.robot.diag.snapshots.SnapshotBackoffPolicy;
 import frc.robot.manufacturers.ctre.diag.CtreMotorAttachment;
 import frc.robot.registry.RegistrationHeader;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * NAME
@@ -30,6 +33,8 @@ import java.util.List;
  * Owns CTRE device slots, registration, and shared reporting utilities.
  */
 public final class CtreDeviceGroup implements ManufacturerGroup {
+  private static final String SNAPSHOT_KEY_SEPARATOR = "|";
+
   public static final RegistrationHeader HEADER = new RegistrationHeader(
       "CTRE",
       "CTRE",
@@ -111,6 +116,9 @@ public final class CtreDeviceGroup implements ManufacturerGroup {
 
   private final List<DeviceTypeBucket> buckets = new ArrayList<>();
   private final List<DeviceTypeBucket> motorBuckets = new ArrayList<>();
+  private final Object snapshotBackoffLock = new Object();
+  private final Map<String, DeviceSnapshot> cachedSnapshotsByKey = new HashMap<>();
+  private final Map<String, Long> snapshotBlockedUntilMsByKey = new HashMap<>();
 
   /**
    * NAME
@@ -456,11 +464,54 @@ public final class CtreDeviceGroup implements ManufacturerGroup {
    */
   private DeviceSnapshot snapshotDevice(DeviceTypeBucket bucket, int index, double nowSec) {
     DeviceUnit device = bucket.getDevices().get(index);
+    String cacheKey = snapshotCacheKey(device);
+    long nowMs = System.currentTimeMillis();
+    DeviceSnapshot cached = tryGetBackedOffSnapshot(cacheKey, nowMs);
+    if (cached != null) {
+      return cached;
+    }
     DeviceSnapshot snap = device.snapshot();
     if (bucket.getRegistration().role() == DeviceRole.MOTOR) {
       fillSpecForCtre(snap, device.getLabel(), device.getMotorModelOverride());
     }
+    rememberSnapshot(cacheKey, snap, nowMs);
     return snap;
+  }
+
+  private String snapshotCacheKey(DeviceUnit device) {
+    return device.getLabel()
+        + SNAPSHOT_KEY_SEPARATOR
+        + device.getDeviceType()
+        + SNAPSHOT_KEY_SEPARATOR
+        + device.getCanId();
+  }
+
+  private DeviceSnapshot tryGetBackedOffSnapshot(String cacheKey, long nowMs) {
+    synchronized (snapshotBackoffLock) {
+      Long blockedUntilMs = snapshotBlockedUntilMsByKey.get(cacheKey);
+      DeviceSnapshot cached = cachedSnapshotsByKey.get(cacheKey);
+      if (blockedUntilMs == null || cached == null) {
+        return null;
+      }
+      if (nowMs >= blockedUntilMs.longValue()) {
+        snapshotBlockedUntilMsByKey.remove(cacheKey);
+        return null;
+      }
+      return SnapshotBackoffPolicy.copySnapshot(cached);
+    }
+  }
+
+  private void rememberSnapshot(String cacheKey, DeviceSnapshot snapshot, long nowMs) {
+    synchronized (snapshotBackoffLock) {
+      cachedSnapshotsByKey.put(cacheKey, SnapshotBackoffPolicy.copySnapshot(snapshot));
+      if (SnapshotBackoffPolicy.noteSuggestsReadBackoff(snapshot != null ? snapshot.note : null)) {
+        snapshotBlockedUntilMsByKey.put(
+            cacheKey,
+            nowMs + SnapshotBackoffPolicy.FAILURE_BACKOFF_MS);
+      } else {
+        snapshotBlockedUntilMsByKey.remove(cacheKey);
+      }
+    }
   }
 
   /**

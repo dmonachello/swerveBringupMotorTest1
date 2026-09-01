@@ -7,15 +7,15 @@ package frc.robot;
 public final class BuildInfo {
   private BuildInfo() {}
 
-  public static final String BUILD_GIT_DESCRIBE = "input-sensor-evidence-fairness-checkpoint-2026-08-24-1-ge1f81b8-dirty";
-  public static final String BUILD_REVISION = "288";
-  public static final String BUILD_WORKSPACE_REVISION = "113";
-  public static final String BUILD_CODE_REVISION = "5ea56daa5dac";
-  public static final String BUILD_GIT_SHA = "e1f81b8";
+  public static final String BUILD_GIT_DESCRIBE = "evidence-fusion-docs-checkpoint-2026-08-25-dirty";
+  public static final String BUILD_REVISION = "289";
+  public static final String BUILD_WORKSPACE_REVISION = "5";
+  public static final String BUILD_CODE_REVISION = "fe1078df4d04";
+  public static final String BUILD_GIT_SHA = "a565d3b";
   public static final String BUILD_GIT_BRANCH = "main";
   public static final String BUILD_GIT_DIRTY = "dirty";
-  public static final String BUILD_TIMESTAMP = "2026-08-25T10:06:38-04:00";
-  public static final String BUILD_COMMIT_TIMESTAMP = "2026-08-24T12:19:40-04:00";
+  public static final String BUILD_TIMESTAMP = "2026-09-01T12:50:04-04:00";
+  public static final String BUILD_COMMIT_TIMESTAMP = "2026-08-25T10:22:42-04:00";
 
   public static final String BUILD_LABEL_REVISION = "build-revision";
   public static final String BUILD_LABEL_WORKSPACE_REVISION = "workspace-revision";

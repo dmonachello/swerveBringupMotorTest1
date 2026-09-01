@@ -29,6 +29,7 @@ class CommandState:
     pending_ack: bool = False
     pending_out: bool = False
     pending_since: Optional[float] = None
+    timeout_sec: Optional[float] = None
     retry_pending: bool = False
     retry_count: int = 0
     retryable: bool = True
@@ -54,6 +55,7 @@ class CommandTracker:
         pending_out: bool = True,
         retryable: bool = True,
         now: Optional[float] = None,
+        timeout_sec: Optional[float] = None,
     ) -> None:
         """
         NAME
@@ -66,6 +68,7 @@ class CommandTracker:
             pending_ack=bool(pending_ack),
             pending_out=bool(pending_out),
             pending_since=now,
+            timeout_sec=float(timeout_sec) if isinstance(timeout_sec, (int, float)) else None,
             retry_pending=False,
             retry_count=self._state.retry_count,
             retryable=bool(retryable),
@@ -103,7 +106,12 @@ class CommandTracker:
         """
         if not self.is_pending() or self._state.pending_since is None:
             return False
-        if (now - self._state.pending_since) <= self._timeout_sec:
+        effective_timeout_sec = (
+            float(self._state.timeout_sec)
+            if isinstance(self._state.timeout_sec, (int, float))
+            else self._timeout_sec
+        )
+        if (now - self._state.pending_since) <= effective_timeout_sec:
             return False
         self.clear_pending()
         if self._state.retryable and self._state.retry_count < self._max_retries:
@@ -150,6 +158,15 @@ class CommandTracker:
             last_command - Return the last command tuple.
         """
         return (self._state.name, self._state.args)
+
+    def pending_command_name(self) -> str:
+        """
+        NAME
+            pending_command_name - Return the currently pending command name, if any.
+        """
+        if not self.is_pending():
+            return ""
+        return str(self._state.name or "")
 
     def clear(self) -> None:
         """

@@ -1,20 +1,20 @@
 SPEC_STATUS: PROPOSED
 
-# Feature Spec: Authoritative Evidence Fusion
+# Feature spec: authoritative evidence fusion
 
 ## Purpose
 
-Purpose: define a reliable, explainable Evidence engine that combines all relevant diagnostic facts into the most accurate current picture the system can justify.
+This spec defines an Evidence engine that can take the messy set of diagnostic facts we actually collect and turn it into the best current picture the system can honestly defend.
 
-The Evidence engine is the project's authoritative fused interpretation. It consumes current and historical facts from passive CAN observation, robot runtime state, active probes, console diagnostics, manual and DSL tests, configuration, topology, power relationships, enrichment sources, and source-health metadata.
+The Evidence engine is the authoritative fused interpretation for the project. It pulls in current and historical facts from passive CAN observation, robot runtime state, active probes, console diagnostics, manual and DSL tests, configuration, topology, power relationships, enrichment sources, and source-health metadata.
 
-The engine must remain conservative. It must use all relevant information without treating every source as equally strong, double-counting correlated facts, or allowing stale observations to remain current truth.
+The hard part is restraint. The engine has to use all relevant information without pretending every source is equally strong, without double-counting the same event through multiple surfaces, and without letting stale observations linger as current truth.
 
-This document reviews the algorithms in use as of 2026-08-24 and defines the target contract for hardening them.
+This document reviews the algorithms in use as of August 24, 2026 and sets the contract for hardening them.
 
-## Status And Authority
+## Status and authority
 
-This is a proposed behavior specification. It describes the intended Evidence engine and identifies differences from the current implementation.
+This is a proposed behavior specification. It describes the intended Evidence engine and calls out where the current implementation still falls short.
 
 Implementation of this spec will require an approved update to the Evidence-related rules in `Current UI And Runtime Rules - V2.md`. That rules document remains the current behavior baseline until an implementation slice explicitly updates it.
 
@@ -22,9 +22,9 @@ This spec supersedes earlier documents only for the final cross-source fusion al
 
 ## Goal
 
-The Evidence engine must use all relevant available information to produce the most accurate, current, and reproducible assessment possible for every configured device and for the system as a whole.
+The Evidence engine must use all relevant information to produce the most accurate, current, and reproducible assessment it can for every configured device and for the system as a whole.
 
-The result must answer these questions separately:
+It needs to answer these questions separately:
 
 - Does the expected device exist?
 - Can the system currently communicate with it?
@@ -35,11 +35,11 @@ The result must answer these questions separately:
 - Which facts are current, decaying, expired, unavailable, or historical only?
 - Is the conclusion direct, corroborated, inferred, or unresolved?
 
-## User Outcome
+## What the operator needs
 
-An operator looking at the Evidence lens should see the best current conclusion the system can justify from all sources.
+An operator looking at the Evidence lens should get the best current conclusion the system can justify from all sources.
 
-The operator must be able to drill into any conclusion and determine:
+They must also be able to drill into any conclusion and determine:
 
 - what was observed
 - where it was observed
@@ -50,31 +50,31 @@ The operator must be able to drill into any conclusion and determine:
 - why the final state and color were selected
 - what additional action would resolve remaining uncertainty
 
-The Evidence lens must never appear more certain than the underlying facts support.
+The Evidence lens must never act more certain than the facts behind it.
 
-## Lens Boundaries
+## Lens boundaries
 
-Purpose: preserve the distinct diagnostic value of the three Live Topology lenses.
+This section keeps the three Live Topology lenses separate so each one still means something specific.
 
-### Runtime Lens
+### Runtime lens
 
 The Runtime lens remains the robot-local interpretation of current runtime, lifecycle, scope, instantiation, and robot-side telemetry.
 
 It may use its own source-specific rules. It is not required to agree with CAN Visibility when the sources genuinely disagree.
 
-### CAN Visibility Lens
+### CAN visibility lens
 
 The CAN Visibility lens remains the host passive-observer interpretation of CAN traffic.
 
 It may use its own source-specific rules. It reports what the selected passive observer can currently see, not full device operability.
 
-### Evidence Lens
+### Evidence lens
 
-The Evidence lens performs the complete cross-source analysis.
+The Evidence lens does the full cross-source analysis.
 
 It must consume the underlying structured facts used by Runtime and CAN Visibility. Their rendered colors or summary verdicts may be included for traceability, but they must not be counted as independent corroboration when they are derived from facts already present in the fusion input.
 
-### CAN Fault Finder
+### CAN fault finder
 
 CAN Fault Finder must start from the same authoritative per-device Evidence snapshot.
 
@@ -109,9 +109,9 @@ This spec covers:
 - scheduling, starvation prevention, and observability
 - unit, replay, cross-surface, and hardware verification
 
-## Non-Goals
+## Non-goals
 
-This spec does not:
+This spec does not try to:
 
 - make Runtime and CAN Visibility use the same interpretation
 - claim that passive CAN traffic proves mechanical operability
@@ -124,57 +124,57 @@ This spec does not:
 - hide disagreement by averaging all sources into one opaque number
 - use AI output as primary device truth
 
-## Reliability Principles
+## Reliability principles
 
-### Use All Relevant Facts
+### Use all relevant facts
 
 No relevant source should be ignored merely because it is inconvenient to combine.
 
 Using all facts does not mean giving all facts equal weight. Source capability, freshness, specificity, directness, observation quality, and independence determine influence.
 
-### Separate Questions
+### Separate questions
 
 Existence, communication, operability, and identity are different questions.
 
 A device can exist but fail communication. It can communicate but fail mechanically. It can operate but be mapped to the wrong mechanism. A single health score cannot represent those distinctions reliably.
 
-### Current Truth Is Recomputed
+### Current truth is recomputed
 
 The authoritative result must be derived from the current observation ledger and current evaluation time.
 
 Cached host flags may retain history or pending workflow intent, but they must not remain authoritative when current observations disagree or expire.
 
-### Staleness Reduces Influence
+### Staleness reduces influence
 
 Evidence influence must decay as evidence ages.
 
 Expired evidence remains visible as history but contributes no current-state weight.
 
-### Strong Claims Need Strong Evidence
+### Strong claims need strong evidence
 
 Red is reserved for current, high-confidence absence or failure.
 
 Indirect or system-level evidence may produce a red device conclusion only when corroborated by another independent relevant source. Otherwise it produces a probable or uncertain state.
 
-### Preserve Conflict
+### Preserve conflict
 
 Meaningful disagreement must be shown as conflict. It must not be silently resolved by source ordering or hidden inside a midpoint score.
 
-### Avoid Double Counting
+### Avoid double counting
 
 Multiple messages, surfaces, or derived summaries that originate from the same underlying event are one correlated evidence group, not multiple independent confirmations.
 
-### Explain Every Result
+### Explain every result
 
 Every conclusion must be reproducible from a structured list of supporting, opposing, ignored, decayed, and expired observations.
 
-### Prefer Unknown To False Certainty
+### Prefer unknown to false certainty
 
 Insufficient evidence produces `UNKNOWN` or `UNPROVEN`, not a guessed healthy or failed result.
 
-## State Model
+## State model
 
-Purpose: define the authoritative per-device result without conflating distinct diagnostic dimensions.
+This section defines the authoritative per-device result without collapsing different diagnostic questions into one blurry answer.
 
 ### Existence
 
@@ -241,7 +241,7 @@ Each dimension has:
 
 The numeric value is a calibrated decision confidence, not a probability that the device is healthy.
 
-### Overall State
+### Overall state
 
 Allowed values:
 
@@ -254,7 +254,7 @@ Allowed values:
 
 The overall state is derived after the four dimensions are evaluated. It is not independently scored.
 
-### Node Colors
+### Node colors
 
 Required mapping:
 
@@ -266,9 +266,9 @@ Required mapping:
 
 Red must not result from one broad system warning, one indirect clue, source silence while the source is unavailable, or stale cached evidence.
 
-## System-Level State
+## System-level state
 
-Purpose: represent bus and infrastructure evidence without incorrectly attaching every system event to every device.
+This section captures bus and infrastructure evidence without lazily attaching every system event to every device.
 
 The Evidence snapshot also contains system dimensions:
 
@@ -286,9 +286,9 @@ The Evidence snapshot also contains system dimensions:
 
 System findings can influence device confidence and shared-cause inference. They do not automatically become device-specific faults.
 
-## Current Implementation Review
+## Current implementation review
 
-Purpose: document the algorithms and limitations that exist before this spec is implemented.
+Before changing the engine, we need a blunt view of what is there today and where it breaks down.
 
 ### Current Data Flow
 
@@ -520,7 +520,7 @@ The current system already has important foundations:
 - topology inference is separate from raw collection
 - unit tests cover several recent failure modes
 
-## Main Reliability Gaps
+## Main reliability gaps
 
 Purpose: identify what must change before the Evidence lens can be treated as dependable.
 
@@ -572,7 +572,7 @@ There is no complete deterministic capture containing all source facts, source h
 
 Confidence values are not yet calibrated against a labeled hardware scenario corpus.
 
-## Target Architecture
+## Target architecture
 
 Purpose: establish one shared fusion path while retaining independent source collectors and raw lenses.
 
@@ -589,7 +589,7 @@ The target layers are:
 
 The UI must not own fusion rules.
 
-## Observation Contract
+## Observation contract
 
 Purpose: normalize all sources without erasing source-specific meaning.
 
@@ -672,7 +672,7 @@ Recommended shape:
 - Missing timestamps prevent an observation from making a strong current claim.
 - Profile or topology revision mismatch prevents an observation from applying automatically to the new context.
 
-## Evidence Ingestion Contract
+## Evidence ingestion contract
 
 Purpose: allow any producer, including the fusion clock, to submit a typed block that causes a deterministic state review.
 
@@ -762,7 +762,7 @@ Producers do not assign final trust, freshness, confidence, or color. They repor
 - Recovery is new evidence or source state, not deletion of the prior fault history.
 - Ingestion and evaluation may be asynchronous, but each published snapshot is derived from one frozen ledger revision and one evaluation time.
 
-## Source Contracts
+## Source contracts
 
 Purpose: define how every relevant source may influence each dimension.
 
@@ -1008,7 +1008,7 @@ Examples:
 - parser disabled means no console evidence, not a quiet healthy console.
 - high CAN utilization reduces timing confidence but does not automatically mark all devices failed.
 
-## Fusion Algorithm
+## Fusion algorithm
 
 Purpose: define a deterministic, dimension-specific, correlation-aware evaluation.
 
@@ -1295,7 +1295,7 @@ Required rules:
 - hysteresis is implemented through recent observation windows and thresholds, not an unbounded cached truth flag
 - state transition reason and time are recorded
 
-## Device-Class Policies
+## Device-class policies
 
 Purpose: avoid applying motor assumptions to every device.
 
@@ -1327,7 +1327,7 @@ Initial classes:
 
 Unknown classes use conservative policies and cannot receive strong positive operability or identity claims without direct evidence.
 
-## Common Scenario Rules
+## Common scenario rules
 
 Purpose: lock down expected behavior for known failure and recovery cases.
 
@@ -1420,7 +1420,7 @@ Expected:
 - Evidence confidence is reduced when service lag exceeds policy
 - replay and hardware tests prove bounded maximum service lag
 
-## Authoritative Snapshot Contract
+## Authoritative snapshot contract
 
 Purpose: provide one stable machine-readable result for UI, CLI, replay, tests, and later AI diagnosis.
 
@@ -1484,7 +1484,7 @@ For every dimension, the trace must include:
 - inference rules applied
 - final confidence factors
 
-## Shared Ownership And Surfaces
+## Shared ownership and surfaces
 
 Purpose: enforce one Evidence meaning across all operator-facing consumers.
 
@@ -1506,7 +1506,7 @@ These consumers may filter or format the snapshot. They must not recompute devic
 
 Runtime and CAN Visibility remain independent raw lenses and are explicitly exempt from matching the Evidence conclusion.
 
-## Fault Finder Contract
+## Fault finder contract
 
 Purpose: separate device truth from fault-location inference.
 
@@ -1534,7 +1534,7 @@ Fault Finder must not:
 - treat stale Evidence observations as current
 - count one Evidence observation again as independent fault evidence
 
-## Scheduling And Performance
+## Scheduling and performance
 
 Purpose: ensure reliability does not degrade as device count or error volume grows.
 
@@ -1582,7 +1582,7 @@ Priority must not starve ordinary devices. The scheduler must combine:
 - persistent round-robin cursor
 - maximum-age override
 
-## No-Cached-Truth Rules
+## No-cached-truth rules
 
 Purpose: prevent prior state from masquerading as current hardware truth.
 
@@ -1597,7 +1597,7 @@ Purpose: prevent prior state from masquerading as current hardware truth.
 - Historical evidence remains inspectable but visibly separate.
 - No cached color, selected row, or previous final state is an Evidence input.
 
-## Capture And Replay
+## Capture and replay
 
 Purpose: make every fusion decision deterministic and regression-testable.
 
@@ -1639,7 +1639,7 @@ Replay requirements:
 
 Capture files must not require NetworkTables. Supported workflows remain host-local and REST-driven.
 
-## Offline Block Harness
+## Offline block harness
 
 Purpose: test the complete production fusion algorithm without a robot, CAN interface, REST endpoint, UI, or real-time delays.
 
@@ -1880,6 +1880,459 @@ Disadvantages:
 
 Decision: selected target algorithm.
 
+## Stage 1 implementation design
+
+This section turns the agreed architecture into a concrete first implementation target. It is intentionally narrower than the full feature. Stage 1 builds the shared block schema, ingest path, bounded ledger, policy table, and offline replay harness. It does not yet replace the visible Evidence results.
+
+### Stage 1 goals
+
+Stage 1 must deliver these things:
+
+- one versioned `EvidenceBlock` API that all producers can target
+- one fast asynchronous ingest path that validates and queues blocks
+- one bounded shared ledger that stores accepted blocks, normalized observations, unknown observed devices, source state, and context revisions
+- one scheduler-ready dirty-state model that later evaluators can consume
+- one offline harness that replays the same production blocks through the same production path
+- enough observability to measure drops, lag, coalescing, and per-device service fairness
+
+Stage 1 must not:
+
+- change the operator-facing Evidence verdicts yet
+- move live UI surfaces to the new snapshot
+- make Fault Finder authoritative yet
+- require a robot, CAN adapter, UI, or REST server in order to test the core
+
+### Stage 1 module boundaries
+
+The first implementation should live in a new host-local Python package under `tools/common/` so both live code and offline regression tooling can import it without pulling in UI or transport code.
+
+Recommended package shape:
+
+```text
+tools/common/evidence_fusion/
+  __init__.py
+  api.py
+  constants.py
+  types.py
+  blocks.py
+  policies.py
+  ledger.py
+  ingest.py
+  scheduler.py
+  snapshots.py
+  replay.py
+  adapters/
+    __init__.py
+```
+
+Module responsibilities:
+
+- `api.py`
+  - public entry points
+  - stable submission and snapshot interfaces
+- `constants.py`
+  - symbolic names for block types, scopes, priorities, result codes, and policy defaults
+- `types.py`
+  - dataclasses or typed records for blocks, targets, sessions, observations, source state, unknown devices, queue stats, and snapshot records
+- `blocks.py`
+  - envelope validation
+  - source and major-type dispatch
+  - canonical block-key construction
+- `policies.py`
+  - source-policy table
+  - decay profile definitions
+  - carry-forward rules
+  - coalescing and drop rules
+- `ledger.py`
+  - bounded append-only accepted-block log
+  - normalized observation store
+  - unknown observed-device store
+  - context revision store
+  - source-session store
+- `ingest.py`
+  - non-blocking submit path
+  - deduplication
+  - dirty-marking
+  - queue placement
+- `scheduler.py`
+  - priority lanes
+  - coalescing
+  - drop accounting
+  - tick handling
+  - service fairness counters
+- `snapshots.py`
+  - shared machine-readable snapshot records
+  - lightweight trace summaries
+- `replay.py`
+  - offline block-stream runner
+  - deterministic virtual-time control
+  - expected-result comparison hooks
+
+Stage 1 should avoid any dependency on `tkinter`, live topology rendering, CAN hardware readers, or roboRIO network clients.
+
+### Stage 1 public API
+
+The public API should stay small.
+
+Required functions:
+
+```text
+submit_evidence_block(block: EvidenceBlock) -> SubmitResult
+drain_evaluation_budget(now_monotonic_ms: int, budget: EvaluationBudget) -> DrainResult
+get_current_snapshot() -> EvidenceSnapshot
+get_runtime_stats() -> FusionRuntimeStats
+reset_runtime_state() -> None
+```
+
+Required offline entry points:
+
+```text
+replay_blocks(blocks: Iterable[EvidenceBlock], replay_options: ReplayOptions) -> ReplayResult
+load_block_stream(path: str) -> Iterable[EvidenceBlock]
+```
+
+Stage 1 result semantics:
+
+- `submit_evidence_block(...)` reports acceptance only
+- it does not block on downstream evaluation
+- evaluation happens later through `drain_evaluation_budget(...)`
+- offline replay may call the same drain function repeatedly until queues are empty
+
+### Submit result
+
+`SubmitResult` should be a small machine record with these fields:
+
+- `accepted: bool`
+- `result_code`
+- `block_id`
+- `queue_lane`
+- `coalesced`
+- `duplicate`
+- `dropped`
+- `drop_reason`
+- `affected_scope_mask`
+- `context_revision_id`
+
+The submit result should not include a rendered explanation. That belongs in the presentation layer later.
+
+### Evidence block schema
+
+Stage 1 should freeze one production envelope shape.
+
+Required common fields:
+
+- `schema_version`
+- `block_id`
+- `source_type`
+- `source_instance`
+- `source_session_id`
+- `major_type`
+- `scope`
+- `target`
+- `observed_at_monotonic_ms`
+- `received_at_monotonic_ms`
+- `context_revision_id`
+- `correlation_id`
+- `priority_hint`
+- `payload`
+
+Required rules:
+
+- every block has exactly one `source_type`
+- every block has exactly one `major_type`
+- every block has a stable `block_id`
+- every block has explicit scope
+- every block has both observed and received monotonic timestamps
+- every block belongs to exactly one context revision
+- every block may have a partial target
+
+Supported stage-1 scopes:
+
+- `device`
+- `system`
+- `context`
+- `source`
+
+Supported stage-1 major types:
+
+- `observation`
+- `source_state`
+- `context_revision`
+- `clock_tick`
+- `retraction`
+- `recovery`
+
+### Target model
+
+The target must be explicit but source-dependent. Some producers know the configured label with certainty. Others only know CAN-derived identity.
+
+Recommended target record:
+
+```text
+EvidenceTarget:
+  configured_label: Optional[str]
+  vendor: Optional[str]
+  device_type: Optional[str]
+  interface_type: Optional[str]
+  bus_name: Optional[str]
+  address_value: Optional[int]
+  mechanism_name: Optional[str]
+  target_confidence: Optional[float]
+```
+
+Target rules:
+
+- configured label wins when present and trusted
+- partial identity is allowed
+- unresolved partial identity creates or updates an unknown observed-device record
+- a later high-confidence match may link fresh unknown-device evidence into a configured device's current evaluation
+
+### Source policy table
+
+Stage 1 must include a versioned source-policy table keyed by `source_type + major_type`.
+
+Each policy row must define:
+
+- payload validator
+- normalizer
+- allowed scopes
+- default queue lane
+- coalescing key builder
+- droppable or non-droppable policy
+- overload drop precedence
+- directness class
+- supported dimensions
+- decay profile name
+- current lifetime
+- historical retention
+- cross-context carry-forward policy
+- target resolution rules
+- can affect configured devices
+- can affect unknown observed devices
+- can affect system state
+
+The policy table is where later tuning belongs. Stage 1 should not hide these rules inside UI code or source adapters.
+
+### Context revision model
+
+Stage 1 will use an explicit `context_revision_id`.
+
+Required behavior:
+
+- every accepted block records the context revision it belongs to
+- device-specific evidence defaults to historical-only across context boundaries unless source policy allows carry-forward
+- system and source-health evidence defaults to carry-forward with decay unless source policy says otherwise
+- a late block from an old context revision is dropped from current evaluation, counted, and exposed through runtime stats
+
+Recommended context sources:
+
+- profile selection or profile content change
+- topology change
+- policy version change
+- runtime-generation boundary when a source requires it
+
+### Ledger model
+
+Stage 1 needs one bounded shared ledger. It should keep enough history to support replay and debug, but not become an unbounded memory sink.
+
+Recommended logical stores:
+
+- accepted block log
+- normalized observation log
+- source-state log
+- context-revision log
+- configured device index
+- unknown observed-device index
+- block-id dedupe index
+- correlation index
+- dirty-device set
+- dirty-system flags
+- per-lane queue stats
+
+Recommended ledger records:
+
+- `AcceptedBlockRecord`
+- `ObservationRecord`
+- `SourceStateRecord`
+- `ContextRevisionRecord`
+- `UnknownObservedDeviceRecord`
+- `DirtyWorkItem`
+
+Bounded-storage rules:
+
+- accepted block log is append-only but capped by policy
+- normalized observation storage is capped by freshness and historical-retention policy
+- dedupe index must survive long enough to catch realistic duplicate windows
+- unknown observed devices remain visible long enough to support later matching and operator review
+
+### Queue and scheduler design
+
+Stage 1 should separate ingest from evaluation.
+
+Recommended queue lanes:
+
+- `source_health`
+- `context`
+- `fault_event`
+- `interactive_manual`
+- `periodic_runtime`
+- `periodic_passive`
+- `clock_tick`
+- `offline_replay`
+
+Required scheduling rules:
+
+- source up or down health has highest priority
+- latest-wins coalescing is allowed for replaceable high-rate blocks
+- clock ticks may coalesce as long as skipped intermediate ticks do not prevent proper aging
+- dirty-targeted reevaluation is preferred
+- global blocks may dirty the whole system
+- queue overload may drop blocks by policy
+- all drops, coalesces, and late-block discards are counted
+
+Required observability counters:
+
+- submitted blocks
+- accepted blocks
+- duplicate blocks
+- coalesced blocks
+- dropped blocks
+- late-context blocks
+- expired-before-eval blocks
+- per-lane queue depth high-water mark
+- per-device last serviced time
+- per-device service count
+- per-device max service gap
+- last evaluation time
+
+### Shared snapshot shape for stage 1
+
+Stage 1 should publish one shared machine-readable snapshot even before it is wired into the visible UI. Evaluators write their own result sections into the shared per-device and per-system records.
+
+Required top-level snapshot fields:
+
+- `snapshot_id`
+- `evaluation_id`
+- `context_revision_id`
+- `evaluation_time_monotonic_ms`
+- `configured_devices`
+- `unknown_observed_devices`
+- `system_state`
+- `runtime_stats`
+
+Each device record should have:
+
+- canonical identity fields
+- evaluator result sections by lens or evaluator name
+- current timestamps that are useful and cheap to maintain
+- lightweight trace summary
+- overload or data-loss summary
+
+Stage 1 required timestamps:
+
+- `last_observed_at_monotonic_ms`
+- `last_received_at_monotonic_ms`
+- `last_evaluated_at_monotonic_ms`
+
+`oldest_influential_at_monotonic_ms` can wait until a later slice if it adds noticeable cost.
+
+### Lightweight trace summary
+
+Stage 1 should keep trace data lightweight.
+
+Required summary fields per evaluator result:
+
+- winning state
+- confidence band
+- strongest supporting fact key
+- strongest opposing fact key
+- supporting fact count
+- opposing fact count
+- ignored fact count
+- dropped fact count
+- expired fact count
+- overload-affected flag
+
+This is enough to support later human-readable presentation without building a heavy per-record narrative engine now.
+
+### Offline replay harness
+
+Stage 1 must make the core testable without live hardware.
+
+Required replay behavior:
+
+- use the same production `EvidenceBlock` schema
+- use the same production submit path
+- use the same production scheduler and drain path
+- allow virtual monotonic time
+- allow live-like overload mode
+- allow deterministic no-drop mode
+- emit the same shared snapshot shape as live mode
+
+Required replay options:
+
+- starting context revision
+- queue policy mode
+- drop simulation enabled or disabled
+- tick cadence policy
+- stop-on-validation-error
+- capture stats enabled
+
+Required replay outputs:
+
+- final snapshot
+- per-checkpoint snapshots
+- runtime stats
+- block acceptance log
+- drop and coalescing summary
+- late-block summary
+
+### Stage 1 adapter contract
+
+Stage 1 does not need every producer fully migrated, but it does need the adapter contract nailed down.
+
+Each adapter must do only these things:
+
+- gather source-local facts
+- build a valid `EvidenceBlock`
+- submit it
+
+Each adapter must not:
+
+- assign final confidence
+- assign final device color
+- infer cross-source truth
+- parse rendered text from another surface
+
+### Stage 1 implementation order
+
+Recommended order inside Slice 1:
+
+1. Create `constants.py`, `types.py`, and `blocks.py`.
+2. Implement common envelope validation and `SubmitResult`.
+3. Implement `context_revision_id` handling and the dedupe index.
+4. Implement the bounded ledger stores.
+5. Implement queue lanes, coalescing, and runtime stats.
+6. Implement the scheduler drain API with dirty work items.
+7. Implement shared snapshot records with placeholder evaluator sections.
+8. Implement the offline replay runner and fixture loader.
+9. Add one synthetic adapter used only by tests.
+10. Add regression fixtures that prove duplicates, coalescing, old-context drop, unknown-device creation, and deterministic replay.
+
+### Stage 1 completion criteria
+
+Stage 1 is complete when all of the following are true:
+
+- one production `EvidenceBlock` schema exists and is versioned
+- blocks can be submitted live or offline through the same API
+- accepted blocks enter a bounded ledger
+- context revision handling is explicit and test-covered
+- unknown observed devices are created and updated through the production path
+- queue coalescing and dropping are measured and exposed
+- deterministic replay works without a robot
+- the shared snapshot exists, even if evaluator sections are still skeletal
+- current visible Evidence behavior remains unchanged
+
 ## Implementation Plan
 
 Purpose: introduce the new model without destabilizing working diagnostics.
@@ -1961,7 +2414,7 @@ Checkpoint: acceptance criteria pass on real roboRIO hardware.
 
 Checkpoint: no fallback path silently produces a different Evidence truth.
 
-## Test Strategy
+## Test strategy
 
 Purpose: prove correctness at rule, engine, surface, and hardware levels.
 
@@ -2063,7 +2516,7 @@ Required roboRIO scenarios:
 
 All motor-motion tests require normal operator safety controls and explicit commands.
 
-## Acceptance Criteria
+## Acceptance criteria
 
 The first authoritative release must satisfy all of the following:
 
@@ -2093,7 +2546,7 @@ The first authoritative release must satisfy all of the following:
 - replay nondeterminism count is zero
 - every fixed fusion bug has a narrow regression test
 
-## Reliability Release Gates
+## Reliability release gates
 
 Purpose: prevent premature promotion from shadow mode.
 
@@ -2111,7 +2564,7 @@ The new engine must remain in shadow mode until:
 - connected non-motion robot regression passes
 - motion-dependent hardware tests pass under explicit operator control
 
-## Definition Of Done
+## Definition of done
 
 This feature is complete when:
 
@@ -2136,7 +2589,7 @@ This feature is complete when:
 - Keeping raw lenses independent permits visible disagreement, but that disagreement is diagnostically useful and the Evidence lens explains the combined conclusion.
 - Hardware calibration takes time, but confidence labels are not credible without it.
 
-## Future Extensions
+## Future extensions
 
 - calibrated probabilistic models after a sufficiently large labeled corpus exists
 - multiple passive observers with attachment-point-aware inference
@@ -2149,7 +2602,7 @@ This feature is complete when:
 - automatic policy tuning proposals reviewed by humans
 - AI-generated diagnostic summaries constrained to the authoritative Evidence snapshot
 
-## Related Documents
+## Related documents
 
 - `Current UI And Runtime Rules - V2.md`
 - `docs/FEATURE_SPEC_CAN_DEVICE_EVIDENCE_SOURCE_CONTRACTS.md`

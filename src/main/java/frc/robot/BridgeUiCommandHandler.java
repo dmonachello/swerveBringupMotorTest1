@@ -24,6 +24,7 @@ import frc.robot.commands.local.RobotLocalValueProvider;
 import frc.robot.diag.probe.ActiveDevicePresenceProbe;
 import frc.robot.diag.lifecycle.groups.ResolvedGroupStates;
 import frc.robot.diag.snapshots.SampledSignalsAttachment;
+import frc.robot.diag.snapshots.SnapshotBackoffPolicy;
 import frc.robot.input.BindingsManager;
 import frc.robot.input.InputAliasResolver;
 import frc.robot.diag.snapshots.DeviceSnapshot;
@@ -109,6 +110,10 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_CONTROLLED_LIFECYCLE_ACTIVE =
       "controlledLifecycleActive";
   private static final String JSON_KEY_TESTABLE = "testable";
+  private static final String JSON_KEY_MANUAL_OPERABLE = "manualOperable";
+  private static final String JSON_KEY_TEST_OPERABLE = "testOperable";
+  private static final String JSON_KEY_BLOCKED_REASON_CODE = "blockedReasonCode";
+  private static final String JSON_KEY_BLOCKED_REASON_TEXT = "blockedReasonText";
   private static final String JSON_KEY_OVERRIDE_ACTIVE = "overrideActive";
   private static final String JSON_KEY_OVERRIDE_ORIGINATED = "overrideOriginated";
   private static final String JSON_KEY_OVERRIDE_FAILURE = "overrideFailure";
@@ -129,6 +134,16 @@ public class BridgeUiCommandHandler {
   private static final String JSON_KEY_MODE = "mode";
   private static final String JSON_KEY_GROUPS = "groups";
   private static final String JSON_KEY_CAN_BUS = "canBus";
+  private static final String JSON_KEY_BRINGUP_OUTPUT = "bringupOutput";
+  private static final String JSON_KEY_RETAINED_MESSAGES = "retainedMessages";
+  private static final String JSON_KEY_RETAINED_MESSAGE_COUNT = "retainedMessageCount";
+  private static final String JSON_KEY_RETAINED_MESSAGE_LIMIT = "retainedMessageLimit";
+  private static final String JSON_KEY_RETAINED_DROPPED_MESSAGES =
+      "retainedDroppedMessages";
+  private static final String JSON_KEY_STDOUT_MIRROR_ENABLED = "stdoutMirrorEnabled";
+  private static final String JSON_KEY_QUEUED_BYTES = "queuedBytes";
+  private static final String JSON_KEY_DROPPED_MESSAGES = "droppedMessages";
+  private static final String JSON_KEY_DROPPED_BYTES = "droppedBytes";
   private static final String JSON_KEY_MEMBERS = "members";
   private static final String JSON_KEY_BINDINGS = "bindings";
   private static final String JSON_KEY_BINDING_ACTIVE = "bindingActive";
@@ -168,6 +183,8 @@ public class BridgeUiCommandHandler {
       "Runtime inactive. Click Runtime Activate.";
   private static final String MESSAGE_ACTIVE_PRESENCE_PROBE_UNAVAILABLE =
       "Active presence probe unavailable.";
+  private static final String MESSAGE_ACTIVE_PRESENCE_PROBE_STARTED =
+      "Active presence probe started.";
   private static final String JSON_KEY_MOTOR_CURRENT_A = "motorCurrentA";
   private static final String JSON_KEY_CMD_DUTY = "cmdDuty";
   private static final String JSON_KEY_APPLIED_DUTY = "appliedDuty";
@@ -403,6 +420,10 @@ public class BridgeUiCommandHandler {
   private static final String DEV_PATH_SRC = "src";
   private static final String DEV_PATH_MAIN = "main";
   private static final String DEV_PATH_DEPLOY = "deploy";
+  private static final long RUNTIME_STATE_DEVICE_CACHE_TTL_MS = 1000L;
+  private static final long RUNTIME_STATE_DEVICE_FAILURE_BACKOFF_MS =
+      SnapshotBackoffPolicy.FAILURE_BACKOFF_MS;
+  private static final long TIME_NEVER_MS = Long.MIN_VALUE;
 
   private final BringupRuntime runtime;
   private final BindingsManager bindings;
@@ -427,6 +448,7 @@ public class BridgeUiCommandHandler {
   private boolean stopLatchActive = false;
   private String stopLatchReason = "";
   private boolean lastXboxConnected = false;
+  private ActiveDevicePresenceProbe.ProbeRun activePresenceProbeRun = null;
   private final ConcurrentLinkedQueue<String> uiLogQueue = new ConcurrentLinkedQueue<>();
   private final AtomicInteger uiLogCount = new AtomicInteger(0);
   private boolean uiProtocolMonitorEnabled = false;
@@ -434,6 +456,11 @@ public class BridgeUiCommandHandler {
   private double lastKrakenSpeed = 0.0;
   private ZoneId remoteCommandZone = null;
   private int activeGroupCursor = INDEX_START;
+  private final Object runtimeStateDeviceCacheLock = new Object();
+  private JsonArray cachedRuntimeStateDevices = null;
+  private long cachedRuntimeStateDevicesBuiltAtMs = TIME_NEVER_MS;
+  private long cachedRuntimeStateDevicesBlockedUntilMs = TIME_NEVER_MS;
+  private String cachedRuntimeStateDevicesSelectedLabel = TEXT_EMPTY;
 
   /**
    * NAME
@@ -1414,18 +1441,41 @@ public class BridgeUiCommandHandler {
           }
 
           @Override
-          public RobotLocalExecutionResult runActivePresenceProbe() {
+          public RobotLocalExecutionResult beginActivePresenceProbe() {
             if (!isRuntimeEffectivelyActive()) {
               return RobotLocalExecutionResult.failed(MESSAGE_RUNTIME_INACTIVE_ACTIVATE);
             }
-            ActiveDevicePresenceProbe.ProbeSessionResult session = runtime.runActivePresenceProbe();
+            activePresenceProbeRun = runtime.startActivePresenceProbeRun(true);
+            if (activePresenceProbeRun == null) {
+              return RobotLocalExecutionResult.failed(MESSAGE_ACTIVE_PRESENCE_PROBE_UNAVAILABLE);
+            }
+            return RobotLocalExecutionResult.running(MESSAGE_ACTIVE_PRESENCE_PROBE_STARTED);
+          }
+
+          @Override
+          public RobotLocalExecutionResult stepActivePresenceProbe() {
+            if (activePresenceProbeRun == null) {
+              return RobotLocalExecutionResult.failed(MESSAGE_ACTIVE_PRESENCE_PROBE_UNAVAILABLE);
+            }
+            ActiveDevicePresenceProbe.ProbeStepResult step = activePresenceProbeRun.advance();
+            if (!step.complete) {
+              return RobotLocalExecutionResult.running(step.message);
+            }
+            ActiveDevicePresenceProbe.ProbeSessionResult session = step.session;
+            activePresenceProbeRun = null;
             if (session == null) {
               return RobotLocalExecutionResult.failed(MESSAGE_ACTIVE_PRESENCE_PROBE_UNAVAILABLE);
             }
+            core().storeActivePresenceProbeSession(session);
             return RobotLocalExecutionResult.complete(
                 session.message,
                 session.toText(),
                 session.toJsonString());
+          }
+
+          @Override
+          public void cancelActivePresenceProbe() {
+            activePresenceProbeRun = null;
           }
 
           @Override
@@ -2335,13 +2385,15 @@ public class BridgeUiCommandHandler {
     runtime.refreshDeviceLifecycle(System.currentTimeMillis());
     DeviceLifecycleRegistry.DeviceLifecycleView lifecycle =
         runtime.getDeviceLifecycle().viewForLabel(label);
-    if (lifecycle == null || !lifecycle.testable) {
-      return false;
-    }
-    if (isControlledLifecycleActive()) {
-      return isControlledLifecycleDeviceActive(label);
-    }
-    return true;
+    boolean controlledLifecycleActive = isControlledLifecycleActive();
+    boolean controlledDeviceActive =
+        controlledLifecycleActive && isControlledLifecycleDeviceActive(label);
+    DeviceActionability.Evaluation evaluation =
+        DeviceActionability.evaluate(
+            lifecycle,
+            controlledLifecycleActive,
+            controlledDeviceActive);
+    return evaluation.manualOperable;
   }
 
   /**
@@ -3596,7 +3648,6 @@ public class BridgeUiCommandHandler {
     JsonObject root = new JsonObject();
     root.addProperty("schemaVersion", 1);
     long nowMs = System.currentTimeMillis();
-    runtime.refreshDeviceLifecycle(nowMs);
     runtime.synchronizeControlledBringupLifecycleGroups();
     ensureActiveGroupDefined();
     var lifecycleRuntime = runtime.getControlledBringupLifecycleRuntime();
@@ -3638,6 +3689,7 @@ public class BridgeUiCommandHandler {
     root.add(
         JSON_KEY_CAN_BUS,
         diagnostics() != null ? diagnostics().buildBusHealthJson() : new JsonObject());
+    root.add(JSON_KEY_BRINGUP_OUTPUT, buildBringupOutputJson());
     JsonArray groups = new JsonArray();
     for (BridgeGroupManager.Group group : bridgeGroups().getGroups()) {
       JsonObject g = buildGroupJson(group);
@@ -3654,6 +3706,35 @@ public class BridgeUiCommandHandler {
             : new JsonObject());
     root.add("devices", buildRuntimeStateDevices(nowMs));
     return root;
+  }
+
+  /**
+   * NAME
+   *   buildBringupOutputJson - Build machine-readable retained bringup-output state.
+   */
+  private JsonObject buildBringupOutputJson() {
+    JsonObject obj = new JsonObject();
+    obj.addProperty(JSON_KEY_STDOUT_MIRROR_ENABLED, BringupPrinter.isStdoutMirrorEnabled());
+    obj.addProperty(JSON_KEY_QUEUED_BYTES, BringupPrinter.getQueuedBytes());
+    obj.addProperty(JSON_KEY_DROPPED_MESSAGES, BringupPrinter.getDroppedMessages());
+    obj.addProperty(JSON_KEY_DROPPED_BYTES, BringupPrinter.getDroppedBytes());
+    obj.addProperty(
+        JSON_KEY_RETAINED_MESSAGE_COUNT,
+        BringupPrinter.getRetainedMessageCount());
+    obj.addProperty(
+        JSON_KEY_RETAINED_MESSAGE_LIMIT,
+        BringupPrinter.getRetainedMessageLimit());
+    obj.addProperty(
+        JSON_KEY_RETAINED_DROPPED_MESSAGES,
+        BringupPrinter.getRetainedDroppedMessages());
+    JsonArray messages = new JsonArray();
+    for (String text : BringupPrinter.getRetainedMessagesSnapshot()) {
+      if (text != null && !text.isBlank()) {
+        messages.add(text);
+      }
+    }
+    obj.add(JSON_KEY_RETAINED_MESSAGES, messages);
+    return obj;
   }
 
   /**
@@ -4001,186 +4082,294 @@ public class BridgeUiCommandHandler {
    *   buildRuntimeStateDevices - Build device entries with live telemetry.
    */
   private JsonArray buildRuntimeStateDevices(long nowMs) {
-    var lifecycleRuntime = runtime.getControlledBringupLifecycleRuntime();
-    boolean controlledLifecycleActive = isControlledLifecycleActive();
-    String selectedLabel = bridgeSelected().device != null
-        ? bridgeSelected().device.trim().toLowerCase()
-        : TEXT_EMPTY;
-    List<DeviceSnapshot> snapshots = core() != null
-        ? core().captureSnapshots(SnapshotDetail.LIGHT)
-        : new ArrayList<>();
-    Map<String, DeviceSnapshot> byLabel = new HashMap<>();
-    Map<Integer, DeviceSnapshot> byId = new HashMap<>();
-    for (DeviceSnapshot snap : snapshots) {
-      if (snap == null) {
-        continue;
+    synchronized (runtimeStateDeviceCacheLock) {
+      var lifecycleRuntime = runtime.getControlledBringupLifecycleRuntime();
+      boolean controlledLifecycleActive = isControlledLifecycleActive();
+      String selectedLabel = bridgeSelected().device != null
+          ? bridgeSelected().device.trim().toLowerCase()
+          : TEXT_EMPTY;
+      if (shouldUseCachedRuntimeStateDevices(nowMs, selectedLabel)) {
+        return cachedRuntimeStateDevices != null ? cachedRuntimeStateDevices.deepCopy() : new JsonArray();
       }
-      if (snap.label != null && !snap.label.isBlank()) {
-        String labelKey = snap.label.trim().toLowerCase();
-        DeviceSnapshot existing = byLabel.get(labelKey);
-        byLabel.put(labelKey, choosePreferredSnapshot(existing, snap));
-      }
-      if (snap.canId >= 0) {
-        DeviceSnapshot existing = byId.get(snap.canId);
-        byId.put(snap.canId, choosePreferredSnapshot(existing, snap));
-      }
-    }
-    if (!selectedLabel.isBlank() && core() != null) {
-      DeviceSnapshot selectedSnapshot =
-          core().captureSnapshotForLabel(bridgeSelected().device, SnapshotDetail.FULL);
-      if (selectedSnapshot != null
-          && selectedSnapshot.label != null
-          && !selectedSnapshot.label.isBlank()) {
-        String labelKey = selectedSnapshot.label.trim().toLowerCase();
-        DeviceSnapshot existing = byLabel.get(labelKey);
-        byLabel.put(labelKey, choosePreferredSnapshot(existing, selectedSnapshot));
-        if (selectedSnapshot.canId >= 0) {
-          DeviceSnapshot existingById = byId.get(selectedSnapshot.canId);
-          byId.put(
-              selectedSnapshot.canId,
-              choosePreferredSnapshot(existingById, selectedSnapshot));
+      List<DeviceSnapshot> snapshots = core() != null
+          ? core().captureSnapshots(SnapshotDetail.LIGHT)
+          : new ArrayList<>();
+      Map<String, DeviceSnapshot> byLabel = new HashMap<>();
+      Map<Integer, DeviceSnapshot> byId = new HashMap<>();
+      for (DeviceSnapshot snap : snapshots) {
+        if (snap == null) {
+          continue;
+        }
+        if (snap.label != null && !snap.label.isBlank()) {
+          String labelKey = snap.label.trim().toLowerCase();
+          DeviceSnapshot existing = byLabel.get(labelKey);
+          byLabel.put(labelKey, choosePreferredSnapshot(existing, snap));
+        }
+        if (snap.canId >= 0) {
+          DeviceSnapshot existing = byId.get(snap.canId);
+          byId.put(snap.canId, choosePreferredSnapshot(existing, snap));
         }
       }
-    }
+      DeviceSnapshot selectedSnapshot = null;
+      if (!selectedLabel.isBlank() && core() != null) {
+        selectedSnapshot = core().captureSnapshotForLabel(bridgeSelected().device, SnapshotDetail.FULL);
+        if (selectedSnapshot != null
+            && selectedSnapshot.label != null
+            && !selectedSnapshot.label.isBlank()) {
+          String labelKey = selectedSnapshot.label.trim().toLowerCase();
+          DeviceSnapshot existing = byLabel.get(labelKey);
+          byLabel.put(labelKey, choosePreferredSnapshot(existing, selectedSnapshot));
+          if (selectedSnapshot.canId >= 0) {
+            DeviceSnapshot existingById = byId.get(selectedSnapshot.canId);
+            byId.put(
+                selectedSnapshot.canId,
+                choosePreferredSnapshot(existingById, selectedSnapshot));
+          }
+        }
+      }
 
-    JsonArray array = new JsonArray();
-    java.util.HashSet<String> emitted = new java.util.HashSet<>();
-    List<BringupUtil.DeviceEntry> runtimeDevices = BringupUtil.isProfileActive()
-        ? BringupUtil.getActiveDevicesSorted()
-        : BringupUtil.getSelectedDevicesSorted();
-    for (BringupUtil.DeviceEntry entry : runtimeDevices) {
-      if (entry == null) {
-        continue;
-      }
-      String entryKey = runtimeStateDeviceKey(entry);
-      if (!emitted.add(entryKey)) {
-        continue;
-      }
-      JsonObject obj = new JsonObject();
-      obj.addProperty(JSON_KEY_LABEL, entry.label);
-      obj.addProperty(JSON_KEY_VENDOR, entry.vendor);
-      obj.addProperty(JSON_KEY_TYPE, entry.type);
-      obj.addProperty(JSON_KEY_ID, entry.id);
-      obj.addProperty(JSON_KEY_LIFECYCLE_KIND, runtimeLifecycleKindForEntry(entry));
-      DeviceLifecycleRegistry.DeviceLifecycleView lifecycle =
-          runtime.getDeviceLifecycle().viewForLabel(entry.label);
-      frc.robot.diag.lifecycle.runtime.DeviceRuntimeState controlledState =
-          controlledLifecycleRuntimeStateForLabel(lifecycleRuntime, entry.label);
-      boolean controlledActive = controlledState != null && controlledState.isActive();
+      JsonArray array = new JsonArray();
+      java.util.HashSet<String> emitted = new java.util.HashSet<>();
+      List<BringupUtil.DeviceEntry> runtimeDevices = BringupUtil.isProfileActive()
+          ? BringupUtil.getActiveDevicesSorted()
+          : BringupUtil.getSelectedDevicesSorted();
+      for (BringupUtil.DeviceEntry entry : runtimeDevices) {
+        if (entry == null) {
+          continue;
+        }
+        String entryKey = runtimeStateDeviceKey(entry);
+        if (!emitted.add(entryKey)) {
+          continue;
+        }
+        JsonObject obj = new JsonObject();
+        obj.addProperty(JSON_KEY_LABEL, entry.label);
+        obj.addProperty(JSON_KEY_VENDOR, entry.vendor);
+        obj.addProperty(JSON_KEY_TYPE, entry.type);
+        obj.addProperty(JSON_KEY_ID, entry.id);
+        obj.addProperty(JSON_KEY_LIFECYCLE_KIND, runtimeLifecycleKindForEntry(entry));
+        DeviceLifecycleRegistry.DeviceLifecycleView lifecycle =
+            runtime.getDeviceLifecycle().viewForLabel(entry.label);
+        frc.robot.diag.lifecycle.runtime.DeviceRuntimeState controlledState =
+            controlledLifecycleRuntimeStateForLabel(lifecycleRuntime, entry.label);
+        boolean controlledActive = controlledState != null && controlledState.isActive();
 
-      DeviceSnapshot snap = null;
-      if (entry.label != null) {
-        snap = byLabel.get(entry.label.trim().toLowerCase());
-      }
-      if (snap == null && entry.id >= 0) {
-        snap = byId.get(entry.id);
-      }
-      boolean controlledInstantiated =
-          controlledState != null && controlledState.isInstantiated();
-      obj.addProperty(
-          JSON_KEY_INSTANTIATED,
-          controlledInstantiated
-              || (lifecycle != null ? lifecycle.lifecycleState.startsWith("instantiated") : snap != null));
-      if (lifecycle != null) {
-        obj.addProperty(JSON_KEY_PRESENCE_CONF, lifecycle.presenceScore);
-        obj.addProperty(JSON_KEY_LIFECYCLE_STATE, lifecycle.lifecycleState);
-        obj.addProperty(JSON_KEY_TESTABLE, lifecycle.testable);
-        obj.addProperty(JSON_KEY_OVERRIDE_ACTIVE, lifecycle.overrideActive);
-        obj.addProperty(JSON_KEY_OVERRIDE_ORIGINATED, lifecycle.overrideOriginated);
-        obj.addProperty(JSON_KEY_OVERRIDE_FAILURE, lifecycle.overrideFailure);
-        obj.addProperty(JSON_KEY_LAST_EVENT, lifecycle.lastEvent);
-        obj.addProperty(JSON_KEY_LAST_TRANSITION_TIME_MS, lifecycle.lastTransitionTimeMs);
-        obj.addProperty(JSON_KEY_NOT_TESTABLE_REASON, lifecycle.notTestableReason);
-      }
-      applyControlledLifecycleRuntimeFields(obj, controlledState, lifecycle, nowMs);
-      if (controlledLifecycleActive && !controlledActive) {
-        obj.addProperty(JSON_KEY_TESTABLE, false);
+        DeviceSnapshot snap = null;
+        if (entry.label != null) {
+          snap = byLabel.get(entry.label.trim().toLowerCase());
+        }
+        if (snap == null && entry.id >= 0) {
+          snap = byId.get(entry.id);
+        }
+        boolean controlledInstantiated =
+            controlledState != null && controlledState.isInstantiated();
+        boolean controlledScopeActive =
+            controlledState != null && controlledState.isActive();
         obj.addProperty(
-            JSON_KEY_NOT_TESTABLE_REASON,
-            TEXT_CONTROLLED_LIFECYCLE_SCOPE_REQUIRED_REASON);
+            JSON_KEY_INSTANTIATED,
+            controlledInstantiated
+                || (lifecycle != null ? lifecycle.lifecycleState.startsWith("instantiated") : snap != null));
+        if (lifecycle != null) {
+          obj.addProperty(JSON_KEY_PRESENCE_CONF, lifecycle.presenceScore);
+          obj.addProperty(JSON_KEY_LIFECYCLE_STATE, lifecycle.lifecycleState);
+          obj.addProperty(JSON_KEY_TESTABLE, lifecycle.testable);
+          obj.addProperty(JSON_KEY_OVERRIDE_ACTIVE, lifecycle.overrideActive);
+          obj.addProperty(JSON_KEY_OVERRIDE_ORIGINATED, lifecycle.overrideOriginated);
+          obj.addProperty(JSON_KEY_OVERRIDE_FAILURE, lifecycle.overrideFailure);
+          obj.addProperty(JSON_KEY_LAST_EVENT, lifecycle.lastEvent);
+          obj.addProperty(JSON_KEY_LAST_TRANSITION_TIME_MS, lifecycle.lastTransitionTimeMs);
+          obj.addProperty(JSON_KEY_NOT_TESTABLE_REASON, lifecycle.notTestableReason);
+        }
+        DeviceActionability.Evaluation actionability =
+            DeviceActionability.evaluate(
+                lifecycle,
+                controlledLifecycleActive,
+                controlledScopeActive);
+        obj.addProperty(JSON_KEY_MANUAL_OPERABLE, actionability.manualOperable);
+        obj.addProperty(JSON_KEY_TEST_OPERABLE, actionability.testOperable);
+        obj.addProperty(JSON_KEY_BLOCKED_REASON_CODE, actionability.blockedReasonCode);
+        obj.addProperty(JSON_KEY_BLOCKED_REASON_TEXT, actionability.blockedReasonText);
+        applyControlledLifecycleRuntimeFields(obj, controlledState, lifecycle, nowMs);
+        if (controlledLifecycleActive && !controlledActive) {
+          obj.addProperty(JSON_KEY_TESTABLE, false);
+          obj.addProperty(
+              JSON_KEY_NOT_TESTABLE_REASON,
+              TEXT_CONTROLLED_LIFECYCLE_SCOPE_REQUIRED_REASON);
+          obj.addProperty(JSON_KEY_MANUAL_OPERABLE, false);
+          obj.addProperty(JSON_KEY_TEST_OPERABLE, false);
+          obj.addProperty(
+              JSON_KEY_BLOCKED_REASON_CODE,
+              DeviceActionability.REASON_CODE_SCOPE_REQUIRED);
+          obj.addProperty(
+              JSON_KEY_BLOCKED_REASON_TEXT,
+              TEXT_CONTROLLED_LIFECYCLE_SCOPE_REQUIRED_REASON);
+        }
+        if (snap != null) {
+          if (lifecycle == null) {
+            obj.addProperty(JSON_KEY_PRESENCE_CONF, snap.present ? 1.0 : 0.0);
+          }
+          if (snap.present || (lifecycle != null && lifecycle.presenceScore > 0.0)) {
+            obj.addProperty(JSON_KEY_LAST_SEEN_MS, nowMs);
+          }
+          if (snap.attachments != null && !snap.attachments.isEmpty()) {
+            obj.add(JSON_KEY_ATTACHMENTS, GSON.toJsonTree(snap.attachments));
+          }
+          applySampledSignalFields(obj, snap.getAttachment(SampledSignalsAttachment.class));
+          RevMotorAttachment rev = snap.getAttachment(RevMotorAttachment.class);
+          if (rev != null) {
+            if (rev.busV != null) {
+              obj.addProperty(JSON_KEY_BUS_V, rev.busV);
+            }
+            if (rev.motorCurrentA != null) {
+              obj.addProperty(JSON_KEY_MOTOR_CURRENT_A, rev.motorCurrentA);
+            }
+            if (rev.cmdDuty != null) {
+              obj.addProperty(JSON_KEY_CMD_DUTY, rev.cmdDuty);
+            }
+            if (rev.appliedDuty != null) {
+              obj.addProperty(JSON_KEY_APPLIED_DUTY, rev.appliedDuty);
+            }
+            if (rev.appliedV != null) {
+              obj.addProperty(JSON_KEY_APPLIED_V, rev.appliedV);
+            }
+            if (rev.velRpm != null) {
+              obj.addProperty(JSON_KEY_VEL_RPM, rev.velRpm);
+            }
+            if (rev.positionRot != null) {
+              obj.addProperty(JSON_KEY_POSITION_ROT, rev.positionRot);
+            }
+            if (rev.tempC != null) {
+              obj.addProperty(JSON_KEY_TEMP_C, rev.tempC);
+            }
+            if (rev.lastError != null && !rev.lastError.isBlank()) {
+              obj.addProperty(JSON_KEY_LAST_ERROR, rev.lastError);
+            }
+            obj.addProperty(JSON_KEY_FAULTS_RAW, rev.faultsRaw);
+            obj.addProperty(JSON_KEY_STICKY_FAULTS_RAW, rev.stickyFaultsRaw);
+            obj.addProperty(JSON_KEY_WARNINGS_RAW, rev.warningsRaw);
+            obj.addProperty(JSON_KEY_STICKY_WARNINGS_RAW, rev.stickyWarningsRaw);
+            obj.addProperty(JSON_KEY_IS_FOLLOWER, rev.follower);
+          }
+          CtreMotorAttachment ctre = snap.getAttachment(CtreMotorAttachment.class);
+          if (ctre != null) {
+            if (ctre.motorCurrentA != null) {
+              obj.addProperty(JSON_KEY_MOTOR_CURRENT_A, ctre.motorCurrentA);
+            }
+            if (ctre.cmdDuty != null) {
+              obj.addProperty(JSON_KEY_CMD_DUTY, ctre.cmdDuty);
+            }
+            if (ctre.appliedDuty != null) {
+              obj.addProperty(JSON_KEY_APPLIED_DUTY, ctre.appliedDuty);
+            }
+            if (ctre.appliedV != null) {
+              obj.addProperty(JSON_KEY_APPLIED_V, ctre.appliedV);
+            }
+            if (ctre.velRpm != null) {
+              obj.addProperty(JSON_KEY_VEL_RPM, ctre.velRpm);
+            }
+            if (ctre.positionRot != null) {
+              obj.addProperty(JSON_KEY_POSITION_ROT, ctre.positionRot);
+            }
+            if (ctre.tempC != null) {
+              obj.addProperty(JSON_KEY_TEMP_C, ctre.tempC);
+            }
+          }
+          PdhStatusAttachment pdh = snap.getAttachment(PdhStatusAttachment.class);
+          if (pdh != null) {
+            applyPdhFields(obj, pdh);
+          }
+          PdpStatusAttachment pdp = snap.getAttachment(PdpStatusAttachment.class);
+          if (pdp != null) {
+            applyPdpFields(obj, pdp);
+          }
+        }
+        array.add(obj);
       }
-      if (snap != null) {
-        if (lifecycle == null) {
-          obj.addProperty(JSON_KEY_PRESENCE_CONF, snap.present ? 1.0 : 0.0);
-        }
-        if (snap.present || (lifecycle != null && lifecycle.presenceScore > 0.0)) {
-          obj.addProperty(JSON_KEY_LAST_SEEN_MS, nowMs);
-        }
-        if (snap.attachments != null && !snap.attachments.isEmpty()) {
-          obj.add(JSON_KEY_ATTACHMENTS, GSON.toJsonTree(snap.attachments));
-        }
-        applySampledSignalFields(obj, snap.getAttachment(SampledSignalsAttachment.class));
-        RevMotorAttachment rev = snap.getAttachment(RevMotorAttachment.class);
-        if (rev != null) {
-          if (rev.busV != null) {
-            obj.addProperty(JSON_KEY_BUS_V, rev.busV);
-          }
-          if (rev.motorCurrentA != null) {
-            obj.addProperty(JSON_KEY_MOTOR_CURRENT_A, rev.motorCurrentA);
-          }
-          if (rev.cmdDuty != null) {
-            obj.addProperty(JSON_KEY_CMD_DUTY, rev.cmdDuty);
-          }
-          if (rev.appliedDuty != null) {
-            obj.addProperty(JSON_KEY_APPLIED_DUTY, rev.appliedDuty);
-          }
-          if (rev.appliedV != null) {
-            obj.addProperty(JSON_KEY_APPLIED_V, rev.appliedV);
-          }
-          if (rev.velRpm != null) {
-            obj.addProperty(JSON_KEY_VEL_RPM, rev.velRpm);
-          }
-          if (rev.positionRot != null) {
-            obj.addProperty(JSON_KEY_POSITION_ROT, rev.positionRot);
-          }
-          if (rev.tempC != null) {
-            obj.addProperty(JSON_KEY_TEMP_C, rev.tempC);
-          }
-          if (rev.lastError != null && !rev.lastError.isBlank()) {
-            obj.addProperty(JSON_KEY_LAST_ERROR, rev.lastError);
-          }
-          obj.addProperty(JSON_KEY_FAULTS_RAW, rev.faultsRaw);
-          obj.addProperty(JSON_KEY_STICKY_FAULTS_RAW, rev.stickyFaultsRaw);
-          obj.addProperty(JSON_KEY_WARNINGS_RAW, rev.warningsRaw);
-          obj.addProperty(JSON_KEY_STICKY_WARNINGS_RAW, rev.stickyWarningsRaw);
-          obj.addProperty(JSON_KEY_IS_FOLLOWER, rev.follower);
-        }
-        CtreMotorAttachment ctre = snap.getAttachment(CtreMotorAttachment.class);
-        if (ctre != null) {
-          if (ctre.motorCurrentA != null) {
-            obj.addProperty(JSON_KEY_MOTOR_CURRENT_A, ctre.motorCurrentA);
-          }
-          if (ctre.cmdDuty != null) {
-            obj.addProperty(JSON_KEY_CMD_DUTY, ctre.cmdDuty);
-          }
-          if (ctre.appliedDuty != null) {
-            obj.addProperty(JSON_KEY_APPLIED_DUTY, ctre.appliedDuty);
-          }
-          if (ctre.appliedV != null) {
-            obj.addProperty(JSON_KEY_APPLIED_V, ctre.appliedV);
-          }
-          if (ctre.velRpm != null) {
-            obj.addProperty(JSON_KEY_VEL_RPM, ctre.velRpm);
-          }
-          if (ctre.positionRot != null) {
-            obj.addProperty(JSON_KEY_POSITION_ROT, ctre.positionRot);
-          }
-          if (ctre.tempC != null) {
-            obj.addProperty(JSON_KEY_TEMP_C, ctre.tempC);
-          }
-        }
-        PdhStatusAttachment pdh = snap.getAttachment(PdhStatusAttachment.class);
-        if (pdh != null) {
-          applyPdhFields(obj, pdh);
-        }
-        PdpStatusAttachment pdp = snap.getAttachment(PdpStatusAttachment.class);
-        if (pdp != null) {
-          applyPdpFields(obj, pdp);
-        }
-      }
-      array.add(obj);
+      rememberRuntimeStateDevicesCache(
+          array,
+          nowMs,
+          selectedLabel,
+          shouldBackoffRuntimeStateDeviceReads(snapshots, selectedSnapshot));
+      return array;
     }
-    return array;
+  }
+
+  /**
+   * NAME
+   *   shouldUseCachedRuntimeStateDevices - Reuse recent runtime-state device JSON to avoid repeated faulting reads.
+   */
+  private boolean shouldUseCachedRuntimeStateDevices(long nowMs, String selectedLabel) {
+    if (cachedRuntimeStateDevices == null) {
+      return false;
+    }
+    if (!safeEquals(selectedLabel, cachedRuntimeStateDevicesSelectedLabel)) {
+      return false;
+    }
+    if (cachedRuntimeStateDevicesBlockedUntilMs != TIME_NEVER_MS
+        && nowMs < cachedRuntimeStateDevicesBlockedUntilMs) {
+      return true;
+    }
+    if (cachedRuntimeStateDevicesBuiltAtMs == TIME_NEVER_MS) {
+      return false;
+    }
+    return (nowMs - cachedRuntimeStateDevicesBuiltAtMs) < RUNTIME_STATE_DEVICE_CACHE_TTL_MS;
+  }
+
+  /**
+   * NAME
+   *   rememberRuntimeStateDevicesCache - Store the last built runtime-state device payload and optional failure backoff.
+   */
+  private void rememberRuntimeStateDevicesCache(
+      JsonArray devices,
+      long nowMs,
+      String selectedLabel,
+      boolean backoff) {
+    cachedRuntimeStateDevices = devices != null ? devices.deepCopy() : new JsonArray();
+    cachedRuntimeStateDevicesBuiltAtMs = nowMs;
+    cachedRuntimeStateDevicesSelectedLabel =
+        selectedLabel != null ? selectedLabel : TEXT_EMPTY;
+    cachedRuntimeStateDevicesBlockedUntilMs =
+        backoff ? nowMs + RUNTIME_STATE_DEVICE_FAILURE_BACKOFF_MS : TIME_NEVER_MS;
+  }
+
+  /**
+   * NAME
+   *   shouldBackoffRuntimeStateDeviceReads - Detect notes that indicate repeated live reads will only re-trigger console faults.
+   */
+  static boolean shouldBackoffRuntimeStateDeviceReads(
+      List<DeviceSnapshot> snapshots,
+      DeviceSnapshot selectedSnapshot) {
+    return snapshotListSuggestsRuntimeStateReadBackoff(snapshots)
+        || snapshotSuggestsRuntimeStateReadBackoff(selectedSnapshot);
+  }
+
+  static boolean snapshotListSuggestsRuntimeStateReadBackoff(List<DeviceSnapshot> snapshots) {
+    if (snapshots == null) {
+      return false;
+    }
+    for (DeviceSnapshot snapshot : snapshots) {
+      if (snapshotSuggestsRuntimeStateReadBackoff(snapshot)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static boolean snapshotSuggestsRuntimeStateReadBackoff(DeviceSnapshot snapshot) {
+    if (snapshot == null) {
+      return false;
+    }
+    return noteSuggestsRuntimeStateReadBackoff(snapshot.note);
+  }
+
+  static boolean noteSuggestsRuntimeStateReadBackoff(String note) {
+    return SnapshotBackoffPolicy.noteSuggestsReadBackoff(note);
+  }
+
+  private boolean safeEquals(String left, String right) {
+    if (left == null) {
+      return right == null;
+    }
+    return left.equals(right);
   }
 
   static String runtimeLifecycleKindForEntry(BringupUtil.DeviceEntry entry) {

@@ -185,7 +185,7 @@
       "manufacturer": 5,
       "deviceType": 8,
       "model": "PDH",
-      "type": ""
+      "type": "pdh"
     },
     {
       "label": "roborio",
@@ -195,7 +195,7 @@
       "manufacturer": 1,
       "deviceType": 1,
       "model": "roboRIO",
-      "type": ""
+      "type": "robotController"
     },
     {
       "label": "lmtSw0",
@@ -254,7 +254,7 @@
       "manufacturer": 4,
       "deviceType": 8,
       "model": "PDP",
-      "type": ""
+      "type": "pdp"
     },
     {
       "label": "cancoder",
@@ -321,11 +321,11 @@
       "manufacturer": 4,
       "deviceType": 4,
       "model": "Pigeon",
-      "type": ""
+      "type": "pigeon"
     }
   ],
-  "data_version": "2026-08-25_094708",
-  "data_hash": "808ca561b0f8652dbe90261b3c2d4eb835b231a9623c087e2d0d2c36ac2ebbc5",
+  "data_version": "2026-08-25_135137",
+  "data_hash": "e872d5817a3cb8691d360fb3ce0e631171731dcfc939e589c9efe5a2184101fc",
   "default_profile": "test_minimal_25_9",
   "bridgeConfig": {
     "schemaVersion": 2,

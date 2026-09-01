@@ -34,6 +34,9 @@ public final class BringupRuntime {
   private static final String GROUP_ACTIVE = "active-group";
   private static final String GROUP_DEFAULT = "defaultGroup";
   private static final String SCOPE_LABEL_SELECTED_TEST_PREFIX = "selected-test:";
+  private static final String MESSAGE_RUNTIME_INACTIVE = "Runtime inactive. Click Runtime Activate.";
+  private static final String MESSAGE_ADDED_ACTIVE_SCOPE_DEVICES =
+      "Added selected active-scope devices.";
   private static final String TYPE_PDH = "PDH";
   private static final String TYPE_PDP = "PDP";
   private static final String TYPE_ROBORIO = "robotController";
@@ -102,6 +105,11 @@ public final class BringupRuntime {
   private static final int ACTIVATION_MEMBER_MESSAGE_LIMIT = 3;
   private static final long PERIODIC_LIFECYCLE_REFRESH_ENABLED_MS = 250L;
   private static final long PERIODIC_LIFECYCLE_REFRESH_DISABLED_MS = 1000L;
+  private static final int PERIODIC_LIFECYCLE_MAX_FULL_SNAPSHOTS_ENABLED = 1;
+  private static final int PERIODIC_LIFECYCLE_MAX_FULL_SNAPSHOTS_DISABLED = 2;
+  private static final int PERIODIC_SAMPLED_TELEMETRY_MAX_SIGNAL_READS_ENABLED = 1;
+  private static final int PERIODIC_SAMPLED_TELEMETRY_MAX_SIGNAL_READS_DISABLED = 2;
+  private static final int SNAPSHOT_CAPTURE_UNBOUNDED = Integer.MAX_VALUE;
 
   private final CanBusHealth canHealth;
   private final String runTestBindingLabel;
@@ -113,6 +121,7 @@ public final class BringupRuntime {
   private LifecycleCatalogBundle controlledBringupLifecycle;
   private ControlledBringupLifecycleRuntime controlledBringupLifecycleRuntime;
   private long lastPeriodicLifecycleRefreshMs = Long.MIN_VALUE;
+  private int periodicLifecycleSnapshotCursor = 0;
 
   private BringupCore core;
   private DiagnosticsReporter diagnostics;
@@ -700,6 +709,7 @@ public final class BringupRuntime {
    *   sampleTelemetry - Advance robot-side sampled telemetry for active devices.
    */
   public void sampleTelemetry(long nowMs) {
+    boolean robotEnabled = DriverStation.isEnabled();
     List<DeviceUnit> devices = Collections.emptyList();
     if (core != null && BringupUtil.isProfileActive()) {
       List<DeviceUnit> activeDevices = new java.util.ArrayList<>();
@@ -715,15 +725,44 @@ public final class BringupRuntime {
       }
       devices = activeDevices;
     }
-    sampledTelemetry.sampleDevices(devices, nowMs);
-    long refreshPeriodMs = DriverStation.isEnabled()
+    sampleTelemetryDevices(devices, nowMs, robotEnabled);
+    long refreshPeriodMs = robotEnabled
         ? PERIODIC_LIFECYCLE_REFRESH_ENABLED_MS
         : PERIODIC_LIFECYCLE_REFRESH_DISABLED_MS;
     if (lastPeriodicLifecycleRefreshMs == Long.MIN_VALUE
         || (nowMs - lastPeriodicLifecycleRefreshMs) >= refreshPeriodMs) {
-      refreshDeviceLifecycle(nowMs);
+      refreshDeviceLifecyclePeriodically(nowMs, robotEnabled);
       lastPeriodicLifecycleRefreshMs = nowMs;
     }
+  }
+
+  /**
+   * NAME
+   *   sampleTelemetryDevices - Sample a bounded subset of registered telemetry signals.
+   *
+   * PARAMETERS
+   *   devices - Active created devices eligible for sampled telemetry.
+   *   nowMs - Current wall-clock time in milliseconds.
+   *   robotEnabled - Whether the robot is enabled.
+   */
+  void sampleTelemetryDevices(List<DeviceUnit> devices, long nowMs, boolean robotEnabled) {
+    sampledTelemetry.sampleDevices(devices, nowMs, sampledTelemetryReadBudget(robotEnabled));
+  }
+
+  /**
+   * NAME
+   *   sampledTelemetryReadBudget - Return the per-pass raw signal read budget.
+   *
+   * PARAMETERS
+   *   robotEnabled - Whether the robot is enabled.
+   *
+   * RETURNS
+   *   Maximum raw signal reads allowed in one telemetry pass.
+   */
+  int sampledTelemetryReadBudget(boolean robotEnabled) {
+    return robotEnabled
+        ? PERIODIC_SAMPLED_TELEMETRY_MAX_SIGNAL_READS_ENABLED
+        : PERIODIC_SAMPLED_TELEMETRY_MAX_SIGNAL_READS_DISABLED;
   }
 
   /**
@@ -738,12 +777,16 @@ public final class BringupRuntime {
 
   /**
    * NAME
-   *   addAllDevices - Apply the add-all-devices action.
+   *   addAllDevices - Apply the add-all-devices action to enabled active-group members.
    */
   public void addAllDevices(boolean addAllNow) {
-    if (core != null) {
-      core.handleAddAll(addAllNow);
+    if (core == null) {
+      return;
     }
+    if (addAllNow && !core.previousAddAll()) {
+      instantiateEnabledActiveGroupMembers();
+    }
+    core.setPreviousAddAll(addAllNow);
   }
 
   /**
@@ -758,12 +801,10 @@ public final class BringupRuntime {
 
   /**
    * NAME
-   *   addAllDevicesCommand - Instantiate all configured devices.
+   *   addAllDevicesCommand - Instantiate enabled active-group members.
    */
   public void addAllDevicesCommand() {
-    if (core != null) {
-      core.addAllDevicesCommand();
-    }
+    instantiateEnabledActiveGroupMembers();
   }
 
   /**
@@ -842,6 +883,20 @@ public final class BringupRuntime {
    */
   public ActiveDevicePresenceProbe.ProbeSessionResult runActivePresenceProbe() {
     return core != null ? core.runActivePresenceProbe() : null;
+  }
+
+  /**
+   * NAME
+   *   startActivePresenceProbeRun - Create an incremental active-probe run on the active runtime.
+   *
+   * PARAMETERS
+   *   preclearSticky - Whether sticky faults may be cleared during this probe pass.
+   *
+   * RETURNS
+   *   Incremental probe run state or null when no runtime is active.
+   */
+  public ActiveDevicePresenceProbe.ProbeRun startActivePresenceProbeRun(boolean preclearSticky) {
+    return core != null ? core.startActivePresenceProbeRun(preclearSticky) : null;
   }
 
   /**
@@ -947,17 +1002,14 @@ public final class BringupRuntime {
    *   reason - Reset reason label.
    *
    * SIDE EFFECTS
-   *   Performs a full profile runtime reset and creates every device in the
-   *   active profile.
+   *   Performs a full profile runtime reset, restores active-group membership,
+   *   and refreshes lifecycle state without broad profile-wide instantiation.
    */
   public void resetAndInstantiateForProfile(String reason) {
     PreservedActiveGroup preservedActiveGroup = preserveActiveGroup(bridgeGroups.getGroup(GROUP_ACTIVE));
     resetForProfile(reason);
     synchronizeProfileBridgeRuntimeConfig();
     restoreActiveGroup(bridgeGroups, preservedActiveGroup);
-    if (core != null) {
-      core.addAllDevicesCommand();
-    }
     long nowMs = System.currentTimeMillis();
     initializeDeviceLifecycle(nowMs);
     refreshDeviceLifecycle(nowMs);
@@ -1416,6 +1468,35 @@ public final class BringupRuntime {
    *   nowMs - Event timestamp.
    */
   public void refreshDeviceLifecycle(long nowMs) {
+    refreshDeviceLifecycleInternal(nowMs, SNAPSHOT_CAPTURE_UNBOUNDED, false);
+  }
+
+  /**
+   * NAME
+   *   refreshDeviceLifecyclePeriodically - Refresh lifecycle state using a bounded snapshot budget.
+   *
+   * PARAMETERS
+   *   nowMs - Event timestamp.
+   *   robotEnabled - Whether the robot is currently enabled.
+   */
+  private void refreshDeviceLifecyclePeriodically(long nowMs, boolean robotEnabled) {
+    int snapshotBudget = robotEnabled
+        ? PERIODIC_LIFECYCLE_MAX_FULL_SNAPSHOTS_ENABLED
+        : PERIODIC_LIFECYCLE_MAX_FULL_SNAPSHOTS_DISABLED;
+    refreshDeviceLifecycleInternal(nowMs, snapshotBudget, true);
+  }
+
+  /**
+   * NAME
+   *   refreshDeviceLifecycleInternal - Recompute lifecycle state with optional bounded snapshot work.
+   *
+   * PARAMETERS
+   *   nowMs - Event timestamp.
+   *   snapshotBudget - Maximum FULL snapshots to capture this pass.
+   *   advancePeriodicCursor - Whether to advance the periodic round-robin cursor.
+   */
+  private void refreshDeviceLifecycleInternal(
+      long nowMs, int snapshotBudget, boolean advancePeriodicCursor) {
     List<BringupUtil.DeviceEntry> entries = currentLifecycleProfileDevices();
     java.util.Map<String, frc.robot.diag.snapshots.DeviceSnapshot> snapshotsByLabel =
         new java.util.LinkedHashMap<>();
@@ -1446,6 +1527,7 @@ public final class BringupRuntime {
                   runtimeActive, controlledLifecycleActive, controlledState));
     }
     if (core != null) {
+      List<String> eligibleSnapshotLabels = new ArrayList<>();
       for (BringupUtil.DeviceEntry entry : entries) {
         if (entry == null || entry.label == null || entry.label.isBlank()) {
           continue;
@@ -1465,6 +1547,26 @@ public final class BringupRuntime {
         if (!shouldCapture) {
           continue;
         }
+        eligibleSnapshotLabels.add(normalized);
+      }
+      PeriodicSnapshotPlan snapshotPlan =
+          selectPeriodicSnapshotPlan(
+              eligibleSnapshotLabels,
+              periodicLifecycleSnapshotCursor,
+              snapshotBudget);
+      if (advancePeriodicCursor) {
+        periodicLifecycleSnapshotCursor = snapshotPlan.nextCursor();
+      }
+      java.util.Set<String> selectedSnapshotLabels =
+          new java.util.LinkedHashSet<>(snapshotPlan.selectedLabels());
+      for (BringupUtil.DeviceEntry entry : entries) {
+        if (entry == null || entry.label == null || entry.label.isBlank()) {
+          continue;
+        }
+        String normalized = entry.label.trim().toLowerCase();
+        if (!selectedSnapshotLabels.contains(normalized)) {
+          continue;
+        }
         frc.robot.diag.snapshots.DeviceSnapshot snapshot =
             core.captureCreatedSnapshotForLabel(
                 entry.label, frc.robot.diag.snapshots.SnapshotDetail.FULL);
@@ -1475,6 +1577,43 @@ public final class BringupRuntime {
       }
     }
     deviceLifecycle.refresh(entries, snapshotsByLabel, instantiatedByLabel, inScopeByLabel, nowMs);
+  }
+
+  static PeriodicSnapshotPlan selectPeriodicSnapshotPlan(
+      List<String> eligibleLabels,
+      int startCursor,
+      int snapshotBudget) {
+    if (eligibleLabels == null || eligibleLabels.isEmpty() || snapshotBudget <= 0) {
+      return new PeriodicSnapshotPlan(List.of(), 0);
+    }
+    int size = eligibleLabels.size();
+    int normalizedCursor = Math.floorMod(startCursor, size);
+    int selectedCount = Math.min(snapshotBudget, size);
+    List<String> selectedLabels = new ArrayList<>(selectedCount);
+    for (int index = 0; index < selectedCount; index++) {
+      int selectedIndex = (normalizedCursor + index) % size;
+      selectedLabels.add(eligibleLabels.get(selectedIndex));
+    }
+    int nextCursor = (normalizedCursor + selectedCount) % size;
+    return new PeriodicSnapshotPlan(selectedLabels, nextCursor);
+  }
+
+  static final class PeriodicSnapshotPlan {
+    private final List<String> selectedLabels;
+    private final int nextCursor;
+
+    PeriodicSnapshotPlan(List<String> selectedLabels, int nextCursor) {
+      this.selectedLabels = List.copyOf(selectedLabels);
+      this.nextCursor = nextCursor;
+    }
+
+    List<String> selectedLabels() {
+      return selectedLabels;
+    }
+
+    int nextCursor() {
+      return nextCursor;
+    }
   }
 
   static boolean isLifecycleDeviceInstantiated(
@@ -1514,7 +1653,7 @@ public final class BringupRuntime {
     if (controlledLifecycleActive) {
       return controlledState != null && controlledState.isActive();
     }
-    return runtimeActive;
+    return false;
   }
 
   static boolean shouldCaptureLifecycleSnapshot(
@@ -1528,7 +1667,7 @@ public final class BringupRuntime {
     if (controlledLifecycleActive) {
       return controlledState != null && controlledState.isActive();
     }
-    return runtimeActive;
+    return false;
   }
 
   static boolean shouldInstantiateLifecycleSingleton(
@@ -1539,6 +1678,52 @@ public final class BringupRuntime {
       return controlledState != null && controlledState.isActive();
     }
     return runtimeActive;
+  }
+
+  /**
+   * NAME
+   *   enabledActiveGroupLabels - Return enabled active-group member labels.
+   *
+   * RETURNS
+   *   Ordered active-group labels whose membership is enabled.
+   */
+  List<String> enabledActiveGroupLabels() {
+    BridgeGroupManager.Group activeGroup = bridgeGroups.getGroup(GROUP_ACTIVE);
+    if (activeGroup == null || !activeGroup.enabled || activeGroup.members.isEmpty()) {
+      return List.of();
+    }
+    List<String> labels = new ArrayList<>();
+    for (BridgeGroupManager.MemberState member : activeGroup.members.values()) {
+      if (member == null || !member.enabled || member.label == null || member.label.isBlank()) {
+        continue;
+      }
+      labels.add(member.label);
+    }
+    return List.copyOf(labels);
+  }
+
+  /**
+   * NAME
+   *   instantiateEnabledActiveGroupMembers - Instantiate enabled active-group members only.
+   *
+   * SIDE EFFECTS
+   *   Synchronizes current profile device wrappers and creates only the
+   *   explicitly selected active-group devices.
+   */
+  void instantiateEnabledActiveGroupMembers() {
+    if (core == null) {
+      return;
+    }
+    core.syncProfileRuntimeFromRegistry();
+    if (!BringupUtil.isProfileActive()) {
+      BringupPrinter.enqueue(MESSAGE_RUNTIME_INACTIVE);
+      return;
+    }
+    for (String label : enabledActiveGroupLabels()) {
+      core.instantiateDeviceByLabel(label);
+    }
+    core.resetNextMotorGroupIndex();
+    BringupPrinter.enqueue(MESSAGE_ADDED_ACTIVE_SCOPE_DEVICES);
   }
 
   static ActivationMemberSelection selectActivationMembers(

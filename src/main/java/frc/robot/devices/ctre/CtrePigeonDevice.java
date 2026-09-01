@@ -37,6 +37,7 @@ public final class CtrePigeonDevice implements DeviceUnit {
 
   private final int canId;
   private final String label;
+  private final CtreReadFailureCooldown readFailureCooldown = new CtreReadFailureCooldown();
   private Pigeon2 device;
 
   /**
@@ -131,6 +132,11 @@ public final class CtrePigeonDevice implements DeviceUnit {
       snap.note = NOTE_NOT_ADDED;
       return snap;
     }
+    if (readFailureCooldown.isActive()) {
+      snap.present = false;
+      snap.note = NOTE_READ_FAIL_PREFIX + readFailureCooldown.unavailableNote();
+      return snap;
+    }
     try {
       var yaw = device.getYaw();
       var pitch = device.getPitch();
@@ -174,7 +180,9 @@ public final class CtrePigeonDevice implements DeviceUnit {
       imu.lastError = String.valueOf(yaw.getStatus());
       snap.addAttachment(imu);
       snap.present = true;
+      readFailureCooldown.clear();
     } catch (RuntimeException ex) {
+      readFailureCooldown.recordFailure(ex);
       snap.present = false;
       snap.note = NOTE_READ_FAIL_PREFIX + ex.getMessage();
     }

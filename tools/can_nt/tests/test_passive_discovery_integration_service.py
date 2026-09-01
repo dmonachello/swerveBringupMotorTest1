@@ -35,6 +35,7 @@ from tools.can_nt.passive_discovery_integration_service import (
     build_passive_device_detail_snapshot,
     build_passive_visibility_deep_dive_text,
     build_manual_snapshot,
+    build_shadow_fusion_results,
     build_runtime_device_detail_snapshot,
     build_runtime_probe_snapshot,
     build_runtime_presence_catalog,
@@ -489,6 +490,108 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
         self.assertEqual(state.existence, row["existence"])
         self.assertEqual(state.presence_text, row["presenceText"])
         self.assertEqual(state.source_scores, row["sourceScores"])
+
+    def test_build_interpreted_device_state_applies_shadow_missing_override_for_can_device(self) -> None:
+        state = build_interpreted_device_state(
+            label="SPARKMAX/NEO 7",
+            presence_entry={
+                "bucket": "present",
+                "score": 1.0,
+                "source": "localSnapshot",
+                "updatedAtMs": 60_000.0,
+                "message": "Runtime snapshot observed device present.",
+                "existence": "PRESENT",
+                "confidence": "HIGH",
+                "ageText": "0.0s ago",
+            },
+            passive_device=None,
+            enrichment_snapshot=None,
+            visibility_device={
+                "metrics": {
+                    "observerA": {
+                        "msgCount": 4_571,
+                        "lastSeenMs": 60_000.0,
+                        "framesPerSec": 50.0,
+                    }
+                },
+                "rawIds": [
+                    {"apiClass": 46, "apiIndex": 2, "msgCount": 0},
+                    {"apiClass": 32, "apiIndex": 1, "msgCount": 4_571},
+                ],
+            },
+            runtime_device={
+                "label": "SPARKMAX/NEO 7",
+                "presenceConfidence": 1.0,
+                "lastSeenMs": 60_000.0,
+            },
+            console_entry={
+                "summary": "[WARN] SPARK_STATUS_TIMEOUT: device 7 timed out",
+                "hasError": False,
+                "hasWarn": True,
+                "totalCount": 2,
+                "freshness": "fresh",
+                "events": ["[WARN] SPARK_STATUS_TIMEOUT: device 7 timed out"],
+                "records": [
+                    {
+                        "faultFamily": "rev_timeout",
+                        "freshness": "fresh",
+                        "scope": "device",
+                        "totalCount": 2,
+                    }
+                ],
+            },
+            system_console={},
+            manual_entry=None,
+            manual_observation=None,
+            manual_motion=None,
+            probe_pending=False,
+            last_probe_completed_at=0.0,
+            probe_run_count=0,
+            shadow_result={
+                "overallState": "FAILED",
+                "reasonCodes": (
+                    "PASSIVE_HISTORY_MISSING",
+                    "PASSIVE_COMM_LOST",
+                    "CONSOLE_DEVICE_FAILURE",
+                ),
+                "dimensions": {
+                    "existence": {
+                        "value": "ABSENT",
+                        "confidenceBand": "HIGH",
+                        "conflict": False,
+                    },
+                    "communication": {
+                        "value": "FAILED",
+                        "confidenceBand": "HIGH",
+                        "conflict": False,
+                    },
+                    "operability": {
+                        "value": "FAILED",
+                        "confidenceBand": "HIGH",
+                        "conflict": False,
+                    },
+                    "identity": {
+                        "value": "UNKNOWN",
+                        "confidenceBand": "LOW",
+                        "conflict": False,
+                    },
+                },
+            },
+            now_s=60.0,
+            visibility_identity_text="5:2:7",
+            visibility_last_seen_text="0.0s",
+            visibility_packet_count_text="4571",
+            visibility_packet_rate_text="50.0/s",
+        )
+
+        self.assertEqual("ABSENT", state.existence)
+        self.assertEqual("FAILED", state.operability)
+        self.assertEqual("failed", state.state)
+        self.assertEqual("missing", state.presence_state)
+        self.assertIn(
+            "Fusion override: direct CAN-loss evidence and targeted console faults mark this CAN device missing.",
+            state.notes_text,
+        )
 
     def test_build_interpreted_evidence_row_uses_ctre_enrichment_for_corroboration(self) -> None:
         row = build_interpreted_evidence_row(
@@ -1030,6 +1133,190 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
             "Infrastructure device observed by passive CAN even though the current motion-test scope did not include it.",
             row["notesText"],
         )
+
+    def test_build_shadow_fusion_results_marks_passive_healthy_can_device_and_runtime_healthy_roborio(self) -> None:
+        passive_device = DeviceRecord(
+            identity=DeviceIdentity(manufacturer=5, device_type=2, device_id=7),
+            expected_status="observed",
+            manufacturer_name="REV",
+            device_type_name="SparkMax",
+            model_name="neo",
+            profile_label="SPARKMAX/NEO 7",
+            presence_confidence="high",
+            presence_score=90,
+            inventory_confidence="high",
+            inventory_score=90,
+            health_confidence="high",
+            health_score=90,
+            health="healthy",
+            evidence_sources=("passive_can",),
+            evidence_family_keys=(FamilyKey(5, 2, 7, 5, 27),),
+            evidence_family_summaries=("api=5/27 periodic",),
+            evidence_gaps=(),
+            notes=(),
+        )
+
+        results = build_shadow_fusion_results(
+            profile_devices={
+                "sparkmax/neo 7": {
+                    "label": "SPARKMAX/NEO 7",
+                    "manufacturer": 5,
+                    "deviceType": 2,
+                    "id": 7,
+                    "type": "motor",
+                    "deviceInterface": "CAN",
+                },
+                "roborio": {
+                    "label": "roborio",
+                    "manufacturer": 1,
+                    "deviceType": 1,
+                    "id": 0,
+                    "type": "robotController",
+                    "deviceInterface": "CAN",
+                },
+            },
+            runtime_devices={
+                "roborio": {
+                    "label": "roborio",
+                    "presenceConfidence": 1.0,
+                    "lifecycleState": "instantiated-present",
+                }
+            },
+            presence_entries_by_label={
+                "roborio": {
+                    "existence": "PRESENT",
+                    "updatedAtMs": 9900.0,
+                }
+            },
+            passive_devices_by_identity={(5, 2, 7): passive_device},
+            visibility_devices_by_label={
+                "sparkmax/neo 7": {
+                    "metrics": {
+                        "src0": {
+                            "lastSeenMs": 9900.0,
+                            "framesPerSec": 100.0,
+                        }
+                    }
+                }
+            },
+            console_devices_by_label={},
+            manual_results_by_label={},
+            manual_observations_by_label={},
+            now_s=10.0,
+        )
+
+        spark_result = results["sparkmax/neo 7"]
+        rio_result = results["roborio"]
+
+        self.assertEqual("HEALTHY", spark_result["overallState"])
+        self.assertEqual("PRESENT", spark_result["dimensions"]["existence"]["value"])
+        self.assertEqual("HEALTHY", spark_result["dimensions"]["communication"]["value"])
+        self.assertEqual("HEALTHY", rio_result["overallState"])
+        self.assertEqual("HEALTHY", rio_result["dimensions"]["communication"]["value"])
+
+    def test_build_shadow_fusion_results_marks_stale_passive_history_device_missing(self) -> None:
+        passive_device = DeviceRecord(
+            identity=DeviceIdentity(manufacturer=4, device_type=7, device_id=18),
+            expected_status="observed",
+            manufacturer_name="CTRE",
+            device_type_name="CANCoder",
+            model_name="cancoder",
+            profile_label="cancoder",
+            presence_confidence="high",
+            presence_score=92,
+            inventory_confidence="high",
+            inventory_score=90,
+            health_confidence="limited",
+            health_score=65,
+            health="limited",
+            evidence_sources=("passive_can",),
+            evidence_family_keys=(FamilyKey(4, 7, 18, 4, 0),),
+            evidence_family_summaries=("api=4/0 primary_status 100.0Hz",),
+            evidence_gaps=(),
+            notes=(),
+        )
+
+        results = build_shadow_fusion_results(
+            profile_devices={
+                "cancoder": {
+                    "label": "cancoder",
+                    "manufacturer": 4,
+                    "deviceType": 7,
+                    "id": 18,
+                    "vendor": "ctre",
+                    "type": "encoderExternal",
+                }
+            },
+            runtime_devices={},
+            presence_entries_by_label={
+                "cancoder": {
+                    "existence": "PRESENT",
+                    "updatedAtMs": 79000.0,
+                }
+            },
+            passive_devices_by_identity={(4, 7, 18): passive_device},
+            visibility_devices_by_label={
+                "cancoder": {
+                    "metrics": {
+                        "src0": {
+                            "msgCount": 20080,
+                            "lastSeenMs": 1000.0,
+                            "framesPerSec": 0.0,
+                        }
+                    }
+                }
+            },
+            console_devices_by_label={},
+            manual_results_by_label={},
+            manual_observations_by_label={},
+            now_s=80.0,
+        )
+
+        cancoder_result = results["cancoder"]
+
+        self.assertEqual("ABSENT", cancoder_result["dimensions"]["existence"]["value"])
+        self.assertEqual("FAILED", cancoder_result["dimensions"]["communication"]["value"])
+        self.assertEqual("FAILED", cancoder_result["overallState"])
+
+    def test_build_shadow_fusion_results_marks_visibility_history_only_device_missing_without_passive_record(
+        self,
+    ) -> None:
+        results = build_shadow_fusion_results(
+            profile_devices={
+                "cancoder": {
+                    "label": "cancoder",
+                    "manufacturer": 4,
+                    "deviceType": 7,
+                    "id": 18,
+                    "vendor": "ctre",
+                    "type": "encoderExternal",
+                }
+            },
+            runtime_devices={},
+            presence_entries_by_label={},
+            passive_devices_by_identity={},
+            visibility_devices_by_label={
+                "cancoder": {
+                    "metrics": {
+                        "src0": {
+                            "msgCount": 5355,
+                            "lastSeenMs": 400.0,
+                            "framesPerSec": 0.0,
+                        }
+                    }
+                }
+            },
+            console_devices_by_label={},
+            manual_results_by_label={},
+            manual_observations_by_label={},
+            now_s=100.0,
+        )
+
+        cancoder_result = results["cancoder"]
+
+        self.assertEqual("ABSENT", cancoder_result["dimensions"]["existence"]["value"])
+        self.assertEqual("FAILED", cancoder_result["dimensions"]["communication"]["value"])
+        self.assertEqual("FAILED", cancoder_result["overallState"])
 
     def test_interpreted_row_promotes_targeted_stale_console_warning_to_failed_and_ignores_stale_auto_rotation(self) -> None:
         passive_device = DeviceRecord(
@@ -1782,6 +2069,47 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
             row["notesText"],
         )
 
+    def test_interpreted_row_marks_cancoder_missing_from_visibility_history_without_passive_record(
+        self,
+    ) -> None:
+        row = build_interpreted_evidence_row(
+            label="cancoder",
+            presence_entry=None,
+            passive_device=None,
+            visibility_device={
+                "metrics": {
+                    "observerA": {
+                        "msgCount": 5355,
+                        "lastSeenMs": 400.0,
+                        "framesPerSec": 0.0,
+                    }
+                }
+            },
+            runtime_device=None,
+            console_entry=None,
+            system_console={},
+            manual_entry=None,
+            manual_observation=None,
+            manual_motion=None,
+            probe_pending=False,
+            last_probe_completed_at=0.0,
+            probe_run_count=0,
+            now_s=100.0,
+            visibility_identity_text="4:7:18",
+            visibility_last_seen_text="1.6m",
+            visibility_packet_count_text="5355",
+            visibility_packet_rate_text="0.0/s",
+        )
+
+        self.assertEqual("ABSENT", row["existence"])
+        self.assertEqual("FAILED", row["operability"])
+        self.assertEqual("missing", row["presenceState"])
+        self.assertEqual("failed", row["state"])
+        self.assertIn(
+            "Passive CAN has only stale historical visibility for this device and no fresh corroborating evidence remains; treating it as missing.",
+            row["notesText"],
+        )
+
     def test_interpreted_row_ignores_stale_runtime_presence_when_cancoder_has_only_stale_passive_history(self) -> None:
         passive_device = DeviceRecord(
             identity=DeviceIdentity(manufacturer=4, device_type=7, device_id=18),
@@ -1851,6 +2179,196 @@ class PassiveDiscoveryIntegrationServiceTests(unittest.TestCase):
             "Runtime presence evidence is stale and is being treated as historical only.",
             row["notesText"],
         )
+
+    def test_interpreted_row_marks_pigeon_missing_when_fresh_runtime_is_only_counterevidence(self) -> None:
+        row = build_interpreted_evidence_row(
+            label="pigeon 2",
+            presence_entry={
+                "bucket": "present",
+                "score": 1.0,
+                "ageText": "0.0s ago",
+                "existence": "PRESENT",
+                "confidence": "HIGH",
+                "source": "localSnapshot",
+                "updatedAtMs": 60000.0,
+            },
+            passive_device=None,
+            visibility_device={
+                "metrics": {
+                    "observerA": {
+                        "msgCount": 36696,
+                        "lastSeenMs": 12000.0,
+                        "framesPerSec": 0.0,
+                    }
+                }
+            },
+            runtime_device={
+                "label": "pigeon 2",
+                "presenceConfidence": 1.0,
+                "lastSeenMs": 60000.0,
+            },
+            console_entry=None,
+            system_console={},
+            manual_entry=None,
+            manual_observation=None,
+            manual_motion=None,
+            probe_pending=False,
+            last_probe_completed_at=0.0,
+            probe_run_count=0,
+            now_s=60.0,
+            visibility_identity_text="4:4:19",
+            visibility_last_seen_text="48s",
+            visibility_packet_count_text="36696",
+            visibility_packet_rate_text="0.0/s",
+        )
+
+        self.assertEqual("ABSENT", row["existence"])
+        self.assertEqual("FAILED", row["operability"])
+        self.assertEqual("missing", row["presenceState"])
+        self.assertIn(
+            "Fresh runtime-local presence alone is not enough to override direct CAN-loss evidence for this CAN device.",
+            row["notesText"],
+        )
+
+    def test_interpreted_row_marks_spark_missing_when_live_visibility_has_zero_existence_packets(self) -> None:
+        passive_device = DeviceRecord(
+            identity=DeviceIdentity(manufacturer=5, device_type=2, device_id=7),
+            expected_status="observed",
+            manufacturer_name="REV",
+            device_type_name="SparkMax",
+            model_name="neo",
+            profile_label="SPARKMAX/NEO 7",
+            presence_confidence="high",
+            presence_score=25,
+            inventory_confidence="high",
+            inventory_score=80,
+            health_confidence="limited",
+            health_score=60,
+            health="limited",
+            evidence_sources=("passive_can",),
+            evidence_family_keys=(FamilyKey(5, 2, 7, 46, 2),),
+            evidence_family_summaries=("api=46/2 primary_status 50.0Hz",),
+            evidence_gaps=(),
+            notes=(),
+        )
+
+        row = build_interpreted_evidence_row(
+            label="SPARKMAX/NEO 7",
+            presence_entry={
+                "bucket": "present",
+                "score": 1.0,
+                "ageText": "0.0s ago",
+                "existence": "PRESENT",
+                "confidence": "HIGH",
+                "source": "localSnapshot",
+                "updatedAtMs": 60000.0,
+            },
+            passive_device=passive_device,
+            visibility_device={
+                "metrics": {
+                    "observerA": {
+                        "msgCount": 21842,
+                        "lastSeenMs": 60000.0,
+                        "framesPerSec": 50.1,
+                    }
+                },
+                "rawIds": [
+                    {"apiClass": 46, "apiIndex": 2, "msgCount": 0},
+                    {"apiClass": 32, "apiIndex": 1, "msgCount": 21842},
+                ],
+            },
+            runtime_device={
+                "label": "SPARKMAX/NEO 7",
+                "presenceConfidence": 1.0,
+                "lastSeenMs": 60000.0,
+            },
+            console_entry={
+                "summary": "[WARN] SPARK_STATUS_TIMEOUT: device 7 timed out",
+                "hasError": False,
+                "hasWarn": True,
+                "totalCount": 2,
+                "freshness": "fresh",
+                "events": ["[WARN] SPARK_STATUS_TIMEOUT: device 7 timed out"],
+                "records": [
+                    {
+                        "faultFamily": "rev_timeout",
+                        "freshness": "fresh",
+                        "scope": "device",
+                        "totalCount": 2,
+                    }
+                ],
+            },
+            system_console={},
+            manual_entry=None,
+            manual_observation=None,
+            manual_motion=None,
+            probe_pending=False,
+            last_probe_completed_at=0.0,
+            probe_run_count=0,
+            now_s=60.0,
+            visibility_identity_text="5:2:7",
+            visibility_last_seen_text="0.0s",
+            visibility_packet_count_text="21842",
+            visibility_packet_rate_text="50.1/s",
+        )
+
+        self.assertEqual("ABSENT", row["existence"])
+        self.assertEqual("FAILED", row["operability"])
+        self.assertEqual("missing", row["presenceState"])
+        self.assertIn(
+            "Passive observer still sees attributed traffic, but no current device-emitted evidence families are active for this device.",
+            row["notesText"],
+        )
+        self.assertIn("existencePackets=0", row["passiveText"])
+
+    def test_build_shadow_fusion_results_ignores_stale_runtime_presence_observation(self) -> None:
+        snapshot = build_shadow_fusion_results(
+            profile_devices={
+                "pigeon 2": {
+                    "label": "pigeon 2",
+                    "manufacturer": 4,
+                    "deviceType": 4,
+                    "id": 19,
+                }
+            },
+            runtime_devices={
+                "pigeon 2": {
+                    "label": "pigeon 2",
+                    "presenceConfidence": 1.0,
+                    "lastSeenMs": 1000.0,
+                }
+            },
+            presence_entries_by_label={
+                "pigeon 2": {
+                    "bucket": "present",
+                    "score": 1.0,
+                    "existence": "PRESENT",
+                    "confidence": "HIGH",
+                    "source": "localSnapshot",
+                    "updatedAtMs": 1000.0,
+                }
+            },
+            passive_devices_by_identity={},
+            visibility_devices_by_label={
+                "pigeon 2": {
+                    "metrics": {
+                        "observerA": {
+                            "msgCount": 36696,
+                            "lastSeenMs": 12000.0,
+                            "framesPerSec": 0.0,
+                        }
+                    }
+                }
+            },
+            console_devices_by_label={},
+            manual_results_by_label={},
+            manual_observations_by_label={},
+            now_s=60.0,
+        )
+
+        result = snapshot["pigeon 2"]
+        self.assertEqual("ABSENT", result["dimensions"]["existence"]["value"])
+        self.assertNotIn("RUNTIME_PRESENT", result["reasonCodes"])
 
     def test_build_evidence_fault_snapshot_freezes_rows_and_rendered_result(self) -> None:
         snapshot = build_evidence_fault_snapshot(

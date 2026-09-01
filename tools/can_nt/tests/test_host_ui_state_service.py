@@ -212,6 +212,48 @@ class HostUiStateServiceTests(unittest.TestCase):
         self.assertTrue(state.transition_pending)
         self.assertFalse(state.activation_allowed)
 
+    def test_resolve_runnable_scope_state_prefers_transition_resync_over_transient_disconnect(self) -> None:
+        state = resolve_runnable_scope_state(
+            scope_kind=RUNNABLE_SCOPE_KIND_MANUAL,
+            local_selected_profile="test_minimal_25_9",
+            local_profile_required=True,
+            tcp_connected=False,
+            runtime_state_seen=True,
+            stale_state=False,
+            robot_enabled=True,
+            robot_estopped=False,
+            robot_mode="teleop",
+            manual_group_empty=False,
+            scope_active=False,
+            transition_pending=True,
+        )
+
+        self.assertEqual(RUNNABLE_PANEL_WAITING_HEADLINE, state.headline)
+        self.assertEqual(RUNNABLE_SCOPE_PANEL_RESYNC_DETAIL, state.detail)
+        self.assertEqual("neutral", state.level)
+        self.assertTrue(state.transition_pending)
+
+    def test_resolve_runnable_scope_state_prefers_transition_resync_over_disconnect_without_runtime_snapshot(self) -> None:
+        state = resolve_runnable_scope_state(
+            scope_kind=RUNNABLE_SCOPE_KIND_MANUAL,
+            local_selected_profile="test_minimal_25_9",
+            local_profile_required=True,
+            tcp_connected=False,
+            runtime_state_seen=False,
+            stale_state=False,
+            robot_enabled=True,
+            robot_estopped=False,
+            robot_mode="teleop",
+            manual_group_empty=False,
+            scope_active=False,
+            transition_pending=True,
+        )
+
+        self.assertEqual(RUNNABLE_PANEL_WAITING_HEADLINE, state.headline)
+        self.assertEqual(RUNNABLE_SCOPE_PANEL_RESYNC_DETAIL, state.detail)
+        self.assertEqual("neutral", state.level)
+        self.assertTrue(state.transition_pending)
+
     def test_resolve_runnable_scope_state_blocks_manual_scope_without_profile(self) -> None:
         state = resolve_runnable_scope_state(
             scope_kind=RUNNABLE_SCOPE_KIND_MANUAL,
@@ -940,6 +982,50 @@ class HostUiStateServiceTests(unittest.TestCase):
 
         self.assertTrue(state.allowed)
         self.assertEqual("", state.blocked_reason)
+
+    def test_resolve_manual_duty_scope_state_prefers_manual_operable_when_available(self) -> None:
+        state = resolve_manual_duty_scope_state(
+            label="SPARKMAX/NEO 25",
+            runtime_state_by_label={
+                "sparkmax/neo 25": {
+                    "label": "SPARKMAX/NEO 25",
+                    "lifecycleState": "instantiated-present",
+                    "testable": True,
+                    "manualOperable": False,
+                }
+            },
+            controlled_lifecycle_active=False,
+        )
+
+        self.assertFalse(state.allowed)
+        self.assertEqual(
+            MANUAL_DUTY_BLOCKED_CONTROLLED_SCOPE_TEXT,
+            state.blocked_reason,
+        )
+
+    def test_runtime_device_confirms_manual_duty_ready_ignores_instantiated_only_rows(self) -> None:
+        self.assertFalse(
+            resolve_manual_duty_access_state(
+                tcp_connected=True,
+                runtime_state_seen=True,
+                stale_state=False,
+                robot_estopped=False,
+                robot_enabled=True,
+                tracker_pending=False,
+                transition_pending=False,
+                target_labels=["SPARKMAX/NEO 25"],
+                runtime_state_by_label={
+                    "sparkmax/neo 25": {
+                        "label": "SPARKMAX/NEO 25",
+                        "instantiated": True,
+                        "testable": False,
+                        "manualOperable": False,
+                    }
+                },
+                controlled_lifecycle_active=False,
+                runtime_groups=[],
+            ).allowed
+        )
 
     def test_resolve_tests_active_group_member_rows_keeps_singleton_instantiated_when_scope_is_inactive(self) -> None:
         rows = resolve_tests_active_group_member_rows(

@@ -54,6 +54,9 @@ from tools.can_nt.passive_discovery_integration_service import (
     DETAIL_SNAPSHOT_TEMP_C,
     DETAIL_SNAPSHOT_TESTABLE,
     DETAIL_SNAPSHOT_VEL_RPM,
+    INTERPRETED_SNAPSHOT_KEY_DETAIL,
+    INTERPRETED_SNAPSHOT_KEY_DEVICES,
+    INTERPRETED_SNAPSHOT_KEY_PRESENCE_STATE,
     PRESENCE_KEY_STATUS,
     build_runtime_device_detail_snapshot,
 )
@@ -1831,21 +1834,51 @@ class LiveTopologyView(ttk.Frame):
         """
         return self._overlay_lens
 
-    def set_evidence_snapshot(self, evidence_state: Optional[Dict[str, str]]) -> None:
+    def set_evidence_snapshot(self, evidence_state: Optional[Dict[str, Any]]) -> None:
         """
         NAME
             set_evidence_snapshot - Apply interpreted device-truth states for node coloring.
         """
         normalized: Dict[str, str] = {}
-        if isinstance(evidence_state, dict):
-            for label, state in evidence_state.items():
+        normalized_detail: Dict[str, Dict[str, str]] = {}
+        structured_snapshot = False
+        snapshot_devices = evidence_state
+        if isinstance(evidence_state, dict) and isinstance(
+            evidence_state.get(INTERPRETED_SNAPSHOT_KEY_DEVICES), dict
+        ):
+            structured_snapshot = True
+            snapshot_devices = evidence_state.get(INTERPRETED_SNAPSHOT_KEY_DEVICES)
+        if isinstance(snapshot_devices, dict):
+            for label, state in snapshot_devices.items():
                 clean_label = str(label).strip().lower()
-                clean_state = str(state).strip().lower()
+                clean_state = EMPTY_STRING
+                if isinstance(state, dict):
+                    clean_state = str(
+                        state.get(INTERPRETED_SNAPSHOT_KEY_PRESENCE_STATE, EMPTY_STRING)
+                    ).strip().lower()
+                    detail_snapshot = state.get(INTERPRETED_SNAPSHOT_KEY_DETAIL)
+                    if clean_label and isinstance(detail_snapshot, dict):
+                        normalized_detail[clean_label] = {
+                            str(key).strip(): str(value).strip()
+                            for key, value in detail_snapshot.items()
+                            if str(key).strip()
+                        }
+                else:
+                    clean_state = str(state).strip().lower()
                 if clean_label and clean_state:
                     normalized[clean_label] = clean_state
-        if normalized == self._evidence_state:
+        state_changed = normalized != self._evidence_state
+        detail_changed = (
+            normalized_detail != self._evidence_detail_state
+            if structured_snapshot
+            else normalized_detail != self._evidence_detail_state and bool(normalized_detail)
+        )
+        if not state_changed and not detail_changed:
             return
         self._evidence_state = normalized
+        if structured_snapshot or normalized_detail:
+            self._evidence_detail_state = normalized_detail
+            self._update_details()
         self._redraw()
 
     def set_passive_detail_snapshot(self, passive_detail_state: Optional[Dict[str, Dict[str, str]]]) -> None:

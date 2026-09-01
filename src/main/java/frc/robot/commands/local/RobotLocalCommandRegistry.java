@@ -277,7 +277,7 @@ public final class RobotLocalCommandRegistry {
     register(rows, reportDefinition(COMMAND_PRINT_SELECTED_TEST_SOURCE, "Test Source", "Print the stored DSL source for the selected test.", reportGroup.printSelectedTestSource()));
     register(rows, reportDefinition(COMMAND_PRINT_NEXT_TEST, "Print Next", "Print the selected test contract/report.", reportGroup.printNextTest()));
     register(rows, reportDefinition(COMMAND_PRINT_CAN_DIAG, "CAN Bus", "Print CAN diagnostics report.", reportGroup.printCanDiagnostics()));
-    register(rows, reportDefinition(COMMAND_ACTIVE_PRESENCE_PROBE, "Active Presence Probe", "Run a one-shot active vendor-API presence probe for supported runtime devices.", reportGroup.activePresenceProbe()));
+    register(rows, reportDefinition(COMMAND_ACTIVE_PRESENCE_PROBE, "Active Presence Probe", "Run a multi-cycle active vendor-API presence probe for supported runtime devices.", reportGroup.activePresenceProbe()));
     register(rows, reportDefinition(COMMAND_DUMP_REPORT, "Dump", "Dump the JSON diagnostics report.", reportGroup.dumpReport()));
     register(rows, legacyReportDefinition(COMMAND_PRINT_SUMMARY, "Summary", "Print compact diagnostics summary.", legacyUiGroup));
     register(rows, legacyReportDefinition(COMMAND_PRINT_PROFILE_DEVICES, "Profile Devices", "Print active profile devices.", legacyUiGroup));

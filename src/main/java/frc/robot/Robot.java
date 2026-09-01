@@ -58,6 +58,7 @@ public class Robot extends TimedRobot {
   private static final String DEFAULT_CONTROLLER_PREFIX = "controller";
   private static final String ACTIVE_GROUP_NAME = "active-group";
   private static final double BINDING_VALUE_ANALOG = 0.0;
+  private static final boolean SILENCE_JOYSTICK_CONNECTION_WARNINGS = true;
   // ---------------------------------------------------
 
   // Driver Station controller input.
@@ -76,6 +77,7 @@ public class Robot extends TimedRobot {
   private static final int UI_REST_PORT = 5805;
   private BringupRestServer uiRestServer;
   private final BringupPrinter.LineListener bringupLineListener = new BringupLineListener();
+  private final ConsoleCapture.ConsoleLineSink consoleLineSink = new ConsoleLineSinkImpl();
   private final BringupRestServer.RestCallbacks restCallbacks = new RestCallbacksImpl();
   private boolean warnedNonTestActuationBlocked = false;
   private final Runnable profileToggleAction = new ProfileToggleAction();
@@ -111,13 +113,16 @@ public class Robot extends TimedRobot {
     runtime = new BringupRuntime(
         canHealth,
         bindings.describeBinding(COMMAND_RUN_TEST));
+    DriverStation.silenceJoystickConnectionWarning(SILENCE_JOYSTICK_CONNECTION_WARNINGS);
     uiHandler = new BridgeUiCommandHandler(
         runtime,
         bindings,
         profileToggleAction,
         profileActivateAction,
         profileDeactivateAction);
+    BringupPrinter.setStdoutMirrorEnabled(false);
     BringupPrinter.setLineListener(bringupLineListener);
+    ConsoleCapture.install(consoleLineSink);
     try {
       uiRestServer = new BringupRestServer(UI_REST_PORT, restCallbacks);
       uiRestServer.start();
@@ -560,6 +565,17 @@ public class Robot extends TimedRobot {
     @Override
     public void onLine(String text) {
       handleBringupLine(text);
+    }
+  }
+
+  /**
+   * NAME
+   *   ConsoleLineSinkImpl - Forward intercepted stdout/stderr lines into bringup listeners.
+   */
+  private final class ConsoleLineSinkImpl implements ConsoleCapture.ConsoleLineSink {
+    @Override
+    public void onConsoleLine(String text) {
+      BringupPrinter.captureExternalLine(text);
     }
   }
 

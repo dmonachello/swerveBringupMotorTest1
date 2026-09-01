@@ -19,7 +19,49 @@ from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from tools.can_nt.can_fault_inference import build_fault_diagnosis, render_fault_diagnosis
+from tools.common.evidence_fusion.api import EvidenceFusionEngine
+from tools.common.evidence_fusion.constants import (
+    COMMUNICATION_DEGRADED as FUSION_COMMUNICATION_DEGRADED,
+    COMMUNICATION_FAILED as FUSION_COMMUNICATION_FAILED,
+    COMMUNICATION_HEALTHY as FUSION_COMMUNICATION_HEALTHY,
+    COMMUNICATION_UNKNOWN as FUSION_COMMUNICATION_UNKNOWN,
+    DIMENSION_COMMUNICATION as FUSION_DIMENSION_COMMUNICATION,
+    DIMENSION_EXISTENCE as FUSION_DIMENSION_EXISTENCE,
+    DIMENSION_IDENTITY as FUSION_DIMENSION_IDENTITY,
+    DIMENSION_OPERABILITY as FUSION_DIMENSION_OPERABILITY,
+    EXISTENCE_ABSENT as FUSION_EXISTENCE_ABSENT,
+    EXISTENCE_PRESENT as FUSION_EXISTENCE_PRESENT,
+    EXISTENCE_UNKNOWN as FUSION_EXISTENCE_UNKNOWN,
+    IDENTITY_MATCHING as FUSION_IDENTITY_MATCHING,
+    IDENTITY_MISMATCHED as FUSION_IDENTITY_MISMATCHED,
+    IDENTITY_UNKNOWN as FUSION_IDENTITY_UNKNOWN,
+    MAJOR_TYPE_OBSERVATION as FUSION_MAJOR_TYPE_OBSERVATION,
+    OPERABILITY_DEGRADED as FUSION_OPERABILITY_DEGRADED,
+    OPERABILITY_FAILED as FUSION_OPERABILITY_FAILED,
+    OPERABILITY_UNKNOWN as FUSION_OPERABILITY_UNKNOWN,
+    OPERABILITY_WORKING as FUSION_OPERABILITY_WORKING,
+    OVERALL_UNKNOWN as FUSION_OVERALL_UNKNOWN,
+    PAYLOAD_KEY_ASSERTION as FUSION_PAYLOAD_KEY_ASSERTION,
+    PAYLOAD_KEY_BASE_RELIABILITY as FUSION_PAYLOAD_KEY_BASE_RELIABILITY,
+    PAYLOAD_KEY_CLAIM_STRENGTH as FUSION_PAYLOAD_KEY_CLAIM_STRENGTH,
+    PAYLOAD_KEY_DIMENSION as FUSION_PAYLOAD_KEY_DIMENSION,
+    PAYLOAD_KEY_DIRECTNESS as FUSION_PAYLOAD_KEY_DIRECTNESS,
+    PAYLOAD_KEY_INDEPENDENCE_GROUP as FUSION_PAYLOAD_KEY_INDEPENDENCE_GROUP,
+    PAYLOAD_KEY_POLARITY as FUSION_PAYLOAD_KEY_POLARITY,
+    PAYLOAD_KEY_QUALITY as FUSION_PAYLOAD_KEY_QUALITY,
+    PAYLOAD_KEY_REASON_CODE as FUSION_PAYLOAD_KEY_REASON_CODE,
+    PAYLOAD_KEY_SOURCE_HEALTH as FUSION_PAYLOAD_KEY_SOURCE_HEALTH,
+    PAYLOAD_KEY_SPECIFICITY as FUSION_PAYLOAD_KEY_SPECIFICITY,
+    PAYLOAD_POLARITY_SUPPORT as FUSION_PAYLOAD_POLARITY_SUPPORT,
+    SCHEMA_VERSION_1 as FUSION_SCHEMA_VERSION_1,
+    SCOPE_DEVICE as FUSION_SCOPE_DEVICE,
+    SOURCE_TYPE_CONSOLE as FUSION_SOURCE_TYPE_CONSOLE,
+    SOURCE_TYPE_MANUAL as FUSION_SOURCE_TYPE_MANUAL,
+    SOURCE_TYPE_PASSIVE_CAN as FUSION_SOURCE_TYPE_PASSIVE_CAN,
+    SOURCE_TYPE_RUNTIME as FUSION_SOURCE_TYPE_RUNTIME,
+)
 from tools.common.config_api.repository import ConfigRepository
+from tools.common.evidence_fusion.types import EvaluationBudget, EvidenceBlock, EvidenceTarget
 from .can_profiles import current_profiles_path
 from tools.common.motor_runtime_verdict import (
     RESULT_ELECTRICAL,
@@ -29,6 +71,7 @@ from tools.common.motor_runtime_verdict import (
     runtime_motor_attachment,
 )
 from tools.common.profile_constants import KEY_ID, KEY_LABEL, KEY_MANUFACTURER, KEY_MODEL
+from tools.common.profile_constants import KEY_TYPE, get_device_interface
 from tools.passive_discovery_poc.discovery import analyze_frames
 from tools.passive_discovery_poc.enrichment import enrich_console_log, enrich_ctre, enrich_topology
 from tools.passive_discovery_poc.constants import MODEL_UNKNOWN
@@ -199,6 +242,9 @@ CONSOLE_EVENT_RECOVERED = "CAN_BUS_UTIL_RECOVER"
 CONSOLE_EVENT_LOOP_OVERRUN = "LOOP_OVERRUN"
 CONSOLE_EVENT_ERROR_SPIKE = "CAN_ERROR_SPIKE"
 CONSOLE_EVENT_HAL_TIMEOUT = "HAL_CAN_RECEIVE_TIMEOUT"
+CONSOLE_IGNORED_ACTIVE_EVENT_TYPES = {
+    CONSOLE_EVENT_LOOP_OVERRUN,
+}
 CONSOLE_TEXT_STALE = "stale"
 CONSOLE_EXAMPLE_LIMIT = 3
 CONSOLE_TOP_COUNT_LIMIT = 3
@@ -343,7 +389,9 @@ INTERPRET_KEY_CONSOLE = "console"
 INTERPRET_KEY_PROBE = "probe"
 INTERPRET_KEY_PROBE_SCORE = "probeScore"
 INTERPRET_KEY_MANUAL = "manual"
+INTERPRET_KEY_OVERALL = "overall"
 INTERPRET_KEY_EXISTENCE = "existence"
+INTERPRET_KEY_COMMUNICATION = "communication"
 INTERPRET_KEY_OPERABILITY = "operability"
 INTERPRET_KEY_IDENTITY = "identity"
 INTERPRET_KEY_CONFIDENCE = "confidence"
@@ -361,6 +409,7 @@ INTERPRET_KEY_PRESENCE_STATE = "presenceState"
 INTERPRET_KEY_PRESENCE_REASONS = "presenceReasons"
 INTERPRET_KEY_FRESHNESS = "freshness"
 INTERPRET_KEY_SOURCE_SCORES = "sourceScores"
+INTERPRET_KEY_SHADOW_RESULT = "shadowResult"
 INTERPRET_KEY_DIRTY = "dirty"
 INTERPRET_KEY_DIRTY_REASONS = "dirtyReasons"
 INTERPRET_KEY_LAST_KNOWN_GOOD_AT = "lastKnownGoodAt"
@@ -370,6 +419,73 @@ INTERPRET_KEY_LAST_STATE_CHANGE_AT = "lastStateChangeAt"
 INTERPRET_KEY_LAST_EVALUATION_AT = "lastEvaluationAt"
 INTERPRET_KEY_CHANGE_REASON = "changeReason"
 INTERPRET_KEY_EVENT_LOG = "eventLog"
+INTERPRETED_SNAPSHOT_SCHEMA_VERSION = 1
+INTERPRETED_SNAPSHOT_KEY_SCHEMA_VERSION = "schemaVersion"
+INTERPRETED_SNAPSHOT_KEY_SNAPSHOT_TYPE = "snapshotType"
+INTERPRETED_SNAPSHOT_KEY_EVALUATION_ID = "evaluationId"
+INTERPRETED_SNAPSHOT_KEY_GENERATED_AT = "generatedAt"
+INTERPRETED_SNAPSHOT_KEY_ENGINE_LABEL = "engineLabel"
+INTERPRETED_SNAPSHOT_KEY_DEVICES = "devices"
+INTERPRETED_SNAPSHOT_KEY_ROW = "row"
+INTERPRETED_SNAPSHOT_KEY_DETAIL = "detail"
+INTERPRETED_SNAPSHOT_KEY_PRESENCE_STATE = "presenceState"
+INTERPRETED_SNAPSHOT_KEY_HAS_EVALUATION = "hasEvaluation"
+INTERPRETED_SNAPSHOT_KEY_LAST_EVALUATION_AT = "lastEvaluationAt"
+INTERPRETED_SNAPSHOT_TYPE = "interpretedEvidence"
+INTERPRETED_SNAPSHOT_EVALUATION_ID_PREFIX = "ui-evidence"
+FUSION_DIMENSION_KEY_VALUE = "value"
+FUSION_DIMENSION_KEY_CONFIDENCE_BAND = "confidenceBand"
+FUSION_DIMENSION_KEY_CONFLICT = "conflict"
+FUSION_RESULT_KEY_DIMENSIONS = "dimensions"
+FUSION_RESULT_KEY_OVERALL_STATE = "overallState"
+FUSION_RESULT_KEY_REASON_CODES = "reasonCodes"
+FUSION_CONTEXT_REVISION_ID = "host-evidence-ui-shadow-v1"
+FUSION_PRIORITY_HINT = "default"
+FUSION_VENDOR_UNKNOWN = "unknown"
+FUSION_BUS_DEFAULT = "rio"
+FUSION_SOURCE_INSTANCE_RUNTIME = "host-ui-runtime"
+FUSION_SOURCE_INSTANCE_PASSIVE = "host-ui-passive"
+FUSION_SOURCE_INSTANCE_CONSOLE = "host-ui-console"
+FUSION_SOURCE_INSTANCE_MANUAL = "host-ui-manual"
+FUSION_SOURCE_SESSION_RUNTIME = "host-ui-runtime-session"
+FUSION_SOURCE_SESSION_PASSIVE = "host-ui-passive-session"
+FUSION_SOURCE_SESSION_CONSOLE = "host-ui-console-session"
+FUSION_SOURCE_SESSION_MANUAL = "host-ui-manual-session"
+FUSION_REASON_RUNTIME_PRESENT = "RUNTIME_PRESENT"
+FUSION_REASON_RUNTIME_CONTROLLER_COMM = "RUNTIME_CONTROLLER_COMM_HEALTHY"
+FUSION_REASON_PASSIVE_PRESENT = "PASSIVE_PRESENT"
+FUSION_REASON_PASSIVE_COMM = "PASSIVE_COMM_HEALTHY"
+FUSION_REASON_PASSIVE_HISTORY_MISSING = "PASSIVE_HISTORY_MISSING"
+FUSION_REASON_PASSIVE_COMM_LOST = "PASSIVE_COMM_LOST"
+FUSION_REASON_CONSOLE_FAILED = "CONSOLE_DEVICE_FAILURE"
+FUSION_REASON_CONSOLE_DEGRADED = "CONSOLE_DEVICE_WARN"
+FUSION_REASON_MANUAL_WORKING = "MANUAL_WORKING"
+FUSION_REASON_MANUAL_DEGRADED = "MANUAL_DEGRADED"
+FUSION_REASON_MANUAL_FAILED = "MANUAL_FAILED"
+FUSION_REASON_MANUAL_MISMATCHED = "MANUAL_IDENTITY_MISMATCHED"
+FUSION_REASON_MANUAL_MATCHING = "MANUAL_IDENTITY_MATCHING"
+EVIDENCE_NOTE_SHADOW_CAN_DEVICE_MISSING = (
+    "Fusion override: direct CAN-loss evidence and targeted console faults mark this CAN device missing."
+)
+FUSION_REASON_PROBE_PRESENT = "FULL_PROBE_PRESENT"
+FUSION_MAX_WORK_ITEMS = 10000
+FUSION_CLAIM_STRONG = 1.0
+FUSION_CLAIM_RUNTIME_PRESENT = 0.85
+FUSION_CLAIM_PASSIVE_PRESENT = 0.85
+FUSION_CLAIM_PASSIVE_COMM = 0.9
+FUSION_CLAIM_PASSIVE_HISTORY_MISSING = 0.95
+FUSION_CLAIM_PASSIVE_COMM_LOST = 0.95
+FUSION_CLAIM_CONSOLE_DEGRADED = 0.65
+FUSION_CLAIM_CONSOLE_FAILED = 0.95
+FUSION_CLAIM_MANUAL_WORKING = 0.98
+FUSION_CLAIM_MANUAL_IDENTITY = 0.95
+FUSION_CLAIM_MANUAL_DEGRADED = 0.85
+FUSION_CLAIM_MANUAL_FAILED = 0.95
+FUSION_BASE_RELIABILITY = 1.0
+FUSION_DEFAULT_COMPONENT_QUALITY = 1.0
+FUSION_DEFAULT_COMPONENT_SPECIFICITY = 1.0
+FUSION_DEFAULT_COMPONENT_DIRECTNESS = 1.0
+FUSION_DEFAULT_COMPONENT_SOURCE_HEALTH = 1.0
 
 
 @dataclass(frozen=True)
@@ -390,7 +506,9 @@ class InterpretedDeviceState:
     probe: str
     probe_score: str
     manual: str
+    overall: str
     existence: str
+    communication: str
     operability: str
     identity: str
     confidence: str
@@ -408,6 +526,7 @@ class InterpretedDeviceState:
     presence_reasons: List[str]
     freshness: str
     source_scores: Dict[str, Any]
+    shadow_result: Dict[str, Any]
     dirty: bool = False
     dirty_reasons: List[str] = None
     last_known_good_at: Optional[float] = None
@@ -421,6 +540,7 @@ class InterpretedDeviceState:
     def __post_init__(self) -> None:
         object.__setattr__(self, "presence_reasons", list(self.presence_reasons or []))
         object.__setattr__(self, "source_scores", dict(self.source_scores or {}))
+        object.__setattr__(self, "shadow_result", dict(self.shadow_result or {}))
         object.__setattr__(self, "dirty_reasons", list(self.dirty_reasons or []))
         object.__setattr__(self, "event_log", list(self.event_log or []))
 
@@ -437,7 +557,9 @@ class InterpretedDeviceState:
             INTERPRET_KEY_PROBE: self.probe,
             INTERPRET_KEY_PROBE_SCORE: self.probe_score,
             INTERPRET_KEY_MANUAL: self.manual,
+            INTERPRET_KEY_OVERALL: self.overall,
             INTERPRET_KEY_EXISTENCE: self.existence,
+            INTERPRET_KEY_COMMUNICATION: self.communication,
             INTERPRET_KEY_OPERABILITY: self.operability,
             INTERPRET_KEY_IDENTITY: self.identity,
             INTERPRET_KEY_CONFIDENCE: self.confidence,
@@ -455,6 +577,7 @@ class InterpretedDeviceState:
             INTERPRET_KEY_PRESENCE_REASONS: list(self.presence_reasons),
             INTERPRET_KEY_FRESHNESS: self.freshness,
             INTERPRET_KEY_SOURCE_SCORES: dict(self.source_scores),
+            INTERPRET_KEY_SHADOW_RESULT: dict(self.shadow_result),
             INTERPRET_KEY_DIRTY: self.dirty,
             INTERPRET_KEY_DIRTY_REASONS: list(self.dirty_reasons),
             INTERPRET_KEY_LAST_KNOWN_GOOD_AT: self.last_known_good_at,
@@ -506,6 +629,7 @@ EVIDENCE_NOTE_CAN_CONSOLE_MISSING = "Fresh device-targeted console timeout evide
 EVIDENCE_NOTE_CAN_RUNTIME_LOCAL_ONLY = "Fresh runtime-local presence alone is not enough to override direct CAN-loss evidence for this CAN device."
 EVIDENCE_NOTE_PASSIVE_HISTORY_MISSING = "Passive CAN has only stale historical visibility for this device and no fresh corroborating evidence remains; treating it as missing."
 EVIDENCE_NOTE_RUNTIME_PRESENCE_STALE = "Runtime presence evidence is stale and is being treated as historical only."
+EVIDENCE_NOTE_PASSIVE_GENERIC_ONLY = "Passive observer still sees attributed traffic, but no current device-emitted evidence families are active for this device."
 EVIDENCE_NOTE_NONE = "No major source conflict."
 EVIDENCE_NOTE_RUNTIME_SNAPSHOT_UNCONFIRMED_MOTION = "Runtime scope snapshot says present, but recent motion check and passive CAN did not confirm the motor as physically present."
 ENRICHMENT_SOURCE_CTRE = "ctreHttp"
@@ -1155,6 +1279,8 @@ def build_console_snapshot_from_entries(entries: Any, now_s: Optional[float] = N
             now_s=now_s,
         )
         result[CONSOLE_KEY_RECORDS].append(record)
+        if _console_ignore_active_event_type(event_type):
+            continue
         stats[CONSOLE_KEY_TOTAL_COUNT] += scoped_count
         if severity == CONSOLE_SEVERITY_WARN:
             stats[CONSOLE_KEY_WARN_COUNT] += scoped_count
@@ -1264,6 +1390,20 @@ def build_console_snapshot_from_entries(entries: Any, now_s: Optional[float] = N
     )
     result[CONSOLE_KEY_STATS_TEXT] = _console_general_stats_text(result)
     return result
+
+
+def _console_ignore_active_event_type(event_type: str) -> bool:
+    """
+    NAME
+        _console_ignore_active_event_type - Return whether one event should be excluded from active operator-facing console health summaries.
+
+    DESCRIPTION
+        This preserves raw capture in the records list while keeping known
+        non-diagnostic runtime noise out of Evidence health counts and summary
+        text.
+    """
+    normalized = str(event_type or TEXT_EMPTY).strip().upper()
+    return normalized in CONSOLE_IGNORED_ACTIVE_EVENT_TYPES
 
 
 def _console_general_stats_text(snapshot: Mapping[str, Any]) -> str:
@@ -1818,6 +1958,7 @@ def build_interpreted_device_state(
     probe_pending: bool,
     last_probe_completed_at: float,
     probe_run_count: int,
+    shadow_result: Optional[Mapping[str, Any]] = None,
     now_s: Optional[float] = None,
     visibility_identity_text: str = VIS_IDENTITY_UNKNOWN,
     visibility_last_seen_text: str = VIS_IDENTITY_UNKNOWN,
@@ -1839,6 +1980,36 @@ def build_interpreted_device_state(
         last_probe_completed_at=last_probe_completed_at,
         probe_run_count=probe_run_count,
         now_s=now_s,
+    )
+    shadow_dimensions = (
+        shadow_result.get(FUSION_RESULT_KEY_DIMENSIONS, {})
+        if isinstance(shadow_result, Mapping)
+        else {}
+    )
+    shadow_overall = (
+        str(shadow_result.get(FUSION_RESULT_KEY_OVERALL_STATE, FUSION_OVERALL_UNKNOWN)).strip()
+        if isinstance(shadow_result, Mapping)
+        else FUSION_OVERALL_UNKNOWN
+    ) or FUSION_OVERALL_UNKNOWN
+    shadow_communication = _shadow_dimension_value(
+        shadow_dimensions,
+        FUSION_DIMENSION_COMMUNICATION,
+        FUSION_COMMUNICATION_UNKNOWN,
+    )
+    shadow_existence = _shadow_dimension_value(
+        shadow_dimensions,
+        FUSION_DIMENSION_EXISTENCE,
+        FUSION_EXISTENCE_UNKNOWN,
+    )
+    shadow_operability = _shadow_dimension_value(
+        shadow_dimensions,
+        FUSION_DIMENSION_OPERABILITY,
+        FUSION_OPERABILITY_UNKNOWN,
+    )
+    shadow_identity = _shadow_dimension_value(
+        shadow_dimensions,
+        FUSION_DIMENSION_IDENTITY,
+        FUSION_IDENTITY_UNKNOWN,
     )
     probe_attachment = _active_probe_attachment(runtime_device)
     presence_bucket = VIS_IDENTITY_UNKNOWN
@@ -1867,6 +2038,7 @@ def build_interpreted_device_state(
     passive_expected_status = TEXT_EMPTY
     passive_gaps: list[str] = []
     passive_family_summaries: Tuple[str, ...] = ()
+    passive_evidence_packet_count: Optional[int] = None
     visibility_metrics = (
         visibility_device.get("metrics")
         if isinstance(visibility_device, Mapping) and isinstance(visibility_device.get("metrics"), Mapping)
@@ -1887,6 +2059,10 @@ def build_interpreted_device_state(
         passive_expected_status = str(getattr(passive_device, "expected_status", TEXT_EMPTY)).strip().lower()
         passive_gaps = list(getattr(passive_device, "evidence_gaps", ()) or ())
         passive_family_summaries = tuple(getattr(passive_device, "evidence_family_summaries", ()) or ())
+        passive_evidence_packet_count = passive_visibility_evidence_packet_count(
+            passive_device=passive_device,
+            visibility_device=visibility_device,
+        )
     elif isinstance(visibility_device, Mapping):
         visibility = visibility_device.get("visibility") if isinstance(visibility_device.get("visibility"), Mapping) else {}
         metric_last_seen_present = _visibility_metrics_fresh(visibility_metrics, now_s)
@@ -1998,11 +2174,16 @@ def build_interpreted_device_state(
     runtime_infrastructure_present = (
         is_infrastructure_device and _runtime_infrastructure_signal_present(runtime_device, now_s=now_s)
     )
-    passive_live_support = (
-        _visibility_metrics_support_live_presence(visibility_metrics, now_s)
-        if visibility_metrics
-        else passive_visible
-    )
+    passive_live_support = passive_visible
+    if visibility_metrics:
+        passive_live_support = _visibility_metrics_support_live_presence(visibility_metrics, now_s)
+        if (
+            passive_live_support
+            and passive_device is not None
+            and isinstance(passive_evidence_packet_count, int)
+            and passive_evidence_packet_count <= 0
+        ):
+            passive_live_support = False
     passive_supports_presence_override = (
         passive_visible
         and passive_live_support
@@ -2193,11 +2374,42 @@ def build_interpreted_device_state(
     passive_history_only_missing = bool(
         not is_infrastructure_device
         and existence == EVIDENCE_STATUS_UNKNOWN
-        and passive_device is not None
-        and passive_visible
-        and not passive_live_support
-        and _visibility_metrics_have_observer_history(visibility_metrics)
+        and (
+            (
+                passive_device is not None
+                and passive_visible
+                and not passive_live_support
+                and _visibility_metrics_have_observer_history(visibility_metrics)
+            )
+            or _shadow_visibility_history_missing_without_device_record(
+                label=label,
+                profile_device=None,
+                runtime_device=runtime_device,
+                passive_device=passive_device,
+                visibility_device=visibility_device,
+                presence_entry=presence_entry if isinstance(presence_entry, Mapping) else None,
+                now_s=now_s,
+            )
+        )
         and not runtime_presence_claims_present
+        and not (
+            probe_bucket == PRESENCE_VALUE_PRESENT
+            and probe_age_bucket == PROBE_AGE_FRESH
+        )
+        and not (
+            manual_recent_observation
+            and manual_auto_result == MANUAL_AUTO_RESULT_ROTATION
+        )
+    )
+    runtime_local_only_against_passive_can_loss = bool(
+        not is_infrastructure_device
+        and runtime_presence_claims_present
+        and _runtime_presence_entry_has_explicit_timing(
+            presence_entry if isinstance(presence_entry, Mapping) else None,
+            runtime_device if isinstance(runtime_device, Mapping) else None,
+        )
+        and _visibility_metrics_have_observer_history(visibility_metrics)
+        and not passive_live_support
         and not (
             probe_bucket == PRESENCE_VALUE_PRESENT
             and probe_age_bucket == PROBE_AGE_FRESH
@@ -2212,6 +2424,13 @@ def build_interpreted_device_state(
         operability = EVIDENCE_STATUS_FAILED
         confidence = EVIDENCE_CONFIDENCE_MEDIUM
         evidence_state = EVIDENCE_STATE_MISSING
+        notes.append(EVIDENCE_NOTE_PASSIVE_HISTORY_MISSING)
+    elif runtime_local_only_against_passive_can_loss:
+        existence = EVIDENCE_STATUS_ABSENT
+        operability = EVIDENCE_STATUS_FAILED
+        confidence = EVIDENCE_CONFIDENCE_MEDIUM
+        evidence_state = EVIDENCE_STATE_MISSING
+        notes.append(EVIDENCE_NOTE_CAN_RUNTIME_LOCAL_ONLY)
         notes.append(EVIDENCE_NOTE_PASSIVE_HISTORY_MISSING)
     if console_has_error:
         if existence == EVIDENCE_STATUS_PRESENT:
@@ -2483,10 +2702,74 @@ def build_interpreted_device_state(
         notes.append(EVIDENCE_NOTE_PASSIVE_WITHOUT_PROBE_RESULT)
     if passive_device is not None:
         notes.extend(note for note in passive_gaps if note and note not in notes)
+        if (
+            isinstance(passive_evidence_packet_count, int)
+            and passive_evidence_packet_count <= 0
+            and _visibility_metrics_support_live_presence(visibility_metrics, now_s)
+        ):
+            notes.append(EVIDENCE_NOTE_PASSIVE_GENERIC_ONLY)
         if passive_visible and not passive_live_support:
             notes.append("Passive CAN observation is stale or no longer emitting traffic at a non-zero rate.")
+    shadow_can_missing = bool(
+        shadow_existence == FUSION_EXISTENCE_ABSENT
+        and shadow_communication == FUSION_COMMUNICATION_FAILED
+        and not _shadow_dimension_conflicted(
+            shadow_dimensions,
+            FUSION_DIMENSION_EXISTENCE,
+        )
+        and not _shadow_dimension_conflicted(
+            shadow_dimensions,
+            FUSION_DIMENSION_COMMUNICATION,
+        )
+    )
+    if shadow_can_missing:
+        existence = EVIDENCE_STATUS_ABSENT
+        operability = EVIDENCE_STATUS_FAILED
+        evidence_state = EVIDENCE_STATE_FAILED
+        confidence = _max_legacy_confidence(
+            confidence,
+            _shadow_dimension_confidence_band(
+                shadow_dimensions,
+                FUSION_DIMENSION_EXISTENCE,
+            ),
+        )
+        if EVIDENCE_NOTE_SHADOW_CAN_DEVICE_MISSING not in notes:
+            notes.append(EVIDENCE_NOTE_SHADOW_CAN_DEVICE_MISSING)
+    elif shadow_operability == FUSION_OPERABILITY_FAILED and not _shadow_dimension_conflicted(
+        shadow_dimensions,
+        FUSION_DIMENSION_OPERABILITY,
+    ):
+        operability = EVIDENCE_STATUS_FAILED
+        evidence_state = EVIDENCE_STATE_FAILED
+        confidence = _max_legacy_confidence(
+            confidence,
+            _shadow_dimension_confidence_band(
+                shadow_dimensions,
+                FUSION_DIMENSION_OPERABILITY,
+            ),
+        )
+    if (
+        shadow_identity == FUSION_IDENTITY_MATCHING
+        and not _shadow_dimension_conflicted(
+            shadow_dimensions,
+            FUSION_DIMENSION_IDENTITY,
+        )
+    ):
+        identity = EVIDENCE_STATUS_MATCHING
+    elif (
+        shadow_identity == FUSION_IDENTITY_MISMATCHED
+        and not _shadow_dimension_conflicted(
+            shadow_dimensions,
+            FUSION_DIMENSION_IDENTITY,
+        )
+    ):
+        identity = EVIDENCE_STATUS_WRONG
+        evidence_state = EVIDENCE_STATE_IDENTITY
     if not notes:
         notes.append(EVIDENCE_NOTE_NONE)
+    shadow_reason_text = _shadow_reason_codes_text(shadow_result)
+    if shadow_reason_text:
+        notes.append(shadow_reason_text)
     source_scores = _collect_device_source_scores(
         device_type=device_type,
         passive_visible=passive_visible and passive_live_support,
@@ -2571,7 +2854,9 @@ def build_interpreted_device_state(
         probe=probe_summary_value,
         probe_score=probe_score_value,
         manual=manual_summary_value,
+        overall=shadow_overall,
         existence=existence,
+        communication=shadow_communication,
         operability=operability,
         identity=identity,
         confidence=confidence,
@@ -2589,6 +2874,7 @@ def build_interpreted_device_state(
         presence_reasons=list(notes),
         freshness=freshness,
         source_scores=source_scores,
+        shadow_result=dict(shadow_result) if isinstance(shadow_result, Mapping) else _empty_shadow_device_result(),
         dirty=False,
         dirty_reasons=[],
         last_known_good_at=None,
@@ -2617,6 +2903,7 @@ def build_interpreted_evidence_row(
     probe_pending: bool,
     last_probe_completed_at: float,
     probe_run_count: int,
+    shadow_result: Optional[Mapping[str, Any]] = None,
     now_s: Optional[float] = None,
     visibility_identity_text: str = VIS_IDENTITY_UNKNOWN,
     visibility_last_seen_text: str = VIS_IDENTITY_UNKNOWN,
@@ -2642,12 +2929,209 @@ def build_interpreted_evidence_row(
         probe_pending=probe_pending,
         last_probe_completed_at=last_probe_completed_at,
         probe_run_count=probe_run_count,
+        shadow_result=shadow_result,
         now_s=now_s,
         visibility_identity_text=visibility_identity_text,
         visibility_last_seen_text=visibility_last_seen_text,
         visibility_packet_count_text=visibility_packet_count_text,
         visibility_packet_rate_text=visibility_packet_rate_text,
     ).to_row()
+
+
+def build_shadow_fusion_results(
+    *,
+    profile_devices: Mapping[str, Mapping[str, Any]],
+    runtime_devices: Mapping[str, Mapping[str, Any]],
+    presence_entries_by_label: Mapping[str, Mapping[str, Any]],
+    passive_devices_by_identity: Mapping[Tuple[int, int, int], DeviceRecord],
+    visibility_devices_by_label: Mapping[str, Mapping[str, Any]],
+    console_devices_by_label: Mapping[str, Mapping[str, Any]],
+    manual_results_by_label: Mapping[str, Mapping[str, Any]],
+    manual_observations_by_label: Mapping[str, Mapping[str, Any]],
+    now_s: float,
+) -> Dict[str, Dict[str, Any]]:
+    """
+    NAME
+        build_shadow_fusion_results - Build a read-only per-device fusion snapshot for the current profile.
+    """
+    engine = EvidenceFusionEngine()
+    sequence = 0
+    now_ms = int(float(now_s) * 1000.0)
+    label_map: Dict[str, str] = {}
+    for label_key, profile_device in profile_devices.items():
+        if not isinstance(profile_device, Mapping):
+            continue
+        clean_label = str(label_key or TEXT_EMPTY).strip().lower()
+        display_label = str(profile_device.get(KEY_LABEL, label_key)).strip() or str(label_key)
+        if not clean_label or not display_label:
+            continue
+        label_map[clean_label] = display_label
+        target = _shadow_target(profile_device, label_key)
+        runtime_device = runtime_devices.get(clean_label)
+        presence_entry = presence_entries_by_label.get(clean_label)
+        visibility_device = visibility_devices_by_label.get(clean_label)
+        console_entry = console_devices_by_label.get(clean_label)
+        manual_entry = manual_results_by_label.get(clean_label)
+        manual_observation = manual_observations_by_label.get(clean_label)
+        passive_device = passive_devices_by_identity.get(_profile_identity_key(profile_device))
+        if _shadow_runtime_present(presence_entry, runtime_device, now_s):
+            sequence = _submit_shadow_observation(
+                engine=engine,
+                sequence=sequence,
+                block_id_prefix=clean_label,
+                source_type=FUSION_SOURCE_TYPE_RUNTIME,
+                source_instance=FUSION_SOURCE_INSTANCE_RUNTIME,
+                source_session_id=FUSION_SOURCE_SESSION_RUNTIME,
+                target=target,
+                observed_at_ms=_shadow_runtime_observed_at_ms(presence_entry, now_ms),
+                dimension=FUSION_DIMENSION_EXISTENCE,
+                assertion=FUSION_EXISTENCE_PRESENT,
+                claim_strength=FUSION_CLAIM_RUNTIME_PRESENT,
+                independence_group=f"runtime:{clean_label}:existence",
+                reason_code=FUSION_REASON_RUNTIME_PRESENT,
+            )
+            if _shadow_runtime_controller_comm_healthy(clean_label, runtime_device, presence_entry, now_s):
+                sequence = _submit_shadow_observation(
+                    engine=engine,
+                    sequence=sequence,
+                    block_id_prefix=clean_label,
+                    source_type=FUSION_SOURCE_TYPE_RUNTIME,
+                    source_instance=FUSION_SOURCE_INSTANCE_RUNTIME,
+                    source_session_id=FUSION_SOURCE_SESSION_RUNTIME,
+                    target=target,
+                    observed_at_ms=_shadow_runtime_observed_at_ms(presence_entry, now_ms),
+                    dimension=FUSION_DIMENSION_COMMUNICATION,
+                    assertion=FUSION_COMMUNICATION_HEALTHY,
+                    claim_strength=FUSION_CLAIM_STRONG,
+                    independence_group=f"runtime:{clean_label}:communication",
+                    reason_code=FUSION_REASON_RUNTIME_CONTROLLER_COMM,
+                )
+        if _shadow_passive_healthy(passive_device, visibility_device, now_s):
+            passive_observed_at_ms = _shadow_passive_observed_at_ms(visibility_device, now_ms)
+            sequence = _submit_shadow_observation(
+                engine=engine,
+                sequence=sequence,
+                block_id_prefix=clean_label,
+                source_type=FUSION_SOURCE_TYPE_PASSIVE_CAN,
+                source_instance=FUSION_SOURCE_INSTANCE_PASSIVE,
+                source_session_id=FUSION_SOURCE_SESSION_PASSIVE,
+                target=target,
+                observed_at_ms=passive_observed_at_ms,
+                dimension=FUSION_DIMENSION_EXISTENCE,
+                assertion=FUSION_EXISTENCE_PRESENT,
+                claim_strength=FUSION_CLAIM_PASSIVE_PRESENT,
+                independence_group=f"passive:{clean_label}:existence",
+                reason_code=FUSION_REASON_PASSIVE_PRESENT,
+            )
+            sequence = _submit_shadow_observation(
+                engine=engine,
+                sequence=sequence,
+                block_id_prefix=clean_label,
+                source_type=FUSION_SOURCE_TYPE_PASSIVE_CAN,
+                source_instance=FUSION_SOURCE_INSTANCE_PASSIVE,
+                source_session_id=FUSION_SOURCE_SESSION_PASSIVE,
+                target=target,
+                observed_at_ms=passive_observed_at_ms,
+                dimension=FUSION_DIMENSION_COMMUNICATION,
+                assertion=FUSION_COMMUNICATION_HEALTHY,
+                claim_strength=FUSION_CLAIM_PASSIVE_COMM,
+                independence_group=f"passive:{clean_label}:communication",
+                reason_code=FUSION_REASON_PASSIVE_COMM,
+            )
+        elif _shadow_passive_history_missing(passive_device, visibility_device, now_s) or _shadow_visibility_history_missing_without_device_record(
+            label=clean_label,
+            profile_device=profile_device,
+            runtime_device=runtime_device,
+            passive_device=passive_device,
+            visibility_device=visibility_device,
+            presence_entry=presence_entry,
+            now_s=now_s,
+        ):
+            sequence = _submit_shadow_observation(
+                engine=engine,
+                sequence=sequence,
+                block_id_prefix=clean_label,
+                source_type=FUSION_SOURCE_TYPE_PASSIVE_CAN,
+                source_instance=FUSION_SOURCE_INSTANCE_PASSIVE,
+                source_session_id=FUSION_SOURCE_SESSION_PASSIVE,
+                target=target,
+                observed_at_ms=now_ms,
+                dimension=FUSION_DIMENSION_EXISTENCE,
+                assertion=FUSION_EXISTENCE_ABSENT,
+                claim_strength=FUSION_CLAIM_PASSIVE_HISTORY_MISSING,
+                independence_group=f"passive:{clean_label}:existence",
+                reason_code=FUSION_REASON_PASSIVE_HISTORY_MISSING,
+            )
+            sequence = _submit_shadow_observation(
+                engine=engine,
+                sequence=sequence,
+                block_id_prefix=clean_label,
+                source_type=FUSION_SOURCE_TYPE_PASSIVE_CAN,
+                source_instance=FUSION_SOURCE_INSTANCE_PASSIVE,
+                source_session_id=FUSION_SOURCE_SESSION_PASSIVE,
+                target=target,
+                observed_at_ms=now_ms,
+                dimension=FUSION_DIMENSION_COMMUNICATION,
+                assertion=FUSION_COMMUNICATION_FAILED,
+                claim_strength=FUSION_CLAIM_PASSIVE_COMM_LOST,
+                independence_group=f"passive:{clean_label}:communication",
+                reason_code=FUSION_REASON_PASSIVE_COMM_LOST,
+            )
+        if isinstance(console_entry, Mapping):
+            console_observed_at_ms = _shadow_console_observed_at_ms(console_entry, now_ms)
+            if _console_entry_targets_device_failure(console_entry):
+                sequence = _submit_shadow_observation(
+                    engine=engine,
+                    sequence=sequence,
+                    block_id_prefix=clean_label,
+                    source_type=FUSION_SOURCE_TYPE_CONSOLE,
+                    source_instance=FUSION_SOURCE_INSTANCE_CONSOLE,
+                    source_session_id=FUSION_SOURCE_SESSION_CONSOLE,
+                    target=target,
+                    observed_at_ms=console_observed_at_ms,
+                    dimension=FUSION_DIMENSION_COMMUNICATION,
+                    assertion=FUSION_COMMUNICATION_FAILED,
+                    claim_strength=FUSION_CLAIM_CONSOLE_FAILED,
+                    independence_group=f"console:{clean_label}:communication",
+                    reason_code=FUSION_REASON_CONSOLE_FAILED,
+                )
+            elif bool(console_entry.get(CONSOLE_KEY_HAS_ERROR)) or bool(console_entry.get(CONSOLE_KEY_HAS_WARN)):
+                sequence = _submit_shadow_observation(
+                    engine=engine,
+                    sequence=sequence,
+                    block_id_prefix=clean_label,
+                    source_type=FUSION_SOURCE_TYPE_CONSOLE,
+                    source_instance=FUSION_SOURCE_INSTANCE_CONSOLE,
+                    source_session_id=FUSION_SOURCE_SESSION_CONSOLE,
+                    target=target,
+                    observed_at_ms=console_observed_at_ms,
+                    dimension=FUSION_DIMENSION_COMMUNICATION,
+                    assertion=FUSION_COMMUNICATION_DEGRADED,
+                    claim_strength=FUSION_CLAIM_CONSOLE_DEGRADED,
+                    independence_group=f"console:{clean_label}:communication",
+                    reason_code=FUSION_REASON_CONSOLE_DEGRADED,
+                )
+        sequence = _submit_shadow_manual_observations(
+            engine=engine,
+            sequence=sequence,
+            clean_label=clean_label,
+            target=target,
+            runtime_device=runtime_device,
+            manual_entry=manual_entry,
+            manual_observation=manual_observation,
+            now_ms=now_ms,
+        )
+    engine.drain_evaluation_budget(now_ms, EvaluationBudget(max_work_items=FUSION_MAX_WORK_ITEMS))
+    snapshot = engine.get_current_snapshot()
+    results: Dict[str, Dict[str, Any]] = {}
+    configured_devices = dict(snapshot.configured_devices)
+    for clean_label, display_label in label_map.items():
+        result = configured_devices.get(display_label)
+        if isinstance(result, dict):
+            results[clean_label] = dict(result)
+        else:
+            results[clean_label] = _empty_shadow_device_result()
+    return results
 
 
 def build_evidence_fault_snapshot(
@@ -2912,6 +3396,8 @@ def build_interpreted_device_detail_snapshot(
         build_interpreted_device_detail_snapshot - Build one shared interpreted-evidence detail snapshot for lens-aware inspectors.
     """
     snapshot = {
+        "overall": EVIDENCE_SOURCE_NONE,
+        "communication": EVIDENCE_SOURCE_NONE,
         DETAIL_SNAPSHOT_PRESENCE: EVIDENCE_SOURCE_NONE,
         DETAIL_SNAPSHOT_PRESENCE_STATUS: EVIDENCE_SOURCE_NONE,
         DETAIL_SNAPSHOT_PRESENCE_AGE: EVIDENCE_SOURCE_NONE,
@@ -2919,6 +3405,12 @@ def build_interpreted_device_detail_snapshot(
     }
     if not isinstance(evidence_row, Mapping):
         return snapshot
+    snapshot["overall"] = str(
+        evidence_row.get(INTERPRET_KEY_OVERALL, EVIDENCE_SOURCE_NONE)
+    ).strip() or EVIDENCE_SOURCE_NONE
+    snapshot["communication"] = str(
+        evidence_row.get(INTERPRET_KEY_COMMUNICATION, EVIDENCE_SOURCE_NONE)
+    ).strip() or EVIDENCE_SOURCE_NONE
     presence_score = evidence_row.get(INTERPRET_KEY_PRESENCE_SCORE)
     if isinstance(presence_score, (int, float)):
         snapshot[DETAIL_SNAPSHOT_PRESENCE] = _format_optional_float(float(presence_score) / 100.0, precision=2)
@@ -2930,6 +3422,541 @@ def build_interpreted_device_detail_snapshot(
     ).strip() or EVIDENCE_SOURCE_NONE
     snapshot[DETAIL_SNAPSHOT_PRESENCE_SOURCE] = "interpretedEvidence"
     return snapshot
+
+
+def has_completed_interpreted_evidence_evaluation(
+    evidence_row: Optional[Mapping[str, Any]],
+) -> bool:
+    """
+    NAME
+        has_completed_interpreted_evidence_evaluation - Report whether one interpreted row has a completed evaluation.
+    """
+    if not isinstance(evidence_row, Mapping):
+        return False
+    last_evaluation = evidence_row.get(INTERPRET_KEY_LAST_EVALUATION_AT)
+    return isinstance(last_evaluation, (int, float))
+
+
+def build_interpreted_evidence_snapshot(
+    *,
+    evidence_rows: List[Mapping[str, Any]],
+    engine_label: str,
+    generated_at_s: float,
+) -> Dict[str, Any]:
+    """
+    NAME
+        build_interpreted_evidence_snapshot - Freeze one shared interpreted-evidence snapshot for UI consumers.
+
+    DESCRIPTION
+        Produces the common snapshot used by the Evidence tab and topology
+        evidence lens so both surfaces consume the same per-device interpreted
+        row and detail payload.
+    """
+    device_entries: Dict[str, Dict[str, Any]] = {}
+    for evidence_row in evidence_rows:
+        if not isinstance(evidence_row, Mapping):
+            continue
+        clean_label = str(
+            evidence_row.get(INTERPRET_KEY_LABEL, TEXT_EMPTY)
+        ).strip().lower()
+        if not clean_label:
+            continue
+        frozen_row = dict(evidence_row)
+        has_evaluation = has_completed_interpreted_evidence_evaluation(frozen_row)
+        device_entries[clean_label] = {
+            INTERPRETED_SNAPSHOT_KEY_ROW: frozen_row,
+            INTERPRETED_SNAPSHOT_KEY_DETAIL: build_interpreted_device_detail_snapshot(
+                frozen_row
+            ),
+            INTERPRETED_SNAPSHOT_KEY_PRESENCE_STATE: str(
+                frozen_row.get(
+                    INTERPRET_KEY_PRESENCE_STATE,
+                    frozen_row.get(INTERPRET_KEY_STATE, EVIDENCE_STATE_UNKNOWN),
+                )
+            ).strip().lower(),
+            INTERPRETED_SNAPSHOT_KEY_HAS_EVALUATION: has_evaluation,
+            INTERPRETED_SNAPSHOT_KEY_LAST_EVALUATION_AT: frozen_row.get(
+                INTERPRET_KEY_LAST_EVALUATION_AT
+            ),
+        }
+    generated_at_ms = int(round(float(generated_at_s) * 1000.0))
+    evaluation_id = (
+        f"{INTERPRETED_SNAPSHOT_EVALUATION_ID_PREFIX}:{generated_at_ms}"
+    )
+    return {
+        INTERPRETED_SNAPSHOT_KEY_SCHEMA_VERSION: INTERPRETED_SNAPSHOT_SCHEMA_VERSION,
+        INTERPRETED_SNAPSHOT_KEY_SNAPSHOT_TYPE: INTERPRETED_SNAPSHOT_TYPE,
+        INTERPRETED_SNAPSHOT_KEY_EVALUATION_ID: evaluation_id,
+        INTERPRETED_SNAPSHOT_KEY_GENERATED_AT: float(generated_at_s),
+        INTERPRETED_SNAPSHOT_KEY_ENGINE_LABEL: str(engine_label or ENGINE_LABEL_LEGACY),
+        INTERPRETED_SNAPSHOT_KEY_DEVICES: device_entries,
+    }
+
+
+def _empty_shadow_dimension_result(value: str) -> Dict[str, Any]:
+    return {
+        FUSION_DIMENSION_KEY_VALUE: value,
+        FUSION_DIMENSION_KEY_CONFLICT: False,
+    }
+
+
+def _empty_shadow_device_result() -> Dict[str, Any]:
+    return {
+        FUSION_RESULT_KEY_OVERALL_STATE: FUSION_OVERALL_UNKNOWN,
+        FUSION_RESULT_KEY_REASON_CODES: (),
+        FUSION_RESULT_KEY_DIMENSIONS: {
+            FUSION_DIMENSION_EXISTENCE: _empty_shadow_dimension_result(FUSION_EXISTENCE_UNKNOWN),
+            FUSION_DIMENSION_COMMUNICATION: _empty_shadow_dimension_result(FUSION_COMMUNICATION_UNKNOWN),
+            FUSION_DIMENSION_OPERABILITY: _empty_shadow_dimension_result(FUSION_OPERABILITY_UNKNOWN),
+            FUSION_DIMENSION_IDENTITY: _empty_shadow_dimension_result(FUSION_IDENTITY_UNKNOWN),
+        },
+    }
+
+
+def _profile_identity_key(profile_device: Mapping[str, Any]) -> Tuple[int, int, int]:
+    return (
+        int(profile_device.get(KEY_MANUFACTURER, 0) or 0),
+        int(profile_device.get("deviceType", 0) or 0),
+        int(profile_device.get(KEY_ID, 0) or 0),
+    )
+
+
+def _shadow_target(profile_device: Mapping[str, Any], label_key: str) -> EvidenceTarget:
+    display_label = str(profile_device.get(KEY_LABEL, label_key)).strip() or label_key
+    vendor_value = str(
+        profile_device.get("vendor", profile_device.get(KEY_MANUFACTURER, FUSION_VENDOR_UNKNOWN))
+    ).strip() or FUSION_VENDOR_UNKNOWN
+    interface_value = str(get_device_interface(dict(profile_device)) or DEVICE_INTERFACE_CAN).strip() or DEVICE_INTERFACE_CAN
+    bus_value = str(profile_device.get(KEY_BUS, FUSION_BUS_DEFAULT)).strip() or FUSION_BUS_DEFAULT
+    logical_type = str(profile_device.get(KEY_TYPE, profile_device.get("deviceType", TEXT_EMPTY))).strip()
+    return EvidenceTarget(
+        configured_label=display_label,
+        vendor=vendor_value,
+        device_type=logical_type,
+        interface_type=interface_value,
+        bus_name=bus_value,
+        address_value=int(profile_device.get(KEY_ID, 0) or 0),
+    )
+
+
+def _submit_shadow_observation(
+    *,
+    engine: EvidenceFusionEngine,
+    sequence: int,
+    block_id_prefix: str,
+    source_type: str,
+    source_instance: str,
+    source_session_id: str,
+    target: EvidenceTarget,
+    observed_at_ms: int,
+    dimension: str,
+    assertion: str,
+    claim_strength: float,
+    independence_group: str,
+    reason_code: str,
+) -> int:
+    next_sequence = sequence + 1
+    engine.submit_evidence_block(
+        EvidenceBlock(
+            schema_version=FUSION_SCHEMA_VERSION_1,
+            block_id=f"{block_id_prefix}:{next_sequence}",
+            source_type=source_type,
+            source_instance=source_instance,
+            source_session_id=source_session_id,
+            major_type=FUSION_MAJOR_TYPE_OBSERVATION,
+            scope=FUSION_SCOPE_DEVICE,
+            target=target,
+            observed_at_monotonic_ms=observed_at_ms,
+            received_at_monotonic_ms=observed_at_ms,
+            context_revision_id=FUSION_CONTEXT_REVISION_ID,
+            correlation_id=independence_group,
+            priority_hint=FUSION_PRIORITY_HINT,
+            payload={
+                FUSION_PAYLOAD_KEY_DIMENSION: dimension,
+                FUSION_PAYLOAD_KEY_ASSERTION: assertion,
+                FUSION_PAYLOAD_KEY_POLARITY: FUSION_PAYLOAD_POLARITY_SUPPORT,
+                FUSION_PAYLOAD_KEY_CLAIM_STRENGTH: claim_strength,
+                FUSION_PAYLOAD_KEY_SPECIFICITY: FUSION_DEFAULT_COMPONENT_SPECIFICITY,
+                FUSION_PAYLOAD_KEY_DIRECTNESS: FUSION_DEFAULT_COMPONENT_DIRECTNESS,
+                FUSION_PAYLOAD_KEY_QUALITY: FUSION_DEFAULT_COMPONENT_QUALITY,
+                FUSION_PAYLOAD_KEY_SOURCE_HEALTH: FUSION_DEFAULT_COMPONENT_SOURCE_HEALTH,
+                FUSION_PAYLOAD_KEY_BASE_RELIABILITY: FUSION_BASE_RELIABILITY,
+                FUSION_PAYLOAD_KEY_INDEPENDENCE_GROUP: independence_group,
+                FUSION_PAYLOAD_KEY_REASON_CODE: reason_code,
+            },
+        )
+    )
+    return next_sequence
+
+
+def _shadow_runtime_present(
+    presence_entry: Optional[Mapping[str, Any]],
+    runtime_device: Optional[Mapping[str, Any]],
+    now_s: float,
+) -> bool:
+    if not isinstance(presence_entry, Mapping):
+        return False
+    if not _runtime_presence_entry_is_fresh(presence_entry, runtime_device, now_s):
+        return False
+    return str(presence_entry.get(PRESENCE_KEY_EXISTENCE, TEXT_EMPTY)).strip().upper() == EVIDENCE_STATUS_PRESENT
+
+
+def _shadow_runtime_controller_comm_healthy(
+    clean_label: str,
+    runtime_device: Optional[Mapping[str, Any]],
+    presence_entry: Optional[Mapping[str, Any]],
+    now_s: float,
+) -> bool:
+    return _shadow_runtime_present(presence_entry, runtime_device, now_s) and classify_device_type(clean_label, None, runtime_device, None) == DEVICE_CLASS_INFRASTRUCTURE
+
+
+def _shadow_runtime_observed_at_ms(presence_entry: Optional[Mapping[str, Any]], default_ms: int) -> int:
+    if isinstance(presence_entry, Mapping) and isinstance(presence_entry.get(PRESENCE_KEY_UPDATED_AT_MS), (int, float)):
+        return int(presence_entry.get(PRESENCE_KEY_UPDATED_AT_MS))
+    return default_ms
+
+
+def _shadow_passive_healthy(
+    passive_device: Optional[DeviceRecord],
+    visibility_device: Optional[Mapping[str, Any]],
+    now_s: float,
+) -> bool:
+    if passive_device is None or int(getattr(passive_device, "presence_score", 0) or 0) <= 0:
+        return False
+    visibility_metrics = (
+        visibility_device.get("metrics")
+        if isinstance(visibility_device, Mapping) and isinstance(visibility_device.get("metrics"), Mapping)
+        else {}
+    )
+    return _visibility_metrics_fresh(visibility_metrics, now_s)
+
+
+def _shadow_passive_history_missing(
+    passive_device: Optional[DeviceRecord],
+    visibility_device: Optional[Mapping[str, Any]],
+    now_s: float,
+) -> bool:
+    if passive_device is None or int(getattr(passive_device, "presence_score", 0) or 0) <= 0:
+        return False
+    visibility_metrics = (
+        visibility_device.get("metrics")
+        if isinstance(visibility_device, Mapping) and isinstance(visibility_device.get("metrics"), Mapping)
+        else {}
+    )
+    return (
+        _visibility_metrics_have_observer_history(visibility_metrics)
+        and not _visibility_metrics_support_live_presence(visibility_metrics, now_s)
+    )
+
+
+def _shadow_visibility_history_missing_without_device_record(
+    *,
+    label: str,
+    profile_device: Optional[Mapping[str, Any]],
+    runtime_device: Optional[Mapping[str, Any]],
+    passive_device: Optional[DeviceRecord],
+    visibility_device: Optional[Mapping[str, Any]],
+    presence_entry: Optional[Mapping[str, Any]],
+    now_s: float,
+) -> bool:
+    """
+    NAME
+        _shadow_visibility_history_missing_without_device_record - Detect stale visibility-only missing evidence when recent passive analysis dropped the device.
+    """
+    if passive_device is not None:
+        return False
+    if classify_device_type(
+        label,
+        profile_device=profile_device,
+        runtime_device=runtime_device,
+        passive_device=passive_device,
+    ) == DEVICE_CLASS_INFRASTRUCTURE:
+        return False
+    visibility_metrics = (
+        visibility_device.get("metrics")
+        if isinstance(visibility_device, Mapping) and isinstance(visibility_device.get("metrics"), Mapping)
+        else {}
+    )
+    if not visibility_metrics:
+        return False
+    if not _visibility_metrics_have_observer_history(visibility_metrics):
+        return False
+    if _visibility_metrics_support_live_presence(visibility_metrics, now_s):
+        return False
+    return not _runtime_presence_entry_is_fresh(presence_entry, runtime_device, now_s)
+
+
+def _shadow_passive_observed_at_ms(visibility_device: Optional[Mapping[str, Any]], default_ms: int) -> int:
+    latest_ms: Optional[int] = None
+    visibility_metrics = (
+        visibility_device.get("metrics")
+        if isinstance(visibility_device, Mapping) and isinstance(visibility_device.get("metrics"), Mapping)
+        else {}
+    )
+    for metric_entry in visibility_metrics.values():
+        if not isinstance(metric_entry, Mapping):
+            continue
+        last_seen_ms = metric_entry.get("lastSeenMs")
+        if not isinstance(last_seen_ms, (int, float)):
+            continue
+        latest_ms = int(last_seen_ms) if latest_ms is None else max(latest_ms, int(last_seen_ms))
+    return latest_ms if isinstance(latest_ms, int) else default_ms
+
+
+def _shadow_console_observed_at_ms(console_entry: Mapping[str, Any], default_ms: int) -> int:
+    last_seen_sec = console_entry.get(CONSOLE_KEY_LAST_SEEN_SEC)
+    if isinstance(last_seen_sec, (int, float)):
+        return int(float(last_seen_sec) * 1000.0)
+    return default_ms
+
+
+def _submit_shadow_manual_observations(
+    *,
+    engine: EvidenceFusionEngine,
+    sequence: int,
+    clean_label: str,
+    target: EvidenceTarget,
+    runtime_device: Optional[Mapping[str, Any]],
+    manual_entry: Optional[Mapping[str, Any]],
+    manual_observation: Optional[Mapping[str, Any]],
+    now_ms: int,
+) -> int:
+    next_sequence = sequence
+    probe_attachment = _active_probe_attachment(runtime_device)
+    probe_bucket = str(probe_attachment.get(PROBE_KEY_BUCKET, TEXT_EMPTY)).strip().lower() if isinstance(probe_attachment, Mapping) else TEXT_EMPTY
+    if probe_bucket == PRESENCE_VALUE_PRESENT:
+        next_sequence = _submit_shadow_observation(
+            engine=engine,
+            sequence=next_sequence,
+            block_id_prefix=clean_label,
+            source_type=FUSION_SOURCE_TYPE_MANUAL,
+            source_instance=FUSION_SOURCE_INSTANCE_MANUAL,
+            source_session_id=FUSION_SOURCE_SESSION_MANUAL,
+            target=target,
+            observed_at_ms=_shadow_manual_observed_at_ms(probe_attachment, now_ms),
+            dimension=FUSION_DIMENSION_EXISTENCE,
+            assertion=FUSION_EXISTENCE_PRESENT,
+            claim_strength=FUSION_CLAIM_STRONG,
+            independence_group=f"probe:{clean_label}:existence",
+            reason_code=FUSION_REASON_PROBE_PRESENT,
+        )
+    if isinstance(manual_observation, Mapping):
+        auto_result = str(manual_observation.get("autoResult", TEXT_EMPTY)).strip().lower()
+        observed_at_ms = _shadow_manual_observed_at_ms(manual_observation, now_ms)
+        if auto_result == MANUAL_AUTO_RESULT_ROTATION:
+            next_sequence = _submit_shadow_observation(
+                engine=engine,
+                sequence=next_sequence,
+                block_id_prefix=clean_label,
+                source_type=FUSION_SOURCE_TYPE_MANUAL,
+                source_instance=FUSION_SOURCE_INSTANCE_MANUAL,
+                source_session_id=FUSION_SOURCE_SESSION_MANUAL,
+                target=target,
+                observed_at_ms=observed_at_ms,
+                dimension=FUSION_DIMENSION_OPERABILITY,
+                assertion=FUSION_OPERABILITY_WORKING,
+                claim_strength=FUSION_CLAIM_MANUAL_WORKING,
+                independence_group=f"manual:{clean_label}:operability",
+                reason_code=FUSION_REASON_MANUAL_WORKING,
+            )
+            next_sequence = _submit_shadow_observation(
+                engine=engine,
+                sequence=next_sequence,
+                block_id_prefix=clean_label,
+                source_type=FUSION_SOURCE_TYPE_MANUAL,
+                source_instance=FUSION_SOURCE_INSTANCE_MANUAL,
+                source_session_id=FUSION_SOURCE_SESSION_MANUAL,
+                target=target,
+                observed_at_ms=observed_at_ms,
+                dimension=FUSION_DIMENSION_IDENTITY,
+                assertion=FUSION_IDENTITY_MATCHING,
+                claim_strength=FUSION_CLAIM_MANUAL_IDENTITY,
+                independence_group=f"manual:{clean_label}:identity",
+                reason_code=FUSION_REASON_MANUAL_MATCHING,
+            )
+        elif auto_result == MANUAL_AUTO_RESULT_NO_ROTATION:
+            next_sequence = _submit_shadow_observation(
+                engine=engine,
+                sequence=next_sequence,
+                block_id_prefix=clean_label,
+                source_type=FUSION_SOURCE_TYPE_MANUAL,
+                source_instance=FUSION_SOURCE_INSTANCE_MANUAL,
+                source_session_id=FUSION_SOURCE_SESSION_MANUAL,
+                target=target,
+                observed_at_ms=observed_at_ms,
+                dimension=FUSION_DIMENSION_OPERABILITY,
+                assertion=FUSION_OPERABILITY_FAILED,
+                claim_strength=FUSION_CLAIM_MANUAL_FAILED,
+                independence_group=f"manual:{clean_label}:operability",
+                reason_code=FUSION_REASON_MANUAL_FAILED,
+            )
+    if not isinstance(manual_entry, Mapping):
+        return next_sequence
+    outcome = str(manual_entry.get("outcome", TEXT_EMPTY)).strip().lower()
+    observed_at_ms = _shadow_manual_observed_at_ms(manual_entry, now_ms)
+    if outcome == MANUAL_OUTCOME_CORRECT:
+        next_sequence = _submit_shadow_observation(
+            engine=engine,
+            sequence=next_sequence,
+            block_id_prefix=clean_label,
+            source_type=FUSION_SOURCE_TYPE_MANUAL,
+            source_instance=FUSION_SOURCE_INSTANCE_MANUAL,
+            source_session_id=FUSION_SOURCE_SESSION_MANUAL,
+            target=target,
+            observed_at_ms=observed_at_ms,
+            dimension=FUSION_DIMENSION_OPERABILITY,
+            assertion=FUSION_OPERABILITY_WORKING,
+            claim_strength=FUSION_CLAIM_MANUAL_WORKING,
+            independence_group=f"manual:{clean_label}:operability",
+            reason_code=FUSION_REASON_MANUAL_WORKING,
+        )
+        next_sequence = _submit_shadow_observation(
+            engine=engine,
+            sequence=next_sequence,
+            block_id_prefix=clean_label,
+            source_type=FUSION_SOURCE_TYPE_MANUAL,
+            source_instance=FUSION_SOURCE_INSTANCE_MANUAL,
+            source_session_id=FUSION_SOURCE_SESSION_MANUAL,
+            target=target,
+            observed_at_ms=observed_at_ms,
+            dimension=FUSION_DIMENSION_IDENTITY,
+            assertion=FUSION_IDENTITY_MATCHING,
+            claim_strength=FUSION_CLAIM_MANUAL_IDENTITY,
+            independence_group=f"manual:{clean_label}:identity",
+            reason_code=FUSION_REASON_MANUAL_MATCHING,
+        )
+    elif outcome == MANUAL_OUTCOME_NO_RESPONSE:
+        next_sequence = _submit_shadow_observation(
+            engine=engine,
+            sequence=next_sequence,
+            block_id_prefix=clean_label,
+            source_type=FUSION_SOURCE_TYPE_MANUAL,
+            source_instance=FUSION_SOURCE_INSTANCE_MANUAL,
+            source_session_id=FUSION_SOURCE_SESSION_MANUAL,
+            target=target,
+            observed_at_ms=observed_at_ms,
+            dimension=FUSION_DIMENSION_OPERABILITY,
+            assertion=FUSION_OPERABILITY_FAILED,
+            claim_strength=FUSION_CLAIM_MANUAL_FAILED,
+            independence_group=f"manual:{clean_label}:operability",
+            reason_code=FUSION_REASON_MANUAL_FAILED,
+        )
+    elif outcome in (MANUAL_OUTCOME_INTERMITTENT, MANUAL_OUTCOME_DEGRADED):
+        next_sequence = _submit_shadow_observation(
+            engine=engine,
+            sequence=next_sequence,
+            block_id_prefix=clean_label,
+            source_type=FUSION_SOURCE_TYPE_MANUAL,
+            source_instance=FUSION_SOURCE_INSTANCE_MANUAL,
+            source_session_id=FUSION_SOURCE_SESSION_MANUAL,
+            target=target,
+            observed_at_ms=observed_at_ms,
+            dimension=FUSION_DIMENSION_OPERABILITY,
+            assertion=FUSION_OPERABILITY_DEGRADED,
+            claim_strength=FUSION_CLAIM_MANUAL_DEGRADED,
+            independence_group=f"manual:{clean_label}:operability",
+            reason_code=FUSION_REASON_MANUAL_DEGRADED,
+        )
+    elif outcome in (MANUAL_OUTCOME_WRONG_DEVICE, MANUAL_OUTCOME_WRONG_BRANCH):
+        next_sequence = _submit_shadow_observation(
+            engine=engine,
+            sequence=next_sequence,
+            block_id_prefix=clean_label,
+            source_type=FUSION_SOURCE_TYPE_MANUAL,
+            source_instance=FUSION_SOURCE_INSTANCE_MANUAL,
+            source_session_id=FUSION_SOURCE_SESSION_MANUAL,
+            target=target,
+            observed_at_ms=observed_at_ms,
+            dimension=FUSION_DIMENSION_IDENTITY,
+            assertion=FUSION_IDENTITY_MISMATCHED,
+            claim_strength=FUSION_CLAIM_MANUAL_IDENTITY,
+            independence_group=f"manual:{clean_label}:identity",
+            reason_code=FUSION_REASON_MANUAL_MISMATCHED,
+        )
+    return next_sequence
+
+
+def _shadow_manual_observed_at_ms(source_entry: Optional[Mapping[str, Any]], default_ms: int) -> int:
+    if isinstance(source_entry, Mapping):
+        recorded_at_epoch_sec = source_entry.get("recordedAtEpochSec")
+        if isinstance(recorded_at_epoch_sec, (int, float)):
+            return int(float(recorded_at_epoch_sec) * 1000.0)
+        updated_at_ms = source_entry.get(PROBE_KEY_UPDATED_AT_MS)
+        if isinstance(updated_at_ms, (int, float)):
+            return int(updated_at_ms)
+    return default_ms
+
+
+def _shadow_dimension_value(
+    dimensions: Mapping[str, Any],
+    dimension_name: str,
+    default_value: str,
+) -> str:
+    dimension_entry = dimensions.get(dimension_name, {}) if isinstance(dimensions, Mapping) else {}
+    if not isinstance(dimension_entry, Mapping):
+        return default_value
+    return str(dimension_entry.get(FUSION_DIMENSION_KEY_VALUE, default_value)).strip() or default_value
+
+
+def _shadow_dimension_conflicted(
+    dimensions: Mapping[str, Any],
+    dimension_name: str,
+) -> bool:
+    dimension_entry = dimensions.get(dimension_name, {}) if isinstance(dimensions, Mapping) else {}
+    if not isinstance(dimension_entry, Mapping):
+        return False
+    return bool(dimension_entry.get(FUSION_DIMENSION_KEY_CONFLICT))
+
+
+def _shadow_dimension_confidence_band(
+    dimensions: Mapping[str, Any],
+    dimension_name: str,
+) -> str:
+    dimension_entry = dimensions.get(dimension_name, {}) if isinstance(dimensions, Mapping) else {}
+    if not isinstance(dimension_entry, Mapping):
+        return EVIDENCE_CONFIDENCE_LOW
+    return (
+        str(
+            dimension_entry.get(
+                FUSION_DIMENSION_KEY_CONFIDENCE_BAND,
+                EVIDENCE_CONFIDENCE_LOW,
+            )
+        ).strip().upper()
+        or EVIDENCE_CONFIDENCE_LOW
+    )
+
+
+def _max_legacy_confidence(current_confidence: str, candidate_confidence: str) -> str:
+    confidence_order = {
+        EVIDENCE_CONFIDENCE_LOW: 0,
+        EVIDENCE_CONFIDENCE_MEDIUM: 1,
+        EVIDENCE_CONFIDENCE_HIGH: 2,
+    }
+    normalized_current = (
+        str(current_confidence or EVIDENCE_CONFIDENCE_LOW).strip().upper()
+        or EVIDENCE_CONFIDENCE_LOW
+    )
+    normalized_candidate = (
+        str(candidate_confidence or EVIDENCE_CONFIDENCE_LOW).strip().upper()
+        or EVIDENCE_CONFIDENCE_LOW
+    )
+    if confidence_order.get(normalized_candidate, 0) >= confidence_order.get(
+        normalized_current, 0
+    ):
+        return normalized_candidate
+    return normalized_current
+
+
+def _shadow_reason_codes_text(shadow_result: Optional[Mapping[str, Any]]) -> str:
+    if not isinstance(shadow_result, Mapping):
+        return TEXT_EMPTY
+    reason_codes = shadow_result.get(FUSION_RESULT_KEY_REASON_CODES, ())
+    if not isinstance(reason_codes, (list, tuple)):
+        return TEXT_EMPTY
+    normalized = [str(reason_code).strip() for reason_code in reason_codes if str(reason_code).strip()]
+    if not normalized:
+        return TEXT_EMPTY
+    return "Fusion reasons=" + TEXT_COMMA_DELIM.join(normalized)
 
 
 def _resolve_profile_path(profile_path: str) -> str:
@@ -3137,6 +4164,25 @@ def _runtime_presence_entry_is_fresh(
             str(presence_entry.get(PRESENCE_KEY_EXISTENCE, EVIDENCE_STATUS_UNKNOWN)).strip().upper()
             == EVIDENCE_STATUS_PRESENT
         )
+    return False
+
+
+def _runtime_presence_entry_has_explicit_timing(
+    presence_entry: Optional[Mapping[str, Any]],
+    runtime_device: Optional[Mapping[str, Any]],
+) -> bool:
+    """
+    NAME
+        _runtime_presence_entry_has_explicit_timing - Return whether runtime presence evidence includes a concrete timestamp source.
+    """
+    if isinstance(presence_entry, Mapping):
+        updated_at_ms = presence_entry.get(PRESENCE_KEY_UPDATED_AT_MS)
+        if isinstance(updated_at_ms, (int, float)) and float(updated_at_ms) > 0.0:
+            return True
+    if isinstance(runtime_device, Mapping):
+        last_seen_ms = runtime_device.get(RUNTIME_DEVICE_KEY_LAST_SEEN_MS)
+        if isinstance(last_seen_ms, (int, float)) and float(last_seen_ms) > 0.0:
+            return True
     return False
 
 
@@ -3421,6 +4467,10 @@ def _build_passive_text(
         _build_passive_text - Format one shared passive evidence block.
     """
     if passive_device is not None:
+        evidence_packet_count = passive_visibility_evidence_packet_count(
+            passive_device=passive_device,
+            visibility_device=visibility_device,
+        )
         lines = [
             EVIDENCE_NOTE_SEPARATOR.join(
                 (
@@ -3428,6 +4478,11 @@ def _build_passive_text(
                     f"identity={EVIDENCE_STATUS_MATCHING if passive_visible else EVIDENCE_STATUS_UNKNOWN}",
                     f"presence={str(getattr(passive_device, 'presence_confidence', TEXT_EMPTY)).strip() or TEXT_EMPTY}",
                     f"score={int(getattr(passive_device, 'presence_score', 0))}/100",
+                    (
+                        f"existencePackets={int(evidence_packet_count)}"
+                        if isinstance(evidence_packet_count, int)
+                        else "existencePackets=--"
+                    ),
                 )
             )
         ]
@@ -3773,6 +4828,37 @@ def _passive_visibility_family_total_packets_by_key(
         family_key = (api_class, api_index)
         totals[family_key] = totals.get(family_key, 0) + max(0, msg_count)
     return totals
+
+
+def passive_visibility_evidence_packet_count(
+    *,
+    passive_device: Optional[Any],
+    visibility_device: Optional[Mapping[str, Any]],
+) -> Optional[int]:
+    """
+    NAME
+        passive_visibility_evidence_packet_count - Return the current raw-ID packet total for one passive device's device-emitted evidence families.
+    """
+    if passive_device is None or not isinstance(visibility_device, Mapping):
+        return None
+    evidence_family_keys = tuple(getattr(passive_device, "evidence_family_keys", ()) or ())
+    if not evidence_family_keys:
+        return None
+    family_totals = _passive_visibility_family_total_packets_by_key(visibility_device)
+    if not family_totals:
+        return None
+    total_packets = 0
+    matched_any = False
+    for family_key in evidence_family_keys:
+        api_class = getattr(family_key, "api_class", None)
+        api_index = getattr(family_key, "api_index", None)
+        if not isinstance(api_class, int) or not isinstance(api_index, int):
+            continue
+        matched_any = True
+        total_packets += int(family_totals.get((api_class, api_index), 0) or 0)
+    if not matched_any:
+        return None
+    return max(0, total_packets)
 
 
 def _bool_text(value: Any) -> str:

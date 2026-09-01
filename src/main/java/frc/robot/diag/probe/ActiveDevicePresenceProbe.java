@@ -44,7 +44,7 @@ import java.util.Map;
 
 /**
  * NAME
- *   ActiveDevicePresenceProbe - One-shot heavy full-state probe for runtime-owned devices.
+ *   ActiveDevicePresenceProbe - Full-state probe for runtime-owned devices.
  *
  * DESCRIPTION
  *   Probes the currently active runtime-owned CAN devices using already-open
@@ -53,6 +53,7 @@ import java.util.Map;
  */
 public final class ActiveDevicePresenceProbe {
   private static final String MODE_ONE_SHOT = "oneShot";
+  private static final String MODE_INCREMENTAL = "incremental";
   private static final String STATUS_OK = "ok";
   private static final String STATUS_WARNING = "warning";
   private static final String STATUS_ERROR = "error";
@@ -186,6 +187,26 @@ public final class ActiveDevicePresenceProbe {
   private static final String TEXT_STAGE_SNAPSHOT = "snapshot";
   private static final String TEXT_MS_SUFFIX = " ms";
   private static final String LABEL_KEY_EMPTY = "";
+  private static final int MAX_TARGETS_PER_INCREMENTAL_STEP = 1;
+  private static final String TEXT_PROGRESS_PREFIX = "Active presence probe running";
+  private static final String TEXT_PROGRESS_TARGET_PREFIX = " target=";
+  private static final String TEXT_PROGRESS_PROCESSED_PREFIX = " processed=";
+  private static final String TEXT_PROGRESS_REMAINING_PREFIX = " remaining=";
+
+  /**
+   * NAME
+   *   beginRun - Create an incremental probe run that can be advanced across loops.
+   *
+   * PARAMETERS
+   *   core - active runtime core that owns the current device handles.
+   *   preclearSticky - when true, clear sticky faults where safely supported.
+   *
+   * RETURNS
+   *   Probe run state object for repeated advance() calls.
+   */
+  public ProbeRun beginRun(BringupCore core, boolean preclearSticky) {
+    return new ProbeRun(core, preclearSticky);
+  }
 
   /**
    * NAME
@@ -201,9 +222,13 @@ public final class ActiveDevicePresenceProbe {
   public ProbeSessionResult runOnce(BringupCore core, boolean preclearSticky) {
     long sessionStartNs = System.nanoTime();
     if (core == null) {
-      ProbeSessionResult result = ProbeSessionResult.failed(TEXT_SESSION_EMPTY);
-      result.totalDurationMs = nanosToMs(System.nanoTime() - sessionStartNs);
-      return result;
+      return buildSessionFromAccumulated(
+          null,
+          0,
+          0,
+          new ArrayList<>(),
+          sessionStartNs,
+          MODE_ONE_SHOT);
     }
     List<ProbeDeviceResult> results = new ArrayList<>();
     int unsupportedCount = 0;
@@ -228,18 +253,169 @@ public final class ActiveDevicePresenceProbe {
     }
     if (results.isEmpty()) {
       if (canCount == 0) {
-        ProbeSessionResult result = ProbeSessionResult.failed(TEXT_SESSION_EMPTY);
-        result.totalDurationMs = nanosToMs(System.nanoTime() - sessionStartNs);
-        return result;
+        return buildSessionFromAccumulated(
+            core,
+            canCount,
+            unsupportedCount,
+            results,
+            sessionStartNs,
+            MODE_ONE_SHOT);
       }
-      ProbeSessionResult result = ProbeSessionResult.failed(TEXT_SESSION_UNSUPPORTED);
-      result.totalDurationMs = nanosToMs(System.nanoTime() - sessionStartNs);
-      return result;
+      return buildSessionFromAccumulated(
+          core,
+          canCount,
+          unsupportedCount,
+          results,
+          sessionStartNs,
+          MODE_ONE_SHOT);
     }
-    ProbeSessionResult session = ProbeSessionResult.fromDevices(results, unsupportedCount);
+    return buildSessionFromAccumulated(
+        core,
+        canCount,
+        unsupportedCount,
+        results,
+        sessionStartNs,
+        MODE_ONE_SHOT);
+  }
+
+  private ProbeSessionResult buildSessionFromAccumulated(
+      BringupCore core,
+      int canCount,
+      int unsupportedCount,
+      List<ProbeDeviceResult> results,
+      long sessionStartNs,
+      String mode) {
+    ProbeSessionResult session;
+    if (core == null || results == null || results.isEmpty()) {
+      if (canCount == 0) {
+        session = ProbeSessionResult.failed(TEXT_SESSION_EMPTY);
+      } else {
+        session = ProbeSessionResult.failed(TEXT_SESSION_UNSUPPORTED);
+      }
+    } else {
+      session = ProbeSessionResult.fromDevices(results, unsupportedCount);
+    }
+    session.mode = mode != null && !mode.isBlank() ? mode : MODE_ONE_SHOT;
     session.totalDurationMs = nanosToMs(System.nanoTime() - sessionStartNs);
     session.finishProfilingSummary();
     return session;
+  }
+
+  /**
+   * NAME
+   *   ProbeRun - Incremental active-probe state advanced over multiple loops.
+   */
+  public final class ProbeRun {
+    private final BringupCore core;
+    private final boolean preclearSticky;
+    private final List<BringupUtil.DeviceEntry> entries;
+    private final long sessionStartNs;
+    private final List<ProbeDeviceResult> results = new ArrayList<>();
+    private int nextEntryIndex;
+    private int canCount;
+    private int unsupportedCount;
+    private boolean complete;
+    private ProbeSessionResult sessionResult;
+
+    private ProbeRun(BringupCore core, boolean preclearSticky) {
+      this.core = core;
+      this.preclearSticky = preclearSticky;
+      this.entries = core != null ? probeCandidateEntries(core) : Collections.emptyList();
+      this.sessionStartNs = System.nanoTime();
+      this.nextEntryIndex = 0;
+      this.canCount = 0;
+      this.unsupportedCount = 0;
+      this.complete = false;
+      this.sessionResult = null;
+    }
+
+    public ProbeStepResult advance() {
+      if (complete) {
+        return ProbeStepResult.complete(sessionResult);
+      }
+      int processedTargets = 0;
+      String lastTargetLabel = TEXT_EMPTY;
+      while (nextEntryIndex < entries.size() && processedTargets < MAX_TARGETS_PER_INCREMENTAL_STEP) {
+        BringupUtil.DeviceEntry entry = entries.get(nextEntryIndex++);
+        if (!isCanEntry(entry)) {
+          continue;
+        }
+        processedTargets++;
+        canCount++;
+        lastTargetLabel = entry != null && entry.label != null ? entry.label : TEXT_EMPTY;
+        DeviceUnit device = core != null ? core.findDeviceByLabel(entry.label) : null;
+        ProbeTarget target = resolveTarget(entry, device);
+        if (core != null
+            && !core.isLifecycleSnapshotAllowed(entry.label)
+            && !isSupplementalProbeTarget(target.model)) {
+          results.add(snapshotNotAllowed(target));
+          continue;
+        }
+        if (MODEL_UNSUPPORTED.equals(target.model)) {
+          unsupportedCount++;
+          continue;
+        }
+        results.add(probeTarget(target, device, preclearSticky));
+      }
+      if (nextEntryIndex >= entries.size()) {
+        complete = true;
+        sessionResult =
+            buildSessionFromAccumulated(
+                core,
+                canCount,
+                unsupportedCount,
+                results,
+                sessionStartNs,
+                MODE_INCREMENTAL);
+        return ProbeStepResult.complete(sessionResult);
+      }
+      return ProbeStepResult.running(
+          buildProgressMessage(lastTargetLabel, processedTargets, entries.size() - nextEntryIndex));
+    }
+
+    public boolean isComplete() {
+      return complete;
+    }
+
+    public ProbeSessionResult sessionResult() {
+      return sessionResult;
+    }
+  }
+
+  /**
+   * NAME
+   *   ProbeStepResult - Incremental step outcome for a probe run.
+   */
+  public static final class ProbeStepResult {
+    public final boolean complete;
+    public final String message;
+    public final ProbeSessionResult session;
+
+    private ProbeStepResult(boolean complete, String message, ProbeSessionResult session) {
+      this.complete = complete;
+      this.message = message != null ? message : TEXT_EMPTY;
+      this.session = session;
+    }
+
+    public static ProbeStepResult running(String message) {
+      return new ProbeStepResult(false, message, null);
+    }
+
+    public static ProbeStepResult complete(ProbeSessionResult session) {
+      String message = session != null ? session.message : TEXT_SESSION_EMPTY;
+      return new ProbeStepResult(true, message, session);
+    }
+  }
+
+  private String buildProgressMessage(String label, int processedTargets, int remainingEntries) {
+    StringBuilder sb = new StringBuilder();
+    sb.append(TEXT_PROGRESS_PREFIX);
+    if (label != null && !label.isBlank()) {
+      sb.append(TEXT_PROGRESS_TARGET_PREFIX).append(label);
+    }
+    sb.append(TEXT_PROGRESS_PROCESSED_PREFIX).append(processedTargets);
+    sb.append(TEXT_PROGRESS_REMAINING_PREFIX).append(Math.max(remainingEntries, 0));
+    return sb.toString();
   }
 
   static List<BringupUtil.DeviceEntry> mergeProbeEntries(
@@ -1572,7 +1748,7 @@ public final class ActiveDevicePresenceProbe {
 
   /**
    * NAME
-   *   ProbeSessionResult - Structured one-shot probe output.
+ *   ProbeSessionResult - Structured probe session output.
    */
   public static final class ProbeSessionResult {
     public int code;

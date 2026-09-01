@@ -21,8 +21,10 @@ import java.util.Set;
  */
 public final class SampledTelemetrySampler {
   private static final int KEY_INITIAL_BUILDER_CAPACITY = 96;
+  private static final int UNBOUNDED_SIGNAL_READS = Integer.MAX_VALUE;
 
   private final Map<String, SignalWindowState> signalStates = new LinkedHashMap<>();
+  private int periodicReadCursor = 0;
 
   /**
    * NAME
@@ -37,7 +39,26 @@ public final class SampledTelemetrySampler {
    *   current runtime device set.
    */
   public void sampleDevices(List<DeviceUnit> devices, long nowMs) {
+    sampleDevices(devices, nowMs, UNBOUNDED_SIGNAL_READS);
+  }
+
+  /**
+   * NAME
+   *   sampleDevices - Sample a bounded subset of available registered signals.
+   *
+   * PARAMETERS
+   *   devices - Devices to inspect for sampled-signal registrations.
+   *   nowMs - Current wall-clock time in milliseconds.
+   *   maxSignalReads - Maximum raw signal reads to perform this pass.
+   *
+   * SIDE EFFECTS
+   *   Updates rolling windows for selected signals, trims stale state for
+   *   active-but-not-sampled signals, and prunes state for signals no longer
+   *   present in the runtime device set.
+   */
+  public void sampleDevices(List<DeviceUnit> devices, long nowMs, int maxSignalReads) {
     Set<String> seenKeys = new HashSet<>();
+    List<SignalReadPlanEntry> activePlans = new ArrayList<>();
     if (devices != null) {
       for (DeviceUnit device : devices) {
         if (device == null || !device.isCreated()) {
@@ -66,19 +87,11 @@ public final class SampledTelemetrySampler {
                           registration.nonzeroThreshold()));
           state.windowMs = registration.windowMs();
           state.nonzeroThreshold = registration.nonzeroThreshold();
-          try {
-            Double value = registration.reader().readNow();
-            if (value != null) {
-              state.addSample(nowMs, value);
-            } else {
-              state.trim(nowMs);
-            }
-          } catch (RuntimeException ex) {
-            state.trim(nowMs);
-          }
+          activePlans.add(new SignalReadPlanEntry(key, registration, state));
         }
       }
     }
+    applyBoundedReadPlan(activePlans, nowMs, maxSignalReads);
     signalStates.keySet().removeIf(key -> !seenKeys.contains(key));
   }
 
@@ -88,6 +101,7 @@ public final class SampledTelemetrySampler {
    */
   public void clearAll() {
     signalStates.clear();
+    periodicReadCursor = 0;
   }
 
   /**
@@ -132,6 +146,67 @@ public final class SampledTelemetrySampler {
     sb.append('|');
     sb.append(signalName != null ? signalName : "");
     return sb.toString();
+  }
+
+  private void applyBoundedReadPlan(
+      List<SignalReadPlanEntry> activePlans,
+      long nowMs,
+      int maxSignalReads) {
+    if (activePlans == null || activePlans.isEmpty()) {
+      periodicReadCursor = 0;
+      return;
+    }
+    int planSize = activePlans.size();
+    int normalizedMaxReads =
+        maxSignalReads <= 0 ? 0 : Math.min(maxSignalReads, planSize);
+    Set<String> sampledKeys = new HashSet<>();
+    if (normalizedMaxReads > 0) {
+      int startCursor = Math.floorMod(periodicReadCursor, planSize);
+      for (int offset = 0; offset < normalizedMaxReads; offset++) {
+        SignalReadPlanEntry entry = activePlans.get((startCursor + offset) % planSize);
+        sampledKeys.add(entry.key);
+        readSignalEntry(entry, nowMs);
+      }
+      periodicReadCursor = (startCursor + normalizedMaxReads) % planSize;
+    } else {
+      periodicReadCursor = Math.floorMod(periodicReadCursor, planSize);
+    }
+    for (SignalReadPlanEntry entry : activePlans) {
+      if (!sampledKeys.contains(entry.key)) {
+        entry.state.trim(nowMs);
+      }
+    }
+  }
+
+  private void readSignalEntry(SignalReadPlanEntry entry, long nowMs) {
+    if (entry == null || entry.registration == null || entry.state == null) {
+      return;
+    }
+    try {
+      Double value = entry.registration.reader().readNow();
+      if (value != null) {
+        entry.state.addSample(nowMs, value);
+      } else {
+        entry.state.trim(nowMs);
+      }
+    } catch (RuntimeException ex) {
+      entry.state.trim(nowMs);
+    }
+  }
+
+  private static final class SignalReadPlanEntry {
+    private final String key;
+    private final SampledSignalRegistration registration;
+    private final SignalWindowState state;
+
+    private SignalReadPlanEntry(
+        String key,
+        SampledSignalRegistration registration,
+        SignalWindowState state) {
+      this.key = key;
+      this.registration = registration;
+      this.state = state;
+    }
   }
 
   private static final class SignalWindowState {

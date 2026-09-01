@@ -41,6 +41,7 @@ public final class CtreTalonFxDevice implements DeviceUnit {
   private final String deviceType;
   private final BringupUtil.LimitConfig limitConfig;
   private final java.util.List<DigitalInput> limitInputs = new java.util.ArrayList<>();
+  private final CtreReadFailureCooldown readFailureCooldown = new CtreReadFailureCooldown();
   private TalonFX device;
   private Double lastCmdDuty = 0.0;
 
@@ -258,10 +259,35 @@ public final class CtreTalonFxDevice implements DeviceUnit {
       addLimitAttachment(snap);
       return snap;
     }
-    DeviceSnapshot snap = CtreTalonFxReader.read(device, deviceType, canId, lastCmdDuty);
-    snap.label = label;
-    addLimitAttachment(snap);
-    return snap;
+    if (readFailureCooldown.isActive()) {
+      DeviceSnapshot snap = new DeviceSnapshot();
+      snap.vendor = "CTRE";
+      snap.deviceType = deviceType;
+      snap.canId = canId;
+      snap.present = false;
+      snap.note = "read failed: " + readFailureCooldown.unavailableNote();
+      snap.label = label;
+      addLimitAttachment(snap);
+      return snap;
+    }
+    try {
+      DeviceSnapshot snap = CtreTalonFxReader.read(device, deviceType, canId, lastCmdDuty);
+      readFailureCooldown.clear();
+      snap.label = label;
+      addLimitAttachment(snap);
+      return snap;
+    } catch (RuntimeException ex) {
+      readFailureCooldown.recordFailure(ex);
+      DeviceSnapshot snap = new DeviceSnapshot();
+      snap.vendor = "CTRE";
+      snap.deviceType = deviceType;
+      snap.canId = canId;
+      snap.present = false;
+      snap.note = "read failed: " + ex.getMessage();
+      snap.label = label;
+      addLimitAttachment(snap);
+      return snap;
+    }
   }
 
   @Override
@@ -272,9 +298,24 @@ public final class CtreTalonFxDevice implements DeviceUnit {
             CURRENT_WINDOW_MS,
             CURRENT_NONZERO_THRESHOLD_A,
             () ->
-                device != null
-                    ? device.getSupplyCurrent().getValue().in(Units.Amps)
-                    : null));
+                sampleCurrent()));
+  }
+
+  private Double sampleCurrent() {
+    if (device == null) {
+      return null;
+    }
+    if (readFailureCooldown.isActive()) {
+      return null;
+    }
+    try {
+      Double value = device.getSupplyCurrent().getValue().in(Units.Amps);
+      readFailureCooldown.clear();
+      return value;
+    } catch (RuntimeException ex) {
+      readFailureCooldown.recordFailure(ex);
+      return null;
+    }
   }
 
   /**

@@ -85,6 +85,21 @@ class CommandWorkflowServiceTests(unittest.TestCase):
         self.assertEqual("accepted", result.event.message)
         self.assertFalse(tracker.is_pending())
 
+    def test_send_tracked_command_applies_timeout_override(self) -> None:
+        session = _FakeSession([])
+        tracker = CommandTracker(timeout_sec=1.0, max_retries=0)
+
+        send_tracked_command(
+            session,
+            tracker,
+            "activePresenceProbe",
+            timeout_sec=5.0,
+            now=0.0,
+        )
+
+        self.assertFalse(tracker.check_timeout(4.0))
+        self.assertTrue(tracker.check_timeout(5.1))
+
 
 if __name__ == "__main__":
     unittest.main()

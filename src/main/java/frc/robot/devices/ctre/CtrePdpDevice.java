@@ -34,6 +34,7 @@ public final class CtrePdpDevice implements DeviceUnit {
 
   private final int canId;
   private final String label;
+  private final CtreReadFailureCooldown readFailureCooldown = new CtreReadFailureCooldown();
   private PdpStatusReader reader;
 
   /**
@@ -118,11 +119,18 @@ public final class CtrePdpDevice implements DeviceUnit {
       snap.note = NOTE_NOT_ADDED;
       return snap;
     }
+    if (readFailureCooldown.isActive()) {
+      snap.present = false;
+      snap.note = NOTE_READ_FAIL_PREFIX + readFailureCooldown.unavailableNote();
+      return snap;
+    }
     try {
       PdpStatusAttachment status = activeReader.snapshot();
+      readFailureCooldown.clear();
       snap.present = true;
       snap.addAttachment(status);
     } catch (RuntimeException ex) {
+      readFailureCooldown.recordFailure(ex);
       snap.present = false;
       snap.note = NOTE_READ_FAIL_PREFIX + ex.getMessage();
     }

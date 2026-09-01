@@ -387,6 +387,66 @@ class CanFaultInferenceTests(unittest.TestCase):
         self.assertEqual("single_device_unreachable", result["candidates"][0]["faultClass"])
         self.assertEqual(["pdp"], result["candidates"][0]["affectedDevices"])
 
+    def test_shadow_result_can_mark_device_affected_even_when_legacy_row_is_present(self) -> None:
+        result = build_fault_diagnosis(
+            evidence_rows=[
+                {
+                    "label": "cancoder",
+                    "existence": "PRESENT",
+                    "operability": "OK",
+                    "confidence": "MEDIUM",
+                    "state": "ok",
+                    "presenceState": "present",
+                    "shadowResult": {
+                        "dimensions": {
+                            "existence": {"value": "ABSENT", "conflict": True},
+                            "communication": {"value": "FAILED", "conflict": False},
+                            "operability": {"value": "UNKNOWN", "conflict": False},
+                            "identity": {"value": "UNKNOWN", "conflict": False},
+                        }
+                    },
+                }
+            ],
+            now_s=10.0,
+        )
+
+        self.assertEqual("single_device_unreachable", result["candidates"][0]["faultClass"])
+        self.assertEqual(["cancoder"], result["candidates"][0]["affectedDevices"])
+
+    def test_shadow_result_allows_fault_finder_to_include_cancoder_alongside_missing_pdp(self) -> None:
+        result = build_fault_diagnosis(
+            evidence_rows=[
+                {
+                    "label": "pdp",
+                    "deviceType": "infrastructure_device",
+                    "existence": "ABSENT",
+                    "operability": "FAILED",
+                    "confidence": "MEDIUM",
+                    "state": "missing",
+                    "presenceState": "missing",
+                },
+                {
+                    "label": "cancoder",
+                    "existence": "PRESENT",
+                    "operability": "OK",
+                    "confidence": "MEDIUM",
+                    "state": "ok",
+                    "presenceState": "present",
+                    "shadowResult": {
+                        "dimensions": {
+                            "existence": {"value": "ABSENT", "conflict": True},
+                            "communication": {"value": "FAILED", "conflict": False},
+                            "operability": {"value": "UNKNOWN", "conflict": False},
+                            "identity": {"value": "UNKNOWN", "conflict": False},
+                        }
+                    },
+                },
+            ],
+            now_s=10.0,
+        )
+
+        self.assertCountEqual(["pdp", "cancoder"], result["missingDevices"])
+
     def test_chain_break_identifies_downstream_missing_devices_and_boundary(self) -> None:
         topology = {
             "nodes": [

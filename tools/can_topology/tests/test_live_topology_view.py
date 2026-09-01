@@ -835,6 +835,37 @@ class LiveTopologyViewTests(unittest.TestCase):
             view._live_fill(node, 0),
         )
 
+    def test_set_evidence_snapshot_accepts_structured_snapshot_and_updates_detail_state(
+        self,
+    ) -> None:
+        view = self._make_view()
+        self._attach_detail_vars(view)
+        view._selected_node = type("NodeStub", (), {"label": "FALCON 9", "can_id": 9})()
+
+        view.set_evidence_snapshot(
+            {
+                "snapshotType": "interpretedEvidence",
+                "devices": {
+                    "falcon 9": {
+                        "presenceState": "present",
+                        "detail": {
+                            live_view_module.DETAIL_SNAPSHOT_PRESENCE: "1.00",
+                            live_view_module.DETAIL_SNAPSHOT_PRESENCE_STATUS: "present",
+                            live_view_module.DETAIL_SNAPSHOT_PRESENCE_AGE: "fresh",
+                            live_view_module.DETAIL_SNAPSHOT_PRESENCE_SOURCE: "interpretedEvidence",
+                        },
+                    }
+                },
+            }
+        )
+        view.set_overlay_lens(live_view_module.TOPOLOGY_LENS_EVIDENCE)
+
+        self.assertEqual({"falcon 9": "present"}, view._evidence_state)
+        self.assertEqual(
+            "present",
+            view._detail_vars[live_view_module.DETAIL_KEY_PRESENCE_STATUS].get(),
+        )
+
     def test_evidence_lens_does_not_fallback_to_runtime_when_interpreted_state_missing(self) -> None:
         view = self._make_view()
         node = type("NodeStub", (), {"label": "falcon 9", "interface": "CAN"})()

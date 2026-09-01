@@ -85,12 +85,20 @@ final class RobotLocalReportCommandGroup {
           "Runtime inactive. Click Runtime Activate.";
 
       @Override
+      public RobotLocalExecutionResult init(RobotLocalCommandParams params) {
+        return params.host().beginActivePresenceProbe();
+      }
+
+      @Override
       public RobotLocalExecutionResult execute(RobotLocalCommandParams params) {
-        RobotLocalExecutionResult result = params.host().runActivePresenceProbe();
-        if (result != null) {
-          return result;
-        }
-        return RobotLocalExecutionResult.failed(MESSAGE_RUNTIME_INACTIVE);
+        RobotLocalExecutionResult result = params.host().stepActivePresenceProbe();
+        return result != null ? result : RobotLocalExecutionResult.failed(MESSAGE_RUNTIME_INACTIVE);
+      }
+
+      @Override
+      public RobotLocalExecutionResult interrupt(RobotLocalCommandParams params, String reason) {
+        params.host().cancelActivePresenceProbe();
+        return RobotLocalExecutionResult.interrupted(reason);
       }
     };
   }

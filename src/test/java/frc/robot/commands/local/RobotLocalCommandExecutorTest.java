@@ -6,11 +6,14 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.google.gson.JsonObject;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import org.junit.jupiter.api.Test;
 
 class RobotLocalCommandExecutorTest {
 
   private static final String CMD_SHOW_DEVICES = "showDevices";
+  private static final String CMD_ACTIVE_PRESENCE_PROBE = "activePresenceProbe";
   private static final String CMD_LIFECYCLE_ACTIVATE = "lifecycleActivate";
   private static final String CMD_PRINT_TESTS_OVERVIEW = "printTestsOverview";
   private static final String CMD_PROFILES_APPLY = "profilesApply";
@@ -132,6 +135,42 @@ class RobotLocalCommandExecutorTest {
   }
 
   @Test
+  void activePresenceProbeRunsAcrossMultipleExecutorSteps() {
+    HostStub host = new HostStub();
+    host.stepActivePresenceProbeResults.add(RobotLocalExecutionResult.running("probe step 1"));
+    host.stepActivePresenceProbeResults.add(RobotLocalExecutionResult.complete("probe complete"));
+    RobotLocalCommandExecutor executor = new RobotLocalCommandExecutor(host);
+
+    RobotLocalDispatchResult result = executor.submit(request(CMD_ACTIVE_PRESENCE_PROBE));
+
+    assertEquals(RobotLocalDispatchStatus.ACCEPTED, result.status());
+    assertEquals(CMD_ACTIVE_PRESENCE_PROBE, executor.activeCommandName());
+    assertTrue(host.beginActivePresenceProbeCalled);
+    assertEquals(1, host.stepActivePresenceProbeCallCount);
+
+    executor.step();
+    assertNull(executor.activeCommandName());
+    assertEquals(2, host.stepActivePresenceProbeCallCount);
+  }
+
+  @Test
+  void stopCommandCancelsActivePresenceProbeRun() {
+    HostStub host = new HostStub();
+    host.stepActivePresenceProbeResults.add(RobotLocalExecutionResult.running("probe step 1"));
+    host.stepActivePresenceProbeResults.add(RobotLocalExecutionResult.running("probe step 2"));
+    RobotLocalCommandExecutor executor = new RobotLocalCommandExecutor(host);
+
+    RobotLocalDispatchResult start = executor.submit(request(CMD_ACTIVE_PRESENCE_PROBE));
+    assertEquals(RobotLocalDispatchStatus.ACCEPTED, start.status());
+
+    RobotLocalDispatchResult stop = executor.submit(request(RobotLocalCommandRegistry.COMMAND_STOP));
+
+    assertEquals(RobotLocalDispatchStatus.INTERRUPTED_AND_ACCEPTED, stop.status());
+    assertTrue(host.cancelActivePresenceProbeCalled);
+    assertNull(executor.activeCommandName());
+  }
+
+  @Test
   void lifecycleActivateRoutesThroughLegacyUiCommandPathWithArgs() {
     HostStub host = new HostStub();
     host.legacyUiResult =
@@ -190,6 +229,11 @@ class RobotLocalCommandExecutorTest {
     private boolean ensureActiveProfileResult = true;
     private boolean ensureActiveProfileCalled;
     private boolean runSelectedTestCalled;
+    private boolean beginActivePresenceProbeCalled;
+    private boolean cancelActivePresenceProbeCalled;
+    private int stepActivePresenceProbeCallCount;
+    private final Deque<RobotLocalExecutionResult> stepActivePresenceProbeResults =
+        new ArrayDeque<>();
     private RobotLocalExecutionResult runSelectedTestResult =
         RobotLocalExecutionResult.complete("runSelectedTest");
     private String lastApplyCommandStopReason;
@@ -259,8 +303,22 @@ class RobotLocalCommandExecutorTest {
     public void dumpReport() {}
 
     @Override
-    public RobotLocalExecutionResult runActivePresenceProbe() {
-      return RobotLocalExecutionResult.complete("activePresenceProbe");
+    public RobotLocalExecutionResult beginActivePresenceProbe() {
+      beginActivePresenceProbeCalled = true;
+      return RobotLocalExecutionResult.running("probe begin");
+    }
+
+    @Override
+    public RobotLocalExecutionResult stepActivePresenceProbe() {
+      stepActivePresenceProbeCallCount++;
+      return stepActivePresenceProbeResults.isEmpty()
+          ? RobotLocalExecutionResult.complete("activePresenceProbe")
+          : stepActivePresenceProbeResults.removeFirst();
+    }
+
+    @Override
+    public void cancelActivePresenceProbe() {
+      cancelActivePresenceProbeCalled = true;
     }
 
     @Override

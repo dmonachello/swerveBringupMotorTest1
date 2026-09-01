@@ -4,6 +4,15 @@ All notable user-facing changes are documented in this file.
 
 ## 2026-08-25
 
+### Changed - 2026-08-25
+
+- Auto-generated changelog seed for current worktree changes in guarded major surfaces.
+- Touched major-change file: `src/main/java/frc/robot/BuildInfo.java`
+- Touched major-change file: `tools/can_nt/scripts/run_regressions.py`
+- Touched major-change file: `tools/can_nt/tests/test_run_regressions.py`
+
+## 2026-08-25
+
 ### Improved - 2026-08-25
 
 - Changed the changelog guard so major worktree changes now auto-seed

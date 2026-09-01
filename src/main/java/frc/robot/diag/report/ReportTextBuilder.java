@@ -637,6 +637,11 @@ public final class ReportTextBuilder {
         " droppedBytes=" + BringupPrinter.getDroppedBytes());
     ReportTextUtil.appendLine(
         sb,
+        "  Retained bringup output: messages=" + BringupPrinter.getRetainedMessageCount() +
+        "/" + BringupPrinter.getRetainedMessageLimit() +
+        " dropped=" + BringupPrinter.getRetainedDroppedMessages());
+    ReportTextUtil.appendLine(
+        sb,
         "  Print throttle: maxBytesPerSec=" + BringupPrinter.getMaxBytesPerSec() +
         " windowMs=" + BringupPrinter.getThrottleWindowMs() +
         " maxQueueBytes=" + BringupPrinter.getMaxQueueBytes());

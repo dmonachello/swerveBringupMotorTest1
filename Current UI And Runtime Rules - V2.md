@@ -92,7 +92,9 @@ The current code treats them this way:
 
   
 
-- profile runtime activation instantiates the selected profile's devices broadly
+- profile runtime activation stages the selected profile runtime and restores `active-group` membership
+
+- non-singleton instantiation is limited to the selected/needed scope instead of broad profile-wide creation
 
 - `active-group` controls which devices are in the active controlled session
 
@@ -104,15 +106,21 @@ Current implication:
 
   
 
-- yes, it is possible for a device to be instantiated and not in the active scope
+- singleton-backed infrastructure devices may still exist outside the currently selected controlled scope
+
+- non-singleton devices should not be broadly instantiated just because the profile runtime is active
 
 - no, the current controlled-lifecycle model does not intentionally allow `Scope Active: yes` while the device is not instantiated
 
-- some operations can still run on a device outside the active scope when controlled lifecycle is not active and the runtime payload still marks the device testable
+- selected manual/test scope, not bare profile activation, is the authority for non-singleton runtime creation
 
 ## Diagnostics Surface Semantics
 
 Purpose: Capture the current shared meaning for runtime report and Evidence-tab diagnostics details.
+
+- Robot-side queued bringup output generated through `BringupPrinter` is now delivered to the in-process line-listener/UI log path without being mirrored to stdout by default.
+
+- This affects bringup-owned queued status/warning text only; direct WPILib/vendor console output may still appear on NetConsole until those sources are migrated separately.
 
 - Profile/config/runtime `type` now represents the shared classifier device class, not the product model.
 
@@ -129,6 +137,10 @@ Purpose: Capture the current shared meaning for runtime report and Evidence-tab 
 - The active presence probe now supports `roborio` as a controller-family target using robot-local controller telemetry evidence rather than observed CAN traffic or a vendor CAN motor/sensor handle.
 
 - `roborio` active-probe results are therefore expected to reflect controller-local health such as input voltage, brownout state, CAN status readability, and rail health, while still remaining distinct from passive CAN-observer proof of on-bus traffic.
+
+- The `activePresenceProbe` command now runs as a multi-cycle robot-local command with bounded per-step work instead of attempting to finish the entire probe in one scheduler slice.
+
+- The final probe JSON/text payload remains unchanged in shape, but it is now emitted only when the incremental run completes.
 
 - Runtime JSON report entries for controller-family devices now remain attachment-first but also add a shared `family=robotController` summary shape with nested controller `power`, `bus`, and `rails` sections when those shared attachments are present.
 
@@ -163,6 +175,24 @@ Purpose: Describe the current shared `Input/Sensor State` behavior in the `Evide
 
 - Clicking an `Input/Sensor State` device row updates the shared Evidence selected device and synchronizes the existing summary-table and topology selections.
 
+## Evidence Interpretation
+
+Purpose: Describe the current selected-device interpretation fields in the `Evidence` tab.
+
+- The selected-device `Final Interpretation` block in the `Evidence` tab is now a read-only mixed surface:
+  - `Overall`
+  - `Existence`
+  - `Communication`
+  - `Operability`
+  - `Identity`
+  - `Confidence`
+
+- `Overall`, `Existence`, `Communication`, `Operability`, and `Identity` are now populated from the shared host-side evidence-fusion shadow snapshot for the selected current-profile device.
+
+- `Confidence` remains the existing interpreted-row confidence field during this slice and is not yet replaced by a fusion-native overall-confidence field.
+
+- The surrounding Evidence subpanels such as Console, Manual, Enrichment, and Notes remain read-only explanatory companions and are not yet fully re-authored to the fusion-native contract.
+
 - The `Evidence` tab now exposes persistent subpanel visibility checkboxes for:
   - summary
   - topology
@@ -173,6 +203,10 @@ Purpose: Describe the current shared `Input/Sensor State` behavior in the `Evide
   - input/sensor state
 
 - Those subpanel visibility toggles are stored in host UI preferences, not in profile/config data or robot runtime state.
+
+- The `CAN Bus Health (System Console)` Evidence subpanel now summarizes all active normalized console events, including device-targeted timeout/fault lines, rather than only `system`-scoped events.
+
+- Its `Active Events` count therefore reflects the normalized active console event set across both system and device scopes, while still presenting one overall CAN-bus health interpretation.
 
 ## CAN Visibility Selection
 
@@ -458,9 +492,7 @@ Current rebuild details:
 
 - restore preserved `active-group` membership
 
-- instantiate selected-profile devices through `core.addAllDevicesCommand()`
-
-- refresh lifecycle publication before controlled activation
+- refresh lifecycle publication before controlled activation without broad profile-wide instantiation
 
   
 
@@ -471,6 +503,8 @@ Practical result:
 - `Runtime Activate` is a shared controlled-scope activation action
 
 - `manual` and `selected test` now converge on the same activation authority
+
+- non-singleton devices are created only when that selected scope actually needs them
 
 - it is not an incremental add-members path
 

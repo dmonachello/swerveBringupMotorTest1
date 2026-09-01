@@ -184,14 +184,58 @@ public final class DeviceLifecycleRegistry {
           && Boolean.TRUE.equals(instantiatedByLabel.get(key));
       boolean inScope = inScopeByLabel != null
           && Boolean.TRUE.equals(inScopeByLabel.get(key));
-      double score = presenceScore(snapshot);
-      boolean present = score >= discoverThreshold;
-      boolean stale = score < lostPresenceThreshold;
+      double score = resolvePresenceScore(state, snapshot, instantiated, inScope);
+      boolean present = resolvePresent(state, snapshot, instantiated, inScope, score);
+      boolean stale = resolveStale(state, snapshot, instantiated, inScope, score);
       String previous = state.lifecycleState;
       String next = resolveState(state, inScope, instantiated, present, stale);
       String event = inferRefreshEvent(state, previous, next, instantiated, present, stale);
       applyResolvedState(state, next, score, event, nowMs);
     }
+  }
+
+  private double resolvePresenceScore(
+      MutableState state,
+      DeviceSnapshot snapshot,
+      boolean instantiated,
+      boolean inScope) {
+    if (snapshot != null) {
+      return presenceScore(snapshot);
+    }
+    if (state != null && instantiated && inScope) {
+      return state.presenceScore;
+    }
+    return 0.0;
+  }
+
+  private boolean resolvePresent(
+      MutableState state,
+      DeviceSnapshot snapshot,
+      boolean instantiated,
+      boolean inScope,
+      double score) {
+    if (snapshot != null) {
+      return score >= discoverThreshold;
+    }
+    if (state != null && instantiated && inScope) {
+      return state.presentNow;
+    }
+    return score >= discoverThreshold;
+  }
+
+  private boolean resolveStale(
+      MutableState state,
+      DeviceSnapshot snapshot,
+      boolean instantiated,
+      boolean inScope,
+      double score) {
+    if (snapshot != null) {
+      return score < lostPresenceThreshold;
+    }
+    if (state != null && instantiated && inScope) {
+      return state.wasPresent && !state.presentNow;
+    }
+    return score < lostPresenceThreshold;
   }
 
   /**

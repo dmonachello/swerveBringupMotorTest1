@@ -221,3 +221,37 @@ class ConsoleMonitorTests(unittest.TestCase):
             )
         finally:
             monitor.stop()
+
+    def test_loop_overrun_is_captured_but_excluded_from_active_console_snapshot(self) -> None:
+        rules_path = Path(__file__).resolve().parents[1] / "console_rules.json"
+        monitor = ConsoleMonitor(
+            rules_path=str(rules_path),
+            inactivity_timeout=5.0,
+            publish_rate_hz=5.0,
+            debug_log_path="",
+            debug_log_max_mb=1,
+            debug_log_max_files=1,
+            transport="tcp",
+            host="127.0.0.1",
+            port=0,
+            device_label_resolver=None,
+        )
+        try:
+            matched = monitor._process_line(
+                "Warning at edu.wpi.first.wpilibj.IterativeRobotBase.printLoopOverrunMessage(IterativeRobotBase.java:436): Loop time of 0.02s overrun",
+                100.0,
+            )
+
+            self.assertTrue(matched)
+            entries = monitor.snapshot_entries(now=100.0)
+            self.assertEqual(1, len(entries))
+            self.assertEqual("LOOP_OVERRUN", entries[0].event_type)
+
+            snapshot = build_console_snapshot_from_entries(entries, now_s=100.0)
+            self.assertEqual([], snapshot["system"])
+            self.assertEqual(0, snapshot["stats"]["totalCount"])
+            self.assertEqual(0, snapshot["stats"]["systemEventCount"])
+            self.assertEqual(1, len(snapshot["records"]))
+            self.assertEqual("LOOP_OVERRUN", snapshot["records"][0]["summary"])
+        finally:
+            monitor.stop()

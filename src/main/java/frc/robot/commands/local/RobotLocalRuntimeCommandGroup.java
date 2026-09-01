@@ -29,7 +29,7 @@ final class RobotLocalRuntimeCommandGroup {
         REASON_PROFILE_ACTIVATE,
         MESSAGE_PROFILE_INACTIVE_ADD,
         "addAllDevicesCommand",
-        "Instantiated all configured devices.");
+        "Instantiated enabled active-group devices only.");
   }
 
   RobotLocalCommand genericCmd() {

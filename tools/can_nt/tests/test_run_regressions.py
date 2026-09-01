@@ -52,6 +52,7 @@ from tools.can_nt.scripts.lib.regression_framework import (
     write_json_report,
 )
 from tools.can_nt.scripts.run_regressions import main
+from tools.can_nt.scripts.run_regressions import _describe_command_targets, print_suite_plan
 
 LABEL_TEST = "test"
 MODE_LOCAL = "local"
@@ -68,6 +69,62 @@ KEY_PREVIOUS_GREEN_COMMIT = "previousGreenCommit"
 
 
 class RunRegressionsTests(unittest.TestCase):
+    def test_describe_command_targets_reports_unittest_module(self) -> None:
+        targets = _describe_command_targets(
+            (
+                "python",
+                "-m",
+                "unittest",
+                "tools.common.tests.test_evidence_fusion_api",
+            )
+        )
+
+        self.assertEqual(
+            ("module=tools.common.tests.test_evidence_fusion_api",),
+            targets,
+        )
+
+    def test_describe_command_targets_reports_script_name(self) -> None:
+        targets = _describe_command_targets(
+            (
+                "python",
+                r"C:\Users\dmona\swerve3\tools\can_nt\scripts\topology_editor_regression.py",
+            )
+        )
+
+        self.assertEqual(("script=topology_editor_regression.py",), targets)
+
+    def test_describe_command_targets_reports_gradle_test_selector(self) -> None:
+        targets = _describe_command_targets(
+            (
+                "gradlew.bat",
+                "test",
+                "--tests",
+                "frc.robot.DslBringupTestTest",
+            )
+        )
+
+        self.assertEqual(("gradle-test=frc.robot.DslBringupTestTest",), targets)
+
+    def test_print_suite_plan_lists_targets_and_features(self) -> None:
+        command = RegressionCommand(
+            label="dsl-unit",
+            argv=("python", "-m", "unittest", "tools.can_nt.tests.test_robot_test_dsl"),
+            mode=MODE_LOCAL,
+            command_id="dsl-unit",
+            features=("dsl compiler", "dsl validator"),
+        )
+        output = io.StringIO()
+
+        with redirect_stdout(output):
+            print_suite_plan(SUITE_DSL, [command])
+
+        text = output.getvalue()
+        self.assertIn("PLAN: suite=dsl commands=1", text)
+        self.assertIn("PLAN: dsl-unit mode=local", text)
+        self.assertIn("TARGETS: module=tools.can_nt.tests.test_robot_test_dsl", text)
+        self.assertIn("FEATURES: dsl compiler, dsl validator", text)
+
     def test_manifest_exists(self) -> None:
         manifest_path = Path(__file__).resolve().parents[3] / MANIFEST_RELATIVE_PATH
         self.assertTrue(manifest_path.exists())
@@ -241,6 +298,31 @@ class RunRegressionsTests(unittest.TestCase):
 
         self.assertEqual(EXIT_OK, exit_code)
         run_commands_mock.assert_called_once()
+
+    @patch("tools.can_nt.scripts.run_regressions.run_commands")
+    def test_main_verbose_prints_plan_before_running(self, run_commands_mock) -> None:
+        run_commands_mock.return_value = [
+            RegressionResult(
+                label="dsl-unit",
+                argv=("python", "-m", "unittest", "tools.can_nt.tests.test_robot_test_dsl"),
+                mode=MODE_LOCAL,
+                exit_code=EXIT_OK,
+                duration_sec=0.1,
+                stdout="ok",
+                stderr="",
+                command_id="dsl-unit",
+                features=("dsl compiler",),
+            )
+        ]
+        output = io.StringIO()
+
+        with redirect_stdout(output):
+            exit_code = main(["--suite", SUITE_DSL, "--verbose", "--no-history"])
+
+        text = output.getvalue()
+        self.assertEqual(EXIT_OK, exit_code)
+        self.assertIn("PLAN: suite=dsl commands=2", text)
+        self.assertIn("TARGETS: module=tools.can_nt.tests.test_robot_test_dsl", text)
 
     @patch("tools.can_nt.scripts.run_regressions.write_history_for_run")
     @patch("tools.can_nt.scripts.run_regressions.load_suite_baseline")

@@ -47,6 +47,7 @@ def start_tracked_command(
     retryable: bool = True,
     pending_ack: bool = True,
     pending_out: bool = True,
+    timeout_sec: Optional[float] = None,
 ) -> Optional[int]:
     """
     NAME
@@ -62,6 +63,7 @@ def start_tracked_command(
         pending_out=pending_out,
         retryable=retryable,
         now=now,
+        timeout_sec=timeout_sec,
     )
     return seq
 
@@ -77,6 +79,7 @@ def send_tracked_command(
     retryable: bool = True,
     pending_ack: bool = True,
     pending_out: bool = True,
+    timeout_sec: Optional[float] = None,
 ) -> Optional[int]:
     """
     NAME
@@ -93,6 +96,7 @@ def send_tracked_command(
         retryable=retryable,
         pending_ack=pending_ack,
         pending_out=pending_out,
+        timeout_sec=timeout_sec,
     )
 
 
