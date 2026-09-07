@@ -102,6 +102,7 @@ public final class BringupRuntime {
   private static final String TEXT_LIFECYCLE_STATE_DEFINED_STALE = "defined-stale";
   private static final String TEXT_LIFECYCLE_STATE_IN_SCOPE = "in-scope";
   private static final String TEXT_LIFECYCLE_STATE_IN_SCOPE_PRESENT = "in-scope-present";
+  private static final String TEXT_LIFECYCLE_STATE_INSTANTIATED_PREFIX = "instantiated";
   private static final int ACTIVATION_MEMBER_MESSAGE_LIMIT = 3;
   private static final long PERIODIC_LIFECYCLE_REFRESH_ENABLED_MS = 250L;
   private static final long PERIODIC_LIFECYCLE_REFRESH_DISABLED_MS = 1000L;
@@ -492,6 +493,8 @@ public final class BringupRuntime {
   public String buildControlledBringupLifecycleText() {
     synchronizeControlledBringupLifecycleGroups();
     ControlledBringupLifecycleRuntime lifecycleRuntime = controlledBringupLifecycleRuntime;
+    java.util.Map<String, BringupUtil.DeviceEntry> profileEntriesByLabel =
+        currentLifecycleProfileEntriesByLabel();
     StringBuilder sb = new StringBuilder(512);
     ReportTextUtil.appendLine(sb, TEXT_LIFECYCLE_HEADER);
     if (lifecycleRuntime == null) {
@@ -530,6 +533,15 @@ public final class BringupRuntime {
     for (DeviceRecord record : lifecycleRuntime.catalogBundle().deviceCatalog().deviceRecords()) {
       DeviceRuntimeState runtimeState =
           lifecycleRuntime.catalogBundle().deviceCatalog().runtimeState(record.label());
+      DeviceLifecycleRegistry.DeviceLifecycleView lifecycle = deviceLifecycle.viewForLabel(record.label());
+      frc.robot.devices.DeviceUnit runtimeDevice =
+          core != null ? core.findDeviceByLabel(record.label()) : null;
+      boolean effectiveInstantiated =
+          isLifecycleDeviceEffectivelyInstantiated(
+              profileEntriesByLabel.get(normalizeLifecycleLabel(record.label())),
+              runtimeDevice,
+              lifecycle,
+              runtimeState);
       ReportTextUtil.appendLine(
           sb,
           TEXT_DEVICE_PREFIX
@@ -537,7 +549,7 @@ public final class BringupRuntime {
               + TEXT_KIND_PREFIX
               + record.lifecycleKind().name()
               + TEXT_INSTANTIATED_PREFIX
-              + runtimeState.isInstantiated()
+              + effectiveInstantiated
               + TEXT_ACTIVE_PREFIX
               + runtimeState.isActive()
               + TEXT_LAST_ERROR_PREFIX
@@ -558,6 +570,8 @@ public final class BringupRuntime {
     synchronizeControlledBringupLifecycleGroups();
     JsonObject root = new JsonObject();
     ControlledBringupLifecycleRuntime lifecycleRuntime = controlledBringupLifecycleRuntime;
+    java.util.Map<String, BringupUtil.DeviceEntry> profileEntriesByLabel =
+        currentLifecycleProfileEntriesByLabel();
     root.addProperty(JSON_KEY_AVAILABLE, lifecycleRuntime != null);
     if (lifecycleRuntime == null) {
       root.addProperty(JSON_KEY_STATE, LifecycleState.INACTIVE.name());
@@ -586,18 +600,28 @@ public final class BringupRuntime {
     for (DeviceRecord record : lifecycleRuntime.catalogBundle().deviceCatalog().deviceRecords()) {
       DeviceRuntimeState runtimeState =
           lifecycleRuntime.catalogBundle().deviceCatalog().runtimeState(record.label());
-      JsonObject device = new JsonObject();
-      device.addProperty(JSON_KEY_LABEL, record.label());
-      device.addProperty(JSON_KEY_LIFECYCLE_KIND, record.lifecycleKind().name());
-      device.addProperty(JSON_KEY_INSTANTIATED, runtimeState.isInstantiated());
-      device.addProperty(JSON_KEY_ACTIVE, runtimeState.isActive());
-      device.addProperty(JSON_KEY_ACTIVE_SESSION_ID, safeText(runtimeState.activeSessionId()));
-      device.addProperty(JSON_KEY_ACTIVE_GROUP_LABEL, safeText(runtimeState.activeGroupLabel()));
-      device.addProperty(JSON_KEY_LAST_ACTIVATION_MODE, safeText(runtimeState.lastActivationMode()));
-      device.addProperty(JSON_KEY_LAST_ERROR, safeText(runtimeState.lastError()));
-      device.addProperty(JSON_KEY_PRESENCE_STATE, runtimeState.presenceState().name());
-      device.addProperty(JSON_KEY_HEALTH_STATE, runtimeState.healthState().name());
-      devices.add(device);
+      DeviceLifecycleRegistry.DeviceLifecycleView lifecycle = deviceLifecycle.viewForLabel(record.label());
+      frc.robot.devices.DeviceUnit runtimeDevice =
+          core != null ? core.findDeviceByLabel(record.label()) : null;
+      JsonObject deviceJson = new JsonObject();
+      deviceJson.addProperty(JSON_KEY_LABEL, record.label());
+      deviceJson.addProperty(JSON_KEY_LIFECYCLE_KIND, record.lifecycleKind().name());
+      deviceJson.addProperty(
+          JSON_KEY_INSTANTIATED,
+          isLifecycleDeviceEffectivelyInstantiated(
+              profileEntriesByLabel.get(normalizeLifecycleLabel(record.label())),
+              runtimeDevice,
+              lifecycle,
+              runtimeState));
+      deviceJson.addProperty(JSON_KEY_ACTIVE, runtimeState.isActive());
+      deviceJson.addProperty(JSON_KEY_ACTIVE_SESSION_ID, safeText(runtimeState.activeSessionId()));
+      deviceJson.addProperty(JSON_KEY_ACTIVE_GROUP_LABEL, safeText(runtimeState.activeGroupLabel()));
+      deviceJson.addProperty(
+          JSON_KEY_LAST_ACTIVATION_MODE, safeText(runtimeState.lastActivationMode()));
+      deviceJson.addProperty(JSON_KEY_LAST_ERROR, safeText(runtimeState.lastError()));
+      deviceJson.addProperty(JSON_KEY_PRESENCE_STATE, runtimeState.presenceState().name());
+      deviceJson.addProperty(JSON_KEY_HEALTH_STATE, runtimeState.healthState().name());
+      devices.add(deviceJson);
     }
     root.add(JSON_KEY_DEVICES, devices);
     return root;
@@ -1631,6 +1655,28 @@ public final class BringupRuntime {
         && BringupUtil.hasAppSingletonService(device);
   }
 
+  static boolean isLifecycleDeviceEffectivelyInstantiated(
+      BringupUtil.DeviceEntry entry,
+      frc.robot.devices.DeviceUnit device,
+      DeviceLifecycleRegistry.DeviceLifecycleView lifecycle,
+      frc.robot.diag.lifecycle.runtime.DeviceRuntimeState controlledState) {
+    if (controlledState != null && controlledState.isInstantiated()) {
+      return true;
+    }
+    if (isLifecycleViewInstantiated(lifecycle)) {
+      return true;
+    }
+    return isLifecycleDeviceInstantiated(entry, device);
+  }
+
+  static boolean isLifecycleViewInstantiated(
+      DeviceLifecycleRegistry.DeviceLifecycleView lifecycle) {
+    if (lifecycle == null || lifecycle.lifecycleState == null) {
+      return false;
+    }
+    return lifecycle.lifecycleState.startsWith(TEXT_LIFECYCLE_STATE_INSTANTIATED_PREFIX);
+  }
+
   private void ensureSingletonLifecycleDeviceCreated(String label, boolean shouldInstantiate) {
     if (core == null || !shouldInstantiate || label == null || label.isBlank()) {
       return;
@@ -1876,6 +1922,24 @@ public final class BringupRuntime {
         BringupUtil.getActiveRuntimeProfileLabel(),
         BringupUtil.getSelectedCanProfile(),
         BringupUtil.getDefaultCanProfile());
+  }
+
+  private java.util.Map<String, BringupUtil.DeviceEntry> currentLifecycleProfileEntriesByLabel() {
+    java.util.Map<String, BringupUtil.DeviceEntry> entriesByLabel = new java.util.LinkedHashMap<>();
+    for (BringupUtil.DeviceEntry entry : currentLifecycleProfileDevices()) {
+      if (entry == null || entry.label == null || entry.label.isBlank()) {
+        continue;
+      }
+      entriesByLabel.put(normalizeLifecycleLabel(entry.label), entry);
+    }
+    return entriesByLabel;
+  }
+
+  private static String normalizeLifecycleLabel(String label) {
+    if (label == null) {
+      return TEXT_EMPTY;
+    }
+    return label.trim().toLowerCase();
   }
 
   static String resolveLifecycleProfileName(

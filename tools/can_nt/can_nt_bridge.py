@@ -1740,8 +1740,6 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             thread.start()
         on_close = stop_event.set if stop_event is not None else (lambda: None)
         ui = BringupControlUI(
-            ui_table=None,
-            tests_table=None,
             rio_host=args.rio,
             tcp_port=args.ui_rest_port,
             is_connected=_rest_is_connected,

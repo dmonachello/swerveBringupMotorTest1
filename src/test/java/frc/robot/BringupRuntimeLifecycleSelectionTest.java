@@ -443,6 +443,42 @@ class BringupRuntimeLifecycleSelectionTest {
   }
 
   @Test
+  void effectiveLifecycleInstantiationUsesSingletonAllocationWhenControlledStateIsInactive()
+      throws Exception {
+    TestSingletonDevice device = new TestSingletonDevice(9901, "CTRE", "PDP", "pdp");
+    BringupUtil.DeviceEntry entry =
+        new BringupUtil.DeviceEntry(
+            9901, 4, 8, "CAN", "CTRE", "PDP", "pdp", null, null, null, null);
+    DeviceRuntimeState controlledState = new DeviceRuntimeState();
+
+    assertFalse(
+        BringupRuntime.isLifecycleDeviceEffectivelyInstantiated(
+            entry, device, null, controlledState));
+
+    BringupUtil.markAppSingletonAllocated(device);
+
+    assertTrue(
+        BringupRuntime.isLifecycleDeviceEffectivelyInstantiated(
+            entry, device, null, controlledState));
+  }
+
+  @Test
+  void effectiveLifecycleInstantiationUsesLifecycleViewStatePrefix() throws Exception {
+    DeviceLifecycleRegistry.DeviceLifecycleView lifecycle =
+        deviceLifecycleView(
+            "FALCON 9",
+            "instantiated-retained",
+            0.0,
+            false,
+            "not_testable");
+
+    assertTrue(BringupRuntime.isLifecycleViewInstantiated(lifecycle));
+    assertTrue(
+        BringupRuntime.isLifecycleDeviceEffectivelyInstantiated(
+            null, null, lifecycle, new DeviceRuntimeState()));
+  }
+
+  @Test
   void selectActivationMembersStrictRejectsUnavailableMembers() {
     BringupRuntime.ActivationMemberSelection selection =
         BringupRuntime.selectActivationMembers(

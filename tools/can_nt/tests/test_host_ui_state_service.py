@@ -120,6 +120,22 @@ class HostUiStateServiceTests(unittest.TestCase):
         self.assertIn("UI test=ui_test | robot test=robot_test", state.detail)
         self.assertIn("robot runtime=robot_runtime", state.detail)
 
+    def test_resolve_context_sync_state_reports_profile_mismatch_when_robot_profile_is_none(
+        self,
+    ) -> None:
+        state = resolve_context_sync_state(
+            local_selected_profile="ui_profile",
+            robot_selected_profile=PROFILE_NONE,
+            robot_active_runtime_profile="",
+            local_selected_test=PROFILE_NONE,
+            robot_selected_test="",
+            transport_connected=True,
+            handshake_ready=True,
+        )
+
+        self.assertTrue(state.out_of_sync)
+        self.assertIn("UI profile=ui_profile | robot profile=(none)", state.detail)
+
     def test_resolve_context_sync_state_ignores_mismatch_when_disconnected(self) -> None:
         state = resolve_context_sync_state(
             local_selected_profile="ui_profile",
@@ -779,6 +795,7 @@ class HostUiStateServiceTests(unittest.TestCase):
             active_group_rows=[],
             runtime_block_reason=runtime_block_reason,
             scope_active=False,
+            transition_pending=False,
             loaded_to_robot=None,
             selected_row=None,
         )
@@ -793,6 +810,7 @@ class HostUiStateServiceTests(unittest.TestCase):
             active_group_rows=[{"label": "FALCON 9", "enabled": True, "invalid": False}],
             runtime_block_reason="",
             scope_active=False,
+            transition_pending=False,
             loaded_to_robot=False,
             selected_row={"name": "newTests_123", "requiredDevices": ["FALCON 9"]},
         )
