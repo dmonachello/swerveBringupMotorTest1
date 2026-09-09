@@ -1,10 +1,20 @@
-SPEC_STATUS: PROPOSED
+SPEC_STATUS: PARTIALLY_IMPLEMENTED
 
 # Feature spec: REST typed UI state migration
 
 ## Purpose
 
 Define a staged refactor of the Python UI so REST payload fetch/parsing happens in one place, payloads are converted immediately into typed shared state objects, tabs consume those typed objects directly, and the temporary `_RestValueAdapter` / `_RestTableAdapter` compatibility layer is removed.
+
+## Implementation Status
+
+Purpose: Record the completed code migration separately from robot-connected operator acceptance.
+
+- Implementation is complete on `feature/rest-typed-ui-state-migration`.
+- Production Python code has no references to `_RestValueAdapter`, `_RestTableAdapter`, `_ui_table`, or `_tests_table`.
+- REST payload normalization and typed snapshot construction are owned by `rest_ui_snapshot_service.py` and `rest_ui_state_models.py`.
+- Shared UI state and migrated tab consumers read those typed snapshots rather than table-shaped compatibility wrappers.
+- Automated acceptance passed on 2026-09-09; robot-connected manual acceptance remains required before this specification can be marked `IMPLEMENTED`.
 
 ## Problem
 
@@ -905,6 +915,18 @@ Store representative REST payload fixtures for:
 - stale runtime state
 
 Use those fixtures to verify typed normalization and downstream decisions.
+
+## Testing Results
+
+Purpose: Preserve automated acceptance evidence for the completed migration.
+
+TESTING_RESULTS: 2026-09-09 automated acceptance passed.
+
+- `python -m pytest tools\\can_nt\\tests tools\\common\\tests -q`: 849 passed.
+- `python tools\\can_nt\\scripts\\run_regressions.py --suite local`: 10 of 10 bundles passed, including the Java unit suite.
+- A production-code search found no references to `_RestValueAdapter`, `_RestTableAdapter`, `_ui_table`, or `_tests_table`.
+
+Remaining manual acceptance is limited to robot-connected workflow verification described below.
 
 ### Manual verification
 
