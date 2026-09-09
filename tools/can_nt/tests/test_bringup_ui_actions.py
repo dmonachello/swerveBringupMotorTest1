@@ -2878,6 +2878,37 @@ class BringupUiActionMetadataTests(unittest.TestCase):
 
         self.assertFalse(ui._tests_run_selected_button.disabled)
 
+    def test_update_action_enabled_does_not_context_block_ready_run_selected(self) -> None:
+        class _Tracker:
+            def is_pending(self) -> bool:
+                return False
+
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._tcp_connected = True
+        ui._handshake_done = True
+        ui._state_stale = False
+        ui._tracker = _Tracker()
+        ui._refresh_scope_context_label = lambda: None
+        ui._action_buttons = []
+        ui._action_buttons_by_command = {}
+        ui._host_local_action_enabled = lambda _command: True
+        ui._test_selection_boxes = lambda: []
+        ui._activate_scope_button = _ButtonStub()
+        ui._deactivate_scope_button = _ButtonStub()
+        ui._tests_run_selected_button = _ButtonStub()
+        ui._reset_button = None
+        ui._refresh_selected_test_scope_status = lambda: None
+        ui._should_block_for_context_sync = lambda _command: True
+        ui._scope_control_state = lambda: SimpleNamespace(
+            activate_allowed=False,
+            deactivate_allowed=False,
+            run_selected_allowed=True,
+        )
+
+        ui._update_action_enabled()
+
+        self.assertFalse(ui._tests_run_selected_button.disabled)
+
     def test_update_action_enabled_enables_deactivate_only_when_controlled_session_active(self) -> None:
         class _Tracker:
             def is_pending(self) -> bool:
@@ -7524,6 +7555,57 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertEqual({}, ui._evidence_probe_results_by_label)
         self.assertEqual({}, ui._manual_motion_checks)
         self.assertEqual({}, ui._manual_test_observations)
+
+    def test_reset_ui_session_runtime_context_clears_robot_test_readiness_snapshot(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._tracker = type("TrackerStub", (), {"clear": lambda _self: None})()
+        ui._manual_duty_popup = None
+        ui._append_output = lambda _line: None
+        ui._refresh_tests_active_group_panel = lambda: None
+        ui._refresh_output_runtime_notice = lambda: None
+        ui._refresh_selected_test_scope_status = lambda: None
+        ui._refresh_evidence_view = lambda: None
+        ui._update_action_enabled = lambda: None
+        ui._iter_live_views = lambda: []
+        ui._latest_session_snapshot = SessionSnapshot(session_id="old-session")
+        ui._latest_runtime_snapshot = RuntimeSnapshot(selected_profile="test_minimal_25_9")
+        ui._latest_tests_state_payload = {"selectedName": "falcon9_move_150_rotations"}
+        ui._latest_tests_snapshot = TestsSnapshot(
+            selected_name="falcon9_move_150_rotations"
+        )
+        ui._latest_rest_ui_snapshots = RestUiSnapshots(
+            session=ui._latest_session_snapshot,
+            runtime=ui._latest_runtime_snapshot,
+            tests=ui._latest_tests_snapshot,
+        )
+        ui._last_robot_selected_test_name = "falcon9_move_150_rotations"
+
+        ui._reset_ui_session_runtime_context()
+
+        self.assertEqual({}, ui._latest_tests_state_payload)
+        self.assertEqual(TestsSnapshot(), ui._latest_tests_snapshot)
+        self.assertEqual(TestsSnapshot(), ui._latest_rest_ui_snapshots.tests)
+        self.assertEqual("", ui._last_robot_selected_test_name)
+
+    def test_sync_test_selection_rebuilds_rows_when_robot_selection_is_unchanged(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._selected_test_var = type(
+            "SelectedTestVarStub",
+            (),
+            {"get": lambda _self: "falcon9_move_150_rotations"},
+        )()
+        synced_rows: list[object] = []
+        ui._sync_test_library_entry_to_selected_test = lambda _name: None
+        ui._current_right_tab_text = lambda: TEST_LIBRARY_TAB_LABEL
+        ui._selected_test_required_membership_loaded_to_robot = lambda: True
+        ui._sync_selected_test_devices_panel_local = (
+            lambda loaded_to_robot: synced_rows.append(loaded_to_robot)
+        )
+        ui._refresh_selected_test_scope_status = lambda: None
+
+        ui._sync_test_selection("falcon9_move_150_rotations")
+
+        self.assertEqual([True], synced_rows)
 
     def test_live_view_left_click_logs_manual_duty_popup_close_reason(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)

@@ -6867,8 +6867,28 @@ class BringupControlUI(tk.Tk):
         if not preserve_cached_runtime:
             self._latest_runtime_state_payload = {}
             self._latest_runtime_devices = {}
+        # Test readiness belongs to the robot UI session just like runtime state.
+        # Keep the operator's local selection, but never render it from a prior session.
+        self._latest_tests_state_payload = {}
+        self._latest_tests_snapshot = TestsSnapshot()
+        latest_session_snapshot = self.__dict__.get("_latest_session_snapshot")
+        latest_runtime_snapshot = self.__dict__.get("_latest_runtime_snapshot")
+        self._latest_rest_ui_snapshots = RestUiSnapshots(
+            session=(
+                latest_session_snapshot
+                if isinstance(latest_session_snapshot, SessionSnapshot)
+                else SessionSnapshot()
+            ),
+            runtime=(
+                latest_runtime_snapshot
+                if isinstance(latest_runtime_snapshot, RuntimeSnapshot)
+                else RuntimeSnapshot()
+            ),
+            tests=self._latest_tests_snapshot,
+        )
         self._robot_selected_profile = PROFILE_NONE
         self._robot_active_runtime_profile = PROFILE_NONE
+        self._last_robot_selected_test_name = ""
         self._evidence_probe_results_by_label = {}
         self._evidence_manual_results = {}
         self._evidence_eval_cursor_class_index = 0
@@ -15583,6 +15603,14 @@ class BringupControlUI(tk.Tk):
                 or (robot_selected_changed and not local_selected_test_is_authoritative)
             ):
                 self._sync_test_selection(selected_name)
+            elif self._current_right_tab_text() == TEST_LIBRARY_TAB_LABEL:
+                # The selected test can remain unchanged across a UI-session
+                # reset. Its rows are derived state, so rebuild them whenever a
+                # fresh tests snapshot arrives instead of leaving an empty table.
+                self._sync_selected_test_devices_panel_local(
+                    loaded_to_robot=self._selected_test_required_membership_loaded_to_robot()
+                )
+                self._refresh_selected_test_scope_status()
             active_name = str(latest_tests_snapshot.active_name or "").strip()
             active_status = str(latest_tests_snapshot.active_status or "").strip()
             run_all = bool(latest_tests_snapshot.run_all_active)
@@ -16555,7 +16583,6 @@ class BringupControlUI(tk.Tk):
                     "!disabled"
                 ]
                 if scope_control_state.run_selected_allowed
-                and not self._should_block_for_context_sync("runTest")
                 else ["disabled"]
             )
         if self._reset_button is not None:
@@ -16754,6 +16781,14 @@ class BringupControlUI(tk.Tk):
         current_name = str(self._selected_test_var.get() or "").strip()
         if name == current_name:
             self._sync_test_library_entry_to_selected_test(name)
+            if self._current_right_tab_text() == TEST_LIBRARY_TAB_LABEL:
+                # A REST-session reset clears the derived table rows but retains
+                # the operator's selected test name. Rebuild the rows from the
+                # fresh robot test snapshot even when the name is unchanged.
+                self._sync_selected_test_devices_panel_local(
+                    loaded_to_robot=self._selected_test_required_membership_loaded_to_robot()
+                )
+            self._refresh_selected_test_scope_status()
             return
         self._last_selected_test = name
         self._selected_test_var.set(name)
