@@ -267,6 +267,18 @@ from .host_ui_state_service import (
     resolve_ui_context_state,
     should_clear_runtime_event_notice,
 )
+from .rest_ui_snapshot_service import (
+    build_rest_ui_snapshots,
+    normalize_session_snapshot,
+    normalize_runtime_snapshot,
+    normalize_tests_snapshot,
+)
+from .rest_ui_state_models import (
+    RestUiSnapshots,
+    RuntimeSnapshot,
+    SessionSnapshot,
+    TestsSnapshot,
+)
 from .ui_theme import (
     UI_THEME_DEFAULT,
     UiThemePalette,
@@ -433,144 +445,6 @@ PRESENCE_VALUES = {
     PRESENCE_VALUE_NONE,
 }
 
-
-class _RestValueAdapter:
-    """
-    NAME
-        _RestValueAdapter - Small value wrapper matching the NT entry getter shape.
-    """
-
-    def __init__(self, value: Any) -> None:
-        self._value = value
-
-    def getString(self, default: str) -> str:
-        value = self._value
-        if value is None:
-            return default
-        if isinstance(value, str):
-            return value
-        if isinstance(value, bool):
-            return "true" if value else "false"
-        return str(value)
-
-    def getDouble(self, default: float) -> float:
-        value = self._value
-        try:
-            return float(value)
-        except Exception:
-            return default
-
-    def getBoolean(self, default: bool) -> bool:
-        value = self._value
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, (int, float)):
-            return bool(value)
-        if isinstance(value, str):
-            normalized = value.strip().lower()
-            if normalized in ("true", "1", "yes", "on"):
-                return True
-            if normalized in ("false", "0", "no", "off", ""):
-                return False
-        return default
-
-
-class _RestTableAdapter:
-    """
-    NAME
-        _RestTableAdapter - Small nested-table wrapper matching the NT table getter shape.
-    """
-
-    def __init__(self, payload: Any) -> None:
-        self._payload = payload if isinstance(payload, dict) else {}
-
-    @classmethod
-    def from_runtime_state(
-        cls,
-        session_state: Dict[str, Any],
-        runtime_state: Dict[str, Any],
-        fetched_at_ms: float = 0.0,
-    ) -> "_RestTableAdapter":
-        last_ack_ms = float(fetched_at_ms or 0.0)
-        state = {
-            "sessionId": str(session_state.get("sessionId", "") or ""),
-            "enabled": bool(runtime_state.get("enabled", False)),
-            "estopped": bool(runtime_state.get("estopped", False)),
-            "mode": str(runtime_state.get("mode", "disabled") or "disabled"),
-            "lastAckMs": last_ack_ms,
-            "selectedProfile": str(runtime_state.get("selectedProfile", PROFILE_NONE) or PROFILE_NONE),
-            "activeRuntimeProfile": str(runtime_state.get("activeRuntimeProfile", PROFILE_NONE) or PROFILE_NONE),
-        }
-        return cls({"state": state})
-
-    @classmethod
-    def from_tests_state(cls, tests_state: Dict[str, Any]) -> "_RestTableAdapter":
-        rows_payload: Dict[str, Any] = {}
-        rows = tests_state.get("rows")
-        if isinstance(rows, list):
-            for index, row in enumerate(rows):
-                if not isinstance(row, dict):
-                    continue
-                required_devices = row.get("requiredDevices")
-                required_text = ""
-                if isinstance(required_devices, list):
-                    required_text = ",".join(
-                        str(part).strip() for part in required_devices if str(part).strip()
-                    )
-                row_payload = dict(row)
-                row_payload["requiredDevices"] = required_text
-                rows_payload[str(index)] = row_payload
-        run = tests_state.get("run")
-        run_payload = run if isinstance(run, dict) else {}
-        selected_name = ""
-        active_name = ""
-        active_status = ""
-        run_all_active = False
-        if isinstance(rows, list):
-            for row in rows:
-                if not isinstance(row, dict):
-                    continue
-                if bool(row.get("selected", False)) and not selected_name:
-                    selected_name = str(row.get("name", "") or "").strip()
-                status = str(row.get("status", "") or "").strip().lower()
-                if status == "running" and not active_name:
-                    active_name = str(row.get("name", "") or "").strip()
-                    active_status = status
-        table_payload = {
-            "totalCount": len(rows_payload),
-            "selectedName": selected_name,
-            "activeName": active_name,
-            "activeStatus": active_status,
-            "runAllActive": run_all_active,
-            "runId": run_payload.get("runId", 0),
-            "runState": str(run_payload.get("state", "") or ""),
-            "runTest": str(run_payload.get("test", "") or ""),
-            "runResult": str(run_payload.get("result", "") or ""),
-            "runStatus": str(run_payload.get("status", "") or ""),
-            "runMessage": str(run_payload.get("message", "") or ""),
-            "runStartedAtMs": run_payload.get("startedAtMs", 0),
-            "runFinishedAtMs": run_payload.get("finishedAtMs", 0),
-            "rows": rows_payload,
-        }
-        return cls(table_payload)
-
-    def getEntry(self, key: str) -> _RestValueAdapter:
-        value: Any = self._payload
-        for part in str(key or "").split("/"):
-            if not isinstance(value, dict):
-                value = None
-                break
-            value = value.get(part)
-        return _RestValueAdapter(value)
-
-    def getSubTable(self, key: str) -> "_RestTableAdapter":
-        value: Any = self._payload
-        for part in str(key or "").split("/"):
-            if not isinstance(value, dict):
-                value = {}
-                break
-            value = value.get(part, {})
-        return _RestTableAdapter(value if isinstance(value, dict) else {})
 
 # Constants (device dict keys).
 DEVICE_KEY_LABEL = "label"
@@ -922,6 +796,9 @@ CONTEXT_SYNC_STATUS_MISMATCH = "SYNC MISMATCH"
 CONTEXT_SYNC_LED_COLOR_OK = "#166534"
 CONTEXT_SYNC_LED_COLOR_WAITING = "#9ca3af"
 CONTEXT_SYNC_LED_COLOR_MISMATCH = "#991b1b"
+CONTEXT_SYNC_TOOLTIP_WAITING = "Waiting for robot connection/runtime state."
+CONTEXT_SYNC_TOOLTIP_OK = "UI and robot context match."
+CONTEXT_SYNC_TOOLTIP_MISMATCH = "UI and robot context differ."
 CONTEXT_SYNC_ALLOWED_ACTIONS = {"runtimedeactivate", "pushconfig"}
 CONTEXT_SYNC_BLOCKED_ACTIONS = {
     "runtimeactivate",
@@ -2673,8 +2550,6 @@ class BringupControlUI(tk.Tk):
 
     def __init__(
         self,
-        ui_table,
-        tests_table,
         rio_host: str,
         tcp_port: int,
         is_connected: Optional[Callable[[], bool]] = None,
@@ -2688,8 +2563,6 @@ class BringupControlUI(tk.Tk):
         self.title("Bringup Control")
         self.geometry("1100x720")
         self.minsize(900, 600)
-        self._ui_table = ui_table
-        self._tests_table = tests_table
         self._on_close = on_close
         self._rio_host = rio_host
         self._is_connected = is_connected
@@ -2845,6 +2718,14 @@ class BringupControlUI(tk.Tk):
         self._latest_runtime_state_payload: Dict[str, Any] = {}
         self._latest_tests_state_payload: Dict[str, Any] = {}
         self._latest_runtime_devices: Dict[str, Dict[str, Any]] = {}
+        self._latest_session_snapshot = SessionSnapshot()
+        self._latest_runtime_snapshot = RuntimeSnapshot()
+        self._latest_tests_snapshot = TestsSnapshot()
+        self._latest_rest_ui_snapshots = RestUiSnapshots(
+            session=self._latest_session_snapshot,
+            runtime=self._latest_runtime_snapshot,
+            tests=self._latest_tests_snapshot,
+        )
         self._host_debug_until = 0.0
         self._host_debug_heartbeat_at = time.time()
         self._host_debug_watchdog_generation = 0
@@ -2912,6 +2793,10 @@ class BringupControlUI(tk.Tk):
         self._build_ui()
         self._apply_ui_theme()
         self._apply_profile_selection(self._profile_box.get(), reload_views=True)
+        self._record_local_profile_selection_intent(
+            self._selected_profile_name(),
+            send_if_ready=False,
+        )
         self.after_idle(self._poll_runtime_ui_state)
         self.protocol("WM_DELETE_WINDOW", self._handle_close)
 
@@ -3065,6 +2950,8 @@ class BringupControlUI(tk.Tk):
         self._context_sync_led = context_sync_led
         self._context_sync_led_item = context_sync_led_item
         self._context_sync_banner_visible = True
+        self._attach_tooltip(context_sync_frame, self._context_sync_tooltip_text)
+        self._attach_tooltip(context_sync_led, self._context_sync_tooltip_text)
         context_sync_frame.pack(side="left", padx=(6, 0))
         ttk.Button(header, text="Refresh", command=self._refresh_profiles).pack(
             side="left", padx=(6, 0)
@@ -5488,12 +5375,42 @@ class BringupControlUI(tk.Tk):
         name = self._selected_profile_name()
         self._apply_profile_selection(name, reload_views=True)
         if name == self._last_selected_profile:
+            self._maybe_send_pending_robot_profile_selection()
             self._refresh_context_sync_banner()
             return
-        self._last_selected_profile = name
-        self._pending_robot_profile_selection = PROFILE_NONE
+        self._record_local_profile_selection_intent(name, send_if_ready=True)
         self._refresh_context_sync_banner()
         self._maybe_prompt_host_profile_context_sync()
+
+    def _record_local_profile_selection_intent(
+        self,
+        profile_name: object,
+        *,
+        send_if_ready: bool,
+    ) -> None:
+        """
+        NAME
+            _record_local_profile_selection_intent - Record one host-selected profile as pending robot context.
+
+        DESCRIPTION
+            Keeps startup, profile refresh, and explicit operator profile
+            changes on the same deferred selectProfile path so the robot does
+            not remain at PROFILE_NONE after reconnect or local config reload.
+        """
+        name = _normalize_profile_name(profile_name)
+        self._last_selected_profile = name
+        if name == PROFILE_NONE:
+            self._pending_robot_profile_selection = PROFILE_NONE
+            return
+        robot_selected = _normalize_profile_name(
+            self.__dict__.get("_robot_selected_profile", PROFILE_NONE)
+        )
+        if robot_selected == name:
+            self._pending_robot_profile_selection = PROFILE_NONE
+            return
+        self._pending_robot_profile_selection = name
+        if send_if_ready:
+            self._maybe_send_pending_robot_profile_selection()
 
     def _can_send_profile_selection_now(self) -> bool:
         """
@@ -5575,14 +5492,9 @@ class BringupControlUI(tk.Tk):
         NAME
             _robot_selected_test_name - Return the robot-reported selected test or PROFILE_NONE.
         """
-        tests_table = self.__dict__.get("_tests_table")
-        if tests_table is not None:
-            try:
-                selected_name = str(
-                    tests_table.getEntry("selectedName").getString("") or ""
-                ).strip()
-            except Exception:
-                selected_name = ""
+        latest_tests_snapshot = self.__dict__.get("_latest_tests_snapshot")
+        if isinstance(latest_tests_snapshot, TestsSnapshot):
+            selected_name = str(latest_tests_snapshot.selected_name or "").strip()
             if not selected_name:
                 try:
                     selected_name = str(self._resolve_selected_from_rows() or "").strip()
@@ -5874,7 +5786,7 @@ class BringupControlUI(tk.Tk):
     def _sync_robot_selected_test_to_ui_if_needed(self) -> bool:
         """
         NAME
-            _sync_robot_selected_test_to_ui_if_needed - Send selectTestByName before runTest when only the robot-selected test differs.
+            _sync_robot_selected_test_to_ui_if_needed - Send selectTestByName when selected-test actions need robot/UI test context aligned.
         """
         state = self._context_sync_state()
         if not self._only_selected_test_context_differs(state):
@@ -6955,8 +6867,28 @@ class BringupControlUI(tk.Tk):
         if not preserve_cached_runtime:
             self._latest_runtime_state_payload = {}
             self._latest_runtime_devices = {}
+        # Test readiness belongs to the robot UI session just like runtime state.
+        # Keep the operator's local selection, but never render it from a prior session.
+        self._latest_tests_state_payload = {}
+        self._latest_tests_snapshot = TestsSnapshot()
+        latest_session_snapshot = self.__dict__.get("_latest_session_snapshot")
+        latest_runtime_snapshot = self.__dict__.get("_latest_runtime_snapshot")
+        self._latest_rest_ui_snapshots = RestUiSnapshots(
+            session=(
+                latest_session_snapshot
+                if isinstance(latest_session_snapshot, SessionSnapshot)
+                else SessionSnapshot()
+            ),
+            runtime=(
+                latest_runtime_snapshot
+                if isinstance(latest_runtime_snapshot, RuntimeSnapshot)
+                else RuntimeSnapshot()
+            ),
+            tests=self._latest_tests_snapshot,
+        )
         self._robot_selected_profile = PROFILE_NONE
         self._robot_active_runtime_profile = PROFILE_NONE
+        self._last_robot_selected_test_name = ""
         self._evidence_probe_results_by_label = {}
         self._evidence_manual_results = {}
         self._evidence_eval_cursor_class_index = 0
@@ -10344,12 +10276,12 @@ class BringupControlUI(tk.Tk):
         for live_view in self._iter_live_views():
             live_view._fit_to_window()
 
-    def _attach_tooltip(self, widget: tk.Widget, text: str) -> None:
+    def _attach_tooltip(self, widget: tk.Widget, text: Any) -> None:
         """
         NAME
             _attach_tooltip - Attach a hover tooltip to a widget.
         """
-        if not text:
+        if text is None:
             return
         tip = tk.Toplevel(self)
         tip.withdraw()
@@ -10357,7 +10289,7 @@ class BringupControlUI(tk.Tk):
         tip.attributes("-topmost", True)
         label = ttk.Label(
             tip,
-            text=text,
+            text="",
             justify="left",
             padding=6,
             background="#f9fafb",
@@ -10368,6 +10300,10 @@ class BringupControlUI(tk.Tk):
         label.pack()
 
         def _show(_event=None) -> None:
+            tooltip_text = text() if callable(text) else str(text or "")
+            if not tooltip_text:
+                return
+            label.configure(text=tooltip_text)
             x = widget.winfo_rootx() + 18
             y = widget.winfo_rooty() + widget.winfo_height() + 6
             tip.geometry(f"+{x}+{y}")
@@ -10378,6 +10314,26 @@ class BringupControlUI(tk.Tk):
 
         widget.bind("<Enter>", _show)
         widget.bind("<Leave>", _hide)
+
+    def _context_sync_tooltip_text(self) -> str:
+        """
+        NAME
+            _context_sync_tooltip_text - Return the current hover detail for the compact sync indicator.
+        """
+        transport_connected = bool(self.__dict__.get("_tcp_connected", False))
+        handshake_ready = bool(self.__dict__.get("_handshake_done", False))
+        if not transport_connected or not handshake_ready:
+            return CONTEXT_SYNC_TOOLTIP_WAITING
+        state = self._context_sync_state()
+        if bool(getattr(state, "out_of_sync", False)):
+            detail = str(getattr(state, "detail", "") or "").strip()
+            if detail:
+                return detail
+            summary = str(getattr(state, "summary", "") or "").strip()
+            if summary:
+                return summary
+            return CONTEXT_SYNC_TOOLTIP_MISMATCH
+        return CONTEXT_SYNC_TOOLTIP_OK
 
     def _command_visible(self, command: str) -> bool:
         """
@@ -11087,7 +11043,10 @@ class BringupControlUI(tk.Tk):
                     default_profile_name=self._default_profile_name_from_payload(payload),
                 )
             )
-        self._last_selected_profile = self._selected_profile_name()
+        self._record_local_profile_selection_intent(
+            self._selected_profile_name(),
+            send_if_ready=False,
+        )
         self._apply_profile_selection(self._selected_profile_name(), reload_views=True)
 
     def _set_auto_select_default_profile_pref(self) -> None:
@@ -13091,6 +13050,7 @@ class BringupControlUI(tk.Tk):
             active_group_rows=list(self.__dict__.get("_tests_active_group_rows", [])),
             runtime_block_reason=self._test_runtime_block_reason(),
             scope_active=self._scope_is_currently_active(),
+            transition_pending=self._scope_transition_pending(),
             loaded_to_robot=loaded_to_robot,
             selected_row=selected_row,
         )
@@ -13119,26 +13079,45 @@ class BringupControlUI(tk.Tk):
         NAME
             _selected_test_row - Return the robot-published metadata row for one selected test.
         """
-        tests_table = self.__dict__.get("_tests_table")
-        if tests_table is None or not selected_name:
+        latest_tests_snapshot = self.__dict__.get("_latest_tests_snapshot")
+        if isinstance(latest_tests_snapshot, TestsSnapshot) and selected_name:
+            row_snapshot = latest_tests_snapshot.rows_by_name.get(selected_name)
+            if row_snapshot is not None:
+                return {
+                    "requiredDevices": list(row_snapshot.required_devices),
+                    "runnableNow": bool(row_snapshot.runnable_now),
+                    "blockedReason": str(row_snapshot.blocked_reason or "").strip(),
+                }
+        payload = self.__dict__.get("_latest_tests_state_payload", {})
+        if not isinstance(payload, dict) or not selected_name:
             return None
-        total = int(tests_table.getEntry("totalCount").getDouble(0.0))
-        rows = tests_table.getSubTable("rows")
-        for i in range(total):
-            row = rows.getSubTable(str(i))
-            row_name = str(row.getEntry("name").getString("") or "").strip()
+        rows = payload.get("rows")
+        if not isinstance(rows, list):
+            return None
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            row_name = str(row.get("name", "") or "").strip()
             if row_name != selected_name:
                 continue
-            raw_required = str(row.getEntry("requiredDevices").getString("") or "").strip()
-            required_devices = (
-                [part.strip() for part in raw_required.split(",") if part.strip()]
-                if raw_required
-                else []
-            )
+            raw_required = row.get("requiredDevices")
+            if isinstance(raw_required, list):
+                required_devices = [
+                    str(part).strip()
+                    for part in raw_required
+                    if str(part).strip()
+                ]
+            else:
+                required_text = str(raw_required or "").strip()
+                required_devices = (
+                    [part.strip() for part in required_text.split(",") if part.strip()]
+                    if required_text
+                    else []
+                )
             return {
                 "requiredDevices": required_devices,
-                "runnableNow": row.getEntry("runnableNow").getBoolean(False),
-                "blockedReason": str(row.getEntry("blockedReason").getString("") or "").strip(),
+                "runnableNow": bool(row.get("runnableNow", False)),
+                "blockedReason": str(row.get("blockedReason", "") or "").strip(),
             }
         return None
 
@@ -13158,13 +13137,10 @@ class BringupControlUI(tk.Tk):
         run_state = str(run_payload.get("state", "") or "").strip().lower()
         if run_state == "running":
             return True
-        table = self.__dict__.get("_tests_table")
-        if table is None:
-            return False
-        try:
-            return str(table.getEntry("runState").getString("") or "").strip().lower() == "running"
-        except Exception:
-            return False
+        latest_tests_snapshot = self.__dict__.get("_latest_tests_snapshot")
+        if isinstance(latest_tests_snapshot, TestsSnapshot):
+            return str(latest_tests_snapshot.run.state or "").strip().lower() == "running"
+        return False
 
     def _latest_test_run_payload(self) -> Dict[str, Any]:
         """
@@ -13329,8 +13305,11 @@ class BringupControlUI(tk.Tk):
         """
         if not isinstance(run_payload, dict):
             return False
-        tests_table = self.__dict__.get("_tests_table")
-        if tests_table is not None and tests_table.getEntry("runAllActive").getBoolean(False):
+        latest_tests_snapshot = self.__dict__.get("_latest_tests_snapshot")
+        if isinstance(latest_tests_snapshot, TestsSnapshot) and latest_tests_snapshot.run_all_active:
+            return False
+        payload = self.__dict__.get("_latest_tests_state_payload", {})
+        if isinstance(payload, dict) and bool(payload.get("runAllActive", False)):
             return False
         run_state = str(run_payload.get("state", "") or "").strip()
         return run_state in ("passed", "failed", "blocked", "aborted", "interrupted")
@@ -13373,11 +13352,29 @@ class BringupControlUI(tk.Tk):
             return
         result_text = TEST_LIBRARY_LAST_RESULT_DEFAULT
         result_color = TEST_RESULT_NEUTRAL_FG
-        if self._tests_table is not None:
-            run_state = str(self._tests_table.getEntry("runState").getString("") or "").strip()
-            run_test = str(self._tests_table.getEntry("runTest").getString("") or "").strip()
-            run_result = str(self._tests_table.getEntry("runResult").getString("") or "").strip()
-            run_message = str(self._tests_table.getEntry("runMessage").getString("") or "").strip()
+        latest_tests_snapshot = self.__dict__.get("_latest_tests_snapshot")
+        run_state = NT_VALUE_EMPTY
+        run_test = NT_VALUE_EMPTY
+        run_result = NT_VALUE_EMPTY
+        run_message = NT_VALUE_EMPTY
+        if isinstance(latest_tests_snapshot, TestsSnapshot):
+            run_state = str(latest_tests_snapshot.run.state or "").strip()
+            run_test = str(latest_tests_snapshot.run.test_name or "").strip()
+            run_result = str(latest_tests_snapshot.run.result or "").strip()
+            run_message = str(latest_tests_snapshot.run.message or "").strip()
+        else:
+            run_payload = self._latest_test_run_payload()
+            run_state = str(run_payload.get("state", "") or "").strip()
+            run_test = str(
+                run_payload.get("test", run_payload.get("runTest", "")) or ""
+            ).strip()
+            run_result = str(
+                run_payload.get("result", run_payload.get("runResult", "")) or ""
+            ).strip()
+            run_message = str(
+                run_payload.get("message", run_payload.get("runMessage", "")) or ""
+            ).strip()
+        if run_state or run_test or run_result or run_message:
             run_payload = self._latest_test_run_payload()
             if run_state == "running" and run_test:
                 result_text = f"Last Result: RUNNING - {run_test}"
@@ -13767,7 +13764,10 @@ class BringupControlUI(tk.Tk):
             )
         self._profile_box["values"] = profiles
         self._profile_box.set(selected_profile)
-        self._last_selected_profile = self._selected_profile_name()
+        self._record_local_profile_selection_intent(
+            self._selected_profile_name(),
+            send_if_ready=False,
+        )
         if output_line:
             self._append_output(output_line)
         self._apply_profile_selection(self._selected_profile_name(), reload_views=True)
@@ -14947,6 +14947,101 @@ class BringupControlUI(tk.Tk):
             log_poll_inflight=bool(self._log_poll_inflight),
         )
 
+    def _update_latest_rest_ui_snapshots(
+        self,
+        *,
+        raw_session: Optional[Dict[str, Any]],
+        raw_runtime: Optional[Dict[str, Any]],
+        raw_tests: Optional[Dict[str, Any]],
+        fetched_at_ms: float,
+    ) -> None:
+        """
+        NAME
+            _update_latest_rest_ui_snapshots - Normalize fetched REST payloads into the current typed snapshots.
+
+        DESCRIPTION
+            Each provided payload family is normalized immediately and replaces
+            the corresponding current typed snapshot. Families passed as None
+            were not fetched in this call and are left unchanged.
+        """
+        normalized_fetched_at_ms = float(fetched_at_ms or 0.0)
+        latest_session_snapshot = self.__dict__.get("_latest_session_snapshot")
+        latest_runtime_snapshot = self.__dict__.get("_latest_runtime_snapshot")
+        latest_tests_snapshot = self.__dict__.get("_latest_tests_snapshot")
+        if raw_session is not None and raw_runtime is not None and raw_tests is not None:
+            bundle = RestUiSnapshots(
+                session=(
+                    normalize_session_snapshot(
+                        raw_session,
+                        received_at_ms=normalized_fetched_at_ms,
+                    )
+                    if isinstance(raw_session, dict) and raw_session
+                    else (
+                        latest_session_snapshot
+                        if isinstance(latest_session_snapshot, SessionSnapshot)
+                        else SessionSnapshot()
+                    )
+                ),
+                runtime=(
+                    normalize_runtime_snapshot(
+                        raw_runtime,
+                        received_at_ms=normalized_fetched_at_ms,
+                    )
+                    if isinstance(raw_runtime, dict) and raw_runtime
+                    else (
+                        latest_runtime_snapshot
+                        if isinstance(latest_runtime_snapshot, RuntimeSnapshot)
+                        else RuntimeSnapshot()
+                    )
+                ),
+                tests=(
+                    normalize_tests_snapshot(
+                        raw_tests,
+                        received_at_ms=normalized_fetched_at_ms,
+                    )
+                    if isinstance(raw_tests, dict) and raw_tests
+                    else (
+                        latest_tests_snapshot
+                        if isinstance(latest_tests_snapshot, TestsSnapshot)
+                        else TestsSnapshot()
+                    )
+                ),
+            )
+            self._latest_rest_ui_snapshots = bundle
+            self._latest_session_snapshot = bundle.session
+            self._latest_runtime_snapshot = bundle.runtime
+            self._latest_tests_snapshot = bundle.tests
+            return
+        if raw_session is not None:
+            bundle = build_rest_ui_snapshots(
+                raw_session=raw_session,
+                raw_runtime={},
+                raw_tests={},
+                received_at_ms=normalized_fetched_at_ms,
+            )
+            latest_session_snapshot = bundle.session
+            self._latest_session_snapshot = latest_session_snapshot
+        if raw_runtime is not None:
+            latest_runtime_snapshot = normalize_runtime_snapshot(
+                raw_runtime,
+                received_at_ms=normalized_fetched_at_ms,
+            )
+            self._latest_runtime_snapshot = latest_runtime_snapshot
+        if raw_tests is not None:
+            bundle = build_rest_ui_snapshots(
+                raw_session={},
+                raw_runtime={},
+                raw_tests=raw_tests,
+                received_at_ms=normalized_fetched_at_ms,
+            )
+            latest_tests_snapshot = bundle.tests
+            self._latest_tests_snapshot = latest_tests_snapshot
+        self._latest_rest_ui_snapshots = RestUiSnapshots(
+            session=latest_session_snapshot,
+            runtime=latest_runtime_snapshot,
+            tests=latest_tests_snapshot,
+        )
+
     def _fetch_runtime_state_snapshot(
         self,
         *,
@@ -14967,6 +15062,12 @@ class BringupControlUI(tk.Tk):
             if log_blocked:
                 self._append_output(OUTPUT_RUNTIME_STATE_FETCH_EMPTY)
             return False
+        self._update_latest_rest_ui_snapshots(
+            raw_session=None,
+            raw_runtime=runtime_snapshot,
+            raw_tests=None,
+            fetched_at_ms=time.time() * 1000.0,
+        )
         self._runtime_state_pending_seq = None
         self._runtime_state_pending_at = 0.0
         self._apply_runtime_state_payload(runtime_snapshot)
@@ -15080,6 +15181,8 @@ class BringupControlUI(tk.Tk):
             return
         membership_mode = self._selected_activation_membership_mode()
         if self._scope_context_kind() == GROUP_SOURCE_SELECTED_TEST:
+            if not self._sync_robot_selected_test_to_ui_if_needed():
+                return
             if self._selected_test_membership_change_requires_scope_swap():
                 self._append_output(TEST_SCOPE_DETAIL_SCOPE_SWAP_REQUIRED)
                 return
@@ -15362,16 +15465,6 @@ class BringupControlUI(tk.Tk):
             self._handshake_inflight = False
             self._session.reset_handshake()
             self._last_keepalive = 0.0
-            cached_runtime_snapshot = self.__dict__.get("_latest_runtime_state_payload", {})
-            if isinstance(cached_runtime_snapshot, dict) and cached_runtime_snapshot:
-                self._ui_table = _RestTableAdapter.from_runtime_state(
-                    {},
-                    dict(cached_runtime_snapshot),
-                    fetched_at_ms=time.time() * 1000.0,
-                )
-            else:
-                self._ui_table = None
-            self._tests_table = None
         events_started_at = time.time()
         for event in self._session.poll_events():
             self._handle_tcp_response(event)
@@ -15381,6 +15474,7 @@ class BringupControlUI(tk.Tk):
         runtime_snapshot: Dict[str, Any] = {}
         tests_snapshot: Dict[str, Any] = {}
         runtime_state_available = False
+        fetched_rest_payloads = False
         fetched_at_ms = time.time() * 1000.0
         cached_runtime_snapshot = self.__dict__.get("_latest_runtime_state_payload", {})
         if not isinstance(cached_runtime_snapshot, dict):
@@ -15409,39 +15503,39 @@ class BringupControlUI(tk.Tk):
             self._host_debug_log_phase(HOST_DEBUG_RUNTIME_FETCH_TESTS, tests_fetch_started_at)
             fetched_at_ms = time.time() * 1000.0
             self._latest_tests_state_payload = dict(tests_snapshot or {})
+            fetched_rest_payloads = True
         elif pending_long_command and self._host_debug_active():
             self._host_debug_log("poll fetch suppressed: long-running command pending")
-        runtime_table_payload: Dict[str, Any] = {}
-        if isinstance(runtime_snapshot, dict) and runtime_snapshot:
-            runtime_table_payload = dict(runtime_snapshot)
-        elif cached_runtime_snapshot:
-            runtime_table_payload = dict(cached_runtime_snapshot)
-        if runtime_table_payload:
-            self._ui_table = _RestTableAdapter.from_runtime_state(
-                session_snapshot,
-                runtime_table_payload,
+        if fetched_rest_payloads:
+            self._update_latest_rest_ui_snapshots(
+                raw_session=session_snapshot,
+                raw_runtime=runtime_snapshot,
+                raw_tests=tests_snapshot,
                 fetched_at_ms=fetched_at_ms,
             )
-        self._tests_table = _RestTableAdapter.from_tests_state(tests_snapshot)
         if isinstance(runtime_snapshot, dict) and runtime_snapshot:
             runtime_state_available = True
             self._runtime_state_refresh_pending = False
             apply_started_at = time.time()
             self._apply_runtime_state_payload(runtime_snapshot)
             self._host_debug_log_phase(HOST_DEBUG_RUNTIME_APPLY, apply_started_at)
-        if self._ui_table is not None:
-            session_id = self._ui_table.getEntry("state/sessionId").getString("")
+        latest_session_snapshot = self.__dict__.get("_latest_session_snapshot")
+        latest_runtime_snapshot = self.__dict__.get("_latest_runtime_snapshot")
+        latest_tests_snapshot = self.__dict__.get("_latest_tests_snapshot")
+        if fetched_rest_payloads and isinstance(latest_session_snapshot, SessionSnapshot):
+            session_id = str(latest_session_snapshot.session_id or "").strip()
             if session_id:
                 self._apply_robot_ui_session_id(session_id)
-            enabled = self._ui_table.getEntry("state/enabled").getBoolean(True)
-            estopped = self._ui_table.getEntry("state/estopped").getBoolean(False)
-            mode = self._ui_table.getEntry("state/mode").getString("disabled")
-            last_ack_ms = self._ui_table.getEntry("state/lastAckMs").getDouble(0.0)
+        if isinstance(latest_runtime_snapshot, RuntimeSnapshot):
+            enabled = bool(latest_runtime_snapshot.robot_enabled)
+            estopped = bool(latest_runtime_snapshot.robot_estopped)
+            mode = str(latest_runtime_snapshot.robot_mode or "disabled")
+            last_ack_ms = float(latest_runtime_snapshot.last_ack_ms or 0.0)
             self._robot_selected_profile = _normalize_profile_name(
-                self._ui_table.getEntry(NT_UI_STATE_SELECTED_PROFILE).getString(PROFILE_NONE)
+                latest_runtime_snapshot.selected_profile or PROFILE_NONE
             )
             self._robot_active_runtime_profile = _normalize_profile_name(
-                self._ui_table.getEntry(NT_UI_STATE_ACTIVE_RUNTIME_PROFILE).getString(PROFILE_NONE)
+                latest_runtime_snapshot.active_runtime_profile or PROFILE_NONE
             )
             if self._robot_selected_profile == _normalize_profile_name(
                 self.__dict__.get("_pending_robot_profile_selection", PROFILE_NONE)
@@ -15465,11 +15559,9 @@ class BringupControlUI(tk.Tk):
         self._robot_enabled_known = enabled
         self._robot_estopped_known = estopped
         self._robot_mode_known = str(mode or "disabled").strip().lower()
-        if self._tests_table is not None:
+        if isinstance(latest_tests_snapshot, TestsSnapshot):
             tests_sync_started_at = time.time()
-            selected_name = str(
-                self._tests_table.getEntry("selectedName").getString("") or ""
-            ).strip()
+            selected_name = str(latest_tests_snapshot.selected_name or "").strip()
             test_names = self._resolve_test_names_from_rows()
             if (
                 selected_name
@@ -15511,9 +15603,17 @@ class BringupControlUI(tk.Tk):
                 or (robot_selected_changed and not local_selected_test_is_authoritative)
             ):
                 self._sync_test_selection(selected_name)
-            active_name = self._tests_table.getEntry("activeName").getString("")
-            active_status = self._tests_table.getEntry("activeStatus").getString("")
-            run_all = self._tests_table.getEntry("runAllActive").getBoolean(False)
+            elif self._current_right_tab_text() == TEST_LIBRARY_TAB_LABEL:
+                # The selected test can remain unchanged across a UI-session
+                # reset. Its rows are derived state, so rebuild them whenever a
+                # fresh tests snapshot arrives instead of leaving an empty table.
+                self._sync_selected_test_devices_panel_local(
+                    loaded_to_robot=self._selected_test_required_membership_loaded_to_robot()
+                )
+                self._refresh_selected_test_scope_status()
+            active_name = str(latest_tests_snapshot.active_name or "").strip()
+            active_status = str(latest_tests_snapshot.active_status or "").strip()
+            run_all = bool(latest_tests_snapshot.run_all_active)
             running = "(none)"
             if active_name:
                 running = active_name
@@ -16483,7 +16583,6 @@ class BringupControlUI(tk.Tk):
                     "!disabled"
                 ]
                 if scope_control_state.run_selected_allowed
-                and not self._should_block_for_context_sync("runTest")
                 else ["disabled"]
             )
         if self._reset_button is not None:
@@ -16569,16 +16668,24 @@ class BringupControlUI(tk.Tk):
         NAME
             _resolve_selected_from_rows - Find selected test name from rows.
         """
-        if self._tests_table is None:
+        latest_tests_snapshot = self.__dict__.get("_latest_tests_snapshot")
+        if isinstance(latest_tests_snapshot, TestsSnapshot):
+            for row_name in latest_tests_snapshot.ordered_names:
+                row_snapshot = latest_tests_snapshot.rows_by_name.get(row_name)
+                if row_snapshot is not None and row_snapshot.selected:
+                    return row_snapshot.name
             return ""
-        total = int(self._tests_table.getEntry("totalCount").getDouble(0.0))
-        rows = self._tests_table.getSubTable("rows")
-        if total <= 0:
+        payload = self.__dict__.get("_latest_tests_state_payload", {})
+        if not isinstance(payload, dict):
             return ""
-        for i in range(total):
-            row = rows.getSubTable(str(i))
-            if row.getEntry("selected").getBoolean(False):
-                return row.getEntry("name").getString("")
+        rows = payload.get("rows")
+        if not isinstance(rows, list):
+            return ""
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            if bool(row.get("selected", False)):
+                return str(row.get("name", "") or "").strip()
         return ""
 
     def _resolve_test_names_from_rows(self) -> List[str]:
@@ -16586,16 +16693,24 @@ class BringupControlUI(tk.Tk):
         NAME
             _resolve_test_names_from_rows - Return robot-known test names from the live tests table.
         """
-        if self._tests_table is None:
+        latest_tests_snapshot = self.__dict__.get("_latest_tests_snapshot")
+        if isinstance(latest_tests_snapshot, TestsSnapshot):
+            return [
+                str(name).strip()
+                for name in latest_tests_snapshot.ordered_names
+                if str(name).strip()
+            ]
+        payload = self.__dict__.get("_latest_tests_state_payload", {})
+        if not isinstance(payload, dict):
             return []
-        total = int(self._tests_table.getEntry("totalCount").getDouble(0.0))
-        rows = self._tests_table.getSubTable("rows")
-        if total <= 0:
+        rows = payload.get("rows")
+        if not isinstance(rows, list):
             return []
         names: List[str] = []
-        for i in range(total):
-            row = rows.getSubTable(str(i))
-            name = str(row.getEntry("name").getString("") or "").strip()
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            name = str(row.get("name", "") or "").strip()
             if name and name not in names:
                 names.append(name)
         return names
@@ -16666,6 +16781,14 @@ class BringupControlUI(tk.Tk):
         current_name = str(self._selected_test_var.get() or "").strip()
         if name == current_name:
             self._sync_test_library_entry_to_selected_test(name)
+            if self._current_right_tab_text() == TEST_LIBRARY_TAB_LABEL:
+                # A REST-session reset clears the derived table rows but retains
+                # the operator's selected test name. Rebuild the rows from the
+                # fresh robot test snapshot even when the name is unchanged.
+                self._sync_selected_test_devices_panel_local(
+                    loaded_to_robot=self._selected_test_required_membership_loaded_to_robot()
+                )
+            self._refresh_selected_test_scope_status()
             return
         self._last_selected_test = name
         self._selected_test_var.set(name)

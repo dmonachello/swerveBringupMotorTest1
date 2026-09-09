@@ -12,15 +12,15 @@ from hashlib import sha256
 from pathlib import Path
 from time import time
 
-BUILD_GIT_DESCRIBE = "evidence-fusion-docs-checkpoint-2026-08-25-dirty"
-BUILD_REVISION = "289"
-BUILD_WORKSPACE_REVISION = "5"
-BUILD_CODE_REVISION = "fe1078df4d04"
-BUILD_GIT_SHA = "a565d3b"
-BUILD_GIT_BRANCH = "main"
+BUILD_GIT_DESCRIBE = "evidence-fusion-runtime-ui-checkpoint-2026-09-01-dirty"
+BUILD_REVISION = "290"
+BUILD_WORKSPACE_REVISION = "35"
+BUILD_CODE_REVISION = "b37a0dcca6d4"
+BUILD_GIT_SHA = "59a2dba"
+BUILD_GIT_BRANCH = "feature/rest-typed-ui-state-migration"
 BUILD_GIT_DIRTY = "dirty"
-BUILD_TIMESTAMP = "2026-09-01T12:50:04-04:00"
-BUILD_COMMIT_TIMESTAMP = "2026-08-25T10:22:42-04:00"
+BUILD_TIMESTAMP = "2026-09-07T19:35:20-04:00"
+BUILD_COMMIT_TIMESTAMP = "2026-09-01T13:04:27-04:00"
 
 BUILD_LABEL_REVISION = "build-revision"
 BUILD_LABEL_WORKSPACE_REVISION = "workspace-revision"

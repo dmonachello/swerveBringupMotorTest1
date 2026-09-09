@@ -75,6 +75,7 @@ OUTPUT_NO_SELECTED_TEST = "no selected test"
 SELECTED_TEST_STATUS_LOADED_NOT_ACTIVATED = "selected test scope ready - not activated"
 SELECTED_TEST_STATUS_MANUAL_RESTORED = "manual active-group restored - not activated"
 SELECTED_TEST_STATUS_SCOPE_SWAP_REQUIRED = "selected test scope swap required"
+SELECTED_TEST_STATUS_RESYNC_REQUIRED = "selected test scope resync pending"
 SELECTED_TEST_STATUS_BLOCKED_ESTOP = "robot disabled (E-Stop)"
 SELECTED_TEST_STATUS_BLOCKED_DISABLED = "robot disabled"
 SELECTED_TEST_STATUS_BLOCKED_NOT_TELEOP = "robot not in teleop"
@@ -529,7 +530,10 @@ def resolve_context_sync_state(
     )
     ui_test_cmp = ui_test if ui_test and ui_test != PROFILE_NONE else PROFILE_NONE
     robot_test_cmp = robot_test if robot_test and robot_test != PROFILE_NONE else PROFILE_NONE
-    profile_mismatch = robot_profile_cmp != PROFILE_NONE and ui_profile_cmp != robot_profile_cmp
+    profile_mismatch = (
+        ui_profile_cmp != robot_profile_cmp
+        and (ui_profile_cmp != PROFILE_NONE or robot_profile_cmp != PROFILE_NONE)
+    )
     test_mismatch = robot_test_cmp != PROFILE_NONE and ui_test_cmp != robot_test_cmp
     runtime_mismatch = (
         robot_runtime_profile not in ("", PROFILE_NONE)
@@ -933,6 +937,7 @@ def resolve_selected_test_scope_state(
     active_group_rows: List[Dict[str, Any]],
     runtime_block_reason: str,
     scope_active: bool,
+    transition_pending: bool,
     loaded_to_robot: Optional[bool],
     selected_row: Optional[Dict[str, Any]],
 ) -> SelectedTestScopeState:
@@ -973,6 +978,15 @@ def resolve_selected_test_scope_state(
             headline=TEST_SCOPE_PANEL_INACTIVE_HEADLINE,
             detail_reason=runtime_block_reason,
             level=RUNNABLE_STATE_LEVEL_WARN,
+        )
+    if transition_pending:
+        return SelectedTestScopeState(
+            selected_name=clean_name,
+            inactive_reason=SELECTED_TEST_STATUS_RESYNC_REQUIRED,
+            ready=False,
+            headline=RUNNABLE_PANEL_WAITING_HEADLINE,
+            detail_reason=RUNNABLE_SCOPE_PANEL_RESYNC_DETAIL,
+            level=RUNNABLE_STATE_LEVEL_INFO,
         )
     if not scope_active:
         if not isinstance(selected_row, dict):
@@ -1059,6 +1073,8 @@ def resolve_selected_test_panel_state(state: SelectedTestScopeState) -> Selected
         detail = TEST_SCOPE_STATUS_MANUAL_RESTORED_DETAIL
     elif reason == SELECTED_TEST_STATUS_SCOPE_SWAP_REQUIRED:
         detail = TEST_SCOPE_STATUS_SCOPE_SWAP_REQUIRED_DETAIL
+    elif reason == SELECTED_TEST_STATUS_RESYNC_REQUIRED:
+        detail = RUNNABLE_SCOPE_PANEL_RESYNC_DETAIL
     elif reason == SELECTED_TEST_STATUS_BLOCKED_ESTOP:
         detail = TEST_SCOPE_STATUS_BLOCKED_ESTOP_DETAIL
     elif reason == SELECTED_TEST_STATUS_BLOCKED_DISABLED:

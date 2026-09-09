@@ -43,7 +43,7 @@ class BridgeUiRuntimeCommandsTest {
     BridgeUiCommandResult result = commands.execute(ingress(CMD_ADD_ALL), 0.0, false);
 
     assertTrue(result.ok);
-    assertEquals("Instantiated all configured devices. Use active add to populate active-group.", result.message);
+    assertEquals("Instantiated enabled active-group devices only.", result.message);
     assertEquals(1, deps.stageBringupCalls);
     assertEquals(1, deps.addAllDevicesCalls);
   }
