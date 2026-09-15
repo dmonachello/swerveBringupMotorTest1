@@ -472,7 +472,7 @@ Current behavior:
 
 - uses the current `active-group` membership as the activation authority
 
-- allows `selected test` activation only when the selected test's required devices are already contained in the current `active-group`
+- allows `selected test` activation only when the selected test's required devices exactly match the current `active-group`
 
 - reports `scope swap required` when a selected test would need different membership instead of activating through a separate path
 
@@ -721,7 +721,7 @@ This last rule is the important limit-switch case:
 
   
 
-- if the newly selected test requires one more device than the currently active scope has, the button should be disabled until the operator first uses `Runtime Deactivate`
+- if the newly selected test has any different enabled required device, including an extra device already in the active scope, the button should be disabled until the operator first uses `Runtime Deactivate`
   
 - when selected-test scope is inactive, `Runtime Activate` may load the selected test's required devices into `active-group` before activating the shared lifecycle scope
 
@@ -786,7 +786,7 @@ Important current fact:
   
 
 - the `Tests` tab no longer runs against a separate hidden scope model
-- it evaluates the selected test against the shared active scope using required-device containment, not exact membership equality
+- it evaluates the selected test against the shared active scope using exact required-device membership equality
 
   
 
@@ -805,7 +805,7 @@ When the operator selects a test in the `Tests` tab:
 - the UI sends `selectTestByName`
 
 - the UI resolves required devices from robot-reported test metadata, with local DSL fallback when needed
-- the UI refreshes `Selected Test Devices` from the selected test and checks whether all required devices are already present in the current robot-backed active scope
+- the UI refreshes `Selected Test Devices` from the selected test and checks whether its required device set exactly matches the current robot-backed active scope
 
   
 
@@ -813,7 +813,7 @@ Current implication:
 
   
 
-- extra devices in the active scope are acceptable as long as every device required by the selected test is already included
+- extra devices in the active scope are not acceptable for selected-test ownership; the active scope must contain exactly the selected test's enabled required devices
 
 - `Selected Test Devices` is a presentation of the selected test's required device set overlaid with runtime state, not proof that the host rewrote robot `active-group`
 
@@ -1137,7 +1137,7 @@ Current meaning of selected-test ready:
 
   
 
-- the selected test's required devices are already contained in `active-group`
+- the selected test's required devices exactly match `active-group`
 
 - the scope is active for that selected-test-owned set
 
@@ -1333,7 +1333,7 @@ Purpose: Capture behaviors that follow from the current implementation and may s
 
 - It is profile-wide runtime activation plus activation of the current `active-group`.
 
-- DSL tests currently work by validating required-device containment against the current `active-group` and then using the same shared activation path.
+- DSL tests currently work by validating exact required-device membership against the current `active-group` and then using the same shared activation path.
 
 - Leaving the `Tests` tab does not automatically tear down the shared active scope.
 
@@ -1425,9 +1425,9 @@ Purpose: Describe common operator scenarios and the code-driven behavior they sh
 
   
 
-- If a selected test requires one or more devices that are missing from the currently active locked scope, the host UI must report that a scope swap is required.
+- If a selected test differs from the currently active locked scope by either missing or extra enabled devices, the host UI must report that a scope swap is required.
 
-- If the currently active locked scope already contains every required selected-test device, the host must treat that as a match even when the scope also contains extra devices.
+- The host must treat the selected test as matched only when its enabled required device labels exactly equal the active-scope enabled member labels.
 
 - The host must not automatically issue `groupReplaceMembers` while a locked active scope session is running just because the operator selected a different test in the `Tests` tab.
 

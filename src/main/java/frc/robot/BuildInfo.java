@@ -7,15 +7,15 @@ package frc.robot;
 public final class BuildInfo {
   private BuildInfo() {}
 
-  public static final String BUILD_GIT_DESCRIBE = "evidence-fusion-runtime-ui-checkpoint-2026-09-01-dirty";
-  public static final String BUILD_REVISION = "290";
-  public static final String BUILD_WORKSPACE_REVISION = "35";
-  public static final String BUILD_CODE_REVISION = "b37a0dcca6d4";
-  public static final String BUILD_GIT_SHA = "59a2dba";
-  public static final String BUILD_GIT_BRANCH = "feature/rest-typed-ui-state-migration";
+  public static final String BUILD_GIT_DESCRIBE = "rest-typed-ui-state-migration-finish-2026-09-09-1-gfdf9fe1-dirty";
+  public static final String BUILD_REVISION = "294";
+  public static final String BUILD_WORKSPACE_REVISION = "43";
+  public static final String BUILD_CODE_REVISION = "a1ee418d7951";
+  public static final String BUILD_GIT_SHA = "fdf9fe1";
+  public static final String BUILD_GIT_BRANCH = "main";
   public static final String BUILD_GIT_DIRTY = "dirty";
-  public static final String BUILD_TIMESTAMP = "2026-09-07T19:35:20-04:00";
-  public static final String BUILD_COMMIT_TIMESTAMP = "2026-09-01T13:04:27-04:00";
+  public static final String BUILD_TIMESTAMP = "2026-09-15T10:50:02-04:00";
+  public static final String BUILD_COMMIT_TIMESTAMP = "2026-09-09T12:31:38-04:00";
 
   public static final String BUILD_LABEL_REVISION = "build-revision";
   public static final String BUILD_LABEL_WORKSPACE_REVISION = "workspace-revision";

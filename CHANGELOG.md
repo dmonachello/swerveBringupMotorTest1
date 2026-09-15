@@ -2,6 +2,17 @@
 
 All notable user-facing changes are documented in this file.
 
+## 2026-09-15
+
+### Changed - 2026-09-15
+
+- Require selected DSL tests to exactly match live active-group membership and
+  prefer current runtime state over cached UI intent.
+- Add proposals for multi-tick DSL known-state initialization and isolated
+  diagnostic I/O workers, with supporting architecture and operator docs.
+- Refresh generated build metadata and archive the pre-cleanup DSL v0.3 source
+  copy under an explicit historical filename.
+
 ## 2026-08-25
 
 ### Changed - 2026-08-25

@@ -2,22 +2,16 @@
 
 # Documentation Health Report
 
-- Pages processed: 323
-- Broken links: 23
-- Orphan pages: 144
+- Pages processed: 328
+- Broken links: 20
+- Orphan pages: 146
 - Duplicate title families: 13
 - Suggested renames: 13
 
 ## Broken Links
 
 - docs/APP_NOTE_DISCOVERY_FIRST_CONFIG_BOOTSTRAP.md -> docs/USER_GUIDE.md
-- docs/DOCS_GRAPH_SUGGESTIONS.md -> docs/ARCHITECTURE.md
-- docs/DOCS_GRAPH_SUGGESTIONS.md -> docs/USER_GUIDE.md
-- docs/GLOSSARY.md -> docs/ARCHITECTURE.md
-- docs/GLOSSARY.md -> docs/USER_GUIDE.md
-- docs/mocs/architecture.md -> docs/ARCHITECTURE.md
-- docs/mocs/rest_api.md -> docs/ARCHITECTURE.md
-- docs/mocs/ui.md -> docs/ARCHITECTURE.md
+- docs/FEATURE_SPEC_DSL_KNOWN_STATE_INITIALIZATION.md -> Current%20UI%20And%20Runtime%20Rules%20-%20V2.md
 - docs/STATUS_REVIEW_2026-08-03.md -> docs/ARCHITECTURE.md
 - docs/USER_GUIDE_REGRESSION_RUNNER.md -> .codex/skills/regression-runner/SKILL.md
 - docs/USER_GUIDE_REGRESSION_RUNNER.md -> Current%20UI%20And%20Runtime%20Rules%20-%20V2.md
@@ -33,6 +27,9 @@
 - notes/recovery/2026-07-18_162335/untracked_copy/docs/mocs/ui.md -> docs/ARCHITECTURE.md
 - README.md -> docs/ARCHITECTURE.md
 - README.md -> docs/USER_GUIDE.md
+- Untitled.md -> FEATURE_SPEC_DSL_CONDITION_STABILITY_AND_RANGE_OPERATORS.md
+- Untitled.md -> SPEC_DSL_DEVICE_SIGNAL_INTERFACE.md
+- Untitled.md -> USER_GUIDE_ROBOT_TEST_DSL.md
 
 ## Quality Concerns
 

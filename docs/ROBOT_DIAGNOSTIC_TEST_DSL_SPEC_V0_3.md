@@ -4,9 +4,9 @@ SPEC_STATUS: IMPLEMENTED
 
 ## 1. Purpose
 
-Purpose: define the current execution semantics of the Robot Diagnostic Test DSL.
+Purpose: define Robot Diagnostic Test DSL execution semantics.
 
-This document is the canonical language spec for:
+This is the canonical language spec. It covers:
 
 - phase structure
 - statement semantics
@@ -19,21 +19,19 @@ This document does not define:
 - CLI command syntax
 - UI layout
 - dashboard rendering
-- NetworkTables publication
+- host transport details; supported bringup workflows use the robot REST API rather than NetworkTables
 
 ## 2. Core Model
 
-A DSL test is a live rule set evaluated by the robot runtime.
+A DSL test is a live rule set that the robot runtime evaluates every control loop. It is not a procedural script.
 
-It is not a procedural script.
-
-The authored structure is:
+The phase order is:
 
 1. `init`
 2. `main`
 3. `close`
 
-Only those three phases are sequenced.
+Only these phases are sequenced.
 
 Within a phase, source line order does not define execution order.
 
@@ -76,7 +74,7 @@ device "FALCON 9"
 device "controller0"
 ```
 
-Signal references always use:
+Write signal references as:
 
 ```text
 device.signal
@@ -93,10 +91,19 @@ timer.elapsed
 
 Rules:
 
-- referenced configured devices must exist in the active runtime
-- referenced configured devices must be declared in the test before use
+- referenced configured devices must be configured and declared in the test before use
 - `timer` is built in and must not be declared
 - quoted and unquoted device references are equivalent when the unquoted name is lexically valid
+
+### 4.1 Selected-Test Runtime Scope
+
+Purpose: define the runtime admission contract for a selected DSL test.
+
+The `device` declarations define the required `active-group` membership for a selected test. Before a selected test can run, the active controlled scope must contain exactly that enabled device set. Missing required devices and extra active devices are both scope mismatches. Required non-singletons are instantiated for that scope.
+
+When the selected-test scope is inactive, host-driven `Runtime Activate` replaces `active-group` membership with the exact required set and activates the shared lifecycle. If a different scope is already active, the operator must deactivate before activating the different selected-test scope.
+
+Singleton-backed infrastructure may exist outside this controlled scope. A singleton is still subject to normal DSL declaration and signal validation rules.
 
 ## 5. Engine Guarantees
 
@@ -104,7 +111,7 @@ Rules:
 
 At test start:
 
-1. declared runtime devices are resolved and created
+1. the active selected-test scope has already been resolved and instantiated
 2. starting positions are captured for delta-style position signals when available
 3. writable DSL signals are forced to their declared safe values
 4. `init` `clear` statements run
@@ -227,10 +234,9 @@ Semantics:
 - evaluated every tick in `main`
 - multiple `until` statements are OR'd
 - when one becomes true, normal termination begins
-- on normal termination:
-  - if any signal-set fallback is active that tick, result = `FAIL`
-  - else result = `PASS` only if all `require` conditions have latched satisfied
-  - else result = `FAIL`
+- on normal termination, any active signal-set fallback makes the result `FAIL`
+- otherwise, the result is `PASS` only if all `require` conditions have latched satisfied
+- otherwise, the result is `FAIL`
 
 ### 6.6 `require`
 
@@ -315,8 +321,6 @@ Priority is therefore:
 abort > success > until
 ```
 
-Important note:
-
 - `require` latching happens before `abort`, `success`, and `until` evaluation on that same tick
 
 ## 9. Results
@@ -371,7 +375,7 @@ In that case:
 
 Writable DSL targets are device-owned and range-checked at runtime.
 
-Important current behaviors:
+Current behavior:
 
 - signal-driven `set` defaults are validated for target range
 - out-of-range values during `init` or `main` fail the test
@@ -404,9 +408,12 @@ The detailed signal catalog lives in:
 
 Current high-level families include:
 
-- motor signals
+- motor signals, including aggregate current, velocity, and position-delta telemetry
 - limit switch signals
 - external encoder signals
+- IMU signals, including orientation, acceleration, and delta telemetry
+- PDP and PDH power-distribution signals, including channel current and fault state
+- robot-controller supply, brownout, CAN, and rail-health signals
 - Xbox controller signals
 - built-in timer signals
 
@@ -514,7 +521,7 @@ Typical warnings include:
 
 ## 16. Mental Model
 
-Use this model when reading or authoring tests:
+Read and author tests with this model:
 
 ```text
 init    = one-time setup
@@ -527,7 +534,7 @@ until   = normal stop boundary
 require = evidence that must have happened
 ```
 
-And remember:
+Key points:
 
 - `require` means at least once before normal stop
 - `stable` modifies condition truth; it does not block the runtime loop

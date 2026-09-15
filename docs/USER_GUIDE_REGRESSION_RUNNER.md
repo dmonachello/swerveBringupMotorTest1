@@ -229,7 +229,7 @@ Regression coverage:
 Regression coverage:
 
 - shared selected-test activate gating tests
-- scope-swap-required workflow tests that prove no alternate activation path is used
+- exact-membership scope-swap-required workflow tests that prove missing or extra members cannot use an alternate activation path
 
 ### Selected-Test Run After Ready
 

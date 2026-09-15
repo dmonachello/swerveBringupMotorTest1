@@ -6250,7 +6250,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertFalse(send_mock.called)
         self.assertEqual([TEST_SCOPE_DETAIL_REQUIRED_UNAVAILABLE], lines)
 
-    def test_selected_test_membership_change_requires_scope_swap_allows_superset_membership(self) -> None:
+    def test_selected_test_membership_change_requires_scope_swap_for_extra_member(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
         ui._scope_context_kind = lambda: GROUP_SOURCE_SELECTED_TEST
         ui._controlled_lifecycle_active_known = True
@@ -6264,7 +6264,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
             {"label": "controller0", "enabled": True},
         ]
 
-        self.assertFalse(ui._selected_test_membership_change_requires_scope_swap())
+        self.assertTrue(ui._selected_test_membership_change_requires_scope_swap())
 
     def test_selected_test_membership_change_requires_scope_swap_when_required_member_missing(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
@@ -6280,7 +6280,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
 
         self.assertTrue(ui._selected_test_membership_change_requires_scope_swap())
 
-    def test_selected_test_required_membership_loaded_to_robot_allows_superset_membership(self) -> None:
+    def test_selected_test_required_membership_loaded_to_robot_rejects_extra_member(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
         ui._tcp_connected = True
         ui._runtime_active_group_members = lambda: [
@@ -6293,7 +6293,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
             {"label": "controller0", "enabled": True},
         ]
 
-        self.assertTrue(ui._selected_test_required_membership_loaded_to_robot())
+        self.assertFalse(ui._selected_test_required_membership_loaded_to_robot())
 
     def test_selected_test_required_membership_loaded_to_robot_returns_false_when_required_member_missing(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
@@ -10120,7 +10120,7 @@ class BringupUiActionMetadataTests(unittest.TestCase):
         self.assertEqual(3, len(ui._tests_active_group_rows))
         self.assertEqual(["panel", "status"], refresh_calls)
 
-    def test_selected_test_membership_change_requires_scope_swap_allows_extra_active_members(self) -> None:
+    def test_selected_test_membership_change_requires_scope_swap_for_extra_active_member(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
         ui._scope_context_kind = lambda: GROUP_SOURCE_SELECTED_TEST
         ui._controlled_lifecycle_active_known = True
@@ -10134,9 +10134,16 @@ class BringupUiActionMetadataTests(unittest.TestCase):
             {"label": "cancoder", "enabled": True},
         ]
 
-        self.assertFalse(ui._selected_test_membership_change_requires_scope_swap())
+        self.assertTrue(ui._selected_test_membership_change_requires_scope_swap())
 
-    def test_selected_test_scope_state_prefers_live_membership_over_cached_false_flag(self) -> None:
+    def test_effective_selected_test_loaded_to_robot_prefers_live_false_over_cached_true(self) -> None:
+        ui = BringupControlUI.__new__(BringupControlUI)
+        ui._tests_active_group_loaded_to_robot = True
+        ui._selected_test_required_membership_loaded_to_robot = lambda: False
+
+        self.assertFalse(ui._effective_selected_test_loaded_to_robot())
+
+    def test_selected_test_scope_state_rejects_live_extra_member_over_cached_false_flag(self) -> None:
         ui = BringupControlUI.__new__(BringupControlUI)
         ui._selected_test_var = _StringVarStub("newTests_123")
         ui._tests_active_group_rows = [
@@ -10179,8 +10186,8 @@ class BringupUiActionMetadataTests(unittest.TestCase):
 
         state = ui._selected_test_scope_state()
 
-        self.assertTrue(state.ready)
-        self.assertEqual("", state.inactive_reason)
+        self.assertFalse(state.ready)
+        self.assertEqual("selected test scope swap required", state.inactive_reason)
         self.assertFalse(ui._tests_active_group_loaded_to_robot)
 
     def test_selected_test_scope_state_keeps_cached_true_until_runtime_membership_refresh_catches_up(self) -> None:

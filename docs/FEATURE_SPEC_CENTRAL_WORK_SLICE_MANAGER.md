@@ -4,118 +4,78 @@ SPEC_STATUS: PROPOSED
 
 ## Purpose
 
-Define one robot-side scheduler that owns non-critical background work inside the 20 ms control loop budget.
+Give the roboRIO one owner for non-critical work that runs around the 20 ms control loop.
 
-The current system has several independent bounded or semi-bounded work paths:
-
-- queued report printing
-- active presence probe stepping
-- lifecycle refresh
-- sampled telemetry collection
-- future evidence and diagnosis work
-
-Those local fixes reduce individual spikes, but they do not give the robot one authoritative place that decides:
-
-- how much background work may run this cycle
-- which work runs first
-- what gets deferred
-- what gets dropped
-- how queue pressure is reported
-
-This spec defines that central mechanism.
+The system already limits reports, probes, lifecycle refreshes, and some telemetry reads in separate places. That helped, but each component still decides for itself how much work is safe. This manager decides it once for the whole robot.
 
 ## Problem
 
-The current system can still become unstable when several expensive conditions happen together, especially during fault states:
+The bad case is not one slow task. It is several modest tasks arriving together while CAN hardware is missing or noisy:
 
-- multiple CAN devices unpowered or disconnected
-- repeated vendor API timeouts
-- console and diagnosis work both active
-- active probe or other operator-triggered work running at the same time
+- devices are unpowered or disconnected;
+- vendor APIs are timing out;
+- console capture and diagnosis work are active;
+- an operator starts a presence probe; and
+- REST requests continue asking for state.
 
-The issue is not only one bad command. The issue is that multiple components can each do "a small amount" of work without one shared arbiter enforcing a total cycle budget.
+Each component may be locally bounded and still collectively exceed the available time. The results have been familiar: loop overruns, stale diagnosis, REST disconnects, and UI windows that stop updating.
 
-That leads to:
+The robot needs one place that decides what runs now, what waits, and what is rejected.
 
-- loop overruns
-- REST instability
-- blank or frozen host UI surfaces
-- delayed or stale diagnosis updates
-- hard-to-reason-about starvation between subsystems
+## Goals
 
-## Goal
-
-Create a single central work-slice manager that:
-
-- enforces a shared per-cycle background-work budget
-- runs only bounded work units
-- uses bounded queues
-- makes enqueue rejection explicit
-- supports fair progress over time
-- allows degraded operation under heavy fault load
-- exposes clear stats so overload is visible
+- Keep the 20 ms control loop responsive during fault conditions.
+- Run only small, bounded units of non-critical work.
+- Bound every queue and make rejected work visible.
+- Give urgent maintenance work priority without starving lower-priority work forever.
+- Preserve enough accounting to find the producer or task that is creating pressure.
+- Keep the design compatible with incremental evidence and diagnosis work.
 
 ## Non-goals
 
-This spec does not:
-
-- change motor control or command scheduler semantics
-- move critical control logic into queued background work
-- allow unlimited buffering
-- guarantee that all work is accepted
-- hide overload by silently dropping work with no accounting
+- Moving motor control, safety stops, or the WPILib command scheduler into a queue.
+- Promising that every background request will be accepted.
+- Buffering unlimited work until the robot recovers.
+- Hiding drops or overload behind a normal-looking status screen.
 
 ## Scope
 
-This spec applies to robot-side non-critical work executed from the periodic loop, including:
+The manager owns non-critical robot-side work normally initiated from periodic code:
 
-- report generation and streaming
-- active presence probe steps
-- sampled telemetry collection beyond mandatory real-time data
-- periodic lifecycle refresh
-- diagnosis/evidence maintenance
-- source-health or maintenance passes added later
+- report generation and chunked output;
+- active presence-probe steps;
+- optional sampled telemetry;
+- periodic lifecycle refresh;
+- evidence and diagnosis maintenance; and
+- future source-health maintenance.
 
-This spec does not apply to:
-
-- direct actuator updates needed for safe control
-- WPILib command scheduler core behavior
-- emergency stop handling
-- required safety interlocks
+It does not own direct actuator writes, safety interlocks, emergency-stop handling, or required WPILib scheduler behavior.
 
 ## Current state
 
-Today the system already has partial slicing in several places:
+Several existing paths already slice their work:
 
-- `BringupPrinter` batches output
-- `BringupCore.updateReports()` advances report jobs incrementally
-- active presence probe now runs across multiple cycles
-- lifecycle refresh uses a bounded periodic snapshot budget
-- sampled telemetry was being moved toward bounded reads
+- `BringupPrinter` batches output;
+- `BringupCore.updateReports()` advances report jobs incrementally;
+- active presence probes advance across cycles;
+- lifecycle refresh has a snapshot budget; and
+- sampled telemetry has per-pass limits.
 
-These are useful tactical fixes.
+Those controls are useful, but they do not share a total budget. A probe can consume time that telemetry also assumes is available. A noisy source can continue submitting work while the report path is trying to catch up.
 
-They are not enough because there is still no central authority that says:
-
-- reports get at most N work units after probe and safety maintenance
-- telemetry must stop early if probe already consumed the budget
-- a noisy fault condition cannot flood the system with accepted work
-
-## Design principles
+## Core rules
 
 ### One budget owner
 
-All background work in the robot loop must run through one manager that owns the cycle budget.
+All background periodic work goes through one manager. Individual tasks may retain small internal bounds, but they do not independently decide how much total periodic time they may consume.
 
-### Bounded queues only
+### Bounded queues
 
-Every queue must have a fixed capacity.
+Every lane has a fixed capacity. Producers must expect rejection and must not block or retry in a loop while waiting for space.
 
-No producer may assume enqueue succeeds.
+### Explicit outcomes
 
-### Explicit enqueue result
-
-Every submitter must receive a structured result such as:
+Every submission returns a structured result:
 
 - `ACCEPTED`
 - `ACCEPTED_COALESCED`
@@ -124,27 +84,19 @@ Every submitter must receive a structured result such as:
 - `REJECTED_DISABLED`
 - `REJECTED_INVALID`
 
-### Degrade instead of block
+### Defer before blocking
 
-When overloaded, the system must defer or reject background work rather than blocking the loop.
+When the system is overloaded, defer, coalesce, reduce detail, or reject work. Never wait for a queue or allow a report/probe task to monopolize the robot loop.
 
-### Fairness with priorities
+### Shared contract
 
-Urgent maintenance work should run before low-priority convenience work, but lower priorities must still make progress when the system is healthy enough.
+Reports, probes, telemetry, lifecycle maintenance, and later evidence work use the same task, queue, result, and accounting model. Local variants are a source of drift and should be avoided.
 
-### Observable overload
-
-Queue depth, age, drops, coalescing, skips, and budget exhaustion must be visible in reports and host surfaces.
-
-### Common contract
-
-All participating subsystems must use the same queue, task, rejection, and accounting contract rather than inventing local variants.
-
-## Core model
+## Work model
 
 ### Work classes
 
-Background work is divided into classes:
+The initial classes are:
 
 - `MAINTENANCE`
 - `DIAGNOSTIC`
@@ -154,73 +106,35 @@ Background work is divided into classes:
 
 Examples:
 
-- lifecycle refresh: `MAINTENANCE`
-- evidence aging tick: `MAINTENANCE`
-- sampled telemetry pass: `DIAGNOSTIC`
-- active presence probe: `OPERATOR_REQUEST`
-- report chunk emission: `REPORT`
-- cleanup of expired state: `HOUSEKEEPING`
+- lifecycle refresh and evidence aging are `MAINTENANCE`;
+- sampled telemetry is `DIAGNOSTIC`;
+- an active presence probe is an `OPERATOR_REQUEST`;
+- report chunks are `REPORT`; and
+- expired-state cleanup is `HOUSEKEEPING`.
 
-### Priority bands
+### Priority
 
-Each task also has a priority band:
+Tasks use `HIGH`, `MEDIUM`, or `LOW` priority. Priority affects dispatch order. Queue ownership remains with the work class.
 
-- `HIGH`
-- `MEDIUM`
-- `LOW`
+### Work units
 
-Priority affects scheduling order, not queue ownership. Queue ownership is by class.
+A work unit must finish within a tight, known bound. It can process one report chunk, one device snapshot, one probe step, or a small evidence-aging batch. It may not mean "run the complete report" or "probe every device."
 
-### Work unit
+### Lanes
 
-A work unit must be small enough to complete within a tight bounded slice.
+The first version has one bounded lane for each work class. Each lane defines its capacity, duplicate/coalescing rule, priority treatment, and normal service share.
 
-Examples:
-
-- process one report chunk
-- sample one device or one small signal batch
-- execute one active-presence-probe target step
-- age one bounded evidence batch
-
-The manager never accepts "run the entire report" or "probe all devices" as one unit.
-
-### Queue lanes
-
-Each work class has a bounded queue lane.
-
-Minimum required lanes:
-
-- maintenance lane
-- diagnostic lane
-- report lane
-- operator-request lane
-- housekeeping lane
-
-Each lane has:
-
-- fixed capacity
-- priority policy
-- duplicate/coalescing policy
-- per-cycle service quota hint
-
-## Scheduling model
+## Scheduling
 
 ### Cycle budget
 
-Each robot cycle reserves a fixed background-work budget smaller than the full 20 ms loop.
+Every robot cycle reserves only part of its 20 ms window for background work. The manager supports a maximum number of work items and, if enabled, a soft monotonic-time limit. It stops dispatching when either limit is reached.
 
-This spec does not lock the numeric value yet. It must be centrally configurable and measurable.
+The values must be centrally configured, measured, and conservative by default.
 
-The manager should support both:
+### Default order
 
-- maximum work items per cycle
-- optional soft time budget based on monotonic timestamps
-
-The manager must stop dispatching background work when either budget is exhausted.
-
-### Dispatch order
-
-Default dispatch policy:
+The initial policy is:
 
 1. `MAINTENANCE/HIGH`
 2. `OPERATOR_REQUEST/HIGH`
@@ -228,95 +142,44 @@ Default dispatch policy:
 4. `REPORT/MEDIUM`
 5. `HOUSEKEEPING/LOW`
 
-This is a policy default, not a hardcoded forever rule.
+This is a default, not a permanent priority claim. It must remain configurable and observable.
 
 ### Fairness
 
-The manager must prevent starvation.
+Within an equal-priority lane, tasks run round-robin. Old pending work receives an age-based boost. When the system is healthy, no lane may remain unserved indefinitely.
 
-Required behavior:
+### Requeueing
 
-- per-lane round-robin within equal priority
-- age-aware boost for old queued items
-- no lane may be skipped forever while the system is otherwise healthy
-
-### Re-queue model
-
-Long-running activities are represented as repeated bounded work items, not one monolithic job.
-
-Examples:
-
-- active presence probe submits or resubmits one next-step item until complete
-- report generation resubmits next chunk
-- telemetry sampling resubmits next device batch
-
-The manager must not require callers to busy-loop inside one dispatch.
+Long activities are a sequence of small tasks. A presence probe submits its next device step. A report submits its next chunk. Telemetry submits its next device batch. Callers never spin inside one dispatch waiting to finish the larger job.
 
 ## Queue contract
 
-### Required queue properties
+Every queue is bounded, non-blocking for producers, safe for repeated periodic use, and instrumented.
 
-Each queue must be:
+A submission result includes at least:
 
-- bounded
-- non-blocking for submitters
-- safe for repeated periodic use
-- instrumented
+- status code;
+- lane name;
+- queue depth after the attempt;
+- whether the request was coalesced; and
+- a rejection reason when applicable.
 
-### Submit result
+On rejection, a producer may drop and count the request, merge it into an existing pending task, mark itself dirty for a later retry, show a warning, or reduce output detail. It may not assume acceptance, wait for room, or recursively retry.
 
-All queue submissions must return a structured result containing at least:
-
-- status code
-- lane name
-- queue depth after attempt
-- whether the request was coalesced
-- optional rejection reason
-
-### Producer responsibilities
-
-Every producer must explicitly handle rejection.
-
-Allowed producer behaviors on rejection:
-
-- drop and count
-- coalesce into an existing pending item
-- mark internal dirty state and retry on a later tick
-- surface a warning
-- downgrade output detail
-
-Forbidden producer behavior:
-
-- assume acceptance and lose state silently
-- block waiting for queue space
-- recursively retry until accepted
-
-### Coalescing
-
-Coalescing is required for naturally replaceable work.
-
-Examples:
-
-- "refresh lifecycle snapshot" should collapse to one pending refresh
-- "sample telemetry for this device family" may collapse to one dirty marker
-- "update report progress" may not need multiple duplicate pending items
-
-Examples that should not blindly coalesce:
-
-- distinct operator-request probe steps for different devices when the step ordering matters
+Replaceable work must coalesce. For example, multiple pending lifecycle refreshes collapse into one request. Ordered probe steps for different devices must not be merged when that would change their meaning.
 
 ## Task interface
 
-Each background task type must expose a common interface conceptually equivalent to:
+Each task exposes a common contract:
 
-- task identity
-- work class
-- priority
-- maximum expected cost category
-- coalescing key if any
-- `runOneSlice(...)`
+- task identity;
+- work class;
+- priority;
+- expected cost category;
+- optional coalescing key; and
+- `runOneSlice(...)`.
 
-`runOneSlice(...)` must return a structured completion result such as:
+`runOneSlice(...)` returns one of:
 
 - `COMPLETE`
 - `PARTIAL_REQUEUE`
@@ -324,271 +187,152 @@ Each background task type must expose a common interface conceptually equivalent
 - `SKIPPED_SOURCE_UNAVAILABLE`
 - `SKIPPED_PRECONDITION`
 
-The result must also report:
+The result also records work units consumed, an optional follow-up task, and a bounded warning or error note.
 
-- work units consumed
-- optional follow-up task request
-- warning/error note if relevant
+## Dependencies and failures
 
-## Source and dependency awareness
+Tasks may depend on CAN power, passive-observer freshness, REST availability, or vendor API responsiveness. The scheduler does not diagnose those domains itself. A task reports that its source is unavailable or stale and asks to retry later.
 
-Some background tasks depend on external availability:
+The manager accounts for that result. It does not treat it as a crash, and it does not allow it to consume the whole cycle repeatedly.
 
-- CAN device power
-- REST server availability
-- vendor API responsiveness
-- passive observer freshness
+## Overload behavior
 
-The scheduler itself should not interpret those domains deeply, but tasks must be able to return:
+When pressure rises or the loop is close to its budget, the manager responds in this order:
 
-- source unavailable
-- stale prerequisite
-- retry later
+1. Coalesce replaceable work.
+2. Skip low-priority work for the current cycle.
+3. Reject new low-priority submissions.
+4. Ask verbose producers to reduce detail.
+5. Publish the overload state.
 
-The manager must account for these outcomes without treating them as crashes.
+It maintains counters for accepted, coalesced, rejected-full, rejected-duplicate, rejected-disabled, run, completed, requeued, failed, skipped, and budget-exhausted work. It also tracks maximum queue depth and oldest pending age for every lane.
 
-## Backpressure and overload behavior
+At minimum, those facts appear in robot status text and the host diagnostics state already used by the UI.
 
-### Required overload responses
+## Integration
 
-When queue pressure rises or loop time is threatened, the system must prefer these responses in order:
+### Phase 1: establish the manager
 
-1. coalesce replaceable work
-2. skip low-priority work this cycle
-3. reject new low-priority submissions
-4. downgrade detail level for verbose producers
-5. surface overload status
+Add the manager and migrate work that already has a bounded unit:
 
-### Required stats
+- report chunk emission;
+- active presence-probe steps; and
+- lifecycle-refresh maintenance.
 
-The manager must keep counters for at least:
+Preserve current operator behavior as closely as possible.
 
-- accepted submissions
-- coalesced submissions
-- rejected full
-- rejected duplicate
-- rejected disabled
-- tasks run
-- tasks completed
-- tasks requeued
-- tasks failed
-- tasks skipped
-- cycles budget-exhausted
-- max queue depth per lane
-- oldest pending age per lane
+### Phase 2: telemetry
 
-### Operator visibility
+Move optional sampled telemetry to manager-owned round-robin work. This matters at larger device counts and during CAN faults.
 
-At minimum, overload state must be visible in:
+### Phase 3: evidence and diagnosis
 
-- robot-side report/status text
-- host diagnostics surfaces that already expose runtime/app status
+Route robot-side evidence maintenance and diagnosis passes through the manager.
 
-## Integration plan
+### Phase 4: remove duplicate budgets
 
-### Phase 1: install manager without changing behavior ownership
+Remove ad hoc component-level schedules where the manager owns the same decision. A task may keep a local micro-bound, but the central manager remains the authority for total periodic background work.
 
-Introduce the central manager and migrate selected existing bounded jobs behind it while preserving current behavior as closely as possible.
+## Evidence fusion relationship
 
-First migrations:
+Evidence fusion expects bounded ingestion, bounded evaluation, freshness-aware degradation, drop accounting, and source-health reporting. The work-slice manager is the robot-side execution mechanism for any evidence-related task that runs there.
 
-- report chunk emission
-- active presence probe step execution
-- lifecycle refresh maintenance
+This does not require the evidence engine itself to run on the roboRIO.
 
-### Phase 2: migrate telemetry sampling
+## Failure cases
 
-Move sampled telemetry reads to manager-owned bounded work units with round-robin fairness.
+### Full queue
 
-This is important because telemetry scales with device count and can become expensive during CAN-fault conditions.
-
-### Phase 3: migrate evidence and diagnosis maintenance
-
-Move future robot-side evidence maintenance or diagnosis passes to the manager.
-
-### Phase 4: unify budgeting policy
-
-Remove remaining ad-hoc per-component periodic budgets where the central manager now owns equivalent behavior.
-
-Local micro-bounds inside a task may remain, but they become implementation details rather than the primary scheduling policy.
-
-## Interaction with evidence fusion
-
-The evidence-fusion design already assumes:
-
-- bounded work
-- incremental processing
-- explicit queue lanes
-- replayability
-
-The robot-side work-slice manager is the runtime execution counterpart to that model.
-
-Shared design requirements:
-
-- bounded ingestion
-- bounded evaluation
-- freshness-aware degradation
-- drop accounting
-- explicit source-health reporting
-
-This spec does not force the evidence engine itself onto the robot. It defines how any robot-side evidence-related work must be scheduled if present.
-
-## Failure modes to handle
-
-### Queue full
-
-Expected under fault storms or operator misuse.
-
-Required behavior:
-
-- reject explicitly
-- increment counters
-- allow producer-specific fallback
+Full queues are expected during an error storm or a poor producer. The request is rejected explicitly, counters rise, and the producer chooses a defined fallback.
 
 ### Persistent source timeout
 
-Expected when CAN devices are unpowered or disconnected.
+Missing or unpowered CAN devices are expected. Their tasks stay bounded and cannot monopolize the budget. Retry policy is throttled or age-managed.
 
-Required behavior:
+### Producer defect
 
-- tasks remain bounded
-- failing tasks do not monopolize the budget
-- repeated retries are throttled or age-managed
+A producer that submits unique non-coalescing work every cycle can fill its lane, but it cannot grow memory without limit. Its rejection counters identify it.
 
-### Producer bug
+### Slow task
 
-If a producer repeatedly submits non-coalescing work every cycle, bounded queues must cap damage and stats must expose it.
+The first version records task identity and slow-task timing. A later version may quarantine a task, but this feature does not depend on that policy.
 
-### Task bug
+## Diagnostics
 
-If a task overruns its expected slice, the manager must at least:
+The manager publishes:
 
-- record slow-task stats
-- surface the offending task identity
+- total pending work;
+- queue depth and oldest age by lane;
+- recent rejections;
+- recent budget exhaustion;
+- top rejected submitters; and
+- slow task types and runtimes when timing is available.
 
-Future enforcement may add per-task quarantine, but this spec only requires reporting in the first implementation stage.
-
-## Required diagnostics
-
-The manager must surface a concise health view including:
-
-- total pending work
-- per-lane queue depth
-- oldest age per lane
-- recent rejections
-- recent budget exhaustion
-- top submitters by rejected count
-- top task types by runtime when available
-
-Recommended output locations:
-
-- robot-side health/state report
-- runtime/app status snapshot
-- host UI inspector or diagnostics panel
+Recommended surfaces are robot health/status output, the runtime status snapshot, and a host UI inspector.
 
 ## Configuration
 
-The following must be centrally configurable:
+Central configuration covers:
 
-- per-cycle max work items
-- optional soft time budget
-- lane capacities
-- per-lane service hints
-- coalescing policy toggles where needed for testing
-- diagnostics verbosity
+- maximum work items per cycle;
+- optional soft time budget;
+- lane capacities;
+- normal service shares;
+- test-only coalescing controls; and
+- diagnostics verbosity.
 
-Configuration must default conservatively.
+Defaults must favor control responsiveness over background completeness.
 
 ## Testing
 
 ### Unit tests
 
-Required unit coverage:
-
-- queue full rejection
-- duplicate/coalesced submission
-- round-robin fairness
-- priority ordering
-- age-based anti-starvation behavior
-- task requeue progression across cycles
-- skipped-source outcomes
-- budget exhaustion stopping further dispatch
+Cover queue-full rejection, coalescing, round-robin behavior, priority ordering, age-based fairness, requeue progression, source-unavailable results, and dispatch stopping at the cycle budget.
 
 ### Fault-state regression
 
-Required targeted robot-side regressions:
+Run robot-side checks with healthy hardware, one disconnected CAN device, several disconnected devices, no CAN-bus power with the roboRIO still powered, and an active presence probe during a missing-device condition.
 
-- all CAN devices powered
-- one CAN device disconnected
-- multiple CAN devices disconnected
-- CAN bus unpowered while roboRIO still powered
-- active presence probe during missing-device condition
+Expected results:
 
-Expected result:
-
-- no monolithic freeze
-- bounded queue growth
-- visible rejection/overload accounting
-- host surfaces remain responsive enough to recover
+- no single-cycle freeze;
+- bounded queue growth;
+- visible overload and rejection accounting; and
+- host surfaces remain responsive enough to recover.
 
 ### Load regression
 
-Add synthetic tests that submit work faster than it can be processed.
-
-Expected result:
-
-- bounded memory use
-- explicit rejection counts
-- no blocking submitter behavior
+Use synthetic producers that submit work faster than it can run. Confirm bounded memory, explicit rejections, and no producer blocking.
 
 ## Migration rules
 
-During migration:
+- Preserve safety behavior.
+- Keep changes small and independently reversible.
+- Add a narrow regression test for every migrated producer.
+- Preserve existing operator workflows unless a separate behavior change is approved.
 
-- do not remove existing safety behavior
-- keep diffs small and reversible
-- add narrow regression tests per migrated component
-- preserve current operator-facing workflows unless separately approved
-
-If any migrated path destabilizes the robot loop, it must be easy to revert that slice independently.
+If a migrated path destabilizes the robot loop, it must be possible to revert that migration without removing the manager or other completed migrations.
 
 ## Open decisions
 
-SID_QUESTION: Should the first implementation use only max-work-items per cycle, or also a soft monotonic time budget in the same slice?
+SID_QUESTION: Should the first implementation use only a maximum item count, or also a soft monotonic-time limit?
 
-SID_QUESTION: Should operator-request work always outrank maintenance work, or should maintenance retain first priority to protect freshness of core state?
+SID_QUESTION: Should operator-request work outrank maintenance, or should maintenance remain first to protect core-state freshness?
 
-SID_QUESTION: Which existing sampled telemetry reads are truly mandatory every loop and therefore must stay outside this manager?
+SID_QUESTION: Which sampled telemetry reads are mandatory every loop and must stay outside the manager?
 
 ## Recommended first implementation
 
-The first implementation should:
-
-- add the manager with bounded lanes
-- migrate report chunks
-- migrate active presence probe stepping
-- migrate lifecycle refresh
-- keep queue stats visible
-- require explicit rejection handling in all migrated producers
-
-Then test under:
-
-- normal healthy bus
-- one missing device
-- no CAN bus power
-
-Only after that should sampled telemetry move under the manager.
+Start with bounded lanes, report chunks, presence-probe steps, lifecycle refresh, queue statistics, and explicit rejection handling. Test healthy CAN, one missing device, and no CAN power before moving telemetry under the manager.
 
 ## Tradeoffs
 
-- A central manager adds structural complexity, but it replaces multiple inconsistent local throttles.
-- Bounded queues may reject work that would previously have been attempted, but rejection is safer than hidden overload.
-- Incremental work means some views converge over several cycles, but the system remains responsive and truthful about freshness.
+A central manager adds structure, but it replaces a collection of unrelated local throttles. Some views will converge over several cycles instead of immediately. That is acceptable if freshness is explicit and the robot remains responsive. A rejected request is safer than hidden overload.
 
 ## Future extensions
 
-- per-task runtime timing histograms
-- temporary suppression or quarantine of chronically slow tasks
-- dynamic budget tuning based on robot mode
-- host-visible live scheduler inspector
-- shared scheduling abstractions for host-side background work where useful
+- Per-task runtime histograms.
+- Temporary suppression or quarantine for repeatedly slow tasks.
+- Budget tuning by robot mode.
+- A live host-side scheduler inspector.
+- A compatible scheduler abstraction for host-side work where it earns its complexity.

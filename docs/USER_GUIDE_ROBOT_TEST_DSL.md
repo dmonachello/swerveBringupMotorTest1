@@ -2,11 +2,9 @@
 
 ## 1. Purpose
 
-Purpose: explain how to write Robot Diagnostic Test DSL source files that match the current implementation.
+Purpose: explain how to write Robot Diagnostic Test DSL source files for the current implementation.
 
-This guide is for people authoring `.dsl` tests.
-
-It describes the DSL-authored test surface only. It does not define every quick-bind or code-backed robot testing workflow in this repo.
+This guide covers authored `.dsl` tests. It does not cover every quick-bind or code-backed robot testing workflow in this repo.
 
 Use this document for:
 
@@ -26,9 +24,7 @@ Use the interpreter runtime guide to explain compile-time and 20 ms loop behavio
 
 ## 2. Writing Model
 
-The DSL is not a top-to-bottom script.
-
-It defines a live rule set evaluated every robot control loop.
+Treat DSL source as a live rule set evaluated every robot control loop, not as a top-to-bottom script.
 
 The only user-visible sequence is:
 
@@ -38,7 +34,7 @@ The only user-visible sequence is:
 
 Inside a phase, statement order in the source file does not define execution order.
 
-That means these two tests mean the same thing:
+These two tests are equivalent:
 
 ```text
 main:
@@ -107,7 +103,7 @@ Rules:
 
 ## 4. Device References
 
-Every signal reference uses:
+Write every signal reference as:
 
 ```text
 device.signal
@@ -129,7 +125,7 @@ Rules:
 - the device must be declared in the test before use
 - `timer` is built in and available automatically
 
-Quoted names are lexical only. They let you reference labels with spaces or special characters.
+Quotes only make labels with spaces or special characters legal references.
 
 These are equivalent if the device name is valid both ways:
 
@@ -146,54 +142,32 @@ The canonical machine-readable source is:
 
 - [tools/common/generated/robot_test_dsl_signals.json](../tools/common/generated/robot_test_dsl_signals.json)
 
-That generated file is exported from the robot-side DSL signal registry and should match the host-side validator and runtime.
+That generated file is exported from the robot-side DSL signal registry. It is the authoritative catalog for the robot runtime, host validator, DSL Reference window, readable/writable state, clearability, safe values, and allowed value ranges.
 
-The table below is the human-readable summary.
+Supported device families are:
 
-<!-- markdownlint-disable MD013 -->
+| Device type | Current signal families |
+| --- | --- |
+| `motor` | output command, applied output, current, temperature, velocity, position, delta, per-run maximum telemetry, and faults |
+| `limitSwitch` | pressed state |
+| `encoderExternal` | position, velocity, delta, and per-run maximum telemetry |
+| `imu` | yaw, pitch, roll, angular velocity, acceleration, deltas, per-run maximum delta telemetry, supply voltage, and faults |
+| `PDP` | voltage, total current, temperature, switchable channel, brownout/CAN/hardware faults, sticky faults, and channels `0` through `15` current/fault state |
+| `PDH` | voltage, total current, temperature, switchable channel, brownout/CAN/hardware faults, sticky faults, and channels `0` through `23` current/fault state |
+| `robotController` | input voltage, brownout, CAN utilization/error counts, and 3.3 V, 5 V, and 6 V rail voltage, enabled state, and fault counts |
+| `xboxController` | axes, triggers, buttons, and D-pad directions |
+| `TestTimer` | elapsed time through the built-in `timer.elapsed` reference |
 
-| Device type | Signal | Value type | Readable | Writable | Clearable | Safe value | Unsafe exit |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `motor` | `output` | number | no | yes | no | `0.0` | yes |
-| `motor` | `output_percent_cmd` | number | yes | yes | no | safe provider | yes |
-| `motor` | `output_percent_applied` | number | yes | no | no | none | no |
-| `motor` | `current` | number | yes | no | no | none | no |
-| `motor` | `current_actual` | number | yes | no | no | none | no |
-| `motor` | `temperature` | number | yes | no | no | none | no |
-| `motor` | `temperature_actual` | number | yes | no | no | none | no |
-| `motor` | `velocity` | number | yes | no | no | none | no |
-| `motor` | `velocity_actual` | number | yes | no | no | none | no |
-| `motor` | `position` | number | yes | no | no | none | no |
-| `motor` | `position_actual` | number | yes | no | no | none | no |
-| `motor` | `position_delta` | number | yes | no | no | none | no |
-| `motor` | `faults` | boolean | no | no | yes | none | no |
-| `limitSwitch` | `pressed` | boolean | yes | no | no | none | no |
-| `encoderExternal` | `position` | number | yes | no | no | none | no |
-| `encoderExternal` | `position_actual` | number | yes | no | no | none | no |
-| `encoderExternal` | `position_delta` | number | yes | no | no | none | no |
-| `xboxController` | `A` | boolean | yes | no | no | none | no |
-| `xboxController` | `B` | boolean | yes | no | no | none | no |
-| `xboxController` | `X` | boolean | yes | no | no | none | no |
-| `xboxController` | `Y` | boolean | yes | no | no | none | no |
-| `xboxController` | `LB` | boolean | yes | no | no | none | no |
-| `xboxController` | `RB` | boolean | yes | no | no | none | no |
-| `xboxController` | `BACK` | boolean | yes | no | no | none | no |
-| `xboxController` | `START` | boolean | yes | no | no | none | no |
-| `xboxController` | `LS` | boolean | yes | no | no | none | no |
-| `xboxController` | `RS` | boolean | yes | no | no | none | no |
-| `xboxController` | `D_UP` | boolean | yes | no | no | none | no |
-| `xboxController` | `D_RIGHT` | boolean | yes | no | no | none | no |
-| `xboxController` | `D_DOWN` | boolean | yes | no | no | none | no |
-| `xboxController` | `D_LEFT` | boolean | yes | no | no | none | no |
-| `xboxController` | `leftX` | number | yes | no | no | none | no |
-| `xboxController` | `leftY` | number | yes | no | no | none | no |
-| `xboxController` | `rightX` | number | yes | no | no | none | no |
-| `xboxController` | `rightY` | number | yes | no | no | none | no |
-| `xboxController` | `leftTrigger` | number | yes | no | no | none | no |
-| `xboxController` | `rightTrigger` | number | yes | no | no | none | no |
-| `TestTimer` | `elapsed` | number | yes | no | no | none | no |
+Examples of current aggregate and infrastructure signals:
 
-<!-- markdownlint-enable MD013 -->
+```text
+require "FALCON 9".current_actual_max > 0.1
+require "pigeon 2".yaw_delta_max_abs > 5.0
+require pdp.channel0_fault == false
+require "roborio".input_voltage > 11.5
+require "roborio".brownout == false
+require "roborio".rail_6v_enabled == true
+```
 
 Notes:
 
@@ -203,6 +177,7 @@ Notes:
 - `unsafe-exit` is currently meaningful only for writable signals
 - controller devices must be configured devices in the active profile
 - controller labels usually look like `controller0`, `controller1`, and so on
+- controller, power, IMU, and robot-controller labels must be declared just like motor labels before their signals may be referenced
 
 Example configured controller device:
 
@@ -391,7 +366,7 @@ unsafe-exit device.signal
 
 Use this only when you intentionally want a writable signal to skip final safe-state handling.
 
-This is advanced and usually not appropriate for ordinary bringup tests.
+This is an advanced escape hatch. Ordinary bringup tests should not need it.
 
 ## 8. Conditions
 
@@ -505,9 +480,7 @@ In that case:
 
 ## 11. Host-Side Workflow
 
-The host-side model is source-authoritative.
-
-That means:
+The host treats source as authoritative:
 
 - you author DSL source text
 - the host compiler produces normalized JSON
@@ -524,6 +497,24 @@ Recommended flow:
 6. deploy
 7. run the saved test on the robot
 
+### 11.1 Selected-Test Scope
+
+Purpose: explain how the Tests tab allocates only the hardware required by the selected DSL test.
+
+The selected test's `device` declarations are the required `active-group` membership. When selected-test scope is inactive, `Runtime Activate` replaces `active-group` membership with exactly those required devices, then activates the shared lifecycle. Required non-singletons are instantiated for that scope.
+
+If a runtime scope is already active, the selected test can run only when the active-group membership exactly equals the test's required device set. An extra device is a mismatch just as a missing device is. To change to a test with different requirements:
+
+1. select the target test
+2. press `Runtime Deactivate`
+3. press `Runtime Activate`
+4. wait for every selected test device to show enabled, locked, instantiated, and scope active
+5. press `Run Selected`
+
+Singleton-backed infrastructure can remain instantiated outside the controlled non-singleton scope. That does not make an undeclared device available to a DSL test.
+
+The robot receives the selected test name before readiness is evaluated. The Tests tab, runtime lifecycle report, and `Run Selected` use the same robot-backed selected-test state.
+
 Example CLI flow:
 
 ```text
@@ -537,7 +528,7 @@ show test spin_up_motor1
 show test spin_up_motor1 normalized --json --pretty
 ```
 
-Robot-side execution then uses the selected-test runner:
+The robot then uses the selected-test runner:
 
 ```text
 tests select spin_up_motor1
@@ -654,20 +645,20 @@ main:
 
 ### 13.1 Treating the file like a script
 
-Wrong mental model:
+Do not assume:
 
 - line 1 runs
 - then line 2
 - then line 3
 
-Correct mental model:
+Instead:
 
 - the file defines rule buckets
 - the engine owns the per-tick order
 
 ### 13.2 Treating `require` like steady-state truth
 
-Wrong assumption:
+Do not assume that:
 
 ```text
 require "FALCON 9".velocity > 1000
@@ -675,7 +666,7 @@ require "FALCON 9".velocity > 1000
 
 means velocity must remain above `1000`.
 
-Actual meaning:
+It means:
 
 - velocity must exceed `1000` at least once before normal stop
 
@@ -742,7 +733,7 @@ require "FALCON 9".velocity > 100
 
 ### 13.8 Reading `stable` like a blocking delay
 
-Wrong assumption:
+Do not assume that:
 
 ```text
 success controller0.A stable 0.1
@@ -750,7 +741,7 @@ success controller0.A stable 0.1
 
 means the test pauses for `0.1` seconds and then checks the button.
 
-Actual meaning:
+Instead:
 
 - the button condition is still evaluated every tick
 - the condition becomes true only after it has remained continuously true for `0.1` seconds
@@ -770,7 +761,7 @@ main:
     require "<motor>".velocity > <threshold>
 ```
 
-Why this works:
+This pattern gives you:
 
 - bounded run time
 - explicit failure condition
@@ -780,7 +771,7 @@ Why this works:
 
 ## 15. Summary
 
-Keep these rules in mind:
+The rules that matter most are:
 
 - only `init`, `main`, and `close` are sequenced
 - every signal reference is explicit

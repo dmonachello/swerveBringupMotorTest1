@@ -5523,14 +5523,12 @@ class BringupControlUI(tk.Tk):
     def _effective_selected_test_loaded_to_robot(self) -> Optional[bool]:
         """
         NAME
-            _effective_selected_test_loaded_to_robot - Return the live membership truth with cached intent fallback.
+            _effective_selected_test_loaded_to_robot - Return live membership truth, with cached intent only when live truth is unavailable.
         """
         cached_loaded = self.__dict__.get("_tests_active_group_loaded_to_robot")
         derived_loaded = self._selected_test_required_membership_loaded_to_robot()
-        if derived_loaded is True:
-            return True
-        if derived_loaded is False and cached_loaded is not True:
-            return False
+        if derived_loaded is not None:
+            return derived_loaded
         return cached_loaded
 
     def _context_sync_state(self) -> ContextSyncState:
@@ -14857,7 +14855,7 @@ class BringupControlUI(tk.Tk):
     def _selected_test_membership_change_requires_scope_swap(self) -> bool:
         """
         NAME
-            _selected_test_membership_change_requires_scope_swap - Return whether the selected test needs a different active-group membership while a controlled scope is active.
+            _selected_test_membership_change_requires_scope_swap - Return whether the selected test needs an exact active-group membership replacement while a controlled scope is active.
         """
         if self._scope_context_kind() != GROUP_SOURCE_SELECTED_TEST:
             return False
@@ -14875,12 +14873,12 @@ class BringupControlUI(tk.Tk):
         }
         if not desired_labels:
             return False
-        return not desired_labels.issubset(current_labels)
+        return desired_labels != current_labels
 
     def _selected_test_required_membership_loaded_to_robot(self) -> Optional[bool]:
         """
         NAME
-            _selected_test_required_membership_loaded_to_robot - Return whether the current active-group membership already contains all devices required by the selected test.
+            _selected_test_required_membership_loaded_to_robot - Return whether the current active-group membership exactly matches the selected test devices.
         """
         if not bool(self.__dict__.get("_tcp_connected", False)):
             return None
@@ -14896,7 +14894,7 @@ class BringupControlUI(tk.Tk):
         }
         if not desired_labels:
             return None
-        return desired_labels.issubset(current_labels)
+        return desired_labels == current_labels
 
     def _runtime_deactivate_from_ui(self) -> None:
         """
