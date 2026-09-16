@@ -1,0 +1,67 @@
+{
+  "applications": [
+    "can_nt_bridge",
+    "bridge_cli",
+    "bringup_ui",
+    "can_topology_editor",
+    "robot_bringup"
+  ],
+  "rules": [
+    {
+      "pattern": "src/main/java/*",
+      "required": ["robot_bringup"],
+      "candidates": ["robot_bringup"]
+    },
+    {
+      "pattern": "src/test/java/*",
+      "required": ["robot_bringup"],
+      "candidates": ["robot_bringup"]
+    },
+    {
+      "pattern": "src/main/deploy/*",
+      "required": ["robot_bringup"],
+      "candidates": ["robot_bringup"]
+    },
+    {
+      "pattern": "build.gradle",
+      "required": ["robot_bringup"],
+      "candidates": ["robot_bringup"]
+    },
+    {
+      "pattern": "tools/can_topology/*",
+      "required": ["can_topology_editor"],
+      "candidates": ["can_topology_editor"]
+    },
+    {
+      "pattern": "tools/can_nt/bringup_ui.py",
+      "required": ["bringup_ui"],
+      "candidates": ["bringup_ui"]
+    },
+    {
+      "pattern": "tools/can_nt/bridge_cli.py",
+      "required": ["bridge_cli"],
+      "candidates": ["bridge_cli"]
+    },
+    {
+      "pattern": "tools/can_nt/can_nt_bridge.py",
+      "required": ["can_nt_bridge"],
+      "candidates": ["can_nt_bridge"]
+    },
+    {
+      "pattern": "tools/can_nt/*",
+      "required": [],
+      "candidates": ["can_nt_bridge", "bridge_cli", "bringup_ui"]
+    },
+    {
+      "pattern": "tools/common/*",
+      "required": [],
+      "candidates": [
+        "can_nt_bridge",
+        "bridge_cli",
+        "bringup_ui",
+        "can_topology_editor",
+        "robot_bringup"
+      ]
+    }
+  ]
+}

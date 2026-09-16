@@ -29,14 +29,14 @@ Purpose: working glossary seed for major repository concepts.
 
 - Definition: Repository topic cluster centered on CAN Diagnostics.
 - Purpose: Helps locate design, workflow, and implementation notes related to CAN Diagnostics.
-- Related Pages: [[docs/FEATURE_SPEC_DSL_SELECTED_TEST_DEVICE_ACTIVATION.md|FEATURE SPEC DSL SELECTED TEST DEVICE ACTIVATION]], [[AGENTS.md|AGENTS]], [[CHANGELOG.md|CHANGELOG]], [[Feature Spec - CAN Bus Debug Final Push.md|Feature Spec - CAN Bus Debug Final Push]], [[Feature Spec - Scope-Aware Runtime Activation And Incremental Instantiation.md|Feature Spec - Scope-Aware Runtime Activation And Incremental Instantiation]], [[Feature Spec Authoritative Evidence Fusion.md|Feature Spec Authoritative Evidence Fusion]], [[Untitled.md|Untitled]], [[docs/CLI_REFERENCE_MANUAL.md|CLI REFERENCE MANUAL]]
+- Related Pages: [[docs/FEATURE_SPEC_DSL_SELECTED_TEST_DEVICE_ACTIVATION.md|FEATURE SPEC DSL SELECTED TEST DEVICE ACTIVATION]], [[AGENTS.md|AGENTS]], [[CHANGELOG.md|CHANGELOG]], [[Feature Spec - CAN Bus Debug Final Push.md|Feature Spec - CAN Bus Debug Final Push]], [[Feature Spec - Scope-Aware Runtime Activation And Incremental Instantiation.md|Feature Spec - Scope-Aware Runtime Activation And Incremental Instantiation]], [[Feature Spec Authoritative Evidence Fusion.md|Feature Spec Authoritative Evidence Fusion]], [[Stability analysis|Untitled]], [[docs/CLI_REFERENCE_MANUAL.md|CLI REFERENCE MANUAL]]
 - See Also: Activation Manager, Active Group, [[docs/mocs/architecture.md|Architecture]], [[docs/mocs/dsl.md|DSL]], [[docs/mocs/rest_api.md|REST API]], REST Server
 
 ## DSL
 
 - Definition: Repository topic cluster centered on DSL.
 - Purpose: Helps locate design, workflow, and implementation notes related to DSL.
-- Related Pages: [[docs/ROBOT_DIAGNOSTIC_TEST_DSL_SPEC_V0_3.md|ROBOT DIAGNOSTIC TEST DSL SPEC V0 3]], [[docs/DSL_INTERPRETER_RUNTIME.md|DSL INTERPRETER RUNTIME]], [[docs/FEATURE_SPEC_DSL_SELECTED_TEST_DEVICE_ACTIVATION.md|FEATURE SPEC DSL SELECTED TEST DEVICE ACTIVATION]], [[docs/FEATURE_SPEC_DSL_SELECTED_TEST_DEVICE_ACTIVATION_V2.md|FEATURE SPEC DSL SELECTED TEST DEVICE ACTIVATION V2]], [[DSL Interpreter Runtime.md|DSL Interpreter Runtime]], [[Test Plan Today - May 22, 2026.md|Test Plan Today - May 22, 2026]], [[Test PlanV2 May 22, 2026.md|Test PlanV2 May 22, 2026]], [[Untitled.md|Untitled]]
+- Related Pages: [[docs/ROBOT_DIAGNOSTIC_TEST_DSL_SPEC_V0_3.md|ROBOT DIAGNOSTIC TEST DSL SPEC V0 3]], [[docs/DSL_INTERPRETER_RUNTIME.md|DSL INTERPRETER RUNTIME]], [[docs/FEATURE_SPEC_DSL_SELECTED_TEST_DEVICE_ACTIVATION.md|FEATURE SPEC DSL SELECTED TEST DEVICE ACTIVATION]], [[docs/FEATURE_SPEC_DSL_SELECTED_TEST_DEVICE_ACTIVATION_V2.md|FEATURE SPEC DSL SELECTED TEST DEVICE ACTIVATION V2]], [[DSL Interpreter Runtime.md|DSL Interpreter Runtime]], [[Test Plan Today - May 22, 2026.md|Test Plan Today - May 22, 2026]], [[Test PlanV2 May 22, 2026.md|Test PlanV2 May 22, 2026]], [[Stability analysis|Untitled]]
 - See Also: Activation Manager, Active Group, [[docs/mocs/architecture.md|Architecture]], [[docs/mocs/can_diagnostics.md|CAN Diagnostics]], [[docs/mocs/rest_api.md|REST API]], REST Server
 
 ## REST API
