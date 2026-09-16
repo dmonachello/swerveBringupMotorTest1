@@ -3,13 +3,16 @@
     local-checkin.ps1
 
 .SYNOPSIS
-    Produces a display-only check-in proposal from the current Git worktree.
+    Proposes and applies a locally generated Git check-in.
 
 .DESCRIPTION
     Reads repository status, staged and unstaged diffs, the current branch, and
     recent commit subjects. Sends that read-only context to a local Ollama model,
     validates the structured response, and by default stages, commits, tags, and
     atomically pushes the reviewed files. Use -DryRun for display-only behavior.
+    The optional adjacent local-checkin-ownership.map file defines repository-
+    specific applications, concerns, path rules, fallback headers, and release
+    policy. Without that file, the script uses safe generic repository defaults.
 
 .PARAMETER Model
     Ollama model used to analyze the repository context.
@@ -27,10 +30,14 @@
     Displays the validated proposal without changing local or remote Git state.
 
 .PARAMETER AbortOnMixed
-    Stops before Git mutation when the model identifies mixed concerns.
+    Stops before Git mutation when deterministic path ownership identifies
+    mixed concerns.
 
 .EXAMPLE
     .\tools\local-checkin.ps1
+
+.EXAMPLE
+    .\tools\local-checkin.ps1 -DryRun
 #>
 [CmdletBinding()]
 param(
@@ -86,8 +93,10 @@ $Policy = @{
     PushTagTemplate = 'refs/tags/{0}:refs/tags/{0}'
     OwnershipMapRelativePath = 'tools/local-checkin-ownership.map'
     OwnershipMapPath = [IO.Path]::Combine($PSScriptRoot, 'local-checkin-ownership.map')
+    OwnershipSchemaVersion = 1
+    OwnershipRequiredProperties = @('schemaVersion', 'applications', 'concerns', 'nonReleaseConcerns', 'concernFallbackHeaders', 'concernRules', 'rules')
+    OwnershipUniqueProperties = @('applications', 'concerns', 'nonReleaseConcerns')
     GitCheckIgnorePrefix = @('check-ignore', '--quiet', '--')
-    Applications = @('can_nt_bridge', 'bridge_cli', 'bringup_ui', 'can_topology_editor', 'robot_bringup')
     AllowedTypes = @('build', 'chore', 'ci', 'docs', 'feat', 'fix', 'perf', 'refactor', 'revert', 'style', 'test')
     AllowedBumps = @('none', 'patch', 'minor', 'major')
     RequiredFields = @('type', 'scope', 'subject', 'version_bump', 'breaking', 'mixed_changes', 'summary', 'files_considered', 'affected_apps')
@@ -120,6 +129,10 @@ $Policy = @{
     ContentType = 'application/json'
     PostMethod = 'Post'
     ContinuePreference = 'Continue'
+    NativeOutputSelfTestWarning = 'line-ending warning'
+    NativeOutputSelfTestId = 'NativeOutputRegression'
+    NativeOutputSelfTestStdOut = "tools/local-checkin.ps1$([char]0)"
+    NativeOutputSelfTestFailure = 'Native stdout/stderr separation regression test failed.'
     ObjectSchemaType = 'object'
     StringSchemaType = 'string'
     BooleanSchemaType = 'boolean'
@@ -141,6 +154,7 @@ $Policy = @{
     RemoveEmptyEntries = [StringSplitOptions]::RemoveEmptyEntries
     StrictUtf8 = [Text.UTF8Encoding]::new($false, $true)
     GitArgumentSeparator = ' '
+    ConcernSeparator = ', '
     CommitHeaderTemplate = '{0}({1}): {2}'
     GitFailureTemplate = "Git query failed: {0}`n{1}"
     GitMutationFailureTemplate = "Git operation failed: {0}`n{1}"
@@ -167,8 +181,29 @@ $Policy = @{
     InvalidUtf8Reason = 'file is not valid UTF-8 text'
     ReadFailureReason = 'file could not be read: {0}'
     OwnershipMapError = 'Application ownership map is invalid: {0}'
-    OwnershipApplicationsError = 'application list does not match the canonical check-in application list'
+    OwnershipRequiredPropertyError = "ownership map is missing required property '{0}'"
+    OwnershipSchemaVersionError = 'ownership map schemaVersion must be {0}'
+    OwnershipDuplicateValueError = "ownership map property '{0}' contains duplicate or empty values"
+    OwnershipMissingFallbackError = "concern '{0}' has no nonempty fallback commit header"
+    OwnershipMissingRepositoryConcernError = "concerns must contain the generic 'repository' fallback"
+    OwnershipUnknownNonReleaseConcernError = "non-release concern '{0}' is not declared in concerns"
     OwnershipRuleError = "rule '{0}' contains unknown application '{1}'"
+    ConcernRuleError = "concern rule '{0}' contains unknown concern '{1}'"
+    ConcernFallback = 'repository'
+    DefaultOwnershipConfiguration = [pscustomobject]@{
+        schemaVersion = 1
+        applications = @()
+        concerns = @('repository')
+        nonReleaseConcerns = @()
+        concernFallbackHeaders = [pscustomobject]@{
+            repository = 'chore(repo): update repository'
+        }
+        concernRules = @()
+        rules = @()
+    }
+    MixedCommitHeader = 'chore(repo): apply mixed repository changes'
+    MixedCommitScope = 'repo'
+    ConcernBodyTemplate = "{0}`n`nConcerns: {1}"
     OwnershipDetailTemplate = '{0} -> candidates=[{1}] required=[{2}]'
     NoneText = 'none'
     UntrackedFileTemplate = "===== BEGIN UNTRACKED FILE: {0} =====`n{1}`n===== END UNTRACKED FILE: {0} ====="
@@ -192,7 +227,11 @@ $Policy = @{
     BumpDisplayTemplate = 'Version bump:   {0}'
     BreakingDisplayTemplate = 'Breaking:       {0}'
     MixedDisplayTemplate = 'Mixed changes:  {0}'
+    ConcernsDisplayTemplate = 'Concerns:       {0}'
+    ModelCommitDisplayTemplate = 'Model commit:   {0}'
     FilesDisplayTemplate = 'Files reviewed: {0}'
+    FilesListLabel = 'Files to check in:'
+    FileDisplayTemplate = '  - {0}'
     AffectedAppsDisplayTemplate = 'Affected apps:  {0}'
     BranchDisplayTemplate = 'Branch:         {0}'
     UpstreamDisplayTemplate = 'Upstream:       {0}'
@@ -206,7 +245,7 @@ $Policy = @{
     EmptyBranchError = 'Cannot apply a check-in from detached HEAD.'
     MissingUpstreamTemplate = "Current branch '{0}' has no configured upstream."
     EmptyChangeError = 'No changed files are available for a check-in proposal.'
-    MixedAbortError = 'The model identified mixed changes and -AbortOnMixed was specified.'
+    MixedAbortError = 'Mixed concerns were identified and -AbortOnMixed was specified.'
     SnapshotChangedError = 'Repository content changed after analysis. Run local-checkin again.'
     StagedSetError = 'Staged files do not match the reviewed file set. Expected: {0}. Actual: {1}.'
     RemoteAdvancedError = 'The configured upstream is not an ancestor of local HEAD. Pull or reconcile the branch before check-in.'
@@ -217,8 +256,30 @@ $Policy = @{
     SelfTestCount = 1
     SelfTestFailure = 'Git pathname regression test failed.'
     SelfTestPassed = 'local-checkin self-test: PASS'
-    OwnershipSelfTestPath = 'src/main/java/frc/robot/Robot.java'
-    OwnershipSelfTestApp = 'robot_bringup'
+    SelfTestOwnershipConfiguration = [pscustomobject]@{
+        schemaVersion = 1
+        applications = @('example_app')
+        concerns = @('code', 'documentation', 'repository')
+        nonReleaseConcerns = @('documentation')
+        concernFallbackHeaders = [pscustomobject]@{
+            code = 'chore(code): update application code'
+            documentation = 'docs(project): update project documentation'
+            repository = 'chore(repo): update repository'
+        }
+        concernRules = @(
+            [pscustomobject]@{ pattern = 'src/*'; concern = 'code' },
+            [pscustomobject]@{ pattern = 'docs/*'; concern = 'documentation' }
+        )
+        rules = @(
+            [pscustomobject]@{
+                pattern = 'src/*'
+                required = @('example_app')
+                candidates = @('example_app')
+            }
+        )
+    }
+    OwnershipSelfTestPath = 'src/example.txt'
+    OwnershipSelfTestApp = 'example_app'
     OwnershipSelfTestFailure = 'Application ownership regression test failed.'
     OwnershipMapIgnoredFailure = 'Application ownership map is ignored by Git.'
     SemanticSelfTestExistingTag = 'v1.0.2'
@@ -228,6 +289,18 @@ $Policy = @{
     WhitespaceSelfTestText = "clean`ntrailing "
     WhitespaceSelfTestExpectedLine = 2
     WhitespaceSelfTestFailure = 'Untracked trailing-whitespace regression test failed.'
+    ConcernSelfTestPaths = @('docs/guide.md', 'src/example.txt')
+    ConcernSelfTestExpected = @('code', 'documentation')
+    ConcernSelfTestModelHeader = 'docs(documentation): update documentation'
+    ConcernSelfTestExpectedHeader = 'chore(repo): apply mixed repository changes'
+    ConcernSelfTestSinglePath = 'docs/guide.md'
+    ConcernSelfTestSingleExpectedHeader = 'docs(project): update project documentation'
+    ConcernSelfTestModelBump = 'minor'
+    ConcernSelfTestExpectedBump = 'none'
+    ConcernSelfTestFailure = 'Deterministic mixed-concern regression test failed.'
+    FileDisplaySelfTestPaths = @('zeta file.txt', 'alpha.txt')
+    FileDisplaySelfTestExpected = @('  - alpha.txt', '  - zeta file.txt')
+    FileDisplaySelfTestFailure = 'Check-in filename display regression test failed.'
     YesText = 'yes'
     NoText = 'no'
     SystemPrompt = @'
@@ -248,6 +321,8 @@ files_considered, including every untracked path. Untracked files are part of
 the proposed change, not optional context. Set mixed_changes true when the files
 contain more than one independently committable concern. The subject and
 summary must account for the whole proposed file set, not only the largest diff.
+The supplied deterministic concern groups are authoritative. Set mixed_changes
+true if and only if more than one deterministic concern is listed.
 Keep the complete conventional-commit header at 80 characters or fewer.
 Return affected_apps using only canonical application names. Use the ownership
 candidates as evidence, include every required owner, and return an empty array
@@ -268,6 +343,9 @@ CHANGED FILES:
 APPLICATION OWNERSHIP:
 {8}
 
+DETERMINISTIC CONCERNS:
+{9}
+
 STAGED DIFF:
 {3}
 
@@ -280,6 +358,38 @@ UNTRACKED FILE CONTENTS:
 RECENT COMMIT SUBJECTS:
 {7}
 '@
+}
+
+function Split-NativeCommandOutput {
+    <#
+    .DESCRIPTION
+        Separates native-process stdout values from PowerShell ErrorRecord
+        wrappers created when native stderr is redirected into the pipeline.
+
+    .PARAMETER Records
+        Combined native-process output records.
+
+    .RETURNS
+        Separate stdout and stderr string arrays.
+    #>
+    param(
+        [AllowEmptyCollection()]
+        [object[]]$Records
+    )
+
+    $standardOutput = [Collections.Generic.List[string]]::new()
+    $standardError = [Collections.Generic.List[string]]::new()
+    foreach ($record in $Records) {
+        if ($record -is [Management.Automation.ErrorRecord]) {
+            $standardError.Add([string]$record)
+        } else {
+            $standardOutput.Add([string]$record)
+        }
+    }
+    return [pscustomobject]@{
+        StdOut = $standardOutput.ToArray()
+        StdErr = $standardError.ToArray()
+    }
 }
 
 function Invoke-ReadOnlyGit {
@@ -302,15 +412,18 @@ function Invoke-ReadOnlyGit {
     $previousPreference = $ErrorActionPreference
     try {
         $ErrorActionPreference = $Policy.ContinuePreference
-        $output = & $Policy.GitExecutable -C $Policy.RepositoryRoot @Arguments 2>&1
+        $records = @(& $Policy.GitExecutable -C $Policy.RepositoryRoot @Arguments 2>&1)
+        $exitCode = $LASTEXITCODE
     } finally {
         $ErrorActionPreference = $previousPreference
     }
-    if ($LASTEXITCODE -ne $Policy.SuccessExitCode) {
-        throw ($Policy.GitFailureTemplate -f ($Arguments -join $Policy.GitArgumentSeparator), ($output -join [Environment]::NewLine))
+    $output = Split-NativeCommandOutput -Records $records
+    if ($exitCode -ne $Policy.SuccessExitCode) {
+        $diagnostic = @($output.StdErr + $output.StdOut) -join [Environment]::NewLine
+        throw ($Policy.GitFailureTemplate -f ($Arguments -join $Policy.GitArgumentSeparator), $diagnostic)
     }
 
-    return ($output -join [Environment]::NewLine).TrimEnd()
+    return ($output.StdOut -join [Environment]::NewLine).TrimEnd()
 }
 
 function Invoke-GitMutation {
@@ -333,14 +446,17 @@ function Invoke-GitMutation {
     $previousPreference = $ErrorActionPreference
     try {
         $ErrorActionPreference = $Policy.ContinuePreference
-        $output = & $Policy.GitExecutable -C $Policy.RepositoryRoot @Arguments 2>&1
+        $records = @(& $Policy.GitExecutable -C $Policy.RepositoryRoot @Arguments 2>&1)
+        $exitCode = $LASTEXITCODE
     } finally {
         $ErrorActionPreference = $previousPreference
     }
-    if ($LASTEXITCODE -ne $Policy.SuccessExitCode) {
-        throw ($Policy.GitMutationFailureTemplate -f ($Arguments -join $Policy.GitArgumentSeparator), ($output -join [Environment]::NewLine))
+    $output = Split-NativeCommandOutput -Records $records
+    if ($exitCode -ne $Policy.SuccessExitCode) {
+        $diagnostic = @($output.StdErr + $output.StdOut) -join [Environment]::NewLine
+        throw ($Policy.GitMutationFailureTemplate -f ($Arguments -join $Policy.GitArgumentSeparator), $diagnostic)
     }
-    return ($output -join [Environment]::NewLine).TrimEnd()
+    return ($output.StdOut -join [Environment]::NewLine).TrimEnd()
 }
 
 function Get-BranchContext {
@@ -566,23 +682,58 @@ function Get-UntrackedTextContext {
 function Read-AppOwnershipMap {
     <#
     .DESCRIPTION
-        Loads and validates the repository-owned path-to-application map.
+        Loads and validates the optional repository-owned classification map.
+        Returns generic defaults when the adjacent map is absent.
 
     .RETURNS
         Validated ownership configuration.
     #>
     try {
+        if (-not (Test-Path -LiteralPath $Policy.OwnershipMapPath -PathType Leaf)) {
+            return $Policy.DefaultOwnershipConfiguration
+        }
         $ownership = Get-Content -LiteralPath $Policy.OwnershipMapPath -Raw | ConvertFrom-Json
-        $expected = @($Policy.Applications | Sort-Object)
-        $actual = @($ownership.applications | Sort-Object)
-        if (($expected -join [Environment]::NewLine) -cne ($actual -join [Environment]::NewLine)) {
-            throw $Policy.OwnershipApplicationsError
+        foreach ($propertyName in $Policy.OwnershipRequiredProperties) {
+            if ($null -eq $ownership.PSObject.Properties[$propertyName]) {
+                throw ($Policy.OwnershipRequiredPropertyError -f $propertyName)
+            }
+        }
+        if ([int]$ownership.schemaVersion -ne $Policy.OwnershipSchemaVersion) {
+            throw ($Policy.OwnershipSchemaVersionError -f $Policy.OwnershipSchemaVersion)
+        }
+        foreach ($propertyName in $Policy.OwnershipUniqueProperties) {
+            $values = @($ownership.$propertyName)
+            $uniqueValues = @($values | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Sort-Object -Unique)
+            if ($values.Count -ne $uniqueValues.Count) {
+                throw ($Policy.OwnershipDuplicateValueError -f $propertyName)
+            }
+        }
+        $applications = @($ownership.applications)
+        $concerns = @($ownership.concerns)
+        if ($Policy.ConcernFallback -notin $concerns) {
+            throw $Policy.OwnershipMissingRepositoryConcernError
+        }
+        foreach ($concern in $concerns) {
+            $fallbackProperty = $ownership.concernFallbackHeaders.PSObject.Properties[$concern]
+            if (($null -eq $fallbackProperty) -or [string]::IsNullOrWhiteSpace([string]$fallbackProperty.Value)) {
+                throw ($Policy.OwnershipMissingFallbackError -f $concern)
+            }
+        }
+        foreach ($concern in @($ownership.nonReleaseConcerns)) {
+            if ($concern -notin $concerns) {
+                throw ($Policy.OwnershipUnknownNonReleaseConcernError -f $concern)
+            }
         }
         foreach ($rule in $ownership.rules) {
             foreach ($app in @($rule.required) + @($rule.candidates)) {
-                if ($app -notin $Policy.Applications) {
+                if ($app -notin $applications) {
                     throw ($Policy.OwnershipRuleError -f $rule.pattern, $app)
                 }
+            }
+        }
+        foreach ($concernRule in $ownership.concernRules) {
+            if ($concernRule.concern -notin $concerns) {
+                throw ($Policy.ConcernRuleError -f $concernRule.pattern, $concernRule.concern)
             }
         }
         return $ownership
@@ -600,15 +751,20 @@ function Resolve-AppOwnership {
     .PARAMETER Paths
         Repository-relative changed paths.
 
+    .PARAMETER Configuration
+        Validated repository classification configuration.
+
     .RETURNS
         Candidate apps, required apps, and per-path ownership details.
     #>
     param(
         [Parameter(Mandatory)]
-        [string[]]$Paths
+        [string[]]$Paths,
+
+        [Parameter(Mandatory)]
+        [pscustomobject]$Configuration
     )
 
-    $ownership = Read-AppOwnershipMap
     $candidates = [Collections.Generic.List[string]]::new()
     $required = [Collections.Generic.List[string]]::new()
     $details = [Collections.Generic.List[string]]::new()
@@ -616,7 +772,7 @@ function Resolve-AppOwnership {
     foreach ($path in $Paths) {
         $matchedCandidates = @()
         $matchedRequired = @()
-        foreach ($rule in $ownership.rules) {
+        foreach ($rule in $Configuration.rules) {
             if ($path -like $rule.pattern) {
                 $matchedCandidates = @($rule.candidates)
                 $matchedRequired = @($rule.required)
@@ -639,6 +795,140 @@ function Resolve-AppOwnership {
         Required = @($required | Sort-Object -Unique)
         Details = $details.ToArray()
     }
+}
+
+function Resolve-ConcernGroups {
+    <#
+    .DESCRIPTION
+        Resolves repository-owned concern groups for changed paths. The first
+        matching concern rule owns each path; unmatched paths use repository.
+
+    .PARAMETER Paths
+        Repository-relative changed paths.
+
+    .PARAMETER Configuration
+        Validated repository classification configuration.
+
+    .RETURNS
+        Sorted unique concern names.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string[]]$Paths,
+
+        [Parameter(Mandatory)]
+        [pscustomobject]$Configuration
+    )
+
+    $concerns = [Collections.Generic.List[string]]::new()
+    foreach ($path in $Paths) {
+        $concern = $Policy.ConcernFallback
+        foreach ($rule in $Configuration.concernRules) {
+            if ($path -like $rule.pattern) {
+                $concern = [string]$rule.concern
+                break
+            }
+        }
+        $concerns.Add($concern)
+    }
+    return @($concerns | Sort-Object -Unique)
+}
+
+function Get-EffectiveCommitHeader {
+    <#
+    .DESCRIPTION
+        Uses the model header for one concern, a concern-specific fallback when
+        the model copies the reserved mixed header, and a deterministic
+        repository header when path ownership identifies mixed concerns.
+
+    .PARAMETER ModelHeader
+        Validated model-generated conventional-commit header.
+
+    .PARAMETER Concerns
+        Deterministically resolved concern groups.
+
+    .PARAMETER Configuration
+        Validated repository classification configuration.
+
+    .RETURNS
+        Commit header safe for the effective concern classification.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$ModelHeader,
+
+        [Parameter(Mandatory)]
+        [string[]]$Concerns,
+
+        [Parameter(Mandatory)]
+        [pscustomobject]$Configuration
+    )
+
+    if ($Concerns.Count -gt $Policy.SelfTestCount) {
+        return $Policy.MixedCommitHeader
+    }
+    if ($ModelHeader -ceq $Policy.MixedCommitHeader) {
+        $concern = $Concerns[$Policy.SuccessExitCode]
+        return [string]$Configuration.concernFallbackHeaders.PSObject.Properties[$concern].Value
+    }
+    return $ModelHeader
+}
+
+function Get-EffectiveVersionBump {
+    <#
+    .DESCRIPTION
+        Prevents concerns configured as non-release work from advancing the
+        project semantic version.
+
+    .PARAMETER ModelBump
+        Validated model-generated semantic version decision.
+
+    .PARAMETER Concerns
+        Deterministically resolved concern groups.
+
+    .PARAMETER Configuration
+        Validated repository classification configuration.
+
+    .RETURNS
+        Effective version bump used to select the tag.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$ModelBump,
+
+        [Parameter(Mandatory)]
+        [string[]]$Concerns,
+
+        [Parameter(Mandatory)]
+        [pscustomobject]$Configuration
+    )
+
+    $releaseConcerns = @($Concerns | Where-Object { $_ -notin @($Configuration.nonReleaseConcerns) })
+    if ($releaseConcerns.Count -eq $Policy.SuccessExitCode) {
+        return $Policy.AllowedBumps[$Policy.SuccessExitCode]
+    }
+    return $ModelBump
+}
+
+function Get-FileDisplayLines {
+    <#
+    .DESCRIPTION
+        Formats reviewed repository paths for stable operator-facing display.
+
+    .PARAMETER Paths
+        Repository-relative paths included in the proposed check-in.
+
+    .RETURNS
+        Sorted bullet lines containing the exact paths.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string[]]$Paths
+    )
+
+    return @($Paths | Sort-Object -Unique | ForEach-Object {
+        $Policy.FileDisplayTemplate -f $_
+    })
 }
 
 function Get-NextSemanticTag {
@@ -853,6 +1143,9 @@ function Assert-Proposal {
     .PARAMETER ExpectedFiles
         Exact file set represented by the proposed commit.
 
+    .PARAMETER AllowedApplications
+        Repository-configured application names accepted from the model.
+
     .RETURNS
         Validated conventional-commit header.
     #>
@@ -861,7 +1154,10 @@ function Assert-Proposal {
         [pscustomobject]$Proposal,
 
         [Parameter(Mandatory)]
-        [string[]]$ExpectedFiles
+        [string[]]$ExpectedFiles,
+
+        [AllowEmptyCollection()]
+        [string[]]$AllowedApplications
     )
 
     foreach ($field in $Policy.RequiredFields) {
@@ -911,7 +1207,7 @@ function Assert-Proposal {
     }
 
     $affectedApps = @($Proposal.affected_apps)
-    $invalidApps = @($affectedApps | Where-Object { $_ -notin $Policy.Applications } | Sort-Object -Unique)
+    $invalidApps = @($affectedApps | Where-Object { $_ -notin $AllowedApplications } | Sort-Object -Unique)
     $uniqueAffectedApps = @($affectedApps | Sort-Object -Unique)
     if (($affectedApps.Count -ne $uniqueAffectedApps.Count) -or ($invalidApps.Count -gt $Policy.SuccessExitCode)) {
         throw ($Policy.AffectedAppsError -f ($affectedApps -join $Policy.GitArgumentSeparator))
@@ -922,19 +1218,38 @@ function Assert-Proposal {
 }
 
 if ($SelfTest) {
+    $null = Read-AppOwnershipMap
+    $selfTestConfiguration = $Policy.SelfTestOwnershipConfiguration
+    $nativeWarning = [Management.Automation.ErrorRecord]::new(
+        [InvalidOperationException]::new($Policy.NativeOutputSelfTestWarning),
+        $Policy.NativeOutputSelfTestId,
+        [Management.Automation.ErrorCategory]::NotSpecified,
+        $null
+    )
+    $nativeOutputRegression = Split-NativeCommandOutput -Records @($nativeWarning, $Policy.NativeOutputSelfTestStdOut)
+    if (($nativeOutputRegression.StdOut.Count -ne $Policy.SelfTestCount) -or
+        ($nativeOutputRegression.StdOut[$Policy.SuccessExitCode] -cne $Policy.NativeOutputSelfTestStdOut) -or
+        ($nativeOutputRegression.StdErr.Count -ne $Policy.SelfTestCount) -or
+        ($nativeOutputRegression.StdErr[$Policy.SuccessExitCode] -cne $Policy.NativeOutputSelfTestWarning)) {
+        throw $Policy.NativeOutputSelfTestFailure
+    }
     $regressionInput = $Policy.SelfTestPath + $Policy.NullCharacter + [Environment]::NewLine
     $regressionPaths = @(Split-GitPathList -Value $regressionInput)
     if (($regressionPaths.Count -ne $Policy.SelfTestCount) -or ($regressionPaths[$Policy.SuccessExitCode] -cne $Policy.SelfTestPath)) {
         throw $Policy.SelfTestFailure
     }
-    $ownershipRegression = Resolve-AppOwnership -Paths @($Policy.OwnershipSelfTestPath)
+    $ownershipRegression = Resolve-AppOwnership `
+        -Paths @($Policy.OwnershipSelfTestPath) `
+        -Configuration $selfTestConfiguration
     if (($ownershipRegression.Required.Count -ne $Policy.SelfTestCount) -or
         ($ownershipRegression.Required[$Policy.SuccessExitCode] -cne $Policy.OwnershipSelfTestApp)) {
         throw $Policy.OwnershipSelfTestFailure
     }
-    & $Policy.GitExecutable -C $Policy.RepositoryRoot @($Policy.GitCheckIgnorePrefix + @($Policy.OwnershipMapRelativePath)) 2>$null
-    if ($LASTEXITCODE -eq $Policy.SuccessExitCode) {
-        throw $Policy.OwnershipMapIgnoredFailure
+    if (Test-Path -LiteralPath $Policy.OwnershipMapPath -PathType Leaf) {
+        & $Policy.GitExecutable -C $Policy.RepositoryRoot @($Policy.GitCheckIgnorePrefix + @($Policy.OwnershipMapRelativePath)) 2>$null
+        if ($LASTEXITCODE -eq $Policy.SuccessExitCode) {
+            throw $Policy.OwnershipMapIgnoredFailure
+        }
     }
     $semanticRegression = Get-NextSemanticTag -Bump $Policy.SemanticSelfTestBump -Tags @($Policy.SemanticSelfTestExistingTag)
     if ($semanticRegression -cne $Policy.SemanticSelfTestExpectedTag) {
@@ -944,6 +1259,35 @@ if ($SelfTest) {
     if (($whitespaceRegression.Count -ne $Policy.SelfTestCount) -or
         ($whitespaceRegression[$Policy.SuccessExitCode] -ne $Policy.WhitespaceSelfTestExpectedLine)) {
         throw $Policy.WhitespaceSelfTestFailure
+    }
+    $concernRegression = @(Resolve-ConcernGroups -Paths $Policy.ConcernSelfTestPaths -Configuration $selfTestConfiguration)
+    $concernRegressionHeader = Get-EffectiveCommitHeader `
+        -ModelHeader $Policy.ConcernSelfTestModelHeader `
+        -Concerns $concernRegression `
+        -Configuration $selfTestConfiguration
+    if ((($concernRegression -join [Environment]::NewLine) -cne ($Policy.ConcernSelfTestExpected -join [Environment]::NewLine)) -or
+        ($concernRegressionHeader -cne $Policy.ConcernSelfTestExpectedHeader)) {
+        throw $Policy.ConcernSelfTestFailure
+    }
+    $singleConcern = @(Resolve-ConcernGroups `
+        -Paths @($Policy.ConcernSelfTestSinglePath) `
+        -Configuration $selfTestConfiguration)
+    $singleConcernHeader = Get-EffectiveCommitHeader `
+        -ModelHeader $Policy.MixedCommitHeader `
+        -Concerns $singleConcern `
+        -Configuration $selfTestConfiguration
+    $singleConcernBump = Get-EffectiveVersionBump `
+        -ModelBump $Policy.ConcernSelfTestModelBump `
+        -Concerns $singleConcern `
+        -Configuration $selfTestConfiguration
+    if (($singleConcernHeader -cne $Policy.ConcernSelfTestSingleExpectedHeader) -or
+        ($singleConcernBump -cne $Policy.ConcernSelfTestExpectedBump)) {
+        throw $Policy.ConcernSelfTestFailure
+    }
+    $fileDisplayRegression = @(Get-FileDisplayLines -Paths $Policy.FileDisplaySelfTestPaths)
+    if (($fileDisplayRegression -join [Environment]::NewLine) -cne
+        ($Policy.FileDisplaySelfTestExpected -join [Environment]::NewLine)) {
+        throw $Policy.FileDisplaySelfTestFailure
     }
     Write-Output $Policy.SelfTestPassed
     return
@@ -983,8 +1327,11 @@ if ((-not $DryRun) -and ($untrackedWhitespaceErrors.Count -gt $Policy.SuccessExi
     throw ($Policy.UntrackedFailureTemplate -f $Policy.UntrackedWhitespaceHeader, ($untrackedWhitespaceErrors -join [Environment]::NewLine))
 }
 $expectedFileText = $expectedFiles -join [Environment]::NewLine
-$ownership = Resolve-AppOwnership -Paths $expectedFiles
+$ownershipConfiguration = Read-AppOwnershipMap
+$ownership = Resolve-AppOwnership -Paths $expectedFiles -Configuration $ownershipConfiguration
 $ownershipText = $ownership.Details -join [Environment]::NewLine
+$concerns = @(Resolve-ConcernGroups -Paths $expectedFiles -Configuration $ownershipConfiguration)
+$concernText = $concerns -join $Policy.ConcernSeparator
 
 $systemPrompt = $Policy.SystemPrompt
 $userPrompt = $Policy.UserPromptTemplate -f @(
@@ -996,11 +1343,22 @@ $userPrompt = $Policy.UserPromptTemplate -f @(
     (Get-DisplayText -Value $untrackedContext),
     (Get-DisplayText -Value $expectedFileText),
     (Get-DisplayText -Value $recentSubjects),
-    (Get-DisplayText -Value $ownershipText)
+    (Get-DisplayText -Value $ownershipText),
+    (Get-DisplayText -Value $concernText)
 )
 
 if (($systemPrompt.Length + $userPrompt.Length) -gt $Policy.MaximumPromptCharacters) {
     throw ($Policy.PromptLengthTemplate -f $Policy.MaximumPromptCharacters)
+}
+
+$affectedAppsSchema = @{
+    type = $Policy.ArraySchemaType
+    items = @{ type = $Policy.StringSchemaType }
+}
+if (@($ownershipConfiguration.applications).Count -eq $Policy.SuccessExitCode) {
+    $affectedAppsSchema.maxItems = $Policy.SuccessExitCode
+} else {
+    $affectedAppsSchema.items.enum = @($ownershipConfiguration.applications)
 }
 
 $schema = @{
@@ -1016,7 +1374,7 @@ $schema = @{
         mixed_changes = @{ type = $Policy.BooleanSchemaType }
         summary = @{ type = $Policy.StringSchemaType }
         files_considered = @{ type = $Policy.ArraySchemaType; items = @{ type = $Policy.StringSchemaType } }
-        affected_apps = @{ type = $Policy.ArraySchemaType; items = @{ type = $Policy.StringSchemaType; enum = $Policy.Applications } }
+        affected_apps = $affectedAppsSchema
     }
 }
 
@@ -1047,7 +1405,10 @@ for ($attempt = $Policy.SelfTestCount; $attempt -le $Policy.MaximumProposalAttem
         $responseContent = [string]$response.message.content
         try {
             $proposal = $responseContent | ConvertFrom-Json
-            $commitHeader = Assert-Proposal -Proposal $proposal -ExpectedFiles $expectedFiles
+            $commitHeader = Assert-Proposal `
+                -Proposal $proposal `
+                -ExpectedFiles $expectedFiles `
+                -AllowedApplications @($ownershipConfiguration.applications)
             $lastValidationError = $null
             break
         } catch {
@@ -1067,7 +1428,24 @@ if ($null -ne $lastValidationError) {
     throw ($Policy.RetryFailureTemplate -f $Policy.MaximumProposalAttempts, $lastValidationError)
 }
 
-if ($AbortOnMixed -and $proposal.mixed_changes) {
+$modelCommitHeader = $commitHeader
+$effectiveMixed = $concerns.Count -gt $Policy.SelfTestCount
+$commitHeader = Get-EffectiveCommitHeader `
+    -ModelHeader $modelCommitHeader `
+    -Concerns $concerns `
+    -Configuration $ownershipConfiguration
+$effectiveScope = if ($effectiveMixed) { $Policy.MixedCommitScope } else { [string]$proposal.scope }
+$effectiveBump = Get-EffectiveVersionBump `
+    -ModelBump ([string]$proposal.version_bump) `
+    -Concerns $concerns `
+    -Configuration $ownershipConfiguration
+$commitBody = if ($effectiveMixed) {
+    $Policy.ConcernBodyTemplate -f $proposal.summary, $concernText
+} else {
+    [string]$proposal.summary
+}
+
+if ($AbortOnMixed -and $effectiveMixed) {
     throw $Policy.MixedAbortError
 }
 
@@ -1097,14 +1475,14 @@ if (-not $DryRun) {
     $tagText = Invoke-ReadOnlyGit -Arguments $Policy.TagListArguments
     $existingTags = @($tagText -split $Policy.LineSplitPattern | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 }
-$proposedTag = Get-ProposedTag -Bump $proposal.version_bump -Scope $proposal.scope -Tags $existingTags
+$proposedTag = Get-ProposedTag -Bump $effectiveBump -Scope $effectiveScope -Tags $existingTags
 $proposedTagRef = $Policy.TagRefTemplate -f $proposedTag
 if (Test-GitRefExists -Ref $proposedTagRef) {
     throw ($Policy.ExistingTagTemplate -f $proposedTag)
 }
 
 $breakingDisplay = if ($proposal.breaking) { $Policy.YesText } else { $Policy.NoText }
-$mixedDisplay = if ($proposal.mixed_changes) { $Policy.YesText } else { $Policy.NoText }
+$mixedDisplay = if ($effectiveMixed) { $Policy.YesText } else { $Policy.NoText }
 $affectedApps = @($proposal.affected_apps | Sort-Object -Unique)
 $affectedAppsDisplay = if ($affectedApps.Count -eq $Policy.SuccessExitCode) { $Policy.NoneText } else { $affectedApps -join $Policy.GitArgumentSeparator }
 $ownershipIssues = [Collections.Generic.List[string]]::new()
@@ -1131,19 +1509,27 @@ foreach ($whitespaceError in $untrackedWhitespaceErrors) {
     Write-Output ($Policy.UntrackedWhitespaceWarningTemplate -f $whitespaceError)
 }
 Write-Output ($Policy.CommitDisplayTemplate -f $commitHeader)
+if ($commitHeader -cne $modelCommitHeader) {
+    Write-Output ($Policy.ModelCommitDisplayTemplate -f $modelCommitHeader)
+}
 if ($commitHeader.Length -gt $Policy.MaximumHeaderLength) {
     Write-Output ($Policy.HeaderLengthWarningTemplate -f $commitHeader.Length, $Policy.MaximumHeaderLength)
 }
-Write-Output ($Policy.BumpDisplayTemplate -f $proposal.version_bump)
+Write-Output ($Policy.BumpDisplayTemplate -f $effectiveBump)
 Write-Output ($Policy.TagDisplayTemplate -f $proposedTag)
 Write-Output ($Policy.BreakingDisplayTemplate -f $breakingDisplay)
 Write-Output ($Policy.MixedDisplayTemplate -f $mixedDisplay)
+Write-Output ($Policy.ConcernsDisplayTemplate -f $concernText)
 Write-Output ($Policy.FilesDisplayTemplate -f $expectedFiles.Count)
+Write-Output $Policy.FilesListLabel
+foreach ($fileDisplayLine in @(Get-FileDisplayLines -Paths $expectedFiles)) {
+    Write-Output $fileDisplayLine
+}
 Write-Output ($Policy.AffectedAppsDisplayTemplate -f $affectedAppsDisplay)
 foreach ($ownershipIssue in $ownershipIssues) {
     Write-Output ($Policy.OwnershipWarningTemplate -f $ownershipIssue)
 }
-if ($proposal.mixed_changes) {
+if ($effectiveMixed) {
     Write-Output $Policy.MixedWarning
 }
 Write-Output $Policy.SummaryLabel
@@ -1164,7 +1550,7 @@ try {
     Assert-PathSetsMatch -Expected $expectedFiles -Actual $stagedPaths
     $null = Invoke-ReadOnlyGit -Arguments $Policy.StagedDiffCheckArguments
 
-    $commitArguments = $Policy.GitCommitPrefix + @($commitHeader, $Policy.GitMessageArgument, $proposal.summary)
+    $commitArguments = $Policy.GitCommitPrefix + @($commitHeader, $Policy.GitMessageArgument, $commitBody)
     $null = Invoke-GitMutation -Arguments $commitArguments
     $stagedByTool = $false
 } catch {

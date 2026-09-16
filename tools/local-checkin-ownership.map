@@ -1,10 +1,45 @@
 {
+  "schemaVersion": 1,
   "applications": [
     "can_nt_bridge",
     "bridge_cli",
     "bringup_ui",
     "can_topology_editor",
     "robot_bringup"
+  ],
+  "concerns": [
+    "checkin_automation",
+    "documentation",
+    "host_diagnostics",
+    "repository",
+    "robot_runtime",
+    "shared_host",
+    "topology_editor"
+  ],
+  "nonReleaseConcerns": [
+    "checkin_automation",
+    "documentation"
+  ],
+  "concernFallbackHeaders": {
+    "checkin_automation": "chore(checkin): update local check-in automation",
+    "documentation": "docs(project): update project documentation",
+    "host_diagnostics": "chore(host): update host diagnostics",
+    "repository": "chore(repo): update repository",
+    "robot_runtime": "chore(robot): update robot runtime",
+    "shared_host": "chore(host): update shared host services",
+    "topology_editor": "chore(topology): update topology editor"
+  },
+  "concernRules": [
+    {"pattern": "tools/local-checkin*", "concern": "checkin_automation"},
+    {"pattern": "docs/*", "concern": "documentation"},
+    {"pattern": "*.md", "concern": "documentation"},
+    {"pattern": "src/main/java/*", "concern": "robot_runtime"},
+    {"pattern": "src/test/java/*", "concern": "robot_runtime"},
+    {"pattern": "src/main/deploy/*", "concern": "robot_runtime"},
+    {"pattern": "build.gradle", "concern": "robot_runtime"},
+    {"pattern": "tools/can_topology/*", "concern": "topology_editor"},
+    {"pattern": "tools/can_nt/*", "concern": "host_diagnostics"},
+    {"pattern": "tools/common/*", "concern": "shared_host"}
   ],
   "rules": [
     {
