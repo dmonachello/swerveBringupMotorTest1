@@ -256,7 +256,7 @@ Verify these files:
 - `src/main/java/frc/robot/AppVersion.java`
 - `README.md`
 - `docs/TCP_UI_PROTOCOL.md`
-- `docs/USER_GUIDE.md`
+- `docs/GETTING_STARTED.md`
 - `docs/APP_NOTE_DISCOVERY_FIRST_CONFIG_BOOTSTRAP.md`
 
 Expected:
@@ -389,4 +389,3 @@ Even after this procedure passes:
 - discovery-first remains experimental until separately promoted
 - broad connected robot validation still depends on real hardware access
 - historical documents outside the curated supported path may still describe older architectures
-

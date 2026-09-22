@@ -3,10 +3,11 @@
 0) Start CLI (fresh session)
 
 ```cmd
-python tools\can_nt\can_nt_bridge.py --cli --no-can --no-nt
+python tools\can_nt\can_nt_bridge.py --cli --no-can
 ```
 
 Notes:
+
 - If `bringup_system.json` is invalid, the CLI will still start in recovery mode and print warnings. Fix the profile data, then `save profiles ...`.
 TBD Screenshot: Recovery-mode CLI startup showing the warning banner and the active prompt.
 
@@ -17,6 +18,7 @@ show workspace
 ```
 
 Expected:
+
 - Paths for profiles/tests/bindings/mappings.
 - Active profile and active test set.
 - Dirty flags (should be false on a fresh session).
@@ -38,6 +40,7 @@ tests clear
 ```
 
 Notes:
+
 - `load config ... --merge` loads the current unified bringup_system.json (including any existing tests under bridgeConfig.byProfile).
 - `tests clear` wipes all test sets in memory so you can start clean.
 - If you want to merge tests from another file instead of replacing, use `tests merge <path>`.
@@ -149,7 +152,7 @@ save config src/main/deploy/bringup_system.json
 1) Start CLI
 
 ```cmd
-python tools\can_nt\can_nt_bridge.py --cli --no-can --no-nt
+python tools\can_nt\can_nt_bridge.py --cli --no-can
 ```
 
 2) Enter config mode
@@ -179,6 +182,7 @@ show devices
 TBD Screenshot: `show devices` output with `Feeder Motor` present.
 
 Expected:
+
 - `Feeder Motor` is present.
 
 6) Verify test sets and active set
@@ -188,6 +192,7 @@ show tests
 ```
 
 Expected:
+
 - The active test set contains `FeederSpin`.
 
 8) Inspect the test
@@ -197,6 +202,7 @@ show test FeederSpin
 ```
 
 Expected:
+
 - `devices: Feeder Motor`
 - `inputSource: controller0.A`
 - `duty: 0.2`

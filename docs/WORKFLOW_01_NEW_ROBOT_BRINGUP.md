@@ -5,6 +5,7 @@ Purpose: define the primary end-to-end workflow for bringing up a brand new robo
 ## Goal
 
 Start from a minimal or incomplete robot configuration and build confidence incrementally:
+
 - add one component
 - validate config and tests
 - sync deploy files
@@ -19,6 +20,7 @@ This is the first-class workflow for a new robot because it reduces ambiguity an
 ## When To Use This Workflow
 
 Use this workflow when:
+
 - building a brand new robot
 - replacing or re-wiring major hardware
 - migrating to a new profile/config
@@ -51,6 +53,7 @@ Purpose: keep the workflow safe, repeatable, and easy to debug.
 Purpose: show the normal tools used in order.
 
 Primary tools:
+
 - Topology editor: create/edit devices and profile membership
 - Validate+sync gate: `python -m tools.validate_sync`
 - Robot deploy: normal GradleRIO deploy
@@ -58,6 +61,7 @@ Primary tools:
 - PC CAN bridge (optional but recommended): passive CAN visibility and evidence capture
 
 Recommended command surfaces:
+
 - Config authoring: topology editor first
 - Validation/sync: command line
 - Runtime bring-up actions: Bringup Control UI or Bridge CLI
@@ -98,6 +102,7 @@ add one component
 Purpose: make the expected setup explicit before touching hardware.
 
 Before starting:
+
 - Robot project builds with the supported WPILib toolchain.
 - RoboRIO is reachable and deployable.
 - Xbox/controller input is available if your bring-up path uses local controls.
@@ -106,6 +111,7 @@ Before starting:
 - The intended robot profile name is chosen.
 
 Recommended pre-checks:
+
 - Run config validation once before editing:
   - `python -m tools.validate_sync`
 - Confirm the PC tool can start:
@@ -118,12 +124,14 @@ Recommended pre-checks:
 Purpose: create the smallest useful starting point.
 
 Preferred path:
+
 - Open the topology editor.
 - Load or create the intended profile in `src/main/deploy/bringup_system.json`.
 - Start with only the devices you are actually ready to verify.
 - Keep labels unique and descriptive.
 
 Good label examples:
+
 - `FL DRIVE`
 - `FL TURN`
 - `FL CANCODER`
@@ -137,6 +145,7 @@ At this stage, avoid adding many unverified devices at once unless they are pure
 Purpose: define one physical device in the config before testing it.
 
 For each component:
+
 - Add or update the device entry in the devices table.
 - Add the device label to the active profile.
 - Add optional metadata that helps bring-up:
@@ -151,6 +160,7 @@ For each component:
   - id
 
 Examples of good incremental additions:
+
 - one drive motor
 - one turning motor
 - one encoder
@@ -164,17 +174,20 @@ Do not add a whole subsystem unless you are intentionally ready to diagnose mult
 Purpose: create the smallest test set that proves the new component behaves correctly.
 
 Tests should be:
+
 - data-driven
 - safe by default
 - small in scope
 - easy to interpret
 
 Preferred patterns:
+
 - one test for one new component
 - one smoke test before any more aggressive test
 - one clear expected behavior per test
 
 Examples:
+
 - motor low-duty forward spin
 - motor low-duty reverse spin
 - encoder movement verification
@@ -182,6 +195,7 @@ Examples:
 - joystick-to-device sanity test
 
 Test sources:
+
 - `bringup_system.json` under `bridgeConfig.byProfile.<profile>.tests`
 - test authoring tools/workflows documented elsewhere in the repo
 
@@ -198,6 +212,7 @@ python -m tools.validate_sync
 ```
 
 Expected outcomes:
+
 - canonical config validates
 - semantic references validate
 - `data_version` and `data_hash` are correct
@@ -206,6 +221,7 @@ Expected outcomes:
 Do not skip this step.
 
 Typical failures to fix here:
+
 - duplicate labels
 - duplicate IDs
 - missing fields
@@ -220,12 +236,14 @@ Purpose: put the validated config and current robot harness on the roboRIO.
 Use the normal WPILib deployment flow.
 
 At minimum, confirm:
+
 - robot code deploys cleanly
 - deploy files are present on the roboRIO
 - the intended profile is available
 - the robot comes up without obvious startup errors
 
 If using runtime apply/push features, be explicit about whether the change is:
+
 - local only
 - runtime only
 - persisted to disk
@@ -243,12 +261,14 @@ python -m tools.can_nt.can_nt_bridge --profile <profile> --interface slcan --cha
 ```
 
 Useful optional flags:
+
 - `--print-publish`
 - `--print-summary-period 2`
 - `--publish-unknown`
 - `--pcap <path>`
 
 Why this matters:
+
 - confirms a device is seen on the bus
 - distinguishes local API issues from bus visibility issues
 - captures evidence for later review
@@ -260,6 +280,7 @@ The PC tool must remain read-only on CAN during this workflow.
 Purpose: do not run device tests until robot state is sane.
 
 Before running a focused device test, confirm:
+
 - robot mode is what you expect
 - no obvious stop latch confusion
 - profile/test context is what you expect
@@ -267,6 +288,7 @@ Before running a focused device test, confirm:
 - if using UI/CLI, session/lock state is what you expect
 
 Recommended first checks:
+
 - State report
 - Profile devices report
 - Inputs/bindings report if controls matter
@@ -279,11 +301,13 @@ Purpose: verify the current component behaves exactly as expected.
 Run only the test(s) relevant to the newly added component.
 
 Examples:
+
 - select one motor smoke test and run it
 - select one encoder test and run it
 - verify one switch input only
 
 Expected test qualities:
+
 - low energy first
 - clear pass/fail interpretation
 - obvious physical observation
@@ -296,6 +320,7 @@ Do not broaden scope until the current test result is understood.
 Purpose: decide whether the component is good, bad, or still ambiguous.
 
 For each test, answer these questions:
+
 - Did the commanded device move/respond?
 - Did the correct device move/respond?
 - Did it move/respond in the correct direction?
@@ -305,6 +330,7 @@ For each test, answer these questions:
 - Did console output show warnings/errors?
 
 Possible outcomes:
+
 - PASS: behavior matches expectation
 - FAIL: behavior clearly wrong
 - AMBIGUOUS: behavior not explained yet; collect more evidence before continuing
@@ -316,6 +342,7 @@ If ambiguous, do not move on to the next component yet.
 Purpose: save enough data to explain failures later.
 
 Recommended evidence:
+
 - robot report output
 - `bringup_report.json`
 - CAN visibility/summary output
@@ -324,11 +351,13 @@ Recommended evidence:
 - notes about physical observations
 
 Useful actions:
+
 - dump report from robot side
 - keep CLI/UI output log snippets
 - save inventory snapshots if comparing before/after changes
 
 Evidence is especially important when the issue could be:
+
 - wrong CAN ID
 - wrong device type
 - wiring fault
@@ -341,18 +370,21 @@ Evidence is especially important when the issue could be:
 Purpose: close the loop before adding more hardware.
 
 If the component passed:
+
 - keep the device entry
 - keep the useful smoke test
 - optionally tag or note the component as verified
 - move to the next component
 
 If the component failed:
+
 - fix config, wiring, power, or hardware
 - rerun validate+sync
 - redeploy or reapply as needed
 - rerun the same focused test
 
 If the result is ambiguous:
+
 - gather more evidence first
 - do not mask the problem by adding more components
 
@@ -361,6 +393,7 @@ If the result is ambiguous:
 Purpose: suggest a practical sequencing for a new robot.
 
 Typical order:
+
 1. Power and core infrastructure devices
    - roboRIO
    - PDH/PDP
@@ -372,6 +405,7 @@ Typical order:
 6. Whole-robot integration only after individual parts are verified
 
 For swerve, a practical order may be:
+
 1. PDH/PDP
 2. gyro
 3. one drive motor
@@ -386,6 +420,7 @@ For swerve, a practical order may be:
 Purpose: define what “good enough to move on” means.
 
 A component is ready to move on when:
+
 - its config is validated
 - its focused test runs predictably
 - the expected physical behavior is observed
@@ -399,6 +434,7 @@ A component is ready to move on when:
 Purpose: help operators classify failures quickly.
 
 ### Config mistakes
+
 - wrong CAN ID
 - wrong manufacturer/deviceType
 - wrong profile membership
@@ -406,21 +442,24 @@ Purpose: help operators classify failures quickly.
 - incorrect invert/limits/settings
 
 ### Wiring or power problems
+
 - no response at all
 - intermittent response
 - brownout or power fault signals
 - CAN visibility missing or unstable
 
 ### Command/selection mistakes
+
 - wrong profile active on robot
 - wrong host profile selected locally
 - wrong test selected
 - wrong device/group targeted
 
 ### Safety/state gating
+
 - robot disabled
 - stop latch active
-- TCP session/lock issue
+- REST session ownership or connectivity issue
 - controller not connected
 
 ## Troubleshooting Decision Order
@@ -428,6 +467,7 @@ Purpose: help operators classify failures quickly.
 Purpose: keep triage disciplined and fast.
 
 When a component test fails, check in this order:
+
 1. Are you targeting the correct profile and test?
 2. Did validate+sync succeed after the latest edit?
 3. Is the robot running the expected config?
@@ -443,6 +483,7 @@ When a component test fails, check in this order:
 Purpose: prevent common workflow mistakes.
 
 Do not:
+
 - add a large batch of unverified devices at once
 - skip validate+sync after edits
 - mix local host edits with assumptions about robot runtime state
@@ -455,6 +496,7 @@ Do not:
 Purpose: provide a compact repeatable checklist for each iteration.
 
 Per component:
+
 1. Add/update the device in `src/main/deploy/bringup_system.json`
 2. Add/update focused test(s)
 3. Run:
@@ -472,6 +514,7 @@ Per component:
 Purpose: define when the robot is ready to leave incremental bring-up mode.
 
 Workflow 01 is complete when:
+
 - every required hardware component has been added to config
 - every required component has at least one verified bring-up test or equivalent verification path
 - each component has passed focused verification or has a known documented issue
@@ -482,10 +525,9 @@ Workflow 01 is complete when:
 
 Purpose: point to the next documents operators should use.
 
-- `docs/USER_GUIDE.md`
-- `docs/ARCHITECTURE.md`
+- `docs/GETTING_STARTED.md`
+- `docs/mocs/architecture.md`
 - `docs/COMMAND_HANDLER_ARCHITECTURE.md`
-- `docs/TCP_UI_PROTOCOL.md`
 - `docs/CLI_USER_MANUAL.md`
 - `docs/CLI_REFERENCE_MANUAL.md`
 - `docs/CLI_TEST_AUTHORING_USER_GUIDE.md`

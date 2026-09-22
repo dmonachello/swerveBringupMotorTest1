@@ -181,9 +181,9 @@ Main library area:
 
 Important files:
 
-- [classify.py](/c:/Users/dmona/swerve3/tools/passive_discovery_poc/classify.py)
-- [models.py](/c:/Users/dmona/swerve3/tools/passive_discovery_poc/models.py)
-- [sources.py](/c:/Users/dmona/swerve3/tools/passive_discovery_poc/sources.py)
+- [classify.py](../tools/passive_discovery_poc/classify.py)
+- [models.py](../tools/passive_discovery_poc/models.py)
+- [sources.py](../tools/passive_discovery_poc/sources.py)
 
 Passive discovery does not just ask:
 
@@ -236,8 +236,8 @@ Examples:
 
 Important files:
 
-- [enrichment.py](/c:/Users/dmona/swerve3/tools/passive_discovery_poc/enrichment.py)
-- [sources.py](/c:/Users/dmona/swerve3/tools/passive_discovery_poc/sources.py)
+- [enrichment.py](../tools/passive_discovery_poc/enrichment.py)
+- [sources.py](../tools/passive_discovery_poc/sources.py)
 
 If a new device family has a vendor API outside CAN, this is where it should plug in.
 
@@ -291,11 +291,11 @@ Define whether the device can be tested through the Robot Diagnostic Test DSL an
 
 Important areas:
 
-- [docs/SPEC_DSL_DEVICE_SIGNAL_INTERFACE.md](/c:/Users/dmona/swerve3/docs/SPEC_DSL_DEVICE_SIGNAL_INTERFACE.md)
-- [docs/USER_GUIDE_ROBOT_TEST_DSL.md](/c:/Users/dmona/swerve3/docs/USER_GUIDE_ROBOT_TEST_DSL.md)
-- [docs/SPEC_NON_MOTOR_DEVICE_TESTING_AND_DSL_INTERVENTION.md](/c:/Users/dmona/swerve3/docs/SPEC_NON_MOTOR_DEVICE_TESTING_AND_DSL_INTERVENTION.md)
-- [src/main/java/frc/robot/tests/dsl/DslSignalRegistry.java](/c:/Users/dmona/swerve3/src/main/java/frc/robot/tests/dsl/DslSignalRegistry.java)
-- [tools/common/robot_test_dsl/service.py](/c:/Users/dmona/swerve3/tools/common/robot_test_dsl/service.py)
+- [docs/SPEC_DSL_DEVICE_SIGNAL_INTERFACE.md](SPEC_DSL_DEVICE_SIGNAL_INTERFACE.md)
+- [docs/USER_GUIDE_ROBOT_TEST_DSL.md](USER_GUIDE_ROBOT_TEST_DSL.md)
+- [docs/SPEC_NON_MOTOR_DEVICE_TESTING_AND_DSL_INTERVENTION.md](SPEC_NON_MOTOR_DEVICE_TESTING_AND_DSL_INTERVENTION.md)
+- [src/main/java/frc/robot/tests/dsl/DslSignalRegistry.java](../src/main/java/frc/robot/tests/dsl/DslSignalRegistry.java)
+- [tools/common/robot_test_dsl/service.py](../tools/common/robot_test_dsl/service.py)
 
 This layer matters most for non-motor devices:
 
@@ -321,9 +321,9 @@ Render the unified evidence and runtime state without device-specific ad hoc UI 
 
 Important host files:
 
-- [passive_discovery_integration_service.py](/c:/Users/dmona/swerve3/tools/can_nt/passive_discovery_integration_service.py)
-- [bringup_ui.py](/c:/Users/dmona/swerve3/tools/can_nt/bringup_ui.py)
-- [live_topology_view.py](/c:/Users/dmona/swerve3/tools/can_topology/live_topology_view.py)
+- [passive_discovery_integration_service.py](../tools/can_nt/passive_discovery_integration_service.py)
+- [bringup_ui.py](../tools/can_nt/bringup_ui.py)
+- [live_topology_view.py](../tools/can_topology/live_topology_view.py)
 
 The current goal is:
 

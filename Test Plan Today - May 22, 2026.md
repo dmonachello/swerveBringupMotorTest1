@@ -518,7 +518,7 @@ Expected:
 
   
 
-Run the focused checklist in [docs/TOPOLOGY_EDITOR_MANUAL_RETEST_CHECKLIST.md](/c:/Users/dmona/swerveBringupMotorTest1-main/docs/TOPOLOGY_EDITOR_MANUAL_RETEST_CHECKLIST.md:1).
+Run the focused checklist in [docs/TOPOLOGY_EDITOR_MANUAL_RETEST_CHECKLIST.md](docs/TOPOLOGY_EDITOR_MANUAL_RETEST_CHECKLIST.md:1).
 
   
 

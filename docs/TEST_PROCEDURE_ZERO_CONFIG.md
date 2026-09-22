@@ -85,7 +85,7 @@ Purpose: Create a new profile and add the first motor.
 
 ```powershell
 cd %USERPROFILE%\swerveBringupMotorTest1-main
-python tools\can_nt\can_nt_bridge.py --cli --no-can --no-nt
+python tools\can_nt\can_nt_bridge.py --cli --no-can
 
 ```
 
@@ -463,7 +463,7 @@ Purpose: Provide a short bringup cycle checklist for repeated iterations.
    - Non-interactive option: `reset zero-config --yes`.
 
 2. Build/update config locally:
-   - Start offline CLI: `python tools\can_nt\can_nt_bridge.py --cli --no-can --no-nt`.
+   - Start offline CLI: `python tools\can_nt\can_nt_bridge.py --cli --no-can`.
    - Enter config mode, update profile/devices/tests.
    - Save: `save config src\main\deploy\bringup_system.json`, then `end`.
 

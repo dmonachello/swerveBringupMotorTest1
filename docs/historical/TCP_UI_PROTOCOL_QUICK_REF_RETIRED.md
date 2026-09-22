@@ -1,4 +1,7 @@
-# TCP UI Protocol Quick Reference
+# TCP UI Protocol Quick Reference (retired)
+
+> Historical reference only. Do not use these raw TCP commands with the current
+> robot application. Current command clients use the REST server on port 5805.
 
 Purpose: Provide a copy/paste operator guide for the TCP JSON line protocol used by CLI/GUI.
 

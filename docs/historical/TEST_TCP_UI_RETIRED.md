@@ -1,0 +1,180 @@
+# TCP UI Command Test Plan (retired)
+
+> Historical reference only. The raw TCP UI server and NetworkTables protocol
+> monitor described here are no longer part of the supported system. Current
+> command clients use the REST server on port 5805.
+
+Purpose: validate the TCP UI command channel, single-client lock, error handling, and NT protocol monitor behavior.
+
+## Group and Targeting V1 Update (April 20, 2026)
+
+Purpose: align test expectations with the finalized group and target contract.
+
+- Name resolution is exact and case-insensitive.
+- The global namespace is shared across device names and group names.
+- `active` is reserved, always present, non-persistent, and resets to empty on save/commit.
+- Group membership uses set semantics: duplicate adds warn and no-op; missing removes warn and no-op.
+- `show groups` and `show group active` must include the active group.
+- `group delete active` must fail.
+- `device delete <name>` must fail if referenced by any group or test.
+- `group delete <name>` must fail if referenced by tests.
+- Non-interactive copy into an existing named group must fail with no mutation.
+
+## Quick Test Plan (10?15 minutes)
+
+1) Basic connect + handshake
+
+- Run: `tools\can_nt\run_can_nt.cmd --ui`
+- Expect: UI shows "TCP Connected" and logs `uiHandshake` ACK + OUT.
+
+2) Single command
+
+- Click **Add Motor**.
+- Expect: ACK + OUT in UI; robot acts.
+
+3) Single-client lock
+
+- Launch a second UI instance.
+- Expect: second UI command returns "UI locked by another client".
+
+4) Release lock
+
+- In the first UI, click **Release UI Lock**.
+- Expect: second UI can handshake and send commands.
+
+5) Protocol monitor toggle
+
+- Click **Protocol Monitor ON**, then **OFF**.
+- Expect: `bringup/ui_tcp/enabled` toggles in NetworkTables.
+
+6) Disabled/E-Stop handling
+
+- Disable robot (or E-Stop).
+- Send a command.
+- Expect: error response "Robot disabled" or "Robot disabled (E-Stop)".
+
+## Full Test Plan (Comprehensive)
+
+### A) Connectivity + Handshake
+
+1) Launch UI with `--ui` and confirm TCP connects.
+2) Verify auto-handshake:
+   - UI log shows ACK + OUT for `uiHandshake`.
+   - `minNextSeq` is applied (seq increments properly).
+3) Reboot roboRIO and confirm:
+   - UI reconnects.
+   - New handshake completes.
+
+### B) Command Flow (happy path)
+
+4) Run each category once:
+   - `addMotor`, `addAll`, `printState`, `printHealth`, `printCANdiag`, `clearFaults`, `runTest`.
+5) Verify each command:
+   - Produces ACK + OUT in UI.
+   - Causes expected robot behavior.
+
+### C) Single-Client Lock
+
+6) Start UI #1 and send `uiHandshake`.
+7) Start UI #2 and attempt any command:
+   - Expect "UI locked by another client".
+8) In UI #1, click **Release UI Lock**.
+9) In UI #2, handshake and send a command:
+   - Expect success.
+
+### D) Timeout + Retry
+
+10) Simulate missed command:
+
+- Disable robot or interrupt TCP server briefly.
+
+11) Send a command:
+
+- Expect timeout (1.5s) in UI.
+
+12) Restore robot:
+
+- UI should re-handshake and retry the last command once.
+- Command should execute once.
+
+### E) Disabled / E-Stop Safety
+
+13) Disable robot:
+
+- Send command; expect "Robot disabled" error.
+
+14) E-Stop:
+
+- Send command; expect "Robot disabled (E-Stop)" error.
+
+15) Re-enable robot:
+
+- Command should succeed.
+
+### F) Protocol Monitor (NT Dashboard)
+
+16) Click **Protocol Monitor ON**.
+
+- Verify `bringup/ui_tcp/*` keys:
+  - `enabled=true`
+  - `connected=true`
+  - `lastSeq`, `lastName`, `lastStatus`, `lastMessage` update per command.
+
+17) Click **Protocol Monitor OFF**.
+
+- Verify `enabled=false` and `connected=false`.
+
+### G) Crash/Exit Handling
+
+18) Close UI window or Ctrl-C in console.
+19) Start new UI instance:
+
+- Should connect and handshake without reboot.
+- Lock should be released from prior client.
+
+### H) Stale Robot State Visibility
+
+20) Stop robot code (leave NT running).
+21) UI should show "Robot state stale (code not running?)".
+22) Restore robot code and verify status clears.
+
+## Notes
+
+- TCP port defaults to 5809 (override with `--ui-tcp-port`).
+- NetworkTables still provides state/diagnostic visibility.
+- If a command is missed, UI retries the last command once after recovery.
+
+
+### I) Bridge CLI (Interactive)
+
+23) Launch CLI:
+    - `python tools\can_nt\can_nt_bridge.py --cli --rio 172.22.11.2 --no-can`
+24) Run `show status` and `show groups`:
+    - Expect ACK/OUT with text output.
+25) Configure a group:
+    - `configure terminal`
+    - `group swerve_drive`
+    - `add device FL_DRIVE`
+    - `bind controller0.leftY analog`
+    - `enable`
+    - `end`
+26) Verify `show group swerve_drive` prints members + bindings.
+
+### J) Bridge CLI (Batch + Config Files)
+
+27) Export runtime groups:
+    - `configure terminal`
+    - `export runtime-groups data\bridge_runtime.json`
+    - Verify file updated with bridgeConfig groups.
+28) Save unified config:
+    - `save unified-config data\bringup_system.json`
+    - Verify bridgeConfig embedded without changing data_hash unless profiles changed.
+29) Run smoke script (read-only):
+    - `python tools\can_nt\can_nt_bridge.py --batch --script tools\can_nt\scripts\bridge_cli_smoke.txt --no-can`
+    - Expect ACK/OUT text or JSON for each command.
+30) Import config (replace):
+    - `import config data\bringup_system.json`
+    - Expect groups recreated from file (batch mode should not prompt).
+31) Merge config (additive):
+    - `merge config data\bringup_system.json`
+    - Expect groups/members appended without clearing.

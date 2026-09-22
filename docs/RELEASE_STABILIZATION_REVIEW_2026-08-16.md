@@ -1,5 +1,9 @@
 # Release Stabilization Review
 
+This is a dated review snapshot. File names and transport descriptions are
+preserved as evidence of the system reviewed on 2026-08-16, not as current
+operator guidance.
+
 Date: 2026-08-16
 
 Status: Not ready for release

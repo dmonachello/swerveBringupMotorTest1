@@ -1,6 +1,6 @@
 # Spec: Complete NetworkTables Removal
 
-SPEC_STATUS: PROPOSED
+SPEC_STATUS: IMPLEMENTED
 
 ## Purpose
 
@@ -420,30 +420,30 @@ Purpose: Point implementation planning at the main code areas.
 
 Primary expected changes:
 
-- [tools/can_nt/bringup_ui.py](/c:/Users/dmona/swerve3/tools/can_nt/bringup_ui.py)
-- [tools/can_nt/bridge_session.py](/c:/Users/dmona/swerve3/tools/can_nt/bridge_session.py)
-- [tools/can_nt/bridge_ops.py](/c:/Users/dmona/swerve3/tools/can_nt/bridge_ops.py)
-- [tools/can_nt/can_nt_bridge.py](/c:/Users/dmona/swerve3/tools/can_nt/can_nt_bridge.py)
+- [tools/can_nt/bringup_ui.py](../tools/can_nt/bringup_ui.py)
+- [tools/can_nt/bridge_session.py](../tools/can_nt/bridge_session.py)
+- [tools/can_nt/bridge_ops.py](../tools/can_nt/bridge_ops.py)
+- [tools/can_nt/can_nt_bridge.py](../tools/can_nt/can_nt_bridge.py)
 - any host CLI or helper reading `bringup/ui` or `bringup/tests` via NT
 
 ### Robot Java
 
 Primary expected changes:
 
-- [src/main/java/frc/robot/BridgeUiCommandHandler.java](/c:/Users/dmona/swerve3/src/main/java/frc/robot/BridgeUiCommandHandler.java)
-- [src/main/java/frc/robot/BridgeUiOutputFacade.java](/c:/Users/dmona/swerve3/src/main/java/frc/robot/BridgeUiOutputFacade.java)
-- [src/main/java/frc/robot/BridgeUiSessionCommands.java](/c:/Users/dmona/swerve3/src/main/java/frc/robot/BridgeUiSessionCommands.java)
-- [src/main/java/frc/robot/DiagnosticsReporter.java](/c:/Users/dmona/swerve3/src/main/java/frc/robot/DiagnosticsReporter.java)
-- [src/main/java/frc/robot/diag/probe/ActiveDevicePresenceProbe.java](/c:/Users/dmona/swerve3/src/main/java/frc/robot/diag/probe/ActiveDevicePresenceProbe.java)
-- [src/main/java/frc/robot/RobotV2.java](/c:/Users/dmona/swerve3/src/main/java/frc/robot/RobotV2.java) where NT tables are initialized for bringup control flow
+- [src/main/java/frc/robot/BridgeUiCommandHandler.java](../src/main/java/frc/robot/BridgeUiCommandHandler.java)
+- removed historical class `src/main/java/frc/robot/BridgeUiOutputFacade.java`
+- [src/main/java/frc/robot/BridgeUiSessionCommands.java](../src/main/java/frc/robot/BridgeUiSessionCommands.java)
+- [src/main/java/frc/robot/DiagnosticsReporter.java](../src/main/java/frc/robot/DiagnosticsReporter.java)
+- [src/main/java/frc/robot/diag/probe/ActiveDevicePresenceProbe.java](../src/main/java/frc/robot/diag/probe/ActiveDevicePresenceProbe.java)
+- [src/main/java/frc/robot/Robot.java](../src/main/java/frc/robot/Robot.java), which starts the current REST server without initializing NetworkTables for bringup control
 
 ### Documentation
 
 Primary expected changes:
 
-- [docs/NT_CONTRACT.md](/c:/Users/dmona/swerve3/docs/NT_CONTRACT.md)
-- [docs/TCP_UI_PROTOCOL.md](/c:/Users/dmona/swerve3/docs/TCP_UI_PROTOCOL.md)
-- [docs/TCP_UI_PROTOCOL_QUICK_REF.md](/c:/Users/dmona/swerve3/docs/TCP_UI_PROTOCOL_QUICK_REF.md)
+- [docs/NT_CONTRACT.md](NT_CONTRACT.md)
+- [docs/TCP_UI_PROTOCOL.md](TCP_UI_PROTOCOL.md)
+- [Retired TCP UI quick reference](historical/TCP_UI_PROTOCOL_QUICK_REF_RETIRED.md)
 - user guides that mention NT as required runtime transport
 
 ## Compatibility Policy

@@ -59,6 +59,8 @@ In scope (V1):
 - unified regression runner with suite selection flags
 - baseline refresh mode for intentional behavior changes
 - local and robot-non-motion suite separation
+- automatic Python unit-test discovery under registered test roots
+- a coverage guard that rejects unregistered tests and regression scripts
 
 Out of scope (V1):
 
@@ -75,6 +77,8 @@ Purpose: define stable locations for regression assets.
 - `tests/regression/expected/`
 - `tools/can_nt/scripts/run_regressions.py`
 - `tools/can_nt/scripts/lib/regression_framework.py`
+- `tools/can_nt/scripts/regression_coverage_guard.py`
+- `tests/regression/fixtures/regression_coverage_exclusions.json`
 
 Examples:
 
@@ -100,6 +104,25 @@ Expected-results file (conceptual):
 - required output fragments
 - optional forbidden output fragments
 - optional structured JSON assertions when command supports JSON output
+
+## Test registration completeness
+
+Purpose: prevent a new test from existing in the repository without entering
+a maintained regression suite.
+
+The local suite uses `unittest discover` for each stable Python test root.
+Adding a `test_*.py` file under one of those roots requires no manifest edit.
+
+The regression coverage guard inventories:
+
+- Python test modules under `tools/**/tests/`
+- Java tests under `src/test/java/`
+- standalone scripts ending in `_regression.py`
+- manifest commands assigned to maintained suites
+
+Every inventoried test must be covered by an assigned discovery or direct
+command. An exclusion is valid only when the exclusions fixture names the path
+and gives a non-empty reason.
 
 ## Assertion Strategy
 

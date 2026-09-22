@@ -32,14 +32,14 @@ This spec is not about the DSL command model.
 
 Purpose: Record what is already migrated on `main` so readers do not confuse this spec with a wholly future design.
 
-Implemented on the active `RobotV2` plus host-UI path:
+Implemented on the active `Robot` plus host-UI path:
 
 - canonical Java command registry in `RobotLocalCommandRegistry`
 - single-active plus one-queued executor in `RobotLocalCommandExecutor`
 - shared request/result model under `src/main/java/frc/robot/commands/local/`
 - reusable helper commands for common host-method-backed runtime and report commands
 - grouped runtime/report/test/legacy command source files referenced by the registry
-- controller submission through `RobotV2` and `BridgeUiCommandHandler`
+- controller submission through `Robot` and `BridgeUiCommandHandler`
 - host-UI command submission through the same executor path
 - generated JSON inventory and generated Python host-UI metadata from the Java registry
 - host-UI section/button construction from generated artifacts
@@ -89,14 +89,14 @@ The current command system is spread across too many places.
 
 Command names and behavior are currently split across:
 
-- [BindingsManager.java](C:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/input/BindingsManager.java)
-- [BringupCommandRouter.java](C:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/BringupCommandRouter.java)
-- [Robot.java](C:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/Robot.java)
-- [RobotV2.java](C:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/RobotV2.java)
-- [BridgeUiRuntimeCommands.java](C:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/BridgeUiRuntimeCommands.java)
+- [BindingsManager.java](../src/main/java/frc/robot/input/BindingsManager.java)
+- [BringupCommandRouter.java](../src/main/java/frc/robot/BringupCommandRouter.java)
+- [Robot.java](../src/main/java/frc/robot/Robot.java)
+- [Robot.java](../src/main/java/frc/robot/Robot.java)
+- [BridgeUiRuntimeCommands.java](../src/main/java/frc/robot/BridgeUiRuntimeCommands.java)
 - Python UI helpers such as:
-  - [bridge_ops.py](C:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/bridge_ops.py)
-  - [bringup_ui.py](C:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/bringup_ui.py)
+  - [bridge_ops.py](../tools/can_nt/bridge_ops.py)
+  - [bringup_ui.py](../tools/can_nt/bringup_ui.py)
 
 Effects:
 
@@ -489,7 +489,7 @@ Host UI robot commands must stop owning parallel semantic behavior.
 
 That means Java-side host runtime command handling should become a thin adapter over the unified registry and executor.
 
-The current separate behavior ownership in [BridgeUiRuntimeCommands.java](C:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/BridgeUiRuntimeCommands.java) should be removed or reduced to request adaptation.
+The current separate behavior ownership in [BridgeUiRuntimeCommands.java](../src/main/java/frc/robot/BridgeUiRuntimeCommands.java) should be removed or reduced to request adaptation.
 
 The host UI path should:
 
@@ -550,7 +550,7 @@ The generated Python artifacts should support:
 
 The UI should include a preferences mechanism for enabling or disabling buttons.
 
-The goal is to remove handwritten command lists like the current action sections in [bringup_ui.py](C:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/bringup_ui.py) as much as possible.
+The goal is to remove handwritten command lists like the current action sections in [bringup_ui.py](../tools/can_nt/bringup_ui.py) as much as possible.
 
 UI visibility should be controlled by Java-side metadata and generated artifacts, not by requiring the user to hand-edit Python UI code.
 

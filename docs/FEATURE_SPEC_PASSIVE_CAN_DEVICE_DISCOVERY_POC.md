@@ -6,7 +6,7 @@ SPEC_STATUS: PARTIALLY_IMPLEMENTED
 
 Define the first proof-of-concept implementation for passive CAN device discovery, health inference, and reverse-engineering evidence extraction.
 
-This PoC is the first executable target derived from [FEATURE_SPEC_PASSIVE_CAN_DEVICE_DISCOVERY.md](/c:/Users/dmona/swerve3/docs/FEATURE_SPEC_PASSIVE_CAN_DEVICE_DISCOVERY.md). It is intentionally separate from production code, but it must be structured so it can be integrated back into the existing host-side Python stack with minimal rework.
+This PoC is the first executable target derived from [FEATURE_SPEC_PASSIVE_CAN_DEVICE_DISCOVERY.md](FEATURE_SPEC_PASSIVE_CAN_DEVICE_DISCOVERY.md). It is intentionally separate from production code, but it must be structured so it can be integrated back into the existing host-side Python stack with minimal rework.
 
 ## Status
 

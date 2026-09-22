@@ -135,8 +135,12 @@ class RunRegressionsTests(unittest.TestCase):
         labels = [command.label for command in commands]
         self.assertEqual(
             [
-                "dsl-unit",
-                "cli-unit",
+                "regression-coverage-guard",
+                "python-can-nt-unit-all",
+                "python-common-unit-all",
+                "python-topology-unit-all",
+                "python-docs-maintenance-unit-all",
+                "python-can-tx-poc-unit-all",
                 "java-unit",
                 "group-targeting-v1",
                 "group-targeting-4m2g3t",
@@ -610,10 +614,12 @@ class RunRegressionsTests(unittest.TestCase):
             with patch("tools.can_nt.scripts.lib.regression_framework.suite_baseline_path", return_value=baseline_path):
                 written_path = refresh_suite_baseline(SUITE_DSL, commands, results)
             payload = json.loads(baseline_path.read_text(encoding="utf-8"))
+            raw_payload = baseline_path.read_bytes()
 
         self.assertEqual(baseline_path, written_path)
         self.assertEqual(SUITE_DSL, payload["suite"])
         self.assertEqual(0, payload["results"][0]["expectedExitCode"])
+        self.assertNotIn(b"\r\n", raw_payload)
 
     def test_write_json_report_emits_machine_readable_output(self) -> None:
         results = [

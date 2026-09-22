@@ -2,7 +2,9 @@
 
 This document preserves the retired TCP UI command-channel contract for historical reference only.
 
-Supported bringup flows no longer use this transport. The current supported host/robot command path is the REST session layer used by `tools/can_nt/bridge_session.py` and started by `RobotV2`.
+Supported bringup flows no longer use this transport. The current supported
+host/robot command path is the REST session layer used by
+`tools/can_nt/bridge_session.py` and started by `Robot`.
 
 ## Scope
 
@@ -12,7 +14,8 @@ This section states what the document covers and what it does not.
 - Covers framing, request/response schemas, state and session rules, and error behavior.
 - Covers real exchange transcripts based on the current implementation.
 - Does not redefine CLI grammar; CLI text-to-command mapping remains in `docs/BRIDGE_CLI_DESIGN.md`.
-- For copy/paste operational examples, see `docs/TCP_UI_PROTOCOL_QUICK_REF.md`.
+- For historical copy/paste examples, see
+  `docs/historical/TCP_UI_PROTOCOL_QUICK_REF_RETIRED.md`.
 
 ## Layer model
 
@@ -235,9 +238,9 @@ These are additive-compatible protocol improvements.
 
 ## Normative references
 
-These implementation and design sources define the current behavior.
+These implementation and design sources defined the retired TCP behavior.
 
-- `src/main/java/frc/robot/ui/TcpUiServer.java`
+- Former `src/main/java/frc/robot/ui/TcpUiServer.java` implementation
 - `src/main/java/frc/robot/BridgeUiCommandHandler.java`
 - `tools/can_nt/bridge_session.py`
 - `docs/BRIDGE_CLI_DESIGN.md`

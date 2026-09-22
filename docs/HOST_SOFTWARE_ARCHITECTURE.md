@@ -145,7 +145,7 @@ Purpose: own the long-running PC-side process that connects external data source
 
 Primary file:
 
-- [tools/can_nt/can_nt_bridge.py](/abs/path/tools/can_nt/can_nt_bridge.py)
+- [tools/can_nt/can_nt_bridge.py](../tools/can_nt/can_nt_bridge.py)
 
 What it does:
 
@@ -159,12 +159,12 @@ What it does:
 
 Important supporting modules:
 
-- [tools/can_nt/can_analyzer.py](/abs/path/tools/can_nt/can_analyzer.py)
-- [tools/can_nt/can_nt_client.py](/abs/path/tools/can_nt/can_nt_client.py)
-- [tools/can_nt/can_reporting.py](/abs/path/tools/can_nt/can_reporting.py)
-- [tools/can_nt/can_pcap.py](/abs/path/tools/can_nt/can_pcap.py)
-- [tools/can_nt/can_console_monitor.py](/abs/path/tools/can_nt/can_console_monitor.py)
-- [tools/can_nt/can_profiles.py](/abs/path/tools/can_nt/can_profiles.py)
+- [tools/can_nt/can_analyzer.py](../tools/can_nt/can_analyzer.py)
+- [tools/can_nt/can_nt_client.py](../tools/can_nt/can_nt_client.py)
+- [tools/can_nt/can_reporting.py](../tools/can_nt/can_reporting.py)
+- [tools/can_nt/can_pcap.py](../tools/can_nt/can_pcap.py)
+- [tools/can_nt/can_console_monitor.py](../tools/can_nt/can_console_monitor.py)
+- [tools/can_nt/can_profiles.py](../tools/can_nt/can_profiles.py)
 
 Key architectural point:
 
@@ -176,7 +176,7 @@ Purpose: provide one shared way for host surfaces to talk to the robot runtime.
 
 Primary file:
 
-- [tools/can_nt/bridge_session.py](/abs/path/tools/can_nt/bridge_session.py)
+- [tools/can_nt/bridge_session.py](../tools/can_nt/bridge_session.py)
 
 What it does:
 
@@ -204,7 +204,7 @@ Purpose: centralize common host operations that sit above transport and below pr
 
 Primary file:
 
-- [tools/can_nt/bridge_ops.py](/abs/path/tools/can_nt/bridge_ops.py)
+- [tools/can_nt/bridge_ops.py](../tools/can_nt/bridge_ops.py)
 
 What it does:
 
@@ -227,7 +227,7 @@ Purpose: provide the most complete host-side operator and editing surface.
 
 Primary file:
 
-- [tools/can_nt/bridge_cli.py](/abs/path/tools/can_nt/bridge_cli.py)
+- [tools/can_nt/bridge_cli.py](../tools/can_nt/bridge_cli.py)
 
 What it owns in practice:
 
@@ -240,9 +240,9 @@ What it owns in practice:
 
 Related parser/grammar files:
 
-- [tools/can_nt/bridge_cli_parser.py](/abs/path/tools/can_nt/bridge_cli_parser.py)
-- [tools/can_nt/bridge_cli_ast.py](/abs/path/tools/can_nt/bridge_cli_ast.py)
-- [tools/can_nt/bridge_cli_ebnf.txt](/abs/path/tools/can_nt/bridge_cli_ebnf.txt)
+- [tools/can_nt/bridge_cli_parser.py](../tools/can_nt/bridge_cli_parser.py)
+- [tools/can_nt/bridge_cli_ast.py](../tools/can_nt/bridge_cli_ast.py)
+- [tools/can_nt/bridge_cli_ebnf.txt](../tools/can_nt/bridge_cli_ebnf.txt)
 
 Key architectural point:
 
@@ -254,7 +254,7 @@ Purpose: provide a Windows-friendly operator surface for runtime control and obs
 
 Primary file:
 
-- [tools/can_nt/bringup_ui.py](/abs/path/tools/can_nt/bringup_ui.py)
+- [tools/can_nt/bringup_ui.py](../tools/can_nt/bringup_ui.py)
 
 What it owns in practice:
 
@@ -269,8 +269,8 @@ What it owns in practice:
 
 Supporting files:
 
-- [tools/can_nt/host_ui_actions.py](/abs/path/tools/can_nt/host_ui_actions.py)
-- [tools/can_nt/bridge_cmd_tracker.py](/abs/path/tools/can_nt/bridge_cmd_tracker.py)
+- [tools/can_nt/host_ui_actions.py](../tools/can_nt/host_ui_actions.py)
+- [tools/can_nt/bridge_cmd_tracker.py](../tools/can_nt/bridge_cmd_tracker.py)
 
 Key architectural point:
 
@@ -288,8 +288,8 @@ Purpose: own host-side meaning about where config lives and how shared config co
 
 Primary files:
 
-- [tools/common/config_lifecycle/service.py](/abs/path/tools/common/config_lifecycle/service.py)
-- [tools/common/paths.py](/abs/path/tools/common/paths.py)
+- [tools/common/config_lifecycle/service.py](../tools/common/config_lifecycle/service.py)
+- [tools/common/paths.py](../tools/common/paths.py)
 
 What this layer does:
 
@@ -309,7 +309,7 @@ Purpose: turn operator intent into explicit host-side readiness and sequencing r
 
 Primary file:
 
-- [tools/common/workflows/workflow01_service.py](/abs/path/tools/common/workflows/workflow01_service.py)
+- [tools/common/workflows/workflow01_service.py](../tools/common/workflows/workflow01_service.py)
 
 What it does:
 
@@ -327,9 +327,9 @@ Purpose: own host-side semantics for test discovery, authoring, compilation, and
 
 Primary areas:
 
-- [tools/common/tests_domain/semantics.py](/abs/path/tools/common/tests_domain/semantics.py)
-- [tools/common/test_authoring/__init__.py](/abs/path/tools/common/test_authoring/__init__.py)
-- [tools/common/robot_test_dsl/__init__.py](/abs/path/tools/common/robot_test_dsl/__init__.py)
+- [tools/common/tests_domain/semantics.py](../tools/common/tests_domain/semantics.py)
+- [tools/common/test_authoring/__init__.py](../tools/common/test_authoring/__init__.py)
+- [tools/common/robot_test_dsl/__init__.py](../tools/common/robot_test_dsl/__init__.py)
 
 What lives here:
 
@@ -350,10 +350,10 @@ Purpose: provide shared host-side models for read-only structural and live-obser
 
 Primary files:
 
-- [tools/can_nt/visibility_provider.py](/abs/path/tools/can_nt/visibility_provider.py)
-- [tools/common/topology_parse.py](/abs/path/tools/common/topology_parse.py)
-- [tools/common/topology_draw.py](/abs/path/tools/common/topology_draw.py)
-- [tools/common/topology_render.py](/abs/path/tools/common/topology_render.py)
+- [tools/can_nt/visibility_provider.py](../tools/can_nt/visibility_provider.py)
+- [tools/common/topology_parse.py](../tools/common/topology_parse.py)
+- [tools/common/topology_draw.py](../tools/common/topology_draw.py)
+- [tools/common/topology_render.py](../tools/common/topology_render.py)
 
 What this layer does:
 
@@ -502,9 +502,9 @@ The host layer is doing several jobs at once:
 
 That creates large files in a few places, especially:
 
-- [tools/can_nt/bridge_cli.py](/abs/path/tools/can_nt/bridge_cli.py)
-- [tools/can_nt/bringup_ui.py](/abs/path/tools/can_nt/bringup_ui.py)
-- [tools/can_nt/can_nt_bridge.py](/abs/path/tools/can_nt/can_nt_bridge.py)
+- [tools/can_nt/bridge_cli.py](../tools/can_nt/bridge_cli.py)
+- [tools/can_nt/bringup_ui.py](../tools/can_nt/bringup_ui.py)
+- [tools/can_nt/can_nt_bridge.py](../tools/can_nt/can_nt_bridge.py)
 
 The important thing is not to think of those files as one feature each. They are umbrella entrypoints that sit on top of smaller shared layers.
 
@@ -514,17 +514,18 @@ Purpose: give a practical path for understanding the host side without reading e
 
 Read in this order:
 
-1. [docs/ARCHITECTURE.md](/abs/path/docs/ARCHITECTURE.md)
-2. [docs/HOST_SOFTWARE_ARCHITECTURE.md](/abs/path/docs/HOST_SOFTWARE_ARCHITECTURE.md)
-3. [tools/can_nt/bridge_session.py](/abs/path/tools/can_nt/bridge_session.py)
-4. [tools/can_nt/bridge_ops.py](/abs/path/tools/can_nt/bridge_ops.py)
-5. [tools/common/config_lifecycle/service.py](/abs/path/tools/common/config_lifecycle/service.py)
-6. [tools/common/workflows/workflow01_service.py](/abs/path/tools/common/workflows/workflow01_service.py)
-7. [tools/common/robot_test_dsl/__init__.py](/abs/path/tools/common/robot_test_dsl/__init__.py)
-8. [tools/can_nt/visibility_provider.py](/abs/path/tools/can_nt/visibility_provider.py)
-9. [tools/can_nt/bridge_cli.py](/abs/path/tools/can_nt/bridge_cli.py)
-10. [tools/can_nt/bringup_ui.py](/abs/path/tools/can_nt/bringup_ui.py)
-11. [tools/can_nt/can_nt_bridge.py](/abs/path/tools/can_nt/can_nt_bridge.py)
+1. [Getting Started](./GETTING_STARTED.md)
+2. [Architecture documentation hub](./mocs/architecture.md)
+3. [Host software architecture](./HOST_SOFTWARE_ARCHITECTURE.md)
+4. [Robot session client](../tools/can_nt/bridge_session.py)
+5. [Shared robot operations](../tools/can_nt/bridge_ops.py)
+5. [tools/common/config_lifecycle/service.py](../tools/common/config_lifecycle/service.py)
+6. [tools/common/workflows/workflow01_service.py](../tools/common/workflows/workflow01_service.py)
+7. [tools/common/robot_test_dsl/__init__.py](../tools/common/robot_test_dsl/__init__.py)
+8. [tools/can_nt/visibility_provider.py](../tools/can_nt/visibility_provider.py)
+9. [tools/can_nt/bridge_cli.py](../tools/can_nt/bridge_cli.py)
+10. [tools/can_nt/bringup_ui.py](../tools/can_nt/bringup_ui.py)
+11. [tools/can_nt/can_nt_bridge.py](../tools/can_nt/can_nt_bridge.py)
 
 This order goes from stable shared contracts toward the larger surface entrypoints.
 

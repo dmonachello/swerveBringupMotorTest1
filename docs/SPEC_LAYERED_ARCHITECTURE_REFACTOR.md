@@ -4,7 +4,8 @@
 
 ## Purpose
 
-Define a practical, incremental refactor plan for moving the project toward the system-wide layered architecture described in `docs/ARCHITECTURE.md`.
+Define a practical, incremental refactor plan for moving the project toward
+the system-wide layered architecture summarized in `docs/mocs/architecture.md`.
 
 This spec is intended for Codex. It should guide real implementation work without forcing a risky full rewrite.
 
@@ -13,6 +14,7 @@ This spec is intended for Codex. It should guide real implementation work withou
 The project already has meaningful structure and should **not** be rewritten from scratch. The goal is to refactor toward clearer layer ownership over multiple passes.
 
 The system-wide layering model is:
+
 1. Hardware and Transport Layer
 2. Adapter and Protocol Layer
 3. Domain Logic Layer
@@ -27,6 +29,7 @@ This spec focuses on making the code follow those layers more consistently.
 This spec has **not** yet been executed as a full layered-architecture refactor plan.
 
 However, the repo is also **not** at a blank starting point. Before this spec is applied, the codebase already includes meaningful architecture progress, especially in the Java command path:
+
 - `BridgeUiIngressPolicy`
 - `BridgeUiCommandExecutor`
 - `BridgeUiCommandDispatcher`
@@ -37,6 +40,7 @@ However, the repo is also **not** at a blank starting point. Before this spec is
 Therefore, this spec must be executed from the **current repo baseline**, not from an assumed pre-refactor state.
 
 Implications:
+
 - The Java/roboRIO side is already partially advanced in layering for the UI command path.
 - The biggest remaining architectural value is now on the Driver Station PC / Python side.
 - Workflow/Application Service Layer work is now the highest-priority architectural gap.
@@ -48,6 +52,7 @@ Implications:
 Do **not** reorganize the project just to make folders match the layer names.
 
 Instead:
+
 - move behavior to the correct ownership layer
 - reduce cross-layer leakage
 - centralize shared semantics
@@ -57,6 +62,7 @@ Instead:
 ## Big Goals
 
 The refactor should improve these architectural properties:
+
 - Presentation layers become thinner.
 - Domain logic becomes more explicit and reusable.
 - Workflow logic becomes first-class in code, not only in docs.
@@ -77,12 +83,14 @@ When tradeoffs are required, prioritize the refactor work in this order:
 7. Cosmetic file/package moves.
 
 Interpretation rule:
+
 - If a Java-side layered split is already materially present, do not redo it just because the spec mentions that architectural direction.
 - Prefer to spend effort where the architecture is still weak in practice, which is now primarily the PC/Python and workflow/application layers.
 
 ## Non-Goals
 
 Do not do these as part of this effort unless specifically required:
+
 - redesign the TCP UI protocol
 - redesign the NT contract
 - rewrite working robot runtime code for style only
@@ -93,6 +101,7 @@ Do not do these as part of this effort unless specifically required:
 ## Current Architectural Observations
 
 The project already has strong pieces in place:
+
 - Hardware/transport access exists on both robot and PC sides.
 - Adapter/protocol code exists for device wrappers, TCP session, profile loading, visibility, and ingress policy.
 - Domain logic exists for bring-up, tests, groups, session commands, profile commands, reports, and runtime actions.
@@ -100,6 +109,7 @@ The project already has strong pieces in place:
 - Contract/spec docs already exist for TCP, command handler architecture, workflow, and readiness.
 
 The biggest current layering gaps are:
+
 - Workflow/Application Service Layer is weak in code.
 - Presentation layers still know too much in places, especially on the PC/Python side.
 - Shared config lifecycle semantics are still spread across tools.
@@ -107,6 +117,7 @@ The biggest current layering gaps are:
 - Some orchestration classes still contain family-specific helper leakage.
 
 Important interpretation:
+
 - The orchestration/leakage point still applies to both sides, but it is now more urgent on the host-side Python surfaces than on the already-improved Java command path.
 
 ## Required Refactor Strategy
@@ -114,6 +125,7 @@ Important interpretation:
 Implement this as a sequence of **incremental architecture passes**, not one giant change.
 
 Each pass should:
+
 - produce a measurable ownership improvement
 - preserve behavior
 - include tests where appropriate
@@ -141,11 +153,13 @@ Recommended weighting for implementation effort:
 ## Pass 1: Establish Shared Layer Ownership Rules
 
 ### Objective
+
 Make the layer boundaries explicit in code organization and design decisions before moving more logic.
 
 ### Required work
+
 1. Read and follow:
-   - `docs/ARCHITECTURE.md`
+   - `docs/mocs/architecture.md`
    - `docs/COMMAND_HANDLER_ARCHITECTURE.md`
    - `docs/WORKFLOW_01_NEW_ROBOT_BRINGUP.md`
    - `docs/RELEASE_1_0_READINESS.md`
@@ -154,29 +168,37 @@ Make the layer boundaries explicit in code organization and design decisions bef
 4. Do not make large behavior changes in this pass.
 
 ### Deliverable
+
 A lightweight ownership cleanup that makes it easier to implement the later passes consistently.
 
 ## Pass 2: Strengthen the Domain Logic Layer
 
 ### Objective
+
 Centralize domain semantics that are currently spread across surfaces or helper code.
 
 ### Current-state interpretation
+
 - On the Java side, this pass is partly advanced already in the UI command path. Treat further Java work here as selective cleanup and hardening, not wholesale restructuring.
 - On the Python side, this pass is still a major architectural task and should receive most of the implementation effort.
 
 ### Required targets
 
 ## A. Config/Profile Lifecycle Domain
+
 Create or strengthen a shared config lifecycle domain module on the Python side.
 
 ### New or expanded module area
+
 Use a coherent module area under `tools/common/` or similar, for example:
+
 - `tools/common/profiles/`
 - `tools/common/config_lifecycle/`
 
 ### Responsibilities
+
 Centralize logic for:
+
 - canonical config path ownership
 - deploy copy path ownership
 - config loading
@@ -189,20 +211,26 @@ Centralize logic for:
 - host-vs-robot context semantics where feasible
 
 ### Rules
+
 - remove duplicated path/source-of-truth semantics from individual surfaces where practical
 - keep the canonical/deploy/runtime model explicit
 - preserve current behavior
 
 ## B. Test Authoring and Validation Domain
+
 Strengthen the host-side test domain as a first-class layer.
 
 ### New or expanded module area
+
 Use or extend a coherent area such as:
+
 - `tools/common/tests/`
 - or expand existing test authoring modules into a clearer domain package
 
 ### Responsibilities
+
 Centralize:
+
 - test models
 - test validation
 - device-to-test reference validation
@@ -211,46 +239,60 @@ Centralize:
 - per-profile test lookup semantics
 
 ### Goal
+
 The robot should consume a validated clean representation; host-side authoring/generation/validation should own more of the complexity.
 
 ## C. Diagnostics Domain Normalization
+
 Create or strengthen a shared diagnostics domain layer on the Python side.
 
 ### New or expanded module area
+
 Suggested:
+
 - `tools/common/diagnostics/`
 
 ### Responsibilities
+
 Normalize and centralize semantics for:
+
 - local health vs CAN visibility vs console-derived warnings
 - visible vs missing vs stale vs unknown
 - evidence snapshot shape
 - normalized diagnostics results consumed by CLI/UI/reporting
 
 ### Rule
+
 Multiple presentation surfaces should consume shared diagnostic meaning, not invent their own interpretation.
 
 ## Pass 3: Introduce Workflow and Application Service Layer
 
 ### Objective
+
 Make the product workflows explicit in code, not just in docs.
 
 This is the most important architectural gap.
 
 ### Current-state interpretation
+
 This pass is now the highest-value unfinished architectural work in the repo.
 It should be treated as the center of gravity of this spec.
 
 ## A. Workflow 01 service: New robot bring-up
+
 Create a first-class workflow/application service for the incremental new-robot bring-up flow.
 
 ### New module area
+
 Suggested:
+
 - `tools/can_nt/workflows/new_robot_bringup.py`
 - or a shared `tools/workflows/` package if that fits better
 
 ### Responsibilities
+
 Coordinate the primary workflow:
+
 - add one component
 - create or select focused test(s)
 - validate config and tests
@@ -261,10 +303,13 @@ Coordinate the primary workflow:
 - collect evidence guidance
 
 ### Important note
+
 This does **not** need to perform all deployment itself. It can orchestrate workflow semantics and expose reusable steps/services used by CLI/UI/docs.
 
 ## B. Validate/Sync workflow service
+
 Create a reusable application service for:
+
 - validate canonical config
 - validate tests
 - stamp version/hash if needed
@@ -272,41 +317,52 @@ Create a reusable application service for:
 - report source/state clearly
 
 ### Goal
+
 Make validate+sync behavior more unified across tools and docs.
 
 ## C. Focused component verification workflow service
+
 If the previous services do not cover it naturally, introduce an application service that represents:
+
 - one device/component under test
 - expected verification steps
 - expected evidence
 - outcome classification (`pass`, `fail`, `ambiguous`)
 
 ### Goal
+
 Reduce the amount of workflow meaning scattered across CLI/UI/docs.
 
 ## Pass 4: Thin the Presentation Layers
 
 ### Objective
+
 Make presentation layers ask for outcomes instead of re-owning meaning-heavy logic.
 
 ### Current-state interpretation
+
 This pass now applies most strongly to the host-side Python surfaces.
 For Java, most presentation-layer work under this spec should be interpreted as cleanup of residual orchestration/helper leakage, not major new decomposition unless clearly justified.
 
 ## A. Bridge CLI
+
 Refactor `tools/can_nt/bridge_cli.py` further so it becomes more clearly:
+
 - parser/orchestrator/presenter
 
 and less a large owner of business logic.
 
 ### Required direction
+
 - move domain logic into services/facades where practical
 - keep parser/AST behavior separate
 - keep transport/session behavior behind facade/transport layers
 - keep output formatting in presentation-focused code
 
 ### Preferred decomposition
+
 The CLI should rely more on:
+
 - profile/config service
 - tests service
 - diagnostics service
@@ -314,19 +370,24 @@ The CLI should rely more on:
 - workflow services
 
 ## B. Bringup Control UI
+
 Refactor `tools/can_nt/bringup_ui.py` further so it becomes more clearly:
+
 - widget/layout/state presentation
 - runtime command invoker via shared services
 - status/result renderer
 
 ### Required direction
+
 - do not let UI code own profile/test/diagnostic semantics that can live below
 - keep command behavior shared with CLI through services/facades where possible
 
 ## C. Topology editor
+
 Do not force topology-editor behavior into runtime layers, but do reduce duplicated config lifecycle semantics where possible.
 
 ### Required direction
+
 - topology editor remains an authoring surface
 - shared config lifecycle rules should be pulled from shared modules where practical
 - editor-only layout semantics remain local to the editor
@@ -334,34 +395,42 @@ Do not force topology-editor behavior into runtime layers, but do reduce duplica
 ## Pass 5: Continue Shrinking Orchestration Classes
 
 ### Objective
+
 Reduce residual helper leakage in orchestration classes that still carry too much lower-layer behavior.
 
 ### Current-state interpretation
+
 - `BridgeUiCommandHandler.java` is now primarily a cleanup/hardening target under this spec.
 - `tools/can_nt/bridge_cli.py` and related Python host-side surfaces remain major architectural targets under this pass.
 
 ## Targets
+
 - `BridgeUiCommandHandler.java`
 - `tools/can_nt/bridge_cli.py`
 - any other large classes still mixing orchestration with family/domain behavior
 
 ### Required direction
+
 - move family-specific helpers/constants into domain-family owners where practical
 - keep orchestration classes focused on wiring, sequencing, and lifecycle
 - narrow dependency adapters/interfaces
 
 ### Important note
+
 Do this incrementally. Do not churn stable code unless ownership is clearly wrong.
 
 ## Pass 6: Strengthen the Contract and Specification Layer
 
 ### Objective
+
 Make shared contracts easier to maintain and align with code.
 
 ### Required direction
+
 Create or strengthen a clearer ownership area for cross-surface contracts.
 
 ### Suggested contract areas
+
 - TCP UI protocol
 - NT contract
 - config/profile schema
@@ -370,12 +439,14 @@ Create or strengthen a clearer ownership area for cross-surface contracts.
 - host-vs-robot context semantics
 
 ### Acceptable implementation forms
+
 - stronger doc cross-references
 - centralized contract helper modules on Python side
 - clearer Java status/contract ownership
 - explicit schema/contract helper packages
 
 ### Rule
+
 Do not just add docs; also align code ownership where contract logic is currently diffuse.
 
 ## Required Directory/Module Direction
@@ -383,6 +454,7 @@ Do not just add docs; also align code ownership where contract logic is currentl
 The exact final file layout may vary, but the following ownership direction is required.
 
 ## Python
+
 Move toward something conceptually like this:
 
 ```text
@@ -551,7 +623,7 @@ At minimum:
 
 ### Documentation alignment
 Update docs if code ownership changes materially:
-- `docs/ARCHITECTURE.md`
+- `docs/mocs/architecture.md`
 - `docs/COMMAND_HANDLER_ARCHITECTURE.md`
 - `docs/WORKFLOW_01_NEW_ROBOT_BRINGUP.md`
 - any workflow or contract docs directly affected

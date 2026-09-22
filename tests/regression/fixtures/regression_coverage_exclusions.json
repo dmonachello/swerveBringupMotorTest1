@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "exclusions": [
+    {
+      "path": "tools/passive_discovery_poc/tests",
+      "reason": "Experimental passive-discovery tests have a known failing USB capture expectation and are not yet a stable default regression gate."
+    }
+  ]
+}

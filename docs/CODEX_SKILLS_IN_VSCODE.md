@@ -169,9 +169,9 @@ Open a new terminal/session if the updated environment variable is not visible i
 
 Working example components:
 
-- Skill doc: `C:\Users\dmona\.codex\skills\journal-entry\SKILL.md`
-- Script: `C:\Users\dmona\.codex\skills\journal-entry\scripts\create_journal_entry.py`
-- Metadata: `C:\Users\dmona\.codex\skills\journal-entry\agents\openai.yaml`
+- Skill doc: `<user-home>\.codex\skills\journal-entry\SKILL.md`
+- Script: `<user-home>\.codex\skills\journal-entry\scripts\create_journal_entry.py`
+- Metadata: `<user-home>\.codex\skills\journal-entry\agents\openai.yaml`
 
 Usage example:
 

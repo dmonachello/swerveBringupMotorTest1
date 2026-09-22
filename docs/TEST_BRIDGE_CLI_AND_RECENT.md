@@ -74,7 +74,7 @@ Expected:
 ### 1. Start local-only CLI
 
 ```powershell
-python tools\can_nt\can_nt_bridge.py --cli --no-can --no-nt
+python tools\can_nt\can_nt_bridge.py --cli --no-can
 ```
 
 ### 2. Confirm current config ownership

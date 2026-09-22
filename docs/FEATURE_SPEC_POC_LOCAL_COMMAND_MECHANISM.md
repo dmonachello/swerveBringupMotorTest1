@@ -45,7 +45,7 @@ Purpose: One Java source of truth for all robot-local commands.
 
 Primary file:
 
-- [src/main/java/frc/robot/commands/local/RobotLocalCommandRegistry.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalCommandRegistry.java:1)
+- [src/main/java/frc/robot/commands/local/RobotLocalCommandRegistry.java](../src/main/java/frc/robot/commands/local/RobotLocalCommandRegistry.java:1)
 
 The registry owns:
 
@@ -67,7 +67,7 @@ Purpose: One immutable definition object per command.
 
 Primary file:
 
-- [src/main/java/frc/robot/commands/local/RobotLocalCommandDefinition.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalCommandDefinition.java:1)
+- [src/main/java/frc/robot/commands/local/RobotLocalCommandDefinition.java](../src/main/java/frc/robot/commands/local/RobotLocalCommandDefinition.java:1)
 
 Each definition contains:
 
@@ -93,7 +93,7 @@ Purpose: Standard lifecycle contract for any executable local command.
 
 Primary file:
 
-- [src/main/java/frc/robot/commands/local/RobotLocalCommand.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalCommand.java:1)
+- [src/main/java/frc/robot/commands/local/RobotLocalCommand.java](../src/main/java/frc/robot/commands/local/RobotLocalCommand.java:1)
 
 Lifecycle methods:
 
@@ -111,7 +111,7 @@ Purpose: Normalize command submission regardless of source.
 
 Primary file:
 
-- [src/main/java/frc/robot/commands/local/RobotLocalCommandRequest.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalCommandRequest.java:1)
+- [src/main/java/frc/robot/commands/local/RobotLocalCommandRequest.java](../src/main/java/frc/robot/commands/local/RobotLocalCommandRequest.java:1)
 
 Fields:
 
@@ -138,7 +138,7 @@ Purpose: Return per-step and terminal command state through one common object.
 
 Primary file:
 
-- [src/main/java/frc/robot/commands/local/RobotLocalExecutionResult.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalExecutionResult.java:1)
+- [src/main/java/frc/robot/commands/local/RobotLocalExecutionResult.java](../src/main/java/frc/robot/commands/local/RobotLocalExecutionResult.java:1)
 
 States are represented separately from success:
 
@@ -168,7 +168,7 @@ Purpose: Enforce the one-active-command model.
 
 Primary file:
 
-- [src/main/java/frc/robot/commands/local/RobotLocalCommandExecutor.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalCommandExecutor.java:1)
+- [src/main/java/frc/robot/commands/local/RobotLocalCommandExecutor.java](../src/main/java/frc/robot/commands/local/RobotLocalCommandExecutor.java:1)
 
 Current rules:
 
@@ -186,7 +186,7 @@ This last rule is important for host TCP behavior because multiple host commands
 
 Primary file:
 
-- [src/main/java/frc/robot/commands/local/RobotLocalDispatchMode.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalDispatchMode.java:1)
+- [src/main/java/frc/robot/commands/local/RobotLocalDispatchMode.java](../src/main/java/frc/robot/commands/local/RobotLocalDispatchMode.java:1)
 
 Supported modes:
 
@@ -204,7 +204,7 @@ Meaning:
 
 Primary file:
 
-- [src/main/java/frc/robot/commands/local/RobotLocalCommandSource.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalCommandSource.java:1)
+- [src/main/java/frc/robot/commands/local/RobotLocalCommandSource.java](../src/main/java/frc/robot/commands/local/RobotLocalCommandSource.java:1)
 
 Supported sources:
 
@@ -221,7 +221,7 @@ Purpose: Let long-running active commands read current inputs without resubmissi
 
 Primary file:
 
-- [src/main/java/frc/robot/commands/local/RobotLocalValueProvider.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalValueProvider.java:1)
+- [src/main/java/frc/robot/commands/local/RobotLocalValueProvider.java](../src/main/java/frc/robot/commands/local/RobotLocalValueProvider.java:1)
 
 Current capabilities:
 
@@ -237,7 +237,7 @@ Purpose: Keep command behavior decoupled from the concrete robot runtime.
 
 Primary file:
 
-- [src/main/java/frc/robot/commands/local/RobotLocalCommandHost.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalCommandHost.java:1)
+- [src/main/java/frc/robot/commands/local/RobotLocalCommandHost.java](../src/main/java/frc/robot/commands/local/RobotLocalCommandHost.java:1)
 
 The host interface provides runtime services such as:
 
@@ -249,7 +249,7 @@ The host interface provides runtime services such as:
 - applying command stop
 - delegating legacy UI-family commands
 
-This means command implementations do not directly depend on `RobotV2` or `BringupCore` internals.
+This means command implementations do not directly depend on `Robot` or `BringupCore` internals.
 
 For the PoC, this host boundary is one of the most important structural pieces to keep.
 
@@ -259,10 +259,10 @@ Purpose: Keep the registry canonical while keeping behavior files readable.
 
 Current grouped behavior files:
 
-- [RobotLocalRuntimeCommandGroup.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalRuntimeCommandGroup.java:1)
-- [RobotLocalReportCommandGroup.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalReportCommandGroup.java:1)
-- [RobotLocalTestCommandGroup.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalTestCommandGroup.java:1)
-- [RobotLocalLegacyUiCommandGroup.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalLegacyUiCommandGroup.java:1)
+- [RobotLocalRuntimeCommandGroup.java](../src/main/java/frc/robot/commands/local/RobotLocalRuntimeCommandGroup.java:1)
+- [RobotLocalReportCommandGroup.java](../src/main/java/frc/robot/commands/local/RobotLocalReportCommandGroup.java:1)
+- [RobotLocalTestCommandGroup.java](../src/main/java/frc/robot/commands/local/RobotLocalTestCommandGroup.java:1)
+- [RobotLocalLegacyUiCommandGroup.java](../src/main/java/frc/robot/commands/local/RobotLocalLegacyUiCommandGroup.java:1)
 
 Pattern:
 
@@ -346,7 +346,7 @@ Purpose: Host-to-robot remote command path.
 
 Key integration owner:
 
-- [src/main/java/frc/robot/BridgeUiCommandHandler.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/BridgeUiCommandHandler.java:1)
+- [src/main/java/frc/robot/BridgeUiCommandHandler.java](../src/main/java/frc/robot/BridgeUiCommandHandler.java:1)
 
 How it uses the mechanism:
 
@@ -376,12 +376,12 @@ How they use the mechanism:
 
 Current generated outputs:
 
-- [tools/can_nt/generated/robot_local_command_inventory.json](/c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/generated/robot_local_command_inventory.json:1)
-- [tools/can_nt/generated/robot_local_commands_generated.py](/c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/generated/robot_local_commands_generated.py:1)
+- [tools/can_nt/generated/robot_local_command_inventory.json](../tools/can_nt/generated/robot_local_command_inventory.json:1)
+- [tools/can_nt/generated/robot_local_commands_generated.py](../tools/can_nt/generated/robot_local_commands_generated.py:1)
 
 Generator:
 
-- [tools/can_nt/scripts/generate_robot_local_command_artifacts.py](/c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/scripts/generate_robot_local_command_artifacts.py:1)
+- [tools/can_nt/scripts/generate_robot_local_command_artifacts.py](../tools/can_nt/scripts/generate_robot_local_command_artifacts.py:1)
 
 This means the PoC should preserve a path where host metadata can be generated from the canonical Java registry instead of copied manually.
 

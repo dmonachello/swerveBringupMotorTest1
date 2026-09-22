@@ -5,6 +5,8 @@ Purpose: provide a repo-local, extendable documentation maintenance pipeline for
 ## Current Scope
 
 - inventory Markdown files in the repository
+- exclude recovery snapshots, historical archives, local-AI reports, and named
+  root scratch notes from the maintained-doc graph
 - classify editable vs generated pages
 - identify entry-point pages
 - emit a machine-readable health report
@@ -13,6 +15,7 @@ Purpose: provide a repo-local, extendable documentation maintenance pipeline for
 - generate repo-local documentation artifacts:
   - `docs/INDEX.md`
   - `docs/GLOSSARY.md`
+  - `docs/ISOLATED_DOCUMENTS.md`
   - `docs/mocs/*.md`
   - `docs/DOCS_HEALTH_REPORT.md`
   - `docs/DOCS_GRAPH_SUGGESTIONS.md`
@@ -38,6 +41,19 @@ Generate the Markdown artifacts in `docs/` while also printing the JSON report:
 
 ```powershell
 python -m tools.docs_maintenance.main --repo-root . --pretty --write-artifacts
+```
+
+Preview safe replacements for machine-local Markdown links:
+
+```powershell
+python -m tools.docs_maintenance.normalize_links
+```
+
+Apply the replacements only when every machine-local target resolves inside
+the repository:
+
+```powershell
+python -m tools.docs_maintenance.normalize_links --apply
 ```
 
 On-demand saved report:

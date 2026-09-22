@@ -6,48 +6,59 @@ This file is the doc map for the project.
 
 Purpose: Start here for architecture and day-to-day usage.
 
-- `docs/ARCHITECTURE.md`
-- `docs/SETUP.md`
-- `docs/USER_GUIDE.md`
-- `docs/OPERATOR_SURFACES.md`
-- `docs/TESTING.md`
+- [Getting Started](./GETTING_STARTED.md)
+- [Windows setup](./SETUP.md)
+- [New robot bringup workflow](./WORKFLOW_01_NEW_ROBOT_BRINGUP.md)
+- [Architecture documentation hub](./mocs/architecture.md)
+- [Operator surfaces](./OPERATOR_SURFACES.md)
+- [Testing](./TESTING.md)
 
 ## System contracts
 
 Purpose: Use these when you need the stable data and interface contracts.
 
-- `docs/CAN_BACKGROUND.md`
-- `docs/PROFILE_SCHEMA_REFACTOR.md`
-- `docs/BRIDGE_CLI_FULL_SPEC.md`
+- [CAN background](./CAN_BACKGROUND.md)
+- [Profile schema refactor](./PROFILE_SCHEMA_REFACTOR.md)
+- [Bridge CLI full specification](./BRIDGE_CLI_FULL_SPEC.md)
 
 ## Feature specs
 
 Purpose: These capture design intent for larger features.
 
-- `docs/ProfileTablesPushSpec.md`
-- `docs/FEATURE_SPEC_BYTE_FINGERPRINTING.md`
-- `docs/FEATURE_SPEC_LIVE_TOPOLOGY_OPS.md`
-- `docs/FEATURE_SPEC_CONFIG_STORE.md`
+- [Spec status index](./SPEC_STATUS_INDEX.md)
+- [Profile tables push specification](./ProfileTablesPushSpec.md)
+- [Byte fingerprinting specification](./FEATURE_SPEC_BYTE_FINGERPRINTING.md)
+- [Live topology operations specification](./FEATURE_SPEC_LIVE_TOPOLOGY_OPS.md)
+- [Config store specification](./FEATURE_SPEC_CONFIG_STORE.md)
 
 ## Diagnostics and AI
 
 Purpose: Read these for report structure and AI diagnosis guidance.
 
-- `docs/AI_DIAGNOSIS.md`
-- `docs/bringup_label_links.md`
+- [AI diagnosis](./AI_DIAGNOSIS.md)
+- [Bringup label links](./bringup_label_links.md)
+
+## Documentation maintenance
+
+Purpose: Inspect generated navigation and documentation health.
+
+- [Documentation index](./INDEX.md)
+- [Documentation health report](./DOCS_HEALTH_REPORT.md)
+- [Isolated documents](./ISOLATED_DOCUMENTS.md)
 
 ## Hardware workflows
 
 Purpose: Use these when adding hardware or changing existing definitions.
 
-- `docs/ADD_A_NEW_DEVICE.md`
-- `docs/HARDWARE_ADDITION.md`
+- [Add a new device](./ADD_A_NEW_DEVICE.md)
+- [Hardware addition](./HARDWARE_ADDITION.md)
 
-## TCP UI and protocol
+## Retired protocols
 
-Purpose: Use this when validating the UI command channel.
+Purpose: Preserve protocol history without presenting it as a supported workflow.
 
-- `TEST_TCP_UI.md`
+- [Historical TCP UI protocol](./TCP_UI_PROTOCOL.md)
+- [Retired NetworkTables contract](./NT_CONTRACT.md)
 
 ## Historical docs
 

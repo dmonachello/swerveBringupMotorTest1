@@ -35,14 +35,14 @@ The active path is:
 1. Java command id and behavior are defined under `src/main/java/frc/robot/commands/local/`.
 2. `RobotLocalCommandRegistry` holds the canonical table of command definitions.
 3. `BindingsManager` validates controller binding command names against that registry.
-4. `RobotV2` samples controller inputs and submits command requests through `BridgeUiCommandHandler`.
+4. `Robot` samples controller inputs and submits command requests through `BridgeUiCommandHandler`.
 5. `RobotLocalCommandExecutor` runs one active command and at most one queued command.
 6. `BridgeUiCommandHandler` provides the shared host/runtime services used by command implementations.
 7. Optional host-UI button metadata is generated from the Java registry into Python artifacts.
 
 Important current boundary:
 
-- The active `RobotV2` plus host-UI path uses the unified registry and executor.
+- The active `Robot` plus host-UI path uses the unified registry and executor.
 - Legacy classes such as `Robot.java` and `BringupCommandRouter.java` still exist in the tree, but they are no longer the model to copy for new work.
 
 ## The Short Version
@@ -61,40 +61,40 @@ To add a new command like `genericCmd`, you usually do this:
 
 Canonical Java command model:
 
-- [RobotLocalCommandDefinition.java](C:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalCommandDefinition.java)
-- [RobotLocalCommandRegistry.java](C:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalCommandRegistry.java)
-- [RobotLocalCommand.java](C:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalCommand.java)
-- [RobotLocalCommandRequest.java](C:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalCommandRequest.java)
-- [RobotLocalCommandParams.java](C:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalCommandParams.java)
-- [RobotLocalCommandExecutor.java](C:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalCommandExecutor.java)
-- [RobotLocalCommandHost.java](C:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalCommandHost.java)
+- [RobotLocalCommandDefinition.java](../src/main/java/frc/robot/commands/local/RobotLocalCommandDefinition.java)
+- [RobotLocalCommandRegistry.java](../src/main/java/frc/robot/commands/local/RobotLocalCommandRegistry.java)
+- [RobotLocalCommand.java](../src/main/java/frc/robot/commands/local/RobotLocalCommand.java)
+- [RobotLocalCommandRequest.java](../src/main/java/frc/robot/commands/local/RobotLocalCommandRequest.java)
+- [RobotLocalCommandParams.java](../src/main/java/frc/robot/commands/local/RobotLocalCommandParams.java)
+- [RobotLocalCommandExecutor.java](../src/main/java/frc/robot/commands/local/RobotLocalCommandExecutor.java)
+- [RobotLocalCommandHost.java](../src/main/java/frc/robot/commands/local/RobotLocalCommandHost.java)
 
 Grouped command source files:
 
-- [RobotLocalRuntimeCommandGroup.java](C:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalRuntimeCommandGroup.java)
-- [RobotLocalReportCommandGroup.java](C:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalReportCommandGroup.java)
-- [RobotLocalTestCommandGroup.java](C:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalTestCommandGroup.java)
-- [RobotLocalLegacyUiCommandGroup.java](C:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalLegacyUiCommandGroup.java)
+- [RobotLocalRuntimeCommandGroup.java](../src/main/java/frc/robot/commands/local/RobotLocalRuntimeCommandGroup.java)
+- [RobotLocalReportCommandGroup.java](../src/main/java/frc/robot/commands/local/RobotLocalReportCommandGroup.java)
+- [RobotLocalTestCommandGroup.java](../src/main/java/frc/robot/commands/local/RobotLocalTestCommandGroup.java)
+- [RobotLocalLegacyUiCommandGroup.java](../src/main/java/frc/robot/commands/local/RobotLocalLegacyUiCommandGroup.java)
 
 Robot integration:
 
-- [RobotV2.java](C:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/RobotV2.java)
-- [BridgeUiCommandHandler.java](C:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/BridgeUiCommandHandler.java)
-- [BindingsManager.java](C:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/input/BindingsManager.java)
-- [bringup_bindings.json](C:/Users/dmona/swerveBringupMotorTest1-main/src/main/deploy/bringup_bindings.json)
+- [Robot.java](../src/main/java/frc/robot/Robot.java)
+- [BridgeUiCommandHandler.java](../src/main/java/frc/robot/BridgeUiCommandHandler.java)
+- [BindingsManager.java](../src/main/java/frc/robot/input/BindingsManager.java)
+- [bringup_bindings.json](../src/main/deploy/bringup_bindings.json)
 
 Host-UI generation path:
 
-- [RobotLocalCommandInventoryMain.java](C:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalCommandInventoryMain.java)
-- [build.gradle](C:/Users/dmona/swerveBringupMotorTest1-main/build.gradle)
-- [generate_robot_local_command_artifacts.py](C:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/scripts/generate_robot_local_command_artifacts.py)
-- [robot_local_command_inventory.json](C:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/generated/robot_local_command_inventory.json)
-- [robot_local_commands_generated.py](C:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/generated/robot_local_commands_generated.py)
-- [bringup_ui.py](C:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/bringup_ui.py)
+- [RobotLocalCommandInventoryMain.java](../src/main/java/frc/robot/commands/local/RobotLocalCommandInventoryMain.java)
+- [build.gradle](../build.gradle)
+- [generate_robot_local_command_artifacts.py](../tools/can_nt/scripts/generate_robot_local_command_artifacts.py)
+- [robot_local_command_inventory.json](../tools/can_nt/generated/robot_local_command_inventory.json)
+- [robot_local_commands_generated.py](../tools/can_nt/generated/robot_local_commands_generated.py)
+- [bringup_ui.py](../tools/can_nt/bringup_ui.py)
 
 Test coverage:
 
-- [RobotLocalCommandRegistryTest.java](C:/Users/dmona/swerveBringupMotorTest1-main/src/test/java/frc/robot/RobotLocalCommandRegistryTest.java)
+- [RobotLocalCommandRegistryTest.java](../src/test/java/frc/robot/RobotLocalCommandRegistryTest.java)
 
 ## Worked Example: `genericCmd`
 
@@ -147,10 +147,10 @@ If the command is not simple enough for the helper classes, implement a custom `
 
 Current grouped examples:
 
-- [RobotLocalRuntimeCommandGroup.java](C:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalRuntimeCommandGroup.java)
-- [RobotLocalReportCommandGroup.java](C:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalReportCommandGroup.java)
-- [RobotLocalTestCommandGroup.java](C:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalTestCommandGroup.java)
-- [RobotLocalLegacyUiCommandGroup.java](C:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalLegacyUiCommandGroup.java)
+- [RobotLocalRuntimeCommandGroup.java](../src/main/java/frc/robot/commands/local/RobotLocalRuntimeCommandGroup.java)
+- [RobotLocalReportCommandGroup.java](../src/main/java/frc/robot/commands/local/RobotLocalReportCommandGroup.java)
+- [RobotLocalTestCommandGroup.java](../src/main/java/frc/robot/commands/local/RobotLocalTestCommandGroup.java)
+- [RobotLocalLegacyUiCommandGroup.java](../src/main/java/frc/robot/commands/local/RobotLocalLegacyUiCommandGroup.java)
 
 Every custom command must support:
 
@@ -204,8 +204,8 @@ Why this matters:
 
 If the command needs host/runtime capabilities that the command implementation cannot already access, extend:
 
-- [RobotLocalCommandHost.java](C:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalCommandHost.java)
-- [BridgeUiCommandHandler.java](C:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/BridgeUiCommandHandler.java)
+- [RobotLocalCommandHost.java](../src/main/java/frc/robot/commands/local/RobotLocalCommandHost.java)
+- [BridgeUiCommandHandler.java](../src/main/java/frc/robot/BridgeUiCommandHandler.java)
 
 Use this step when the command needs a new shared service such as:
 
@@ -218,7 +218,7 @@ If the command can reuse existing host methods cleanly, do not add a new one jus
 
 ## Step 4: Bind It To A Controller Input
 
-If the command should be controller-triggered, add an entry to [bringup_bindings.json](C:/Users/dmona/swerveBringupMotorTest1-main/src/main/deploy/bringup_bindings.json).
+If the command should be controller-triggered, add an entry to [bringup_bindings.json](../src/main/deploy/bringup_bindings.json).
 
 Example:
 
@@ -263,7 +263,7 @@ Add or update a focused Java test.
 
 Current example:
 
-- [RobotLocalCommandRegistryTest.java](C:/Users/dmona/swerveBringupMotorTest1-main/src/test/java/frc/robot/RobotLocalCommandRegistryTest.java)
+- [RobotLocalCommandRegistryTest.java](../src/test/java/frc/robot/RobotLocalCommandRegistryTest.java)
 
 Minimum useful coverage:
 
@@ -290,7 +290,7 @@ This is the current controller path.
 
 1. `bringup_bindings.json` binds `"genericCmd"` to a controller input.
 2. `BindingsManager` loads that entry and validates the name against `RobotLocalCommandRegistry`.
-3. `RobotV2.teleopPeriodic()` samples bindings and passes the binding state to `BridgeUiCommandHandler.submitControllerBindings(...)`.
+3. `Robot.teleopPeriodic()` samples bindings and passes the binding state to `BridgeUiCommandHandler.submitControllerBindings(...)`.
 4. The handler creates a `RobotLocalCommandRequest` for the new active command input.
 5. `RobotLocalCommandExecutor.submit(...)` performs registry lookup and admission control.
 6. `RobotLocalCommandExecutor.step()` drives the active command lifecycle.
@@ -366,9 +366,9 @@ python tools/can_nt/scripts/generate_robot_local_command_artifacts.py
 
 The UI button list is built from:
 
-- [robot_local_command_inventory.json](C:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/generated/robot_local_command_inventory.json)
-- [robot_local_commands_generated.py](C:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/generated/robot_local_commands_generated.py)
-- [bringup_ui.py](C:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/bringup_ui.py)
+- [robot_local_command_inventory.json](../tools/can_nt/generated/robot_local_command_inventory.json)
+- [robot_local_commands_generated.py](../tools/can_nt/generated/robot_local_commands_generated.py)
+- [bringup_ui.py](../tools/can_nt/bringup_ui.py)
 
 Per-command visibility preferences are stored in:
 
@@ -382,10 +382,10 @@ User rule:
 
 Purpose: Provide a concise checklist aligned with the current registry and executor model.
 
-- Add a registry row in [RobotLocalCommandRegistry.java](C:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalCommandRegistry.java).
-- Add or update the behavior in the appropriate grouped command source file under [src/main/java/frc/robot/commands/local](C:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local).
-- If needed, extend [RobotLocalCommandHost.java](C:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalCommandHost.java) and implement the new methods in [BridgeUiCommandHandler.java](C:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/BridgeUiCommandHandler.java).
-- If controller-triggered, add or update the binding in [bringup_bindings.json](C:/Users/dmona/swerveBringupMotorTest1-main/src/main/deploy/bringup_bindings.json).
+- Add a registry row in [RobotLocalCommandRegistry.java](../src/main/java/frc/robot/commands/local/RobotLocalCommandRegistry.java).
+- Add or update the behavior in the appropriate grouped command source file under [src/main/java/frc/robot/commands/local](../src/main/java/frc/robot/commands/local).
+- If needed, extend [RobotLocalCommandHost.java](../src/main/java/frc/robot/commands/local/RobotLocalCommandHost.java) and implement the new methods in [BridgeUiCommandHandler.java](../src/main/java/frc/robot/BridgeUiCommandHandler.java).
+- If controller-triggered, add or update the binding in [bringup_bindings.json](../src/main/deploy/bringup_bindings.json).
 - If host-UI-visible, set the UI metadata in the Java registry row.
 - Regenerate the host-UI artifacts with `python tools/can_nt/scripts/generate_robot_local_command_artifacts.py`.
 - Add or update focused Java tests.

@@ -168,7 +168,7 @@ Purpose: record the main sources used for this review.
 This review is grounded primarily in:
 
 - `git log` and current workspace state as of August 3, 2026
-- [docs/ARCHITECTURE.md](./ARCHITECTURE.md)
+- [Architecture documentation hub](mocs/architecture.md)
 - [docs/SPEC_LAYERED_ARCHITECTURE_REFACTOR.md](./SPEC_LAYERED_ARCHITECTURE_REFACTOR.md)
 - [docs/RELEASE_1_0_READINESS.md](./RELEASE_1_0_READINESS.md)
 - [docs/TEST_PLAN_TODAY.md](./TEST_PLAN_TODAY.md)

@@ -43,6 +43,7 @@ MOCS_DIR_NAME = "mocs"
 INDEX_FILE_NAME = "INDEX.md"
 GLOSSARY_FILE_NAME = "GLOSSARY.md"
 HEALTH_REPORT_FILE_NAME = "DOCS_HEALTH_REPORT.md"
+ISOLATED_DOCUMENTS_FILE_NAME = "ISOLATED_DOCUMENTS.md"
 SUGGESTIONS_FILE_NAME = "DOCS_GRAPH_SUGGESTIONS.md"
 SECTION_RELATED_TOPICS = "Related Topics"
 HEADING_LEVEL_ONE = "# "
@@ -54,6 +55,39 @@ WIKI_LINK_FORMAT = "[[{target}|{label}]]"
 EMPTY_TEXT = ""
 MAX_SUGGESTION_ROWS = 20
 NON_ALNUM = re.compile(r"[^a-z0-9]+")
+ISOLATED_DOCUMENTS_TITLE = "Isolated documents"
+ISOLATED_DOCUMENTS_PURPOSE = (
+    "Purpose: identify maintained documents that are currently disconnected "
+    "from the inventoried documentation link graph."
+)
+ISOLATED_DOCUMENTS_DEFINITION = (
+    "An isolated document candidate is editable Markdown that is not an entry point."
+)
+ISOLATED_DOCUMENTS_LINK_RULE = (
+    "It has no incoming or outgoing links to other inventoried documents."
+)
+ISOLATED_DOCUMENTS_NOT_OBSOLETE = (
+    "This classification does not mean that a document is obsolete, incorrect, "
+    "or safe to delete. It describes navigation only."
+)
+ISOLATED_DOCUMENTS_AI_GUIDANCE = (
+    "Humans and AI tools must follow explicit lifecycle, authority, and "
+    "supersession markers when they exist."
+)
+ISOLATED_DOCUMENTS_UNREVIEWED = (
+    "An unmarked isolated document has not been reviewed for lifecycle status."
+)
+ISOLATED_DOCUMENTS_REGENERATE = (
+    "Regenerate this file with `python -m tools.docs_maintenance.main "
+    "--repo-root . --write-artifacts`."
+)
+ISOLATED_DOCUMENTS_COUNT_LABEL = "Candidate count: "
+ISOLATED_DOCUMENTS_SECTION = "Candidates"
+ISOLATED_DOCUMENTS_NONE = "None"
+ISOLATED_DOCUMENTS_LIFECYCLE_MARKER = "DOCUMENT_LIFECYCLE: GENERATED"
+ISOLATED_DOCUMENTS_AUTHORITY_MARKER = "DOCUMENT_AUTHORITY: NAVIGATION_REPORT"
+ISOLATED_DOCUMENTS_NOTEBOOKLM_MARKER = "NOTEBOOKLM_INCLUDE: YES"
+ISOLATED_DOCUMENT_PATH_FORMAT = "`{repo_path}`"
 
 
 def _slugify(value: str) -> str:
@@ -173,7 +207,7 @@ def _render_health_report(report: Mapping[str, Any]) -> str:
         EMPTY_TEXT,
         f"{BULLET_PREFIX}Pages processed: {summary[KEY_PAGES_PROCESSED]}",
         f"{BULLET_PREFIX}Broken links: {len(report[REPORT_KEY_BROKEN_LINKS])}",
-        f"{BULLET_PREFIX}Orphan pages: {len(report[REPORT_KEY_ORPHAN_CANDIDATES])}",
+        f"{BULLET_PREFIX}Isolated document candidates: {len(report[REPORT_KEY_ORPHAN_CANDIDATES])}",
         f"{BULLET_PREFIX}Duplicate title families: {len(report[REPORT_KEY_DUPLICATE_TITLES])}",
         f"{BULLET_PREFIX}Suggested renames: {len(report[REPORT_KEY_RENAME_RECOMMENDATIONS])}",
         EMPTY_TEXT,
@@ -189,6 +223,55 @@ def _render_health_report(report: Mapping[str, Any]) -> str:
     lines.append(EMPTY_TEXT)
     for concern in summary[KEY_QUALITY_CONCERNS]:
         lines.append(BULLET_PREFIX + str(concern))
+    lines.append(EMPTY_TEXT)
+    return _render_lines(lines)
+
+
+def _render_isolated_documents(report: Mapping[str, Any]) -> str:
+    """
+    NAME
+        _render_isolated_documents - Render the computed isolated-document manifest.
+
+    RETURNS
+        Markdown that explains the classification and lists every candidate.
+    """
+    candidates = list(report[REPORT_KEY_ORPHAN_CANDIDATES])
+    lines = [
+        GENERATED_HEADER,
+        EMPTY_TEXT,
+        ISOLATED_DOCUMENTS_LIFECYCLE_MARKER,
+        ISOLATED_DOCUMENTS_AUTHORITY_MARKER,
+        ISOLATED_DOCUMENTS_NOTEBOOKLM_MARKER,
+        EMPTY_TEXT,
+        HEADING_LEVEL_ONE + ISOLATED_DOCUMENTS_TITLE,
+        EMPTY_TEXT,
+        ISOLATED_DOCUMENTS_PURPOSE,
+        EMPTY_TEXT,
+        ISOLATED_DOCUMENTS_DEFINITION,
+        EMPTY_TEXT,
+        ISOLATED_DOCUMENTS_LINK_RULE,
+        EMPTY_TEXT,
+        ISOLATED_DOCUMENTS_NOT_OBSOLETE,
+        EMPTY_TEXT,
+        ISOLATED_DOCUMENTS_AI_GUIDANCE,
+        EMPTY_TEXT,
+        ISOLATED_DOCUMENTS_UNREVIEWED,
+        EMPTY_TEXT,
+        ISOLATED_DOCUMENTS_REGENERATE,
+        EMPTY_TEXT,
+        BULLET_PREFIX + ISOLATED_DOCUMENTS_COUNT_LABEL + str(len(candidates)),
+        EMPTY_TEXT,
+        HEADING_LEVEL_TWO + ISOLATED_DOCUMENTS_SECTION,
+        EMPTY_TEXT,
+    ]
+    if candidates:
+        for repo_path in candidates:
+            lines.append(
+                BULLET_PREFIX
+                + ISOLATED_DOCUMENT_PATH_FORMAT.format(repo_path=str(repo_path))
+            )
+    else:
+        lines.append(BULLET_PREFIX + ISOLATED_DOCUMENTS_NONE)
     lines.append(EMPTY_TEXT)
     return _render_lines(lines)
 
@@ -231,6 +314,7 @@ def write_docs_maintenance_artifacts(root: Path, report: Mapping[str, Any]) -> l
         docs_dir / INDEX_FILE_NAME: _render_index(report),
         docs_dir / GLOSSARY_FILE_NAME: _render_glossary(report),
         docs_dir / HEALTH_REPORT_FILE_NAME: _render_health_report(report),
+        docs_dir / ISOLATED_DOCUMENTS_FILE_NAME: _render_isolated_documents(report),
         docs_dir / SUGGESTIONS_FILE_NAME: _render_suggestions(report),
     }
     for moc_entry in report[REPORT_KEY_PROPOSED_MOCS]:

@@ -2,7 +2,7 @@
 
 **Purpose**
 
-Provide a detailed validation procedure for the selected-test scope activation feature described in [FEATURE_SPEC_DSL_SELECTED_TEST_DEVICE_ACTIVATION.md](/abs/path/c:/Users/dmona/swerveBringupMotorTest1-main/docs/FEATURE_SPEC_DSL_SELECTED_TEST_DEVICE_ACTIVATION.md).
+Provide a detailed validation procedure for the selected-test scope activation feature described in [FEATURE_SPEC_DSL_SELECTED_TEST_DEVICE_ACTIVATION.md](FEATURE_SPEC_DSL_SELECTED_TEST_DEVICE_ACTIVATION.md).
 
 This procedure verifies that:
 

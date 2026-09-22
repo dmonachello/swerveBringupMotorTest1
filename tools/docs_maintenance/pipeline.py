@@ -77,6 +77,10 @@ KEY_ORPHAN_COUNT = "orphanPages"
 KEY_BROKEN_COUNT = "brokenLinks"
 KEY_RENAME_COUNT = "suggestedRenames"
 KEY_QUALITY_CONCERNS = "documentationQualityConcerns"
+QUALITY_CONCERN_BROKEN_LINKS = "Broken internal links remain unresolved."
+QUALITY_CONCERN_DUPLICATE_TITLES = "Duplicate title families still need canonical consolidation."
+QUALITY_CONCERN_RELATED_TOPICS = "Related Topics and wiki links are suggested but not yet inlined into every page."
+FIRST_LIST_POSITION = 0
 ENTRYPOINT_CATEGORY_ORDER = (
     CATEGORY_ROOT,
     CATEGORY_DOCS,
@@ -326,12 +330,12 @@ def _incoming_link_count(documents: Sequence[MarkdownDocument]) -> Dict[str, int
     return counts
 
 
-def _broken_links(documents: Sequence[MarkdownDocument]) -> List[Dict[str, str]]:
+def _broken_links(root: Path, documents: Sequence[MarkdownDocument]) -> List[Dict[str, str]]:
     path_set = _document_path_set(documents)
     broken: List[Dict[str, str]] = []
     for document in documents:
         for link in document.outgoing_links:
-            if link in path_set:
+            if link in path_set or (root / link).exists():
                 continue
             broken.append({"source": document.repo_path, "target": link})
     return broken
@@ -692,6 +696,12 @@ def _glossary_entries(
 
 
 def _health_summary(report: Mapping[str, Any]) -> Dict[str, Any]:
+    quality_concerns = [
+        QUALITY_CONCERN_DUPLICATE_TITLES,
+        QUALITY_CONCERN_RELATED_TOPICS,
+    ]
+    if report[REPORT_KEY_BROKEN_LINKS]:
+        quality_concerns.insert(FIRST_LIST_POSITION, QUALITY_CONCERN_BROKEN_LINKS)
     return {
         KEY_PAGES_PROCESSED: report[REPORT_KEY_TOTAL],
         KEY_WIKI_LINKS_ADDED: 0,
@@ -702,11 +712,7 @@ def _health_summary(report: Mapping[str, Any]) -> Dict[str, Any]:
         KEY_ORPHAN_COUNT: len(report[REPORT_KEY_ORPHAN_CANDIDATES]),
         KEY_BROKEN_COUNT: len(report[REPORT_KEY_BROKEN_LINKS]),
         KEY_RENAME_COUNT: len(report[REPORT_KEY_RENAME_RECOMMENDATIONS]),
-        KEY_QUALITY_CONCERNS: [
-            "Broken internal links remain unresolved.",
-            "Duplicate title families still need canonical consolidation.",
-            "Related Topics and wiki links are suggested but not yet inlined into every page.",
-        ],
+        KEY_QUALITY_CONCERNS: quality_concerns,
     }
 
 
@@ -747,7 +753,7 @@ def run_docs_inventory_pipeline(root: Path) -> Dict[str, Any]:
         PassResult(
             name=PASS_NAME_LINK_GRAPH,
             payload={
-                REPORT_KEY_BROKEN_LINKS: _broken_links(documents),
+                REPORT_KEY_BROKEN_LINKS: _broken_links(root, documents),
                 REPORT_KEY_LINKED_PAGES: _linked_pages(documents),
             },
         ),

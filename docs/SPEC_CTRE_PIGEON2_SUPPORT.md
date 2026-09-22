@@ -82,13 +82,13 @@ Purpose: Record the current baseline relevant to this feature.
 
 Observed partial support:
 
-- [src/main/java/frc/robot/BringupUtil.java](/c:/Users/dmona/swerve3/src/main/java/frc/robot/BringupUtil.java)
+- [src/main/java/frc/robot/BringupUtil.java](../src/main/java/frc/robot/BringupUtil.java)
   - recognizes `Pigeon` as a device type
-- [tools/can_topology/live_topology_view.py](/c:/Users/dmona/swerve3/tools/can_topology/live_topology_view.py)
+- [tools/can_topology/live_topology_view.py](../tools/can_topology/live_topology_view.py)
   - has a `pigeon` category for topology surfaces
-- [tools/common/topology_render.py](/c:/Users/dmona/swerve3/tools/common/topology_render.py)
+- [tools/common/topology_render.py](../tools/common/topology_render.py)
   - has Pigeon-oriented topology rendering/category logic
-- [src/main/java/frc/robot/diag/led/LedStatusInference.java](/c:/Users/dmona/swerve3/src/main/java/frc/robot/diag/led/LedStatusInference.java)
+- [src/main/java/frc/robot/diag/led/LedStatusInference.java](../src/main/java/frc/robot/diag/led/LedStatusInference.java)
   - recognizes `Pigeon` / `Pigeon2` in diagnostic inference
 
 Observed missing or incomplete support:
@@ -257,7 +257,7 @@ main:
 
 First-pass rule:
 
-- signal names must be stable and documented in [docs/USER_GUIDE_ROBOT_TEST_DSL.md](/c:/Users/dmona/swerve3/docs/USER_GUIDE_ROBOT_TEST_DSL.md)
+- signal names must be stable and documented in [docs/USER_GUIDE_ROBOT_TEST_DSL.md](USER_GUIDE_ROBOT_TEST_DSL.md)
 - do not add multiple redundant aliases in the first slice
 - the current DSL does not support function calls such as `abs(...)`; use derived max-absolute delta signals for sign-independent movement tests
 
@@ -387,28 +387,34 @@ Create a dedicated procedure, for example:
 It should include exact steps for:
 
 1. Presence while inactive
+
 - select profile with Pigeon
 - verify not instantiated before activation
 
 2. Activation
+
 - enable teleop
 - activate the owning scope
 - verify instantiated and visible in runtime-state
 
 3. Static sanity
+
 - robot flat and still
 - yaw/pitch/roll are readable
 - angular velocities are near zero
 
 4. Yaw motion
+
 - manually rotate robot about vertical axis
 - verify yaw changes in the expected direction
 
 5. Tilt motion
+
 - gently tip robot
 - verify pitch and/or roll changes
 
 6. Disable/enable teardown
+
 - DS disable
 - verify lifecycle/runtime deactivates coherently
 
@@ -483,8 +489,8 @@ Primary vendor references:
 
 Repo references:
 
-- [src/main/java/frc/robot/BringupUtil.java](/c:/Users/dmona/swerve3/src/main/java/frc/robot/BringupUtil.java)
-- [src/main/java/frc/robot/BridgeUiCommandHandler.java](/c:/Users/dmona/swerve3/src/main/java/frc/robot/BridgeUiCommandHandler.java)
-- [src/main/java/frc/robot/BringupRuntime.java](/c:/Users/dmona/swerve3/src/main/java/frc/robot/BringupRuntime.java)
-- [tools/can_topology/live_topology_view.py](/c:/Users/dmona/swerve3/tools/can_topology/live_topology_view.py)
-- [docs/USER_GUIDE_ROBOT_TEST_DSL.md](/c:/Users/dmona/swerve3/docs/USER_GUIDE_ROBOT_TEST_DSL.md)
+- [src/main/java/frc/robot/BringupUtil.java](../src/main/java/frc/robot/BringupUtil.java)
+- [src/main/java/frc/robot/BridgeUiCommandHandler.java](../src/main/java/frc/robot/BridgeUiCommandHandler.java)
+- [src/main/java/frc/robot/BringupRuntime.java](../src/main/java/frc/robot/BringupRuntime.java)
+- [tools/can_topology/live_topology_view.py](../tools/can_topology/live_topology_view.py)
+- [docs/USER_GUIDE_ROBOT_TEST_DSL.md](USER_GUIDE_ROBOT_TEST_DSL.md)

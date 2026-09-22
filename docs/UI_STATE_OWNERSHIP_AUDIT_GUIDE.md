@@ -32,13 +32,13 @@ Purpose: This is where background updates are initiated.
 
 Primary file:
 
-- [bringup_ui.py](c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/bringup_ui.py)
+- [bringup_ui.py](../tools/can_nt/bringup_ui.py)
 
 Primary functions:
 
-- [`_poll_nt()`](c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/bringup_ui.py:6226)
-- [`_poll_live_overlay()`](c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/bringup_ui.py:6396)
-- [`_request_runtime_state_refresh()`](c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/bringup_ui.py:5587)
+- [`_poll_nt()`](../tools/can_nt/bringup_ui.py:6226)
+- [`_poll_live_overlay()`](../tools/can_nt/bringup_ui.py:6396)
+- [`_request_runtime_state_refresh()`](../tools/can_nt/bringup_ui.py:5587)
 
 What to inspect:
 
@@ -58,15 +58,15 @@ Purpose: This is where `ACK` and `OUT` are interpreted.
 
 Primary files:
 
-- [bringup_ui.py](c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/bringup_ui.py)
-- [bridge_session.py](c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/bridge_session.py)
-- [command_workflow_service.py](c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/command_workflow_service.py)
+- [bringup_ui.py](../tools/can_nt/bringup_ui.py)
+- [bridge_session.py](../tools/can_nt/bridge_session.py)
+- [command_workflow_service.py](../tools/can_nt/command_workflow_service.py)
 
 Primary functions:
 
-- [`_handle_tcp_response()`](c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/bringup_ui.py:6754)
-- [`poll_events()`](c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/bridge_session.py:418)
-- [`send_tracked_command()`](c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/command_workflow_service.py:57)
+- [`_handle_tcp_response()`](../tools/can_nt/bringup_ui.py:6754)
+- [`poll_events()`](../tools/can_nt/bridge_session.py:418)
+- [`send_tracked_command()`](../tools/can_nt/command_workflow_service.py:57)
 
 What to inspect:
 
@@ -86,11 +86,11 @@ Purpose: This is where robot-authoritative state is pushed into the UI.
 
 Primary file:
 
-- [bringup_ui.py](c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/bringup_ui.py)
+- [bringup_ui.py](../tools/can_nt/bringup_ui.py)
 
 Primary function:
 
-- [`_apply_runtime_state_payload()`](c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/bringup_ui.py:6556)
+- [`_apply_runtime_state_payload()`](../tools/can_nt/bringup_ui.py:6556)
 
 What to inspect:
 
@@ -112,13 +112,13 @@ Purpose: This is where user intent first enters the system.
 
 Primary file:
 
-- [bringup_ui.py](c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/bringup_ui.py)
+- [bringup_ui.py](../tools/can_nt/bringup_ui.py)
 
 Examples:
 
-- [`_on_runtime_scope_selected()`](c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/bringup_ui.py:2439)
-- [`_runtime_activate_from_ui()`](c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/bringup_ui.py:6108)
-- [`_on_active_group_member_toggled()`](c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/bringup_ui.py:2570)
+- [`_on_runtime_scope_selected()`](../tools/can_nt/bringup_ui.py:2439)
+- [`_runtime_activate_from_ui()`](../tools/can_nt/bringup_ui.py:6108)
+- [`_on_active_group_member_toggled()`](../tools/can_nt/bringup_ui.py:2570)
 
 What to inspect:
 
@@ -138,14 +138,14 @@ Purpose: The live topology view can behave like both a renderer and a control su
 
 Primary file:
 
-- [live_topology_view.py](c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_topology/live_topology_view.py)
+- [live_topology_view.py](../tools/can_topology/live_topology_view.py)
 
 Primary functions:
 
-- [`update_runtime_state()`](c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_topology/live_topology_view.py:1415)
-- [`apply_runtime_group()`](c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_topology/live_topology_view.py:1557)
-- [`_render_active_group_rows()`](c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_topology/live_topology_view.py:2535)
-- [`_on_active_group_member_checkbox_toggled()`](c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_topology/live_topology_view.py:2719)
+- [`update_runtime_state()`](../tools/can_topology/live_topology_view.py:1415)
+- [`apply_runtime_group()`](../tools/can_topology/live_topology_view.py:1557)
+- [`_render_active_group_rows()`](../tools/can_topology/live_topology_view.py:2535)
+- [`_on_active_group_member_checkbox_toggled()`](../tools/can_topology/live_topology_view.py:2719)
 
 What to inspect:
 
@@ -165,12 +165,12 @@ Purpose: This is the committed truth the UI is supposed to mirror.
 
 Primary Java files:
 
-- [BridgeUiCommandHandler.java](c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/BridgeUiCommandHandler.java)
-- [BridgeUiGroupCommands.java](c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/BridgeUiGroupCommands.java)
+- [BridgeUiCommandHandler.java](../src/main/java/frc/robot/BridgeUiCommandHandler.java)
+- [BridgeUiGroupCommands.java](../src/main/java/frc/robot/BridgeUiGroupCommands.java)
 
 Primary functions:
 
-- [`buildRuntimeStateJson()`](c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/BridgeUiCommandHandler.java:3363)
+- [`buildRuntimeStateJson()`](../src/main/java/frc/robot/BridgeUiCommandHandler.java:3363)
 - `groupAddDevice(...)`
 - `groupRemoveDevice(...)`
 

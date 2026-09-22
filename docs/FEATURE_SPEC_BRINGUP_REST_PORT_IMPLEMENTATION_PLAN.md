@@ -1,10 +1,14 @@
 # Bringup REST Port Implementation Plan
 
-SPEC_STATUS: PROPOSED
+SPEC_STATUS: HISTORICAL_REFERENCE
+
+This migration plan is preserved as implementation history. The REST port is
+now the supported command path; descriptions of the "current TCP server" below
+describe the pre-migration system.
 
 ## Purpose
 
-Turn [FEATURE_SPEC_BRINGUP_PORT_FROM_REST_COMMAND_CHANNEL_POC.md](/c:/Users/dmona/swerveBringupMotorTest1-main/docs/FEATURE_SPEC_BRINGUP_PORT_FROM_REST_COMMAND_CHANNEL_POC.md) into a concrete bringup migration plan based on the current codebase.
+Turn [FEATURE_SPEC_BRINGUP_PORT_FROM_REST_COMMAND_CHANNEL_POC.md](FEATURE_SPEC_BRINGUP_PORT_FROM_REST_COMMAND_CHANNEL_POC.md) into a concrete bringup migration plan based on the current codebase.
 
 This document is an implementation-planning artifact only. It does not authorize coding work out of order.
 
@@ -28,17 +32,17 @@ The final state is:
 
 Inspected files:
 
-- [src/main/java/frc/robot/commands/local/RobotLocalCommandExecutor.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalCommandExecutor.java)
-- [src/main/java/frc/robot/commands/local/RobotLocalCommand.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalCommand.java)
-- [src/main/java/frc/robot/commands/local/RobotLocalCommandDefinition.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalCommandDefinition.java)
-- [src/main/java/frc/robot/commands/local/RobotLocalCommandRegistry.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalCommandRegistry.java)
-- [src/main/java/frc/robot/commands/local/RobotLocalCommandRequest.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalCommandRequest.java)
-- [src/main/java/frc/robot/commands/local/RobotLocalExecutionState.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalExecutionState.java)
-- [src/main/java/frc/robot/commands/local/RobotLocalExecutionResult.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalExecutionResult.java)
-- [src/main/java/frc/robot/commands/local/RobotLocalDispatchMode.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalDispatchMode.java)
-- [src/main/java/frc/robot/commands/local/RobotLocalDispatchStatus.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalDispatchStatus.java)
-- [src/main/java/frc/robot/commands/local/RobotLocalControllerGateway.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalControllerGateway.java)
-- [src/main/java/frc/robot/commands/local/RobotLocalValueProvider.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalValueProvider.java)
+- [src/main/java/frc/robot/commands/local/RobotLocalCommandExecutor.java](../src/main/java/frc/robot/commands/local/RobotLocalCommandExecutor.java)
+- [src/main/java/frc/robot/commands/local/RobotLocalCommand.java](../src/main/java/frc/robot/commands/local/RobotLocalCommand.java)
+- [src/main/java/frc/robot/commands/local/RobotLocalCommandDefinition.java](../src/main/java/frc/robot/commands/local/RobotLocalCommandDefinition.java)
+- [src/main/java/frc/robot/commands/local/RobotLocalCommandRegistry.java](../src/main/java/frc/robot/commands/local/RobotLocalCommandRegistry.java)
+- [src/main/java/frc/robot/commands/local/RobotLocalCommandRequest.java](../src/main/java/frc/robot/commands/local/RobotLocalCommandRequest.java)
+- [src/main/java/frc/robot/commands/local/RobotLocalExecutionState.java](../src/main/java/frc/robot/commands/local/RobotLocalExecutionState.java)
+- [src/main/java/frc/robot/commands/local/RobotLocalExecutionResult.java](../src/main/java/frc/robot/commands/local/RobotLocalExecutionResult.java)
+- [src/main/java/frc/robot/commands/local/RobotLocalDispatchMode.java](../src/main/java/frc/robot/commands/local/RobotLocalDispatchMode.java)
+- [src/main/java/frc/robot/commands/local/RobotLocalDispatchStatus.java](../src/main/java/frc/robot/commands/local/RobotLocalDispatchStatus.java)
+- [src/main/java/frc/robot/commands/local/RobotLocalControllerGateway.java](../src/main/java/frc/robot/commands/local/RobotLocalControllerGateway.java)
+- [src/main/java/frc/robot/commands/local/RobotLocalValueProvider.java](../src/main/java/frc/robot/commands/local/RobotLocalValueProvider.java)
 
 Observed current behavior:
 
@@ -69,10 +73,10 @@ Observed current behavior:
 
 Inspected files:
 
-- [src/main/java/frc/robot/commands/local/RobotLocalRuntimeCommandGroup.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalRuntimeCommandGroup.java)
-- [src/main/java/frc/robot/commands/local/RobotLocalReportCommandGroup.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalReportCommandGroup.java)
-- [src/main/java/frc/robot/commands/local/RobotLocalTestCommandGroup.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalTestCommandGroup.java)
-- [src/main/java/frc/robot/commands/local/RobotLocalLegacyUiCommandGroup.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalLegacyUiCommandGroup.java)
+- [src/main/java/frc/robot/commands/local/RobotLocalRuntimeCommandGroup.java](../src/main/java/frc/robot/commands/local/RobotLocalRuntimeCommandGroup.java)
+- [src/main/java/frc/robot/commands/local/RobotLocalReportCommandGroup.java](../src/main/java/frc/robot/commands/local/RobotLocalReportCommandGroup.java)
+- [src/main/java/frc/robot/commands/local/RobotLocalTestCommandGroup.java](../src/main/java/frc/robot/commands/local/RobotLocalTestCommandGroup.java)
+- [src/main/java/frc/robot/commands/local/RobotLocalLegacyUiCommandGroup.java](../src/main/java/frc/robot/commands/local/RobotLocalLegacyUiCommandGroup.java)
 
 Observed current behavior:
 
@@ -88,11 +92,11 @@ Observed current behavior:
 
 Inspected files:
 
-- [src/main/java/frc/robot/BridgeUiCommandHandler.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/BridgeUiCommandHandler.java)
-- [src/main/java/frc/robot/BridgeUiSessionCommands.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/BridgeUiSessionCommands.java)
-- [src/main/java/frc/robot/ui/TcpUiServer.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/ui/TcpUiServer.java)
-- [docs/TCP_UI_PROTOCOL.md](/c:/Users/dmona/swerveBringupMotorTest1-main/docs/TCP_UI_PROTOCOL.md)
-- [docs/TCP_UI_PROTOCOL_QUICK_REF.md](/c:/Users/dmona/swerveBringupMotorTest1-main/docs/TCP_UI_PROTOCOL_QUICK_REF.md)
+- [src/main/java/frc/robot/BridgeUiCommandHandler.java](../src/main/java/frc/robot/BridgeUiCommandHandler.java)
+- [src/main/java/frc/robot/BridgeUiSessionCommands.java](../src/main/java/frc/robot/BridgeUiSessionCommands.java)
+- removed historical class `src/main/java/frc/robot/ui/TcpUiServer.java`
+- [docs/TCP_UI_PROTOCOL.md](TCP_UI_PROTOCOL.md)
+- [Retired TCP UI quick reference](historical/TCP_UI_PROTOCOL_QUICK_REF_RETIRED.md)
 
 Observed current behavior:
 
@@ -122,13 +126,13 @@ Observed current behavior:
 
 Inspected files:
 
-- [tools/can_nt/bridge_session.py](/c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/bridge_session.py)
-- [tools/can_nt/bridge_ops.py](/c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/bridge_ops.py)
-- [tools/can_nt/bridge_robot_control_facade.py](/c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/bridge_robot_control_facade.py)
-- [tools/can_nt/bridge_cli.py](/c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/bridge_cli.py)
-- [tools/can_nt/bringup_ui.py](/c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/bringup_ui.py)
-- [tools/can_nt/can_nt_bridge.py](/c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/can_nt_bridge.py)
-- [tools/can_nt/scripts/bridge_cli_robot_non_motion_regression.py](/c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/scripts/bridge_cli_robot_non_motion_regression.py)
+- [tools/can_nt/bridge_session.py](../tools/can_nt/bridge_session.py)
+- [tools/can_nt/bridge_ops.py](../tools/can_nt/bridge_ops.py)
+- [tools/can_nt/bridge_robot_control_facade.py](../tools/can_nt/bridge_robot_control_facade.py)
+- [tools/can_nt/bridge_cli.py](../tools/can_nt/bridge_cli.py)
+- [tools/can_nt/bringup_ui.py](../tools/can_nt/bringup_ui.py)
+- [tools/can_nt/can_nt_bridge.py](../tools/can_nt/can_nt_bridge.py)
+- [tools/can_nt/scripts/bridge_cli_robot_non_motion_regression.py](../tools/can_nt/scripts/bridge_cli_robot_non_motion_regression.py)
 
 Observed current behavior:
 

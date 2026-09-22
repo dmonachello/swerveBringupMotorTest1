@@ -6,7 +6,7 @@ SPEC_STATUS: PARTIALLY_IMPLEMENTED
 
 Define the public library API for the passive CAN discovery PoC as it is refactored from a tool-first implementation into a self-contained host-side library.
 
-This spec is intentionally narrower than [FEATURE_SPEC_PASSIVE_CAN_DEVICE_DISCOVERY_POC.md](/c:/Users/dmona/swerve3/docs/FEATURE_SPEC_PASSIVE_CAN_DEVICE_DISCOVERY_POC.md). The PoC spec defines product behavior and milestones. This spec defines the library boundary, public entrypoints, object model, and integration contract.
+This spec is intentionally narrower than [FEATURE_SPEC_PASSIVE_CAN_DEVICE_DISCOVERY_POC.md](FEATURE_SPEC_PASSIVE_CAN_DEVICE_DISCOVERY_POC.md). The PoC spec defines product behavior and milestones. This spec defines the library boundary, public entrypoints, object model, and integration contract.
 
 ## Status
 
@@ -120,10 +120,12 @@ This should apply to both built-in and future-added sources.
 The source model must represent two distinct axes:
 
 1. what the source produces
+
 - frame source
 - enrichment source
 
 2. how the source behaves
+
 - live
 - recorded
 

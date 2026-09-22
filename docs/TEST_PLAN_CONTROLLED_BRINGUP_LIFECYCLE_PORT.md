@@ -48,7 +48,7 @@ What is not complete yet:
 ## Environment
 
 - repo root:
-  - `C:\Users\dmona\swerveBringupMotorTest1-main`
+  - the repository root
 - Java:
   - `C:\Users\Public\wpilib\2026\jdk`
 - typical robot IP:

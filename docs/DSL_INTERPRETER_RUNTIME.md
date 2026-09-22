@@ -436,7 +436,7 @@ Robot model and registry:
 
 Robot runtime:
 
-- `src/main/java/frc/robot/RobotV2.java`
+- `src/main/java/frc/robot/Robot.java`
 - `src/main/java/frc/robot/BringupRuntime.java`
 - `src/main/java/frc/robot/BringupCore.java`
 - `src/main/java/frc/robot/tests/dsl/DslBringupTest.java`

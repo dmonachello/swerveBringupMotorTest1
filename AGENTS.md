@@ -154,7 +154,7 @@ Definition of done
 
 Where things live
 
-- Java bringup code: src/main/java/... (look for RobotV2 and BringupUtil)
+- Java bringup code: src/main/java/... (look for Robot and BringupUtil)
 - Python CAN tool: tools/can_nt/ (entrypoint can_nt_bridge.py)
 - Shared Python domain/service code: tools/common/
 - Regression fixtures/expected outputs: tests/regression/
@@ -177,7 +177,9 @@ Layered architecture direction
 
 Purpose: Keep new work aligned with the current architecture docs without forcing a sweeping rewrite.
 
-- The practical target is the layered model described in `docs/ARCHITECTURE.md` and `docs/SPEC_LAYERED_ARCHITECTURE_REFACTOR.md`.
+- The practical target is the layered model summarized in
+  `docs/mocs/architecture.md` and specified in
+  `docs/SPEC_LAYERED_ARCHITECTURE_REFACTOR.md`.
 - Python/PC-side services are the current main frontier for layered progress:
   - shared config lifecycle
   - workflow services
@@ -328,4 +330,3 @@ Purpose: Capture the current spec/research direction for pit-side fault localiza
 - Output candidate fault regions and evidence provenance; do not overclaim exact electrical causes from passive evidence alone.
 - Operator clues are weighted evidence, not truth. Preserve passive evidence and surface conflicts when clues disagree with telemetry.
 - New pit-diagnosis outputs should be additive and should not break existing bringup, dashboard, CLI, or JSON report behavior.
-

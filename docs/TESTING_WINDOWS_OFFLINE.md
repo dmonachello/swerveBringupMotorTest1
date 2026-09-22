@@ -50,7 +50,7 @@ Expected:
 ### 1. Start CLI
 
 ```powershell
-python tools\can_nt\can_nt_bridge.py --cli --no-can --no-nt
+python tools\can_nt\can_nt_bridge.py --cli --no-can
 ```
 
 Expected:

@@ -3,37 +3,118 @@
   "suite": "local",
   "results": [
     {
-      "commandId": "dsl-unit",
-      "label": "dsl-unit",
+      "commandId": "regression-coverage-guard",
+      "label": "regression-coverage-guard",
       "mode": "local",
       "argv": [
-        "C:\\Users\\dmona\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
-        "-m",
-        "unittest",
-        "tools.can_nt.tests.test_robot_test_dsl"
+        "C:\\Users\\dmona\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "C:\\Users\\dmona\\swerve3/tools/can_nt/scripts/regression_coverage_guard.py"
       ],
       "features": [
-        "dsl compiler",
-        "dsl validator",
-        "signal-driven set",
-        "deadband"
+        "automatic test discovery coverage",
+        "suite registration policy",
+        "documented test exclusions"
       ],
       "expectedExitCode": 0
     },
     {
-      "commandId": "cli-unit",
-      "label": "cli-unit",
+      "commandId": "python-can-nt-unit-all",
+      "label": "python-can-nt-unit-all",
       "mode": "local",
       "argv": [
-        "C:\\Users\\dmona\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "C:\\Users\\dmona\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
         "-m",
         "unittest",
-        "tools.can_nt.tests.test_bridge_cli_robot_test_dsl_cli"
+        "discover",
+        "-s",
+        "tools/can_nt/tests",
+        "-p",
+        "test_*.py"
       ],
       "features": [
-        "dsl cli import/validate/show",
-        "controller device config",
-        "connected command dispatch"
+        "all host CAN and UI unit tests",
+        "automatic new-test discovery"
+      ],
+      "expectedExitCode": 0
+    },
+    {
+      "commandId": "python-common-unit-all",
+      "label": "python-common-unit-all",
+      "mode": "local",
+      "argv": [
+        "C:\\Users\\dmona\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tools/common/tests",
+        "-p",
+        "test_*.py"
+      ],
+      "features": [
+        "all shared Python service tests",
+        "automatic new-test discovery"
+      ],
+      "expectedExitCode": 0
+    },
+    {
+      "commandId": "python-topology-unit-all",
+      "label": "python-topology-unit-all",
+      "mode": "local",
+      "argv": [
+        "C:\\Users\\dmona\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tools/can_topology/tests",
+        "-p",
+        "test_*.py"
+      ],
+      "features": [
+        "all topology unit tests",
+        "automatic new-test discovery"
+      ],
+      "expectedExitCode": 0
+    },
+    {
+      "commandId": "python-docs-maintenance-unit-all",
+      "label": "python-docs-maintenance-unit-all",
+      "mode": "local",
+      "argv": [
+        "C:\\Users\\dmona\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tools/docs_maintenance/tests",
+        "-p",
+        "test_*.py"
+      ],
+      "features": [
+        "all documentation-maintenance tests",
+        "automatic new-test discovery"
+      ],
+      "expectedExitCode": 0
+    },
+    {
+      "commandId": "python-can-tx-poc-unit-all",
+      "label": "python-can-tx-poc-unit-all",
+      "mode": "local",
+      "argv": [
+        "C:\\Users\\dmona\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tools/can_tx_poc/tests",
+        "-p",
+        "test_*.py"
+      ],
+      "features": [
+        "isolated CAN transmit proof-of-concept unit tests",
+        "transmit authorization rejection",
+        "automatic new-test discovery"
       ],
       "expectedExitCode": 0
     },
@@ -42,7 +123,7 @@
       "label": "java-unit",
       "mode": "local",
       "argv": [
-        "C:\\Users\\dmona\\swerveBringupMotorTest\\swerveBringupMotorTest1\\gradlew.bat",
+        "C:\\Users\\dmona\\swerve3\\gradlew.bat",
         "test"
       ],
       "features": [
@@ -56,8 +137,8 @@
       "label": "group-targeting-v1",
       "mode": "local",
       "argv": [
-        "C:\\Users\\dmona\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
-        "C:\\Users\\dmona\\swerveBringupMotorTest\\swerveBringupMotorTest1/tools/can_nt/scripts/bridge_cli_v1_group_targeting_regression.py"
+        "C:\\Users\\dmona\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "C:\\Users\\dmona\\swerve3/tools/can_nt/scripts/bridge_cli_v1_group_targeting_regression.py"
       ],
       "features": [
         "group targeting v1",
@@ -71,8 +152,8 @@
       "label": "group-targeting-4m2g3t",
       "mode": "local",
       "argv": [
-        "C:\\Users\\dmona\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
-        "C:\\Users\\dmona\\swerveBringupMotorTest\\swerveBringupMotorTest1/tools/can_nt/scripts/bridge_cli_group_targeting_4m2g3t_regression.py"
+        "C:\\Users\\dmona\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "C:\\Users\\dmona\\swerve3/tools/can_nt/scripts/bridge_cli_group_targeting_4m2g3t_regression.py"
       ],
       "features": [
         "group summary regression",
@@ -86,13 +167,15 @@
       "label": "topology-editor",
       "mode": "local",
       "argv": [
-        "C:\\Users\\dmona\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
-        "C:\\Users\\dmona\\swerveBringupMotorTest\\swerveBringupMotorTest1/tools/can_nt/scripts/topology_editor_regression.py"
+        "C:\\Users\\dmona\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "C:\\Users\\dmona\\swerve3/tools/can_nt/scripts/topology_editor_regression.py"
       ],
       "features": [
         "topology editor profile load",
         "topology show metadata",
-        "topology fixture validation"
+        "topology fixture validation",
+        "topology graph validation negatives",
+        "live topology filter behavior"
       ],
       "expectedExitCode": 0
     },
@@ -102,7 +185,7 @@
       "mode": "local",
       "argv": [
         "C:\\Users\\dmona\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
-        "C:\\Users\\dmona\\swerveBringupMotorTest1-main\\tools\\can_nt\\scripts\\cross_surface_regression.py"
+        "C:\\Users\\dmona\\swerve3/tools/can_nt/scripts/cross_surface_regression.py"
       ],
       "features": [
         "topology editor save/load contract",
@@ -117,8 +200,8 @@
       "label": "changelog-guard",
       "mode": "local",
       "argv": [
-        "C:\\Users\\dmona\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
-        "C:\\Users\\dmona\\swerveBringupMotorTest\\swerveBringupMotorTest1/tools/can_nt/scripts/changelog_guard.py"
+        "C:\\Users\\dmona\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "C:\\Users\\dmona\\swerve3/tools/can_nt/scripts/changelog_guard.py"
       ],
       "features": [
         "changelog publication policy",
@@ -131,8 +214,8 @@
       "label": "config-api-guard",
       "mode": "local",
       "argv": [
-        "C:\\Users\\dmona\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
-        "C:\\Users\\dmona\\swerveBringupMotorTest\\swerveBringupMotorTest1/tools/can_nt/scripts/config_api_guard.py"
+        "C:\\Users\\dmona\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "C:\\Users\\dmona\\swerve3/tools/can_nt/scripts/config_api_guard.py"
       ],
       "features": [
         "shared config API policy",

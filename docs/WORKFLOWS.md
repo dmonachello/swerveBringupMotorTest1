@@ -85,8 +85,7 @@ Bring up swerve drive and steering motors incrementally using left and right joy
 
 Use the print-ready runbook:
 
-- [ROBOT_2026_SWERVE_CLUB_TEST_SEQUENCE.md](c:/Users/dmona/swerveBringupMotorTest1-main/docs/ROBOT_2026_SWERVE_CLUB_TEST_SEQUENCE.md)
-- [ROBOT_2026_SWERVE_CLUB_TEST_SEQUENCE.pdf](c:/Users/dmona/swerveBringupMotorTest1-main/docs/ROBOT_2026_SWERVE_CLUB_TEST_SEQUENCE.pdf)
+- [ROBOT_2026_SWERVE_CLUB_TEST_SEQUENCE.md](ROBOT_2026_SWERVE_CLUB_TEST_SEQUENCE.md)
 
 ### Summary
 
@@ -341,7 +340,7 @@ Use:
 
 ## Related Documents
 
-- [FEATURE_CATALOG.md](c:/Users/dmona/swerveBringupMotorTest1-main/docs/FEATURE_CATALOG.md)
-- [FEATURE_MATRIX.md](c:/Users/dmona/swerveBringupMotorTest1-main/docs/FEATURE_MATRIX.md)
-- [ROBOT_2026_SWERVE_CLUB_TEST_SEQUENCE.md](c:/Users/dmona/swerveBringupMotorTest1-main/docs/ROBOT_2026_SWERVE_CLUB_TEST_SEQUENCE.md)
+- [FEATURE_CATALOG.md](FEATURE_CATALOG.md)
+- [FEATURE_MATRIX.md](FEATURE_MATRIX.md)
+- [ROBOT_2026_SWERVE_CLUB_TEST_SEQUENCE.md](ROBOT_2026_SWERVE_CLUB_TEST_SEQUENCE.md)
 

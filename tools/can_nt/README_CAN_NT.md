@@ -1,7 +1,7 @@
 # CAN-NT-BRIDGE(1)
 
 NAME
-    can_nt_bridge.py - Host-side CAN diagnostics bridge for RobotV2
+    can_nt_bridge.py - Host-side CAN diagnostics bridge for the robot bringup harness
 
 SYNOPSIS
     python tools\\can_nt\\can_nt_bridge.py [options]
@@ -9,7 +9,7 @@ SYNOPSIS
 
 DESCRIPTION
     Reads FRC CAN traffic from a CANable (SLCAN) and feeds host-owned
-    diagnostics surfaces for RobotV2. Can optionally write PCAP/PCAPNG or
+    diagnostics surfaces for the robot bringup harness. Can optionally write PCAP/PCAPNG or
     stream live PCAPNG into Wireshark via a Windows named pipe.
 
 INSTALL
@@ -228,8 +228,8 @@ UI COMMAND PROTOCOL
     - The roboRIO remains authoritative for seq; UI should always use minNextSeq.
     - uiDisconnect releases the active client lock (same clientId only).
     - If state/lastAckMs goes stale, the UI reports \"Robot state stale (code not running?)\".
-    - uiMonitorEnable / uiMonitorDisable toggle NT protocol monitoring under bringup/ui_tcp.
-    - The subtree name is legacy compatibility only; the active command transport is REST.
+    - Historical uiMonitor commands and the bringup/ui_tcp NetworkTables subtree
+      are not part of the supported REST workflow.
 
 UI HELP
     Purpose: Describe the in-app Help content for the Bringup Control UI.
@@ -362,7 +362,6 @@ OPTIONS
     --disable-markers         Disable keyboard marker injection.
     --marker-id 0x1FFC0D00    Marker arbitration ID (extended).
     --capture-note TEXT       Pcapng section header comment.
-    --no-nt                   Accepted for compatibility; ignored by the REST-only host bridge.
     --cli                     Launch the interactive bridge CLI.
     --batch                   Run the bridge CLI in batch mode (requires --script).
     --script PATH             Script file to execute in batch mode.
@@ -377,6 +376,7 @@ PUBLISHED KEYS
     - host-local `ConsoleMonitor`
 
 NOTES
+
 - Device identity is label-only in NT and inventory outputs; bringup_system.json is the
   source of CAN ID metadata when needed.
 - `labelKey` is the percent-encoded label (UTF-8, safe chars `-_.~`).
@@ -387,7 +387,7 @@ NOTES
     - presenceConfidence values: HIGH, LOW, NONE (PC tool). The roboRIO report may compute a separate
       score/label using console warn/error/fatal counters.
     - --dump-profile cannot distinguish NEO vs FLEX or Kraken vs Falcon.
-    - RobotV2 prints status=NO_DATA, ageSec=-, msgCount=- until a device is seen.
+    - The robot runtime prints status=NO_DATA, ageSec=-, msgCount=- until a device is seen.
     - CANable Pro V2 ships with slcan firmware by default.
 
 

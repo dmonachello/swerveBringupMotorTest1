@@ -26,7 +26,7 @@ Those sources are valuable, but neither one alone is a strong defined-node exist
 - different vendors expose different failure signatures
 - stale or cached telemetry can create false positives
 
-The PoC in `C:\Users\dmona\robotDiagPoCs\CAN_bus_test1\CAN_bus_test1\` showed that vendor API probing can be a useful third source when it is:
+The external `CAN_bus_test1` PoC showed that vendor API probing can be a useful third source when it is:
 
 - non-motion
 - freshness-gated
@@ -227,7 +227,7 @@ If the runtime is inactive, the probe action must fail soft rather than temporar
 
 This feature spec is based on two sources together:
 
-- the PoC implementation in `C:\Users\dmona\robotDiagPoCs\CAN_bus_test1\CAN_bus_test1\`
+- the external `CAN_bus_test1` PoC implementation
 - the completed PoC behavioral/spec text captured during the PoC effort
 
 For port-back decisions, PoC code is treated as the strongest source for:

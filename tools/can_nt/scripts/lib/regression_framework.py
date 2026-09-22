@@ -56,6 +56,7 @@ TEXT_TRUE = "1"
 JAVA_BIN_SUFFIX = "bin"
 PYTHON_EXE_STEM = "python"
 WINDOWS_EXE_SUFFIX = ".exe"
+JSON_NEWLINE = "\n"
 GRADLEW_WINDOWS = "gradlew.bat"
 TOOLS_PATH_MARKER = "/tools/"
 TESTS_PATH_MARKER = "/tests/"
@@ -404,9 +405,9 @@ def refresh_suite_baseline(
             for command, result in zip(commands, results)
         ],
     }
-    with baseline_path.open("w", encoding="utf-8") as handle:
+    with baseline_path.open("w", encoding="utf-8", newline=JSON_NEWLINE) as handle:
         json.dump(payload, handle, indent=2)
-        handle.write("\n")
+        handle.write(JSON_NEWLINE)
     return baseline_path
 
 

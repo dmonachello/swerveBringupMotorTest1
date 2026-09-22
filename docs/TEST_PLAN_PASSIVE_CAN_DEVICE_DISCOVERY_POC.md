@@ -12,10 +12,10 @@ This plan is intended to prove three things:
 
 ## Related Docs
 
-- [FEATURE_SPEC_PASSIVE_CAN_DEVICE_DISCOVERY.md](/c:/Users/dmona/swerve3/docs/FEATURE_SPEC_PASSIVE_CAN_DEVICE_DISCOVERY.md)
-- [FEATURE_SPEC_PASSIVE_CAN_DEVICE_DISCOVERY_POC.md](/c:/Users/dmona/swerve3/docs/FEATURE_SPEC_PASSIVE_CAN_DEVICE_DISCOVERY_POC.md)
-- [2026-07-08_rev_passive_can_findings.md](/c:/Users/dmona/swerve3/notes/research/vendor_diagnostics/2026-07-08_rev_passive_can_findings.md)
-- [2026-07-08_ctre_diagnostic_server_endpoint_matrix.md](/c:/Users/dmona/swerve3/notes/research/vendor_diagnostics/2026-07-08_ctre_diagnostic_server_endpoint_matrix.md)
+- [FEATURE_SPEC_PASSIVE_CAN_DEVICE_DISCOVERY.md](FEATURE_SPEC_PASSIVE_CAN_DEVICE_DISCOVERY.md)
+- [FEATURE_SPEC_PASSIVE_CAN_DEVICE_DISCOVERY_POC.md](FEATURE_SPEC_PASSIVE_CAN_DEVICE_DISCOVERY_POC.md)
+- [2026-07-08_rev_passive_can_findings.md](../notes/research/vendor_diagnostics/2026-07-08_rev_passive_can_findings.md)
+- [2026-07-08_ctre_diagnostic_server_endpoint_matrix.md](../notes/research/vendor_diagnostics/2026-07-08_ctre_diagnostic_server_endpoint_matrix.md)
 
 ## Scope
 

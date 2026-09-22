@@ -55,7 +55,7 @@ Use CLI in local mode for targeted checks.
 
 Command:
 
-`python tools/can_nt/bridge_cli.py --no-can --no-nt`
+`python tools/can_nt/bridge_cli.py --no-can`
 
 Then run these commands in order.
 

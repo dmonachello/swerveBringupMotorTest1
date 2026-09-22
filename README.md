@@ -21,7 +21,9 @@ See [docs/RELEASE_1_0_READINESS.md](docs/RELEASE_1_0_READINESS.md) for the curre
 This repository contains one system with two cooperating parts:
 
 - **Robot-side**: a WPILib Java bringup harness on the roboRIO that instantiates devices, runs tests, commands outputs, and reports robot-local health
-- **PC-side**: Windows-first Python tools that passively observe CAN traffic, consume robot command/log/state over REST/TCP, and provide operator-facing surfaces
+- **PC-side**: Windows-first Python tools that passively observe CAN traffic,
+  consume robot command/log/state over REST, and provide operator-facing
+  surfaces
 
 Key safety rule:
 
@@ -41,7 +43,8 @@ Important data boundaries:
 - CAN-bus telemetry comes from the host-side passive CAN tool
 - REST command/log/state is a control and reporting channel, not a replacement for those telemetry sources
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the detailed architecture.
+Start with [Getting Started](docs/GETTING_STARTED.md). For architecture details,
+use the [architecture documentation hub](docs/mocs/architecture.md).
 
 ## Main surfaces
 
@@ -67,7 +70,7 @@ These are the main code and config entry points.
 
 ### Robot side
 
-- `src/main/java/frc/robot/RobotV2.java`
+- `src/main/java/frc/robot/Robot.java`
 - `src/main/java/frc/robot/BringupCore.java`
 - `src/main/java/frc/robot/BringupRuntime.java`
 - `src/main/java/frc/robot/BridgeUiCommandHandler.java`
@@ -106,10 +109,10 @@ These are the main code and config entry points.
 
 This is the practical entry path without pretending the release is more finished than it is.
 
-1. Read [docs/SETUP.md](docs/SETUP.md).
-2. Read [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
-3. Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) if you need the system model.
-4. Validate/sync config before using the robot workflow.
+1. Read [Getting Started](docs/GETTING_STARTED.md).
+2. Complete [Windows setup](docs/SETUP.md).
+3. Follow the [new robot bringup workflow](docs/WORKFLOW_01_NEW_ROBOT_BRINGUP.md).
+4. Validate and sync config before using the robot workflow.
 5. Use either the Bringup Control UI or Bridge CLI as the main runtime surface.
 
 ## Windows-first host workflow
@@ -127,8 +130,8 @@ Common host tasks:
 
 See:
 
-- [docs/SETUP.md](/abs/path/c:/Users/dmona/swerve3/docs/SETUP.md)
-- [docs/TESTING_WINDOWS_OFFLINE.md](/abs/path/c:/Users/dmona/swerve3/docs/TESTING_WINDOWS_OFFLINE.md)
+- [Windows setup](docs/SETUP.md)
+- [Windows offline testing](docs/TESTING_WINDOWS_OFFLINE.md)
 
 ## Configuration model
 
@@ -149,8 +152,8 @@ Rule:
 
 See:
 
-- [docs/bringup_profiles_schema.md](/abs/path/c:/Users/dmona/swerve3/docs/bringup_profiles_schema.md)
-- [docs/PROFILE_SCHEMA_REFACTOR.md](/abs/path/c:/Users/dmona/swerve3/docs/PROFILE_SCHEMA_REFACTOR.md)
+- [Bringup profiles schema](docs/bringup_profiles_schema.md)
+- [Profile schema refactor](docs/PROFILE_SCHEMA_REFACTOR.md)
 
 ## Safety model
 
@@ -160,23 +163,27 @@ These are the main safety and ownership rules.
 - the Xbox controller has highest priority over host clients
 - stop/disable/abort behavior is safety-critical
 - Driver Station stop and E-stop still work as the normal keyboard/operator stop path for tests and motion
-- host disconnect or stale session paths must fail safe
+- Driver Station disable, E-stop, and explicit robot safety-stop paths stop outputs
+- REST stop, disconnect, and timeout cancellation are known stability gaps until
+  robot-thread cancellation is implemented and verified
 - the PC CAN tool must never transmit by default
 
 See:
 
-- [docs/ARCHITECTURE.md](/abs/path/c:/Users/dmona/swerve3/docs/ARCHITECTURE.md)
-- [docs/TCP_UI_PROTOCOL.md](/abs/path/c:/Users/dmona/swerve3/docs/TCP_UI_PROTOCOL.md)
+- [Architecture documentation hub](docs/mocs/architecture.md)
+- [Historical TCP UI protocol](docs/TCP_UI_PROTOCOL.md)
 
 ## Current validation commands
 
 These are the repo checks people use most often.
 
-### Python regressions
+For local Ollama regression reports and automated Git check-ins, use the
+[local AI automation user guide](docs/LOCAL_AI_AUTOMATION_USER_GUIDE.md).
+
+### Maintained non-robot regressions
 
 ```powershell
-python tools/can_nt/scripts/bridge_cli_v1_group_targeting_regression.py
-python tools/can_nt/scripts/bridge_cli_group_targeting_4m2g3t_regression.py
+python tools/can_nt/scripts/run_regressions.py --suite all
 ```
 
 ### Robot-connected non-motion regression
@@ -191,6 +198,18 @@ python tools/can_nt/scripts/bridge_cli_robot_non_motion_regression.py --rio 172.
 .\gradlew.bat test
 ```
 
+### Local AI regression report
+
+```powershell
+.\tools\local-regression-report.ps1
+```
+
+### Local AI check-in preview
+
+```powershell
+.\tools\local-checkin.ps1 -DryRun
+```
+
 ### Config validation / sync
 
 ```powershell
@@ -203,22 +222,22 @@ These are the docs worth opening first.
 
 ### Start here
 
-- [docs/SETUP.md](/abs/path/c:/Users/dmona/swerve3/docs/SETUP.md)
-- [docs/USER_GUIDE.md](/abs/path/c:/Users/dmona/swerve3/docs/USER_GUIDE.md)
-- [docs/ARCHITECTURE.md](/abs/path/c:/Users/dmona/swerve3/docs/ARCHITECTURE.md)
-- [docs/OPERATOR_SURFACES.md](/abs/path/c:/Users/dmona/swerve3/docs/OPERATOR_SURFACES.md)
-- [docs/TESTING.md](/abs/path/c:/Users/dmona/swerve3/docs/TESTING.md)
+- [Getting Started](docs/GETTING_STARTED.md)
+- [Windows setup](docs/SETUP.md)
+- [Architecture documentation hub](docs/mocs/architecture.md)
+- [Operator surfaces](docs/OPERATOR_SURFACES.md)
+- [Testing](docs/TESTING.md)
 
 ### Release / readiness
 
-- [docs/ALPHA_RELEASE_READINESS.md](/abs/path/c:/Users/dmona/swerve3/docs/ALPHA_RELEASE_READINESS.md)
-- [docs/RELEASE_1_0_READINESS.md](/abs/path/c:/Users/dmona/swerve3/docs/RELEASE_1_0_READINESS.md)
+- [Alpha release readiness](docs/ALPHA_RELEASE_READINESS.md)
+- [1.0 release readiness](docs/RELEASE_1_0_READINESS.md)
 
 ### Contracts / protocols
 
-- [docs/TCP_UI_PROTOCOL.md](/abs/path/c:/Users/dmona/swerve3/docs/TCP_UI_PROTOCOL.md)
-- [docs/NT_CONTRACT.md](/abs/path/c:/Users/dmona/swerve3/docs/NT_CONTRACT.md)
-- [docs/BRIDGE_CLI_FULL_SPEC.md](/abs/path/c:/Users/dmona/swerve3/docs/BRIDGE_CLI_FULL_SPEC.md)
+- [Historical TCP UI protocol](docs/TCP_UI_PROTOCOL.md)
+- [Retired NetworkTables contract](docs/NT_CONTRACT.md)
+- [Bridge CLI full specification](docs/BRIDGE_CLI_FULL_SPEC.md)
 
 ## Notes
 

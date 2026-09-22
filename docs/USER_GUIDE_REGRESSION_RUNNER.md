@@ -129,10 +129,8 @@ Purpose: normal default local verification bundle.
 
 Current coverage:
 
-- DSL compiler / validator / signal-driven set / deadband
-- DSL CLI import / validate / show
-- controller device config
-- connected command dispatch
+- automatic discovery of `test_*.py` under the maintained Python test roots
+- registration guard for new test directories and standalone regression scripts
 - Java unit surface
 - group-targeting regressions
 - topology editor regressions
@@ -191,6 +189,37 @@ To include the robot suite, you must also pass:
 ```text
 --include-robot --rio <host-or-ip>
 ```
+
+### 6.9 Adding tests
+
+Purpose: make new tests enter the maintained run without relying on Codex to
+remember a second registration step.
+
+New Java tests under `src/test/java` run automatically through `gradlew test`.
+
+New `test_*.py` files run automatically when placed under one of these roots:
+
+- `tools/can_nt/tests`
+- `tools/common/tests`
+- `tools/can_topology/tests`
+- `tools/docs_maintenance/tests`
+- `tools/can_tx_poc/tests`
+
+The regression coverage guard scans all test directories under `tools/`. A new
+test directory fails the local suite until its discovery command is added to
+the runner manifest or the directory is explicitly excluded with a reason.
+
+Standalone files ending in `_regression.py` must have a command assigned to a
+suite. The guard also fails when a manifest command is not assigned to any
+suite.
+
+Explicit exclusions live in:
+
+- [regression_coverage_exclusions.json](../tests/regression/fixtures/regression_coverage_exclusions.json)
+
+The experimental passive-discovery test directory is currently excluded
+because it has a known failing USB-capture expectation. The exclusion is
+visible policy, not an implicit skip.
 
 ## UI Runtime Workflow Lockstep
 
@@ -678,7 +707,73 @@ Spec:
 
 - [FEATURE_SPEC_REGRESSION_AUTOMATION.md](./FEATURE_SPEC_REGRESSION_AUTOMATION.md)
 
-## 19. Summary
+## 19. Local AI regression reports
+
+Purpose: run the complete local suite and turn its evidence into a report with
+the locally installed Ollama model.
+
+For the complete regression and check-in workflow, use the
+[local AI automation user guide](./LOCAL_AI_AUTOMATION_USER_GUIDE.md).
+
+Use the default non-robot command:
+
+```powershell
+.\tools\local-regression-report.ps1
+```
+
+The command first calls Ollama's `/api/tags` endpoint, confirms that
+`qwen3-coder:30b` is installed, and runs a schema-constrained probe. It then
+runs the unified `all` suite, validates repository changes, and asks the local
+model to analyze the complete result. Ollama must be running before the
+command starts.
+
+Connected non-motion testing is available only through an explicit option:
+
+```powershell
+.\tools\local-regression-report.ps1 -IncludeRobot -Rio 172.22.11.2
+```
+
+`-IncludeRobot` requires `-Rio`. Supplying `-Rio` without `-IncludeRobot` is
+an error. Use `-UiRestPort` only when the connected REST service uses a
+non-default port.
+
+Completed bundles are written under:
+
+```text
+.local-ai/regression-reports/<timestamp>-<run-id>/
+```
+
+That directory is ignored by Git. Each complete bundle contains:
+
+- `report.md`
+- `manifest.json`
+- `regression-result.json`
+- `analysis-request.json`
+- `analysis-response.json`
+- `runner.stdout.log`
+- `runner.stderr.log`
+
+The model has no shell, Git, or file-writing tools. The wrapper publishes no
+bundle when Ollama fails, its response is invalid, or repository integrity
+validation fails.
+
+Exit codes are:
+
+| Code | Meaning |
+| --- | --- |
+| `0` | Regressions and local analysis passed |
+| `1` | Regressions failed or timed out; a report was published |
+| `2` | Parameters, repository state, or prerequisites were invalid |
+| `3` | Ollama preflight or analysis failed |
+| `4` | An unexpected repository write was detected |
+| `5` | Report validation or publication failed |
+
+The maintained runner may still update ignored local regression history,
+refresh the two generated build-info files during Java compilation, and seed
+`CHANGELOG.md` through the changelog guard. The report lists attributable
+tracked changes. Any other tracked write blocks report publication.
+
+## 20. Summary
 
 Use the regression runner as the single maintained entrypoint for regression
 verification.

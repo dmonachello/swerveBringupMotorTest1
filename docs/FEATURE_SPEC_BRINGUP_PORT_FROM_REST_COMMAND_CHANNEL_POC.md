@@ -1,6 +1,10 @@
 # Bringup Porting Spec From REST Command Channel PoC
 
-SPEC_STATUS: PROPOSED
+SPEC_STATUS: HISTORICAL_REFERENCE
+
+This porting spec is preserved as implementation history. The REST port is now
+the supported command path; references to a current TCP channel below describe
+the system that existed before the migration.
 
 ## Purpose
 
@@ -24,25 +28,25 @@ Port the PoC command/control mechanism into the bringup project so that:
 
 The source architecture is the PoC in:
 
-- `C:\Users\dmona\robotREST_PoC\robot_REST_PoC\docs\poc-requirements.md`
-- `C:\Users\dmona\robotREST_PoC\robot_REST_PoC\docs\poc-wire-contract.md`
-- `C:\Users\dmona\robotREST_PoC\robot_REST_PoC\docs\poc-robot-implementation-design.md`
-- `C:\Users\dmona\robotREST_PoC\robot_REST_PoC\docs\poc-host-implementation-design.md`
-- `C:\Users\dmona\robotREST_PoC\robot_REST_PoC\docs\poc-bringup-alignment-refactor-plan.md`
+- External PoC `docs/poc-requirements.md`
+- External PoC `docs/poc-wire-contract.md`
+- External PoC `docs/poc-robot-implementation-design.md`
+- External PoC `docs/poc-host-implementation-design.md`
+- External PoC `docs/poc-bringup-alignment-refactor-plan.md`
 
 The current PoC implementation also matters, especially:
 
-- `C:\Users\dmona\robotREST_PoC\robot_REST_PoC\src\main\java\frc\robot\diag\command\RobotLocalCommandExecutor.java`
-- `C:\Users\dmona\robotREST_PoC\robot_REST_PoC\src\main\java\frc\robot\diag\command\RobotLocalCommandRegistry.java`
-- `C:\Users\dmona\robotREST_PoC\robot_REST_PoC\src\main\java\frc\robot\diag\comm\DiagHttpRouter.java`
-- `C:\Users\dmona\robotREST_PoC\robot_REST_PoC\src\main\java\frc\robot\diag\comm\DiagHttpServer.java`
+- External PoC `src/main/java/frc/robot/diag/command/RobotLocalCommandExecutor.java`
+- External PoC `src/main/java/frc/robot/diag/command/RobotLocalCommandRegistry.java`
+- External PoC `src/main/java/frc/robot/diag/comm/DiagHttpRouter.java`
+- External PoC `src/main/java/frc/robot/diag/comm/DiagHttpServer.java`
 
 Bringup-local compatibility surfaces that must be inspected during planning include:
 
-- [docs/TCP_UI_PROTOCOL.md](/c:/Users/dmona/swerveBringupMotorTest1-main/docs/TCP_UI_PROTOCOL.md)
-- [docs/TCP_UI_PROTOCOL_QUICK_REF.md](/c:/Users/dmona/swerveBringupMotorTest1-main/docs/TCP_UI_PROTOCOL_QUICK_REF.md)
-- [docs/FEATURE_SPEC_HOST_TCP_COMMAND_SERIALIZATION_LAYER.md](/c:/Users/dmona/swerveBringupMotorTest1-main/docs/FEATURE_SPEC_HOST_TCP_COMMAND_SERIALIZATION_LAYER.md)
-- [docs/FEATURE_SPEC_POC_LOCAL_COMMAND_MECHANISM.md](/c:/Users/dmona/swerveBringupMotorTest1-main/docs/FEATURE_SPEC_POC_LOCAL_COMMAND_MECHANISM.md)
+- [docs/TCP_UI_PROTOCOL.md](TCP_UI_PROTOCOL.md)
+- [Retired TCP UI quick reference](historical/TCP_UI_PROTOCOL_QUICK_REF_RETIRED.md)
+- [docs/FEATURE_SPEC_HOST_TCP_COMMAND_SERIALIZATION_LAYER.md](FEATURE_SPEC_HOST_TCP_COMMAND_SERIALIZATION_LAYER.md)
+- [docs/FEATURE_SPEC_POC_LOCAL_COMMAND_MECHANISM.md](FEATURE_SPEC_POC_LOCAL_COMMAND_MECHANISM.md)
 
 ## Locked Decisions For Bringup
 

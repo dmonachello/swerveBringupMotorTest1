@@ -1,10 +1,10 @@
-SPEC_STATUS: PROPOSED
+SPEC_STATUS: IMPLEMENTED
 
 # Explicit Runtime Activation Implementation Plan
 
 ## Purpose
 
-Turn [FEATURE_SPEC_EXPLICIT_RUNTIME_ACTIVATION.md](/c:/Users/dmona/swerveBringupMotorTest1-main/docs/FEATURE_SPEC_EXPLICIT_RUNTIME_ACTIVATION.md) into a concrete implementation plan based on the current bringup codebase.
+Turn [FEATURE_SPEC_EXPLICIT_RUNTIME_ACTIVATION.md](FEATURE_SPEC_EXPLICIT_RUNTIME_ACTIVATION.md) into a concrete implementation plan based on the current bringup codebase.
 
 This is a planning document only. It defines the migration shape and execution order. It does not authorize skipping validation or doing out-of-order cleanup.
 
@@ -24,13 +24,13 @@ Change bringup startup and operator surfaces so that:
 
 Inspected files:
 
-- [src/main/java/frc/robot/RobotV2.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/RobotV2.java)
-- [src/main/java/frc/robot/BringupRuntime.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/BringupRuntime.java)
-- [src/main/java/frc/robot/BringupCore.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/BringupCore.java)
+- [src/main/java/frc/robot/Robot.java](../src/main/java/frc/robot/Robot.java)
+- [src/main/java/frc/robot/BringupRuntime.java](../src/main/java/frc/robot/BringupRuntime.java)
+- [src/main/java/frc/robot/BringupCore.java](../src/main/java/frc/robot/BringupCore.java)
 
 Observed current behavior:
 
-- `RobotV2.robotInit()` calls `BringupUtil.applyProfileFromArgs()`
+- `Robot.robotInit()` calls `BringupUtil.applyProfileFromArgs()`
 - the same `robotInit()` then calls `activateSelectedProfileForAllSurfaces(REASON_STARTUP_PROFILE_LOAD)`
 - `activateSelectedProfileForAllSurfaces(...)` triggers:
   - `runtime.activateSelectedProfile(...)`
@@ -46,13 +46,13 @@ Observed current behavior:
 Conclusion:
 
 - startup auto-activation is real and centralized
-- the main boot coupling point is `RobotV2.robotInit()`
+- the main boot coupling point is `Robot.robotInit()`
 
 ### Existing Selection Versus Activation Model
 
 Inspected file:
 
-- [src/main/java/frc/robot/BringupUtil.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/BringupUtil.java)
+- [src/main/java/frc/robot/BringupUtil.java](../src/main/java/frc/robot/BringupUtil.java)
 
 Observed current behavior:
 
@@ -76,12 +76,12 @@ Conclusion:
 
 Inspected files:
 
-- [src/main/java/frc/robot/BridgeUiProfileCommands.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/BridgeUiProfileCommands.java)
-- [src/main/java/frc/robot/BridgeUiCommandHandler.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/BridgeUiCommandHandler.java)
-- [src/main/java/frc/robot/commands/local/RobotLocalCommandRegistry.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalCommandRegistry.java)
-- [tools/can_nt/bridge_cli.py](/c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/bridge_cli.py)
-- [tools/can_nt/bridge_ops.py](/c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/bridge_ops.py)
-- [tools/can_nt/bringup_ui.py](/c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/bringup_ui.py)
+- [src/main/java/frc/robot/BridgeUiProfileCommands.java](../src/main/java/frc/robot/BridgeUiProfileCommands.java)
+- [src/main/java/frc/robot/BridgeUiCommandHandler.java](../src/main/java/frc/robot/BridgeUiCommandHandler.java)
+- [src/main/java/frc/robot/commands/local/RobotLocalCommandRegistry.java](../src/main/java/frc/robot/commands/local/RobotLocalCommandRegistry.java)
+- [tools/can_nt/bridge_cli.py](../tools/can_nt/bridge_cli.py)
+- [tools/can_nt/bridge_ops.py](../tools/can_nt/bridge_ops.py)
+- [tools/can_nt/bringup_ui.py](../tools/can_nt/bringup_ui.py)
 
 Observed current behavior:
 
@@ -150,7 +150,7 @@ Target:
 
 ### Changes
 
-- remove startup activation call from `RobotV2.robotInit()`
+- remove startup activation call from `Robot.robotInit()`
 - change startup selected-profile behavior from implicit default-profile selection to `none` by default
 - preserve:
   - config load
@@ -179,7 +179,7 @@ After boot:
 
 ### Files Expected
 
-- [src/main/java/frc/robot/RobotV2.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/RobotV2.java)
+- [src/main/java/frc/robot/Robot.java](../src/main/java/frc/robot/Robot.java)
 
 ## Phase 2: Define And Surface Runtime State Explicitly
 
@@ -193,9 +193,9 @@ After boot:
 
 ### Files Expected
 
-- [src/main/java/frc/robot/BringupUtil.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/BringupUtil.java)
-- [src/main/java/frc/robot/BridgeUiCommandHandler.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/BridgeUiCommandHandler.java)
-- [src/main/java/frc/robot/rest/BringupRestServer.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/rest/BringupRestServer.java)
+- [src/main/java/frc/robot/BringupUtil.java](../src/main/java/frc/robot/BringupUtil.java)
+- [src/main/java/frc/robot/BridgeUiCommandHandler.java](../src/main/java/frc/robot/BridgeUiCommandHandler.java)
+- [src/main/java/frc/robot/rest/BringupRestServer.java](../src/main/java/frc/robot/rest/BringupRestServer.java)
 - any report helpers that still flatten selection and activation into one label
 
 ### Expected End State
@@ -234,11 +234,11 @@ Shared robot-side semantic action:
 
 ### Files Expected
 
-- [src/main/java/frc/robot/commands/local/RobotLocalCommandRegistry.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/commands/local/RobotLocalCommandRegistry.java)
-- [src/main/java/frc/robot/BridgeUiProfileCommands.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/BridgeUiProfileCommands.java)
-- [tools/can_nt/bridge_cli.py](/c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/bridge_cli.py)
-- [tools/can_nt/bridge_ops.py](/c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/bridge_ops.py)
-- [tools/can_nt/bringup_ui.py](/c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/bringup_ui.py)
+- [src/main/java/frc/robot/commands/local/RobotLocalCommandRegistry.java](../src/main/java/frc/robot/commands/local/RobotLocalCommandRegistry.java)
+- [src/main/java/frc/robot/BridgeUiProfileCommands.java](../src/main/java/frc/robot/BridgeUiProfileCommands.java)
+- [tools/can_nt/bridge_cli.py](../tools/can_nt/bridge_cli.py)
+- [tools/can_nt/bridge_ops.py](../tools/can_nt/bridge_ops.py)
+- [tools/can_nt/bringup_ui.py](../tools/can_nt/bringup_ui.py)
 
 ## Phase 4: Guard Runtime-Dependent Commands
 
@@ -260,9 +260,9 @@ Shared robot-side semantic action:
 
 ### Files Expected
 
-- [src/main/java/frc/robot/BridgeUiCommandHandler.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/BridgeUiCommandHandler.java)
-- [src/main/java/frc/robot/BringupCore.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/BringupCore.java)
-- [src/main/java/frc/robot/BringupRuntime.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/BringupRuntime.java)
+- [src/main/java/frc/robot/BridgeUiCommandHandler.java](../src/main/java/frc/robot/BridgeUiCommandHandler.java)
+- [src/main/java/frc/robot/BringupCore.java](../src/main/java/frc/robot/BringupCore.java)
+- [src/main/java/frc/robot/BringupRuntime.java](../src/main/java/frc/robot/BringupRuntime.java)
 - local command groups under `src/main/java/frc/robot/commands/local/`
 
 ## Phase 5: Align Config Push Semantics
@@ -289,9 +289,9 @@ This contract is locked for implementation.
 
 ### Files Expected
 
-- [tools/can_nt/bridge_cli.py](/c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/bridge_cli.py)
-- [tools/can_nt/bridge_ops.py](/c:/Users/dmona/swerveBringupMotorTest1-main/tools/can_nt/bridge_ops.py)
-- [src/main/java/frc/robot/BridgeUiProfileCommands.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/BridgeUiProfileCommands.java)
+- [tools/can_nt/bridge_cli.py](../tools/can_nt/bridge_cli.py)
+- [tools/can_nt/bridge_ops.py](../tools/can_nt/bridge_ops.py)
+- [src/main/java/frc/robot/BridgeUiProfileCommands.java](../src/main/java/frc/robot/BridgeUiProfileCommands.java)
 - docs that currently assume push implies immediate active runtime
 
 ## Phase 6: Add Deactivation Contract
@@ -315,8 +315,8 @@ This is preferable to relying only on resets and side effects.
 
 ### Files Expected
 
-- [src/main/java/frc/robot/BringupUtil.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/BringupUtil.java)
-- [src/main/java/frc/robot/BringupRuntime.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/BringupRuntime.java)
+- [src/main/java/frc/robot/BringupUtil.java](../src/main/java/frc/robot/BringupUtil.java)
+- [src/main/java/frc/robot/BringupRuntime.java](../src/main/java/frc/robot/BringupRuntime.java)
 - relevant CLI/REST/UI command surfaces
 
 ## Ordered Chunk List

@@ -32,6 +32,110 @@
         "tools.can_nt.tests.test_bridge_cli_robot_test_dsl_cli"
       ]
     },
+    "regression-coverage-guard": {
+      "label": "regression-coverage-guard",
+      "mode": "local",
+      "features": [
+        "automatic test discovery coverage",
+        "suite registration policy",
+        "documented test exclusions"
+      ],
+      "argv": [
+        "{python}",
+        "{repo}/tools/can_nt/scripts/regression_coverage_guard.py"
+      ]
+    },
+    "python-can-nt-unit-all": {
+      "label": "python-can-nt-unit-all",
+      "mode": "local",
+      "features": [
+        "all host CAN and UI unit tests",
+        "automatic new-test discovery"
+      ],
+      "argv": [
+        "{python}",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tools/can_nt/tests",
+        "-p",
+        "test_*.py"
+      ]
+    },
+    "python-common-unit-all": {
+      "label": "python-common-unit-all",
+      "mode": "local",
+      "features": [
+        "all shared Python service tests",
+        "automatic new-test discovery"
+      ],
+      "argv": [
+        "{python}",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tools/common/tests",
+        "-p",
+        "test_*.py"
+      ]
+    },
+    "python-topology-unit-all": {
+      "label": "python-topology-unit-all",
+      "mode": "local",
+      "features": [
+        "all topology unit tests",
+        "automatic new-test discovery"
+      ],
+      "argv": [
+        "{python}",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tools/can_topology/tests",
+        "-p",
+        "test_*.py"
+      ]
+    },
+    "python-docs-maintenance-unit-all": {
+      "label": "python-docs-maintenance-unit-all",
+      "mode": "local",
+      "features": [
+        "all documentation-maintenance tests",
+        "automatic new-test discovery"
+      ],
+      "argv": [
+        "{python}",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tools/docs_maintenance/tests",
+        "-p",
+        "test_*.py"
+      ]
+    },
+    "python-can-tx-poc-unit-all": {
+      "label": "python-can-tx-poc-unit-all",
+      "mode": "local",
+      "features": [
+        "isolated CAN transmit proof-of-concept unit tests",
+        "transmit authorization rejection",
+        "automatic new-test discovery"
+      ],
+      "argv": [
+        "{python}",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tools/can_tx_poc/tests",
+        "-p",
+        "test_*.py"
+      ]
+    },
     "java-unit": {
       "label": "java-unit",
       "mode": "local",
@@ -195,8 +299,12 @@
       "ui-runtime-rules-lockstep"
     ],
     "local": [
-      "dsl-unit",
-      "cli-unit",
+      "regression-coverage-guard",
+      "python-can-nt-unit-all",
+      "python-common-unit-all",
+      "python-topology-unit-all",
+      "python-docs-maintenance-unit-all",
+      "python-can-tx-poc-unit-all",
       "java-unit",
       "group-targeting-v1",
       "group-targeting-4m2g3t",

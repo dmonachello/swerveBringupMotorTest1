@@ -61,18 +61,18 @@ This spec does not:
 
 The current structure is roughly:
 
-- [bringup_ui.py](C:\Users\dmona\swerve3\tools\can_nt\bringup_ui.py)
+- [bringup_ui.py](../tools/can_nt/bringup_ui.py)
   - owns polling, widgets, handlers, local state, and refresh flow
-- [host_ui_state_service.py](C:\Users\dmona\swerve3\tools\can_nt\host_ui_state_service.py)
+- [host_ui_state_service.py](../tools/can_nt/host_ui_state_service.py)
   - already contains shared typed decision/state objects and pure resolution logic
-- [live_topology_view.py](C:\Users\dmona\swerve3\tools\can_topology\live_topology_view.py)
+- [live_topology_view.py](../tools/can_topology/live_topology_view.py)
   - renders topology scenes
 - service modules such as:
-  - [command_workflow_service.py](C:\Users\dmona\swerve3\tools\can_nt\command_workflow_service.py)
-  - [passive_discovery_integration_service.py](C:\Users\dmona\swerve3\tools\can_nt\passive_discovery_integration_service.py)
-  - [can_fault_inference.py](C:\Users\dmona\swerve3\tools\can_nt\can_fault_inference.py)
+  - [command_workflow_service.py](../tools/can_nt/command_workflow_service.py)
+  - [passive_discovery_integration_service.py](../tools/can_nt/passive_discovery_integration_service.py)
+  - [can_fault_inference.py](../tools/can_nt/can_fault_inference.py)
 
-The active transitional seam is in [bringup_ui.py](C:\Users\dmona\swerve3\tools\can_nt\bringup_ui.py), where REST snapshots are wrapped by `_RestTableAdapter.from_runtime_state(...)` and `_RestTableAdapter.from_tests_state(...)` so legacy table-style code can continue to call:
+The active transitional seam is in [bringup_ui.py](../tools/can_nt/bringup_ui.py), where REST snapshots are wrapped by `_RestTableAdapter.from_runtime_state(...)` and `_RestTableAdapter.from_tests_state(...)` so legacy table-style code can continue to call:
 
 - `getEntry(...)`
 - `getSubTable(...)`
@@ -246,7 +246,7 @@ Purpose: Derive operator-facing meaning from shared typed state.
 
 Primary home:
 
-- [host_ui_state_service.py](C:\Users\dmona\swerve3\tools\can_nt\host_ui_state_service.py)
+- [host_ui_state_service.py](../tools/can_nt/host_ui_state_service.py)
 
 This layer already exists in partial form and should be expanded, not replaced.
 

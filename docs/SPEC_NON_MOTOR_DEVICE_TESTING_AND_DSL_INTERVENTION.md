@@ -980,18 +980,18 @@ Purpose: record the main evidence used for this audit.
 
 Repo references:
 
-- [docs/SPEC_CTRE_PIGEON2_SUPPORT.md](/c:/Users/dmona/swerve3/docs/SPEC_CTRE_PIGEON2_SUPPORT.md)
-- [docs/SPEC_DSL_DEVICE_SIGNAL_INTERFACE.md](/c:/Users/dmona/swerve3/docs/SPEC_DSL_DEVICE_SIGNAL_INTERFACE.md)
-- [docs/USER_GUIDE_ROBOT_TEST_DSL.md](/c:/Users/dmona/swerve3/docs/USER_GUIDE_ROBOT_TEST_DSL.md)
-- [docs/ADD_A_NEW_DEVICE.md](/c:/Users/dmona/swerve3/docs/ADD_A_NEW_DEVICE.md)
-- [src/main/java/frc/robot/BringupUtil.java](/c:/Users/dmona/swerve3/src/main/java/frc/robot/BringupUtil.java)
-- [src/main/java/frc/robot/manufacturers/CtreDeviceGroup.java](/c:/Users/dmona/swerve3/src/main/java/frc/robot/manufacturers/CtreDeviceGroup.java)
-- [src/main/java/frc/robot/devices/ctre/CtreCANCoderDevice.java](/c:/Users/dmona/swerve3/src/main/java/frc/robot/devices/ctre/CtreCANCoderDevice.java)
-- [src/main/java/frc/robot/tests/dsl/DslSignalRegistry.java](/c:/Users/dmona/swerve3/src/main/java/frc/robot/tests/dsl/DslSignalRegistry.java)
-- [src/main/java/frc/robot/tests/dsl/DslBringupTest.java](/c:/Users/dmona/swerve3/src/main/java/frc/robot/tests/dsl/DslBringupTest.java)
-- [tools/common/robot_test_dsl/service.py](/c:/Users/dmona/swerve3/tools/common/robot_test_dsl/service.py)
-- [tools/can_nt/bringup_ui.py](/c:/Users/dmona/swerve3/tools/can_nt/bringup_ui.py)
-- [tools/can_topology/live_topology_view.py](/c:/Users/dmona/swerve3/tools/can_topology/live_topology_view.py)
+- [docs/SPEC_CTRE_PIGEON2_SUPPORT.md](SPEC_CTRE_PIGEON2_SUPPORT.md)
+- [docs/SPEC_DSL_DEVICE_SIGNAL_INTERFACE.md](SPEC_DSL_DEVICE_SIGNAL_INTERFACE.md)
+- [docs/USER_GUIDE_ROBOT_TEST_DSL.md](USER_GUIDE_ROBOT_TEST_DSL.md)
+- [docs/ADD_A_NEW_DEVICE.md](ADD_A_NEW_DEVICE.md)
+- [src/main/java/frc/robot/BringupUtil.java](../src/main/java/frc/robot/BringupUtil.java)
+- [src/main/java/frc/robot/manufacturers/CtreDeviceGroup.java](../src/main/java/frc/robot/manufacturers/CtreDeviceGroup.java)
+- [src/main/java/frc/robot/devices/ctre/CtreCANCoderDevice.java](../src/main/java/frc/robot/devices/ctre/CtreCANCoderDevice.java)
+- [src/main/java/frc/robot/tests/dsl/DslSignalRegistry.java](../src/main/java/frc/robot/tests/dsl/DslSignalRegistry.java)
+- [src/main/java/frc/robot/tests/dsl/DslBringupTest.java](../src/main/java/frc/robot/tests/dsl/DslBringupTest.java)
+- [tools/common/robot_test_dsl/service.py](../tools/common/robot_test_dsl/service.py)
+- [tools/can_nt/bringup_ui.py](../tools/can_nt/bringup_ui.py)
+- [tools/can_topology/live_topology_view.py](../tools/can_topology/live_topology_view.py)
 
 Vendor references:
 

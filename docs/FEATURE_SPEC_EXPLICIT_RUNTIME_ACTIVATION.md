@@ -1,4 +1,4 @@
-SPEC_STATUS: PROPOSED
+SPEC_STATUS: IMPLEMENTED
 
 # Feature Spec: Explicit Runtime Activation
 
@@ -44,8 +44,8 @@ That means the robot attempts to bring up the selected default profile immediate
 
 Current robot boot behavior flows through:
 
-- `RobotV2.robotInit()`
-- `RobotV2.activateSelectedProfileForAllSurfaces(...)`
+- `Robot.robotInit()`
+- `Robot.activateSelectedProfileForAllSurfaces(...)`
 - `BringupRuntime.activateSelectedProfile(...)`
 - `BringupRuntime.resetAndInstantiateForProfile(...)`
 - `BringupCore.reloadActiveProfileRuntime(...)`
@@ -358,7 +358,7 @@ This exists today primarily around:
 - `BringupRuntime.activateSelectedProfile(...)`
 - `BringupRuntime.resetAndInstantiateForProfile(...)`
 - `BringupCore.reloadActiveProfileRuntime(...)`
-- `RobotV2.activateSelectedProfileForAllSurfaces(...)`
+- `Robot.activateSelectedProfileForAllSurfaces(...)`
 
 The main required behavior change is:
 

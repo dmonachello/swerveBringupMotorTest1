@@ -655,7 +655,7 @@ Use this guide when you want:
 - example workflows
 - the difference between host and robot surfaces
 
-Use [CLI_REFERENCE_MANUAL.md](/c:/Users/dmona/swerveBringupMotorTest/swerveBringupMotorTest1/docs/CLI_REFERENCE_MANUAL.md) when you want:
+Use [CLI_REFERENCE_MANUAL.md](CLI_REFERENCE_MANUAL.md) when you want:
 
 - exact command syntax
 - every command permutation

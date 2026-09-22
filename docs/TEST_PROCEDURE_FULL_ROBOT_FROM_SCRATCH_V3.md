@@ -55,7 +55,7 @@ Use USB roboRIO addressing for all connected tests in this document.
 
 Example path:
 
-`C:\Users\dmona\swerveBringupMotorTest\swerveBringupMotorTest1`
+`<repo-root>`
 
 ### Step 1A: Backup current local artifacts
 
@@ -73,7 +73,7 @@ From PowerShell, start CLI:
 
 ```powershell
 cd %USERPROFILE%\swerveBringupMotorTest1-main
-python tools\can_nt\can_nt_bridge.py --cli --no-can --no-nt
+python tools\can_nt\can_nt_bridge.py --cli --no-can
 ```
 
 Then in CLI, run:
@@ -138,7 +138,7 @@ Expected:
 Command:
 
 ```powershell
-python tools/can_nt/bridge_cli.py --no-can --no-nt
+python tools/can_nt/bridge_cli.py --no-can
 ```
 
 ## Phase 2: Build Local Config and Groups

@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import re
 from typing import Iterable, List, Sequence
+from urllib.parse import unquote
 
 
 MARKDOWN_GLOB = "*.md"
@@ -21,10 +22,13 @@ PATH_PART_SRC = "src"
 PATH_PART_PYTEST_CACHE = ".pytest_cache"
 PATH_PART_CODEX = ".codex"
 PATH_PART_GIT = ".git"
+PATH_PART_LOCAL_AI = ".local-ai"
 PATH_PART_VENVS = ".venv"
 PATH_PART_DECISIONS = "decisions"
 PATH_PART_JOURNAL = "journal"
 PATH_PART_RESEARCH = "research"
+PATH_PART_RECOVERY = "recovery"
+PATH_PART_HISTORICAL = "historical"
 PATH_PART_PROCEDURES = "procedures"
 PATH_PART_PLANNING = "planning"
 PATH_PART_UI_LAYOUTS = "ui_layout_mockups"
@@ -52,8 +56,23 @@ IGNORED_PATH_PARTS = {
     PATH_PART_PYTEST_CACHE,
     PATH_PART_CODEX,
     PATH_PART_GIT,
+    PATH_PART_LOCAL_AI,
     PATH_PART_VENVS,
+    PATH_PART_RECOVERY,
+    PATH_PART_HISTORICAL,
     "__pycache__",
+}
+IGNORED_ROOT_NAMES = {
+    "evolving development.md",
+    "journal node - more ai work process observations.md",
+    "journal node - real skill.md",
+    "journal note - pocs.md",
+    "report.md",
+    "test plan today - may 22, 2026.md",
+    "test planv2 may 22, 2026.md",
+    "testing right click feature.md",
+    "untitled.md",
+    "untitled 1.md",
 }
 ROOT_ENTRYPOINT_NAMES = {
     "readme.md",
@@ -150,7 +169,7 @@ def _normalize_markdown_target(
         return None
     if target.startswith("#"):
         return None
-    target = target.split("#", 1)[0].strip()
+    target = unquote(target.split("#", 1)[0].strip())
     if not target:
         return None
     if ".md" not in target.lower():
@@ -180,6 +199,8 @@ def _extract_outgoing_links(current_path: Path, root: Path, text: str) -> List[s
 def iter_markdown_paths(root: Path) -> Iterable[Path]:
     for path in root.rglob(MARKDOWN_GLOB):
         relative = path.relative_to(root)
+        if len(relative.parts) == 1 and relative.name.lower() in IGNORED_ROOT_NAMES:
+            continue
         parts = {part.lower() for part in relative.parts}
         if parts.intersection(IGNORED_PATH_PARTS):
             continue

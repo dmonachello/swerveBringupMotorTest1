@@ -27,10 +27,10 @@ The DSL execution path is now device-owned.
 The runtime uses three core pieces:
 
 1. a canonical signal registry:
-   - [src/main/java/frc/robot/tests/dsl/DslSignalRegistry.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/tests/dsl/DslSignalRegistry.java:1)
+   - [src/main/java/frc/robot/tests/dsl/DslSignalRegistry.java](../src/main/java/frc/robot/tests/dsl/DslSignalRegistry.java:1)
 2. device-level execution methods on `DeviceUnit`
 3. the DSL runtime engine in:
-   - [src/main/java/frc/robot/tests/dsl/DslBringupTest.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/tests/dsl/DslBringupTest.java:1)
+   - [src/main/java/frc/robot/tests/dsl/DslBringupTest.java](../src/main/java/frc/robot/tests/dsl/DslBringupTest.java:1)
 
 The current model is:
 
@@ -77,19 +77,19 @@ The device signal interface is the device-owned runtime API the DSL engine uses 
 
 The canonical DSL signal registry lives in:
 
-- [src/main/java/frc/robot/tests/dsl/DslSignalRegistry.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/tests/dsl/DslSignalRegistry.java:1)
+- [src/main/java/frc/robot/tests/dsl/DslSignalRegistry.java](../src/main/java/frc/robot/tests/dsl/DslSignalRegistry.java:1)
 
 Provider classes define the per-device-type signal surfaces:
 
-- [MotorSignalProvider.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/tests/dsl/signals/MotorSignalProvider.java:1)
-- [LimitSwitchSignalProvider.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/tests/dsl/signals/LimitSwitchSignalProvider.java:1)
-- [EncoderExternalSignalProvider.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/tests/dsl/signals/EncoderExternalSignalProvider.java:1)
-- [XboxControllerSignalProvider.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/tests/dsl/signals/XboxControllerSignalProvider.java:1)
-- [TestTimerSignalProvider.java](/c:/Users/dmona/swerveBringupMotorTest1-main/src/main/java/frc/robot/tests/dsl/signals/TestTimerSignalProvider.java:1)
+- [MotorSignalProvider.java](../src/main/java/frc/robot/tests/dsl/signals/MotorSignalProvider.java:1)
+- [LimitSwitchSignalProvider.java](../src/main/java/frc/robot/tests/dsl/signals/LimitSwitchSignalProvider.java:1)
+- [EncoderExternalSignalProvider.java](../src/main/java/frc/robot/tests/dsl/signals/EncoderExternalSignalProvider.java:1)
+- [XboxControllerSignalProvider.java](../src/main/java/frc/robot/tests/dsl/signals/XboxControllerSignalProvider.java:1)
+- [TestTimerSignalProvider.java](../src/main/java/frc/robot/tests/dsl/signals/TestTimerSignalProvider.java:1)
 
 The generated host-side artifact is:
 
-- [tools/common/generated/robot_test_dsl_signals.json](/c:/Users/dmona/swerveBringupMotorTest1-main/tools/common/generated/robot_test_dsl_signals.json:1)
+- [tools/common/generated/robot_test_dsl_signals.json](../tools/common/generated/robot_test_dsl_signals.json:1)
 
 That generated file is the machine-readable contract consumed by host tooling and documentation.
 

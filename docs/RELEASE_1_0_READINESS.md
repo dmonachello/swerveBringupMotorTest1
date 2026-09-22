@@ -7,14 +7,16 @@ Define the product, workflow, quality, and verification requirements to move fro
 ## Big-Picture Assessment
 
 The project already has the core ingredients of a real product:
+
 - Robot-side bringup harness with controlled actuation.
 - PC-side passive CAN diagnostics and evidence capture.
 - CLI and GUI operator surfaces.
 - Shared profile/config schema.
-- Safety model with TCP ownership and stop-latch rules.
+- Safety model with REST session ownership and stop-latch rules.
 - Significant documentation and growing regression coverage.
 
 The main 1.0 gap is no longer basic architecture. The main 1.0 gap is productization:
+
 - One supported workflow.
 - One supported setup path.
 - Stable contracts.
@@ -27,14 +29,16 @@ The main 1.0 gap is no longer basic architecture. The main 1.0 gap is productiza
 Purpose: set the bar for a first public or team-wide stable release.
 
 A 1.0 release means:
+
 - A new team member can install, validate, and use the system on a supported Windows laptop without code edits.
 - A supported robot project can build/deploy with the documented WPILib toolchain.
 - The standard bringup workflow is documented end-to-end and works reliably.
 - Safety behavior under disconnect/disable/lock conflict conditions is documented and verified.
-- TCP, NT, and config contracts are stable and tested.
+- REST and config contracts are stable and tested.
 - Operators can tell which features are supported, advanced, or experimental.
 
 Not required for 1.0:
+
 - Perfect UI polish.
 - Every advanced reverse-engineering workflow fully matured.
 - Support for every possible OS/toolchain combination.
@@ -47,12 +51,14 @@ Not required for 1.0:
 Purpose: avoid shipping an impressive repo that still feels undefined.
 
 The project needs a short 1.0 scope statement that says:
+
 - Which surfaces are officially supported.
 - Which workflows are considered standard.
 - Which host OS and hardware assumptions are supported.
 - Which features are advanced or experimental.
 
 ### Needed
+
 - A `1.0 Scope` section in release docs.
 - A supported environment matrix.
 - A feature maturity table.
@@ -62,6 +68,7 @@ The project needs a short 1.0 scope statement that says:
 Purpose: reduce operator confusion and make the tool feel predictable.
 
 There are many available paths today:
+
 - Topology editor.
 - CLI.
 - Bringup Control UI.
@@ -73,6 +80,7 @@ There are many available paths today:
 For 1.0, there must be one canonical path that is documented as the default.
 
 ### The standard workflow should answer
+
 1. How to create or edit a profile.
 2. How to validate and sync it.
 3. How to deploy robot code.
@@ -83,6 +91,7 @@ For 1.0, there must be one canonical path that is documented as the default.
 8. How to recover from common failures.
 
 ### Needed
+
 - One official quick-start workflow.
 - One official tests-authoring workflow.
 - Clear de-emphasis of alternate paths in user docs.
@@ -92,13 +101,15 @@ For 1.0, there must be one canonical path that is documented as the default.
 Purpose: make first-run success predictable.
 
 The system still depends on several environment assumptions:
+
 - Python version and packages.
 - WPILib/JDK setup.
 - Windows serial/CANable availability.
 - Config file validity.
-- NT/TCP runtime expectations.
+- REST runtime and session expectations.
 
 ### Needed
+
 - One supported Python version range.
 - One supported WPILib/JDK expectation.
 - One install path for Windows.
@@ -114,14 +125,16 @@ The system still depends on several environment assumptions:
 Purpose: the system spans too many contracts to rely mainly on informal confidence.
 
 Critical contracts include:
+
 - Java robot command behavior.
 - Python command/tool behavior.
 - `bringup_system.json` schema and semantic rules.
-- TCP UI protocol.
-- NT key ownership and update behavior.
+- REST API and session behavior.
+- Host-local versus robot-local diagnostic ownership.
 - CLI command semantics.
 
 ### Needed
+
 - More protocol-level tests.
 - More config lifecycle tests.
 - More failure-path tests.
@@ -133,16 +146,19 @@ Critical contracts include:
 Purpose: teams need to trust behavior under ugly pit conditions, not just ideal ones.
 
 Important 1.0 questions:
-- What happens on TCP disconnect?
+
+- What happens on REST disconnect or timeout?
 - What happens on stale session state?
 - What happens on lock conflict?
 - What happens when the PC tool is absent?
-- What happens when NT diagnostics are stale or missing?
+- What happens when host diagnostics are stale or missing?
 - What happens after robot reboot with an old client still running?
 
 ### Needed
+
 - A failure modes and recovery guide.
-- Tests for disconnect, handshake, stop-latch, disabled/E-stop, stale-state, and duplicate-seq behavior.
+- Tests for disconnect, timeout, stop-latch, disabled/E-stop, stale-state, and
+  request replay behavior.
 - Operator-visible messaging that says what failed and what to do next.
 
 ## 6. Feature Maturity Needs To Be Explicit
@@ -150,12 +166,15 @@ Important 1.0 questions:
 Purpose: avoid overpromising every tool in the repo equally.
 
 Not all features are likely equally mature. 1.0 should distinguish:
+
 - Supported core features.
 - Advanced but supported features.
 - Experimental features.
 
 ### Needed
+
 A feature maturity table such as:
+
 - Robot bringup harness: supported.
 - Windows CAN bridge: supported.
 - CLI core commands: supported.
@@ -169,6 +188,7 @@ A feature maturity table such as:
 Purpose: prevent confusion between canonical, deploy, and runtime state.
 
 This project has an intentionally strong config model, but it is still easy for users to confuse:
+
 - `src/main/deploy/bringup_system.json`.
 - `src/main/deploy/bringup_system.json`.
 - Host-selected profile.
@@ -176,6 +196,7 @@ This project has an intentionally strong config model, but it is still easy for 
 - In-memory pushed registry vs on-disk file state.
 
 ### Needed
+
 - More visible source/path reporting in CLI and UI.
 - Clear status output for canonical vs deploy vs robot runtime state.
 - Strong warnings when a user is editing host-local state only.
@@ -188,6 +209,7 @@ Purpose: extensive docs are good, but 1.0 needs a curated operator-first path.
 The repo already has many useful docs, but 1.0 requires a smaller "start here" set.
 
 ### Needed operator docs
+
 - Quick Start.
 - Setup.
 - Standard Workflow.
@@ -197,10 +219,11 @@ The repo already has many useful docs, but 1.0 requires a smaller "start here" s
 - UI Guide.
 
 ### Needed maintainer docs
+
 - Architecture.
 - Command Handler Architecture.
-- TCP UI Protocol.
-- NT Contract.
+- REST API and session contract.
+- Host-versus-robot data ownership contract.
 - Profile/config schema docs.
 - Release process.
 
@@ -209,12 +232,14 @@ The repo already has many useful docs, but 1.0 requires a smaller "start here" s
 Purpose: 1.0 errors should be safe, specific, and actionable.
 
 Error handling should consistently answer:
+
 - What failed.
 - Why it failed.
 - Whether robot state changed.
 - What the operator should do next.
 
 ### Needed
+
 - A startup-failure pass for CLI/UI/bridge scripts.
 - A config-validation message pass.
 - A protocol-failure message pass.
@@ -225,6 +250,7 @@ Error handling should consistently answer:
 Purpose: a 1.0 release needs a process, not just a code snapshot.
 
 ### Needed
+
 - Release checklist.
 - Supported environment matrix.
 - Known issues section.
@@ -249,6 +275,7 @@ Purpose: identify the highest-value work that should gate 1.0.
 Purpose: provide a concrete pass/fail list for declaring 1.0.
 
 ### A. Scope And Support Envelope
+
 - [ ] Supported surfaces are explicitly listed.
 - [ ] Supported host OS and toolchain versions are explicitly listed.
 - [ ] Supported hardware assumptions are explicitly listed.
@@ -256,6 +283,7 @@ Purpose: provide a concrete pass/fail list for declaring 1.0.
 - [ ] Advanced-but-supported features are explicitly marked.
 
 ### B. Setup And Installation
+
 - [ ] One official Windows install path is documented.
 - [ ] One official run path for the PC tool is documented.
 - [ ] Python dependency installation is accurate and current.
@@ -263,6 +291,7 @@ Purpose: provide a concrete pass/fail list for declaring 1.0.
 - [ ] One smoke-check or doctor command exists and is documented.
 
 ### C. Standard Workflow
+
 - [ ] One canonical profile authoring workflow is documented.
 - [ ] One canonical validate+sync workflow is documented.
 - [ ] One canonical robot deploy workflow is documented.
@@ -271,21 +300,24 @@ Purpose: provide a concrete pass/fail list for declaring 1.0.
 - [ ] One canonical tests-authoring workflow is documented.
 
 ### D. Safety And Failure Handling
-- [ ] TCP disconnect behavior is documented and verified.
-- [ ] Handshake/lock behavior is documented and verified.
+
+- [ ] REST disconnect and timeout behavior is documented and verified.
+- [ ] REST session ownership behavior is documented and verified.
 - [ ] Stop-latch behavior is documented and verified.
 - [ ] Disabled/E-stop gating is documented and verified.
 - [ ] PC-tool-absent behavior is documented and verified.
-- [ ] Stale or missing NT diagnostics behavior is documented and verified.
+- [ ] Stale or missing host diagnostics behavior is documented and verified.
 
 ### E. Contracts And Compatibility
-- [ ] `docs/TCP_UI_PROTOCOL.md` is current and verified.
-- [ ] `docs/NT_CONTRACT.md` is current and verified.
+
+- [ ] The REST API and session contract are current and verified.
+- [ ] Retired transport documents are clearly marked historical.
 - [ ] Profile/config schema docs are current and verified.
 - [ ] Host-vs-robot context rules are current and documented.
 - [ ] Canonical-vs-deploy config workflow is current and documented.
 
 ### F. Automated Verification
+
 - [ ] Focused Python unit tests cover current facade/transport boundaries.
 - [ ] CLI regressions pass on supported Windows environment.
 - [ ] Config validation tests cover common schema and semantic failures.
@@ -294,6 +326,7 @@ Purpose: provide a concrete pass/fail list for declaring 1.0.
 - [ ] At least one representative end-to-end bringup checklist pass is documented.
 
 ### G. Documentation
+
 - [ ] Quick Start doc exists and is current.
 - [ ] Setup doc exists and is current.
 - [ ] Troubleshooting / recovery doc exists and is current.
@@ -302,6 +335,7 @@ Purpose: provide a concrete pass/fail list for declaring 1.0.
 - [ ] Release notes and known issues are prepared for 1.0.
 
 ### H. Product Hygiene
+
 - [ ] Repo root is curated and free of confusing leftovers.
 - [ ] Derived/generated artifacts are clearly identified.
 - [ ] `.gitignore` covers local/generated noise appropriately.
@@ -353,6 +387,7 @@ Purpose: convert the gap analysis into concrete artifacts.
 Purpose: make the release decision explicit.
 
 Release 1.0 should be declared only when the project is no longer merely powerful for maintainers, but predictable for operators:
+
 - easy to install
 - clear to use
 - safe under failure

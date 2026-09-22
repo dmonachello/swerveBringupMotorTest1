@@ -33,7 +33,7 @@ Purpose: Define the endpoints and paths used in this procedure.
 
 - Host (Driver Station PC): `superspec1`
 - User on host: `sshuser`
-- Project directory on host: `C:\Users\dmona\swerveBringupMotorTest1-main`
+- Project directory on host: `C:\path\to\swerve3`
 
 ## Known Quirk
 
@@ -89,7 +89,7 @@ Purpose: Start the interactive CLI without using the Driver Station keyboard dir
 After SSH login:
 
 ```text
-cd C:\Users\dmona\swerveBringupMotorTest1-main
+cd C:\path\to\swerve3
 .\cli.bat
 ```
 
@@ -98,7 +98,7 @@ cd C:\Users\dmona\swerveBringupMotorTest1-main
 Purpose: Reduce the steps when you don’t need an interactive shell.
 
 ```text
-ssh sshuser@superspec1 "cd C:\Users\dmona\swerveBringupMotorTest1-main && .\cli.bat"
+ssh sshuser@superspec1 "cd C:\path\to\swerve3 && .\cli.bat"
 ```
 
 ## Notes / Gotchas
@@ -106,7 +106,7 @@ ssh sshuser@superspec1 "cd C:\Users\dmona\swerveBringupMotorTest1-main && .\cli.
 Purpose: Prevent common operator mistakes.
 
 - In PowerShell, use `.\cli.bat` to execute a local script.
-- `sshuser` must have read/execute access to `C:\Users\dmona\swerveBringupMotorTest1-main`.
+- `sshuser` must have read/execute access to `C:\path\to\swerve3`.
 - If SSH fails initially, repeat the host ping step.
 
 ## Future Improvement (Optional)

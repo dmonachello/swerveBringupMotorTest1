@@ -1,6 +1,9 @@
 # Host TCP Command Serialization Layer
 
-SPEC_STATUS: PROPOSED
+SPEC_STATUS: HISTORICAL_REFERENCE
+
+This document describes the retired raw TCP host-command layer. Supported host
+applications now use the shared REST session path.
 
 ## Purpose
 

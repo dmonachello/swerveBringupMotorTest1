@@ -48,7 +48,7 @@ Typical robot IP in this repo:
 
 Repo root:
 
-- `C:\Users\dmona\swerveBringupMotorTest1-main`
+- the repository root
 
 ## Which Program To Run
 
@@ -88,7 +88,7 @@ Open PowerShell.
 Change to the repo root:
 
 ```powershell
-cd C:\Users\dmona\swerveBringupMotorTest1-main
+cd <repo-root>
 ```
 
 ## Step 2: Start The CLI In Disconnected State
@@ -412,7 +412,7 @@ Open a second PowerShell window.
 Change to the repo root:
 
 ```powershell
-cd C:\Users\dmona\swerveBringupMotorTest1-main
+cd <repo-root>
 ```
 
 Start the UI:

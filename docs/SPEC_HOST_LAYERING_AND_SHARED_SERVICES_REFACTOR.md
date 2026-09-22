@@ -556,7 +556,7 @@ Purpose: keep architecture and operator docs aligned with the new ownership mode
 When this spec is executed:
 
 - update `docs/HOST_SOFTWARE_ARCHITECTURE.md`
-- update `docs/ARCHITECTURE.md` where layer ownership changes materially
+- update `docs/mocs/architecture.md` where layer ownership changes materially
 - update any CLI/UI workflow docs affected by new shared service ownership
 - keep wording clear that the UI is mainly runtime-facing unless a refactor intentionally changes that scope
 

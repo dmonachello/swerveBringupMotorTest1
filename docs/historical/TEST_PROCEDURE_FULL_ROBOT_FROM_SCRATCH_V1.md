@@ -1,6 +1,6 @@
 # Test Procedure: Full Robot Bringup from Scratch (V2)
 
-> Superseded: Use `docs/TEST_PROCEDURE_FULL_ROBOT_FROM_SCRATCH_V3.md`.
+> Historical reference only. Use `docs/TEST_PROCEDURE_FULL_ROBOT_FROM_SCRATCH_V3.md`.
 
 ## Purpose
 

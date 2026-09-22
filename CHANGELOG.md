@@ -2,6 +2,23 @@
 
 All notable user-facing changes are documented in this file.
 
+## 2026-09-16
+
+### Changed - 2026-09-16
+
+- Added a local Ollama regression-report command that runs the maintained
+  non-robot suite by default, validates repository writes, and publishes a
+  complete evidence bundle under `.local-ai/regression-reports/`.
+- Added explicit connected non-motion options without enabling robot-connected
+  tests by default.
+- Added Ollama model availability preflight to local AI automation.
+- Kept Git line-ending warnings from aborting the regression report under
+  Windows PowerShell 5.1.
+- Added automatic Python unit-test discovery and a regression coverage guard
+  that fails on unregistered test directories, scripts, and manifest commands.
+- Added one operator guide for local Ollama regression reports, check-in
+  previews, commits, tags, pushes, and test registration.
+
 ## 2026-09-15
 
 ### Changed - 2026-09-15

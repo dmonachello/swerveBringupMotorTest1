@@ -23,6 +23,10 @@ from tools.docs_maintenance.pipeline import run_docs_inventory_pipeline
 DOC_STATUS_SURFACE_TEXT = "> AUTO-GENERATED FILE. Do not modify; changes will be lost on regeneration.\n"
 DOC_README_TEXT = "# README\n"
 DOC_FEATURE_TEXT = "# Feature\n"
+QUALITY_CONCERN_BROKEN_LINKS = "Broken internal links remain unresolved."
+ISOLATED_DOCUMENTS_REPO_PATH = "docs/ISOLATED_DOCUMENTS.md"
+ISOLATED_FIXTURE_REPO_PATH = "docs/LONELY.md"
+ISOLATED_NOT_OBSOLETE_TEXT = "does not mean that a document is obsolete"
 
 
 class DocsMaintenancePipelineTests(unittest.TestCase):
@@ -95,6 +99,50 @@ class DocsMaintenancePipelineTests(unittest.TestCase):
                 report["brokenLinks"],
             )
             self.assertNotIn("docs/FEATURE.md", report["orphanCandidates"])
+
+    def test_inventory_excludes_recovery_history_local_ai_and_root_scratch_markdown(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "README.md").write_text(DOC_README_TEXT, encoding="utf-8")
+            (root / "Untitled.md").write_text(DOC_FEATURE_TEXT, encoding="utf-8")
+            (root / "report.md").write_text(DOC_FEATURE_TEXT, encoding="utf-8")
+            (root / "evolving development.md").write_text(DOC_FEATURE_TEXT, encoding="utf-8")
+            recovery = root / "notes" / "recovery" / "snapshot"
+            recovery.mkdir(parents=True)
+            (recovery / "COPY.md").write_text(DOC_FEATURE_TEXT, encoding="utf-8")
+            historical = root / "docs" / "historical"
+            historical.mkdir(parents=True)
+            (historical / "OLD.md").write_text(DOC_FEATURE_TEXT, encoding="utf-8")
+            local_ai = root / ".local-ai" / "regression-reports"
+            local_ai.mkdir(parents=True)
+            (local_ai / "report.md").write_text(DOC_FEATURE_TEXT, encoding="utf-8")
+
+            documents = inventory_markdown_documents(root)
+            paths = {document.repo_path for document in documents}
+
+            self.assertEqual({"README.md"}, paths)
+
+    def test_existing_encoded_and_excluded_markdown_targets_are_not_broken(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "Current UI Rules.md").write_text(DOC_FEATURE_TEXT, encoding="utf-8")
+            skill = root / ".codex" / "skills" / "sample" / "SKILL.md"
+            skill.parent.mkdir(parents=True)
+            skill.write_text(DOC_FEATURE_TEXT, encoding="utf-8")
+            (root / "docs").mkdir()
+            (root / "docs" / "README.md").write_text(
+                "[Rules](../Current%20UI%20Rules.md)\n"
+                "[Skill](../.codex/skills/sample/SKILL.md)\n",
+                encoding="utf-8",
+            )
+
+            report = run_docs_inventory_pipeline(root)
+
+            self.assertEqual([], report["brokenLinks"])
+            self.assertNotIn(
+                QUALITY_CONCERN_BROKEN_LINKS,
+                report["healthSummary"]["documentationQualityConcerns"],
+            )
 
     def test_pipeline_report_tracks_terminology_variants(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -216,15 +264,30 @@ class DocsMaintenancePipelineTests(unittest.TestCase):
                 "# DSL Authoring\nDSL authoring and runtime.\n",
                 encoding="utf-8",
             )
+            (root / ISOLATED_FIXTURE_REPO_PATH).write_text(
+                "# Lonely\n",
+                encoding="utf-8",
+            )
             report = run_docs_inventory_pipeline(root)
 
             written = write_docs_maintenance_artifacts(root, report)
 
             self.assertIn("docs/INDEX.md", written)
             self.assertIn("docs/GLOSSARY.md", written)
+            self.assertIn(ISOLATED_DOCUMENTS_REPO_PATH, written)
             self.assertTrue(any(path.startswith("docs/mocs/") for path in written))
             self.assertTrue((root / "docs" / "INDEX.md").exists())
             self.assertTrue((root / "docs" / "GLOSSARY.md").exists())
+            isolated_text = (root / ISOLATED_DOCUMENTS_REPO_PATH).read_text(
+                encoding="utf-8"
+            )
+            self.assertIn(ISOLATED_FIXTURE_REPO_PATH, isolated_text)
+            self.assertIn(ISOLATED_NOT_OBSOLETE_TEXT, isolated_text)
+            refreshed_report = run_docs_inventory_pipeline(root)
+            self.assertIn(
+                ISOLATED_FIXTURE_REPO_PATH,
+                refreshed_report["orphanCandidates"],
+            )
 
 
 if __name__ == "__main__":

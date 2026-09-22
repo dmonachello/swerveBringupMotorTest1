@@ -1,4 +1,9 @@
-# Bridge Runtime Architecture
+# Bridge Runtime Architecture (Historical)
+
+This document describes a pre-REST runtime that included raw TCP and optional
+NetworkTables paths. Use [Getting Started](GETTING_STARTED.md) and
+[Command Handler Architecture](COMMAND_HANDLER_ARCHITECTURE.md) for the current
+supported architecture.
 
 **Purpose**
 Define the runtime model, thread roles, and component lifecycle for the PC-side bridge (CLI/UI + CAN sniffer).

@@ -128,6 +128,16 @@ $Policy = @{
     JsonDepth = 12
     ContentType = 'application/json'
     PostMethod = 'Post'
+    GetMethod = 'Get'
+    OllamaTagsPath = '/api/tags'
+    OllamaPreflightTimeoutSeconds = 5
+    OllamaUnavailableTemplate = "Ollama preflight failed.`nEndpoint: {0}`nModel: {1}`nReason: {2}`nStart Ollama and run the command again."
+    OllamaMissingModelReason = 'the requested model is not installed'
+    OllamaInvalidTagsReason = 'the tags endpoint returned no model list'
+    OllamaLatestTag = ':latest'
+    OllamaTagSeparator = ':'
+    OllamaModelsProperty = 'models'
+    OllamaModelNameProperty = 'name'
     ContinuePreference = 'Continue'
     NativeOutputSelfTestWarning = 'line-ending warning'
     NativeOutputSelfTestId = 'NativeOutputRegression'
@@ -301,6 +311,11 @@ $Policy = @{
     FileDisplaySelfTestPaths = @('zeta file.txt', 'alpha.txt')
     FileDisplaySelfTestExpected = @('  - alpha.txt', '  - zeta file.txt')
     FileDisplaySelfTestFailure = 'Check-in filename display regression test failed.'
+    OllamaSelfTestChatUri = 'http://localhost:11434/api/chat'
+    OllamaSelfTestTagsUri = 'http://localhost:11434/api/tags'
+    OllamaSelfTestRequestedModel = 'example-coder'
+    OllamaSelfTestInstalledModel = 'example-coder:latest'
+    OllamaSelfTestFailure = 'Ollama preflight regression test failed.'
     YesText = 'yes'
     NoText = 'no'
     SystemPrompt = @'
@@ -389,6 +404,112 @@ function Split-NativeCommandOutput {
     return [pscustomobject]@{
         StdOut = $standardOutput.ToArray()
         StdErr = $standardError.ToArray()
+    }
+}
+
+function Get-OllamaTagsUri {
+    <#
+    .DESCRIPTION
+        Derives the Ollama model-list endpoint from the configured chat URI.
+
+    .PARAMETER ChatUri
+        Configured Ollama chat endpoint.
+
+    .RETURNS
+        URI for the Ollama tags endpoint on the same server.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [uri]$ChatUri
+    )
+
+    $builder = [UriBuilder]::new($ChatUri)
+    $builder.Path = $Policy.OllamaTagsPath
+    $builder.Query = [string]::Empty
+    $builder.Fragment = [string]::Empty
+    return $builder.Uri
+}
+
+function Test-OllamaModelAvailable {
+    <#
+    .DESCRIPTION
+        Checks whether the model list contains the requested tagged model.
+        Untagged requests use Ollama's latest tag.
+
+    .PARAMETER InstalledModels
+        Model names returned by the Ollama tags endpoint.
+
+    .PARAMETER RequestedModel
+        Model requested by the local-AI script.
+
+    .RETURNS
+        True when the requested model is installed.
+    #>
+    param(
+        [AllowEmptyCollection()]
+        [string[]]$InstalledModels,
+
+        [Parameter(Mandatory)]
+        [string]$RequestedModel
+    )
+
+    $normalizedModel = if ($RequestedModel.Contains($Policy.OllamaTagSeparator)) {
+        $RequestedModel
+    } else {
+        $RequestedModel + $Policy.OllamaLatestTag
+    }
+    return $normalizedModel -in $InstalledModels
+}
+
+function Assert-OllamaReady {
+    <#
+    .DESCRIPTION
+        Verifies that Ollama responds and has the requested model before the
+        script performs repository analysis or mutation.
+
+    .PARAMETER ChatUri
+        Configured Ollama chat endpoint.
+
+    .PARAMETER RequestedModel
+        Model required by the script.
+
+    .SIDE EFFECTS
+        Sends one read-only HTTP request to the local Ollama server.
+
+    .ERRORS
+        Stops with recovery guidance when Ollama is unavailable, its response
+        is invalid, or the requested model is not installed.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [uri]$ChatUri,
+
+        [Parameter(Mandatory)]
+        [string]$RequestedModel
+    )
+
+    $tagsUri = Get-OllamaTagsUri -ChatUri $ChatUri
+    try {
+        $response = Invoke-RestMethod `
+            -Uri $tagsUri `
+            -Method $Policy.GetMethod `
+            -TimeoutSec $Policy.OllamaPreflightTimeoutSeconds
+    } catch {
+        throw ($Policy.OllamaUnavailableTemplate -f $tagsUri, $RequestedModel, $_.Exception.Message)
+    }
+
+    $modelsProperty = $response.PSObject.Properties[$Policy.OllamaModelsProperty]
+    if ($null -eq $modelsProperty) {
+        throw ($Policy.OllamaUnavailableTemplate -f $tagsUri, $RequestedModel, $Policy.OllamaInvalidTagsReason)
+    }
+    $installedModels = @($modelsProperty.Value | ForEach-Object {
+        $nameProperty = $_.PSObject.Properties[$Policy.OllamaModelNameProperty]
+        if ($null -ne $nameProperty) {
+            [string]$nameProperty.Value
+        }
+    } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    if (-not (Test-OllamaModelAvailable -InstalledModels $installedModels -RequestedModel $RequestedModel)) {
+        throw ($Policy.OllamaUnavailableTemplate -f $tagsUri, $RequestedModel, $Policy.OllamaMissingModelReason)
     }
 }
 
@@ -1289,10 +1410,18 @@ if ($SelfTest) {
         ($Policy.FileDisplaySelfTestExpected -join [Environment]::NewLine)) {
         throw $Policy.FileDisplaySelfTestFailure
     }
+    $ollamaTagsUri = Get-OllamaTagsUri -ChatUri ([uri]$Policy.OllamaSelfTestChatUri)
+    $ollamaModelAvailable = Test-OllamaModelAvailable `
+        -InstalledModels @($Policy.OllamaSelfTestInstalledModel) `
+        -RequestedModel $Policy.OllamaSelfTestRequestedModel
+    if (($ollamaTagsUri.AbsoluteUri -cne $Policy.OllamaSelfTestTagsUri) -or (-not $ollamaModelAvailable)) {
+        throw $Policy.OllamaSelfTestFailure
+    }
     Write-Output $Policy.SelfTestPassed
     return
 }
 
+$null = Assert-OllamaReady -ChatUri $OllamaUrl -RequestedModel $Model
 $repositoryRoot = Invoke-ReadOnlyGit -Arguments $Policy.RepositoryCheckArguments
 $status = Invoke-ReadOnlyGit -Arguments $Policy.StatusArguments
 $unstagedDiff = Invoke-ReadOnlyGit -Arguments $Policy.UnstagedDiffArguments
