@@ -3,6 +3,7 @@ setlocal
 set PYTHON_EXE=
 set EXTRA_ARGS=
 set RIO_HOST=%BRINGUP_RIO_HOST%
+set REPO_VENV_PYTHON=%~dp0..\..\.venv\Scripts\python.exe
 
 if not "%CAN_NT_PYTHON%"=="" set PYTHON_EXE=%CAN_NT_PYTHON%
 if not "%~1"=="" (
@@ -12,13 +13,18 @@ if not "%~1"=="" (
   )
 )
 
+if "%PYTHON_EXE%"=="" if exist "%REPO_VENV_PYTHON%" set PYTHON_EXE=%REPO_VENV_PYTHON%
+
 if "%PYTHON_EXE%"=="" (
   for /f "delims=" %%p in ('where python 2^>nul') do (
     if "%PYTHON_EXE%"=="" set PYTHON_EXE=%%p
   )
 )
 
-if "%PYTHON_EXE%"=="" set PYTHON_EXE=%USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe
+if "%PYTHON_EXE%"=="" (
+  echo ERROR: Python not found. Run install_windows.cmd from the repository root.
+  exit /b 2
+)
 if "%RIO_HOST%"=="" set RIO_HOST=172.22.11.2
 
 set EXTRA_ARGS=%*

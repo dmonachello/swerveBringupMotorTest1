@@ -30,6 +30,11 @@ from tools.can_nt.scripts.lib.regression_framework import (
     EXIT_FAILED,
     EXIT_OK,
     EXIT_USAGE,
+    DEFAULT_PROGRESS_INTERVAL_SEC,
+    PROGRESS_EVENT_COMPLETE,
+    PROGRESS_EVENT_HEARTBEAT,
+    PROGRESS_EVENT_START,
+    RegressionCommand,
     RegressionComparison,
     RegressionResult,
     available_suites,
@@ -79,6 +84,10 @@ MSG_REFRESHED = "REFRESHED"
 MSG_HISTORY = "HISTORY"
 MSG_PLAN = "PLAN"
 MSG_TARGETS = "TARGETS"
+MSG_PROGRESS = "PROGRESS"
+TEXT_PROGRESS_START = "START"
+TEXT_PROGRESS_RUNNING = "RUNNING"
+TEXT_PROGRESS_DONE = "DONE"
 
 TEXT_MODE_UNITTEST = "unittest"
 TEXT_FLAG_MODULE = "-m"
@@ -120,6 +129,34 @@ def print_suite_plan(suite_name: str, commands: Sequence[RegressionCommand]) -> 
             print(f"{MSG_TARGETS}: {', '.join(targets)}")
         if command.features:
             print(f"{MSG_FEATURES}: {', '.join(command.features)}")
+
+
+def print_progress(
+    event: str,
+    command: RegressionCommand,
+    index: int,
+    total: int,
+    elapsed_sec: float,
+) -> None:
+    """
+    NAME
+        print_progress - Emit immediate liveness feedback for one running check.
+    """
+    if event == PROGRESS_EVENT_START:
+        state = TEXT_PROGRESS_START
+        detail = ""
+    elif event == PROGRESS_EVENT_HEARTBEAT:
+        state = TEXT_PROGRESS_RUNNING
+        detail = f" elapsed={elapsed_sec:.0f}s"
+    elif event == PROGRESS_EVENT_COMPLETE:
+        state = TEXT_PROGRESS_DONE
+        detail = f" elapsed={elapsed_sec:.1f}s"
+    else:
+        return
+    print(
+        f"{MSG_PROGRESS}: [{index}/{total}] {state} {command.label}{detail}",
+        flush=True,
+    )
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -190,9 +227,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"ERROR: {ex}")
         return EXIT_USAGE
 
+    print(
+        f"{MSG_PROGRESS}: suite={args.suite} commands={len(commands)} "
+        f"heartbeat={DEFAULT_PROGRESS_INTERVAL_SEC:.0f}s",
+        flush=True,
+    )
     if bool(args.verbose):
         print_suite_plan(str(args.suite), commands)
-    results = run_commands(commands, verbose=bool(args.verbose))
+    results = run_commands(
+        commands,
+        verbose=bool(args.verbose),
+        progress_callback=print_progress,
+    )
     metadata = collect_run_metadata()
     baseline = None if bool(args.refresh_expected) else load_suite_baseline(str(args.suite))
     comparisons = compare_results_to_baseline(commands, results, baseline)

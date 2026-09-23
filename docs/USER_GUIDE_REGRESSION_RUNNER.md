@@ -430,7 +430,29 @@ Use this when:
 
 ## 10. What the Output Means
 
-Each command prints:
+The runner prints progress by default. It reports the suite size before work
+starts, then prints `START` and `DONE` for every check:
+
+```text
+PROGRESS: suite=local commands=14 heartbeat=15s
+PROGRESS: [1/14] START regression-coverage-guard
+PROGRESS: [1/14] DONE regression-coverage-guard elapsed=0.1s
+```
+
+If one check produces no visible output for 15 seconds, the runner prints a
+heartbeat and continues to print one every 15 seconds until that check ends:
+
+```text
+PROGRESS: [13/14] RUNNING config-api-guard elapsed=15s
+PROGRESS: [13/14] RUNNING config-api-guard elapsed=30s
+```
+
+The heartbeat proves that the runner process is still waiting for that check.
+It does not mean that the check passed or failed. The `DONE` line reports only
+completion and elapsed time. Read the later `[PASS]` or `[FAIL]` result for the
+outcome.
+
+After all checks finish, each command prints:
 
 - pass/fail
 - command label

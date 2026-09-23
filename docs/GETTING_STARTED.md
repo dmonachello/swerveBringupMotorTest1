@@ -125,14 +125,15 @@ Run the repository installer:
 .\install_windows.cmd
 ```
 
-The installer upgrades `pip`, installs the pinned Python packages, and creates
-the local capture directories. It does not install WPILib, deploy robot code,
-or change system environment variables.
+The installer creates a repository-local `.venv`, installs the pinned packages
+from `requirements-windows.txt`, verifies them, and creates the local capture
+directories. It does not change the global Python environment, install WPILib,
+or deploy robot code.
 
 Confirm that the host application starts:
 
 ```powershell
-python -m tools.can_nt.can_nt_bridge --version
+.\.venv\Scripts\python.exe -m tools.can_nt.can_nt_bridge --version
 ```
 
 The command must print a version and return to PowerShell without an error.
@@ -146,7 +147,7 @@ Run these checks before you connect or enable hardware.
 ### Validate the shared configuration
 
 ```powershell
-python -m tools.validate_sync
+.\.venv\Scripts\python.exe -m tools.validate_sync
 ```
 
 This command validates references and schema rules, then updates the canonical
@@ -167,7 +168,7 @@ not deploy to the robot.
 ### Run the maintained local regressions
 
 ```powershell
-python tools/can_nt/scripts/run_regressions.py --suite local
+.\.venv\Scripts\python.exe tools/can_nt/scripts/run_regressions.py --suite local
 ```
 
 The local suite does not require a robot. Do not continue with an unexplained
@@ -205,7 +206,7 @@ possible. Confirm each device's manufacturer, device type, interface, and ID.
 Start the topology editor:
 
 ```powershell
-python -m tools.can_topology.can_top_editor
+.\.venv\Scripts\python.exe -m tools.can_topology.can_top_editor
 ```
 
 Use the editor to create devices, manage profile membership, and arrange the
@@ -215,7 +216,7 @@ topology. Save changes to
 After every configuration or test edit, run:
 
 ```powershell
-python -m tools.validate_sync
+.\.venv\Scripts\python.exe -m tools.validate_sync
 ```
 
 Use [Add a new device](./ADD_A_NEW_DEVICE.md) for the field-by-field procedure.
@@ -256,7 +257,7 @@ robot code is running.
 You do not need a CANable to use the robot REST connection. Run:
 
 ```powershell
-python -m tools.can_nt.can_nt_bridge --ui --no-can --rio 172.22.11.2
+.\tools\can_nt\run_can_nt.cmd --ui --no-can
 ```
 
 ### Start with passive CAN observation
@@ -264,14 +265,14 @@ python -m tools.can_nt.can_nt_bridge --ui --no-can --rio 172.22.11.2
 List the serial ports:
 
 ```powershell
-python -m tools.can_nt.can_nt_bridge --list-ports
+.\.venv\Scripts\python.exe -m tools.can_nt.can_nt_bridge --list-ports
 ```
 
 Then start the UI with the CANable port. Replace `COM3` with the port shown on
 your PC:
 
 ```powershell
-python -m tools.can_nt.can_nt_bridge --ui --channel COM3 --rio 172.22.11.2
+.\tools\can_nt\run_can_nt.cmd --ui --channel COM3
 ```
 
 The CANable path observes traffic. It does not transmit CAN frames.
@@ -306,7 +307,7 @@ or enable outputs.
 If you changed the local configuration after the last deploy:
 
 1. Click **Save Config** to write pending local edits.
-2. Run `python -m tools.validate_sync` in PowerShell.
+2. Run `.\.venv\Scripts\python.exe -m tools.validate_sync` in PowerShell.
 3. Click **Push Config** to send the configuration to the robot.
 4. Check the UI output for a successful acknowledgment.
 
@@ -340,7 +341,7 @@ appears under **Unrecognized Nodes**. To add one discovered device:
 3. Choose **Create Device Definition...**.
 4. Confirm the identity and assign a clear label.
 5. Click **Save Config**.
-6. Run `python -m tools.validate_sync`.
+6. Run `.\.venv\Scripts\python.exe -m tools.validate_sync`.
 7. Click **Push Config**.
 
 Creating the definition changes the in-memory host configuration first. Saving
@@ -394,7 +395,7 @@ workflow. You must activate the runtime again before another motion test.
 Start the interactive CLI without a CANable:
 
 ```powershell
-python -m tools.can_nt.can_nt_bridge --cli --no-can --rio 172.22.11.2
+.\tools\can_nt\run_can_nt.cmd --cli --no-can
 ```
 
 Start with read-only commands:
@@ -420,7 +421,7 @@ For a new test:
 2. Import the source through the UI or CLI.
 3. Validate the test.
 4. Save the configuration.
-5. Run `python -m tools.validate_sync`.
+5. Run `.\.venv\Scripts\python.exe -m tools.validate_sync`.
 6. Push the configuration.
 7. Select, activate, and run only that test.
 
@@ -453,7 +454,7 @@ both when a device is visible to one observer but not the other.
 To capture passive CAN traffic, start the host tool with `--pcap`:
 
 ```powershell
-python -m tools.can_nt.can_nt_bridge --channel COM3 --rio 172.22.11.2 --pcap tools/can_nt/logs/first-bringup.pcapng
+.\tools\can_nt\run_can_nt.cmd --channel COM3 --pcap tools/can_nt/logs/first-bringup.pcapng
 ```
 
 See the [CAN tool reference](../tools/can_nt/README_CAN_NT.md) for inventory,
@@ -469,7 +470,7 @@ capture, and Wireshark options.
 
 ### Configuration validation fails
 
-- Read the first error from `python -m tools.validate_sync`.
+- Read the first error from `.\.venv\Scripts\python.exe -m tools.validate_sync`.
 - Check duplicate labels and interface IDs.
 - Check profile, group, and test references for missing device labels.
 - Do not deploy until validation succeeds.
@@ -509,7 +510,7 @@ capture, and Wireshark options.
 Run the maintained non-robot checks before you deploy later changes:
 
 ```powershell
-python tools/can_nt/scripts/run_regressions.py --suite local
+.\.venv\Scripts\python.exe tools/can_nt/scripts/run_regressions.py --suite local
 ```
 
 To run the local-AI regression report after Ollama is available:
@@ -522,7 +523,7 @@ Robot-connected regression is optional unless a change affects robot REST or
 UI behavior:
 
 ```powershell
-python tools/can_nt/scripts/run_regressions.py --suite robot-non-motion --rio 172.22.11.2
+.\.venv\Scripts\python.exe tools/can_nt/scripts/run_regressions.py --suite robot-non-motion --rio 172.22.11.2
 ```
 
 The connected suite is non-motion, but it still requires a reachable roboRIO.

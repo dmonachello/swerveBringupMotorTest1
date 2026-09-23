@@ -20,10 +20,22 @@ if (-not $Output) {
 }
 
 $repoRoot = Resolve-Path -Path (Join-Path $PSScriptRoot "..\\..")
-Push-Location $repoRoot
-if ($Title) {
-    python -m tools.md_to_docx.md_to_docx --input $inputPath --output $Output --title $Title
+$venvPython = Join-Path $repoRoot ".venv\\Scripts\\python.exe"
+$pythonExe = if (Test-Path -LiteralPath $venvPython -PathType Leaf) {
+    $venvPython
 } else {
-    python -m tools.md_to_docx.md_to_docx --input $inputPath --output $Output
+    "python"
 }
-Pop-Location
+Push-Location $repoRoot
+try {
+    if ($Title) {
+        & $pythonExe -m tools.md_to_docx.md_to_docx --input $inputPath --output $Output --title $Title
+    } else {
+        & $pythonExe -m tools.md_to_docx.md_to_docx --input $inputPath --output $Output
+    }
+    if ($LASTEXITCODE -ne 0) {
+        throw "Markdown conversion failed with exit code $LASTEXITCODE."
+    }
+} finally {
+    Pop-Location
+}

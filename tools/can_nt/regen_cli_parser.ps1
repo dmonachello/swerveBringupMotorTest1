@@ -7,55 +7,93 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-function Write-Info($msg) {
-    Write-Host $msg
-}
+$VenvPythonRelativePath = ".venv\Scripts\python.exe"
+$InstallerRelativePath = "install_windows.ps1"
+$GeneratedPaths = @(
+    "tools\can_nt\bridge_cli_ebnf.txt",
+    "tools\can_nt\bridge_cli_grammar_meta.json",
+    "tools\can_nt\bridge_cli_grammar_gen.py",
+    "tools\can_nt\bridge_cli_constants_gen.py",
+    "tools\can_nt\gen_bridge_cli_parser.py"
+)
+$CompilePaths = @(
+    "tools\can_nt\bridge_cli_parser.py",
+    "tools\can_nt\bridge_cli_ast.py",
+    "tools\can_nt\bridge_cli_constants_gen.py",
+    "tools\can_nt\bridge_cli_grammar_gen.py",
+    "tools\can_nt\gen_bridge_cli_parser.py"
+)
 
-function Ensure-Command($cmd, $hint) {
-    $ok = $true
-    try {
-        & $cmd --version | Out-Null
-    } catch {
-        $ok = $false
-    }
-    if (-not $ok) {
-        Write-Error $hint
-        exit 2
+function Invoke-NativeChecked {
+    <#
+    .SYNOPSIS
+    Runs a native process and fails when it returns a nonzero exit code.
+    #>
+    param(
+        [string]$FilePath,
+        [string[]]$ArgumentList,
+        [string]$Operation
+    )
+
+    & $FilePath @ArgumentList
+    $nativeExitCode = $LASTEXITCODE
+    if ($nativeExitCode -ne 0) {
+        throw "$Operation failed with exit code $nativeExitCode."
     }
 }
 
 $repoRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path))
+$venvPython = Join-Path $repoRoot $VenvPythonRelativePath
+$installerPath = Join-Path $repoRoot $InstallerRelativePath
 Set-Location $repoRoot
 
-Write-Info "== Regenerate Bridge CLI Parser =="
-Write-Info "Repo: $repoRoot"
-
-Ensure-Command $Python "ERROR: Python not found. Install Python 3.10+ and ensure it is on PATH, or pass -Python <path>."
+Write-Host "== Regenerate Bridge CLI Parser =="
+Write-Host "Repo: $repoRoot"
 
 if ($InstallDeps) {
-    Write-Info "Installing Python dependencies..."
-    & $Python .\install_windows.ps1
+    Write-Host "Installing Python dependencies..."
+    Invoke-NativeChecked `
+        -FilePath "powershell.exe" `
+        -ArgumentList @(
+            "-NoProfile",
+            "-ExecutionPolicy", "Bypass",
+            "-File", $installerPath,
+            "-Python", $Python
+        ) `
+        -Operation "Installing dependencies"
+    $selectedPython = $venvPython
+} elseif ($env:CAN_NT_PYTHON) {
+    $selectedPython = $env:CAN_NT_PYTHON
+} elseif (Test-Path -LiteralPath $venvPython -PathType Leaf) {
+    $selectedPython = $venvPython
+} else {
+    $selectedPython = $Python
 }
 
-Write-Info "Generating grammar and constants..."
-& $Python tools\can_nt\gen_bridge_cli_parser.py
+Write-Host "Using Python: $selectedPython"
+Invoke-NativeChecked `
+    -FilePath $selectedPython `
+    -ArgumentList @("--version") `
+    -Operation "Checking Python"
 
-Write-Info "Compiling Python sources..."
-& $Python -m py_compile `
-    tools\can_nt\bridge_cli_parser.py `
-    tools\can_nt\bridge_cli_ast.py `
-    tools\can_nt\bridge_cli_constants_gen.py `
-    tools\can_nt\bridge_cli_grammar_gen.py `
-    tools\can_nt\gen_bridge_cli_parser.py
+Write-Host "Generating grammar and constants..."
+Invoke-NativeChecked `
+    -FilePath $selectedPython `
+    -ArgumentList @("tools\can_nt\gen_bridge_cli_parser.py") `
+    -Operation "Generating the CLI parser artifacts"
+
+Write-Host "Compiling Python sources..."
+Invoke-NativeChecked `
+    -FilePath $selectedPython `
+    -ArgumentList (@("-m", "py_compile") + $CompilePaths) `
+    -Operation "Compiling generated Python sources"
 
 if ($StageGenerated) {
-    Write-Info "Staging generated outputs..."
-    git add `
-        tools\can_nt\bridge_cli_ebnf.txt `
-        tools\can_nt\bridge_cli_grammar_meta.json `
-        tools\can_nt\bridge_cli_grammar_gen.py `
-        tools\can_nt\bridge_cli_constants_gen.py `
-        tools\can_nt\gen_bridge_cli_parser.py
+    Write-Host "Staging generated outputs..."
+    Invoke-NativeChecked `
+        -FilePath "git" `
+        -ArgumentList (@("add") + $GeneratedPaths) `
+        -Operation "Staging generated outputs"
 }
 
-Write-Info "Done."
+Write-Host "Done."

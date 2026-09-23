@@ -23,6 +23,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import threading
 import time
 from typing import Callable, Dict, Iterable, List, Mapping, Optional, Sequence
 
@@ -157,6 +158,13 @@ EVENT_FIRST_FAILURE = "first_failure"
 EVENT_CHANGED_FAILURE = "changed_failure"
 EVENT_RECOVERED = "recovered"
 
+PROGRESS_EVENT_START = "start"
+PROGRESS_EVENT_HEARTBEAT = "heartbeat"
+PROGRESS_EVENT_COMPLETE = "complete"
+DEFAULT_PROGRESS_INTERVAL_SEC = 15.0
+MINIMUM_PROGRESS_INTERVAL_SEC = 0.001
+ERROR_PROGRESS_INTERVAL = "heartbeat interval must be greater than zero"
+
 
 @dataclass(frozen=True)
 class RegressionCommand:
@@ -213,6 +221,8 @@ class RegressionComparison:
 
 
 RunnerFunction = Callable[[RegressionCommand, Path], RegressionResult]
+ProgressFunction = Callable[[str, RegressionCommand, int, int, float], None]
+HeartbeatFunction = Callable[[float], None]
 
 
 def available_suites() -> Sequence[str]:
@@ -258,75 +268,128 @@ def run_commands(
     commands: Iterable[RegressionCommand],
     runner: Optional[RunnerFunction] = None,
     verbose: bool = False,
+    progress_callback: Optional[ProgressFunction] = None,
+    heartbeat_interval_sec: float = DEFAULT_PROGRESS_INTERVAL_SEC,
 ) -> List[RegressionResult]:
     """
     NAME
         run_commands - Execute regression commands in order.
     """
+    command_list = list(commands)
+    total_count = len(command_list)
     results: List[RegressionResult] = []
-    for command in commands:
+    for command_index, command in enumerate(command_list, start=1):
+        if progress_callback is not None:
+            progress_callback(PROGRESS_EVENT_START, command, command_index, total_count, 0.0)
         if runner is not None:
-            results.append(runner(command, REPO_ROOT))
+            result = runner(command, REPO_ROOT)
         else:
-            results.append(execute_command(command, REPO_ROOT, verbose=verbose))
+            heartbeat_callback = None
+            if progress_callback is not None:
+                heartbeat_callback = lambda elapsed_sec, item=command, index=command_index: progress_callback(
+                    PROGRESS_EVENT_HEARTBEAT,
+                    item,
+                    index,
+                    total_count,
+                    elapsed_sec,
+                )
+            result = execute_command(
+                command,
+                REPO_ROOT,
+                verbose=verbose,
+                heartbeat_callback=heartbeat_callback,
+                heartbeat_interval_sec=heartbeat_interval_sec,
+            )
+        results.append(result)
+        if progress_callback is not None:
+            progress_callback(
+                PROGRESS_EVENT_COMPLETE,
+                command,
+                command_index,
+                total_count,
+                result.duration_sec,
+            )
     return results
 
 
-def execute_command(command: RegressionCommand, workdir: Path, verbose: bool = False) -> RegressionResult:
+def execute_command(
+    command: RegressionCommand,
+    workdir: Path,
+    verbose: bool = False,
+    heartbeat_callback: Optional[HeartbeatFunction] = None,
+    heartbeat_interval_sec: float = DEFAULT_PROGRESS_INTERVAL_SEC,
+) -> RegressionResult:
     """
     NAME
         execute_command - Run one subprocess-backed regression command.
     """
+    if heartbeat_interval_sec < MINIMUM_PROGRESS_INTERVAL_SEC:
+        raise ValueError(ERROR_PROGRESS_INTERVAL)
     start_sec = time.monotonic()
-    env = _subprocess_env_for_command(command, verbose=verbose)
-    if verbose:
-        process = subprocess.Popen(
+    heartbeat_stop = threading.Event()
+    heartbeat_thread: Optional[threading.Thread] = None
+    if heartbeat_callback is not None:
+        def emit_heartbeats() -> None:
+            """Report elapsed time until the child command finishes."""
+            while not heartbeat_stop.wait(heartbeat_interval_sec):
+                heartbeat_callback(time.monotonic() - start_sec)
+
+        heartbeat_thread = threading.Thread(target=emit_heartbeats, daemon=True)
+        heartbeat_thread.start()
+    try:
+        env = _subprocess_env_for_command(command, verbose=verbose)
+        if verbose:
+            process = subprocess.Popen(
+                list(command.argv),
+                cwd=str(workdir),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                env=env,
+            )
+            stdout_parts: List[str] = []
+            if process.stdout is not None:
+                for line in process.stdout:
+                    print(line, end="")
+                    stdout_parts.append(line)
+            exit_code = int(process.wait())
+            duration_sec = time.monotonic() - start_sec
+            return RegressionResult(
+                label=command.label,
+                argv=list(command.argv),
+                mode=command.mode,
+                exit_code=exit_code,
+                duration_sec=duration_sec,
+                stdout="".join(stdout_parts),
+                stderr="",
+                command_id=command.command_id,
+                features=tuple(command.features),
+            )
+        completed = subprocess.run(
             list(command.argv),
             cwd=str(workdir),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
+            capture_output=True,
             text=True,
             encoding="utf-8",
             env=env,
         )
-        stdout_parts: List[str] = []
-        if process.stdout is not None:
-            for line in process.stdout:
-                print(line, end="")
-                stdout_parts.append(line)
-        exit_code = int(process.wait())
         duration_sec = time.monotonic() - start_sec
         return RegressionResult(
             label=command.label,
             argv=list(command.argv),
             mode=command.mode,
-            exit_code=exit_code,
+            exit_code=int(completed.returncode),
             duration_sec=duration_sec,
-            stdout="".join(stdout_parts),
-            stderr="",
+            stdout=completed.stdout,
+            stderr=completed.stderr,
             command_id=command.command_id,
             features=tuple(command.features),
         )
-    completed = subprocess.run(
-        list(command.argv),
-        cwd=str(workdir),
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        env=env,
-    )
-    duration_sec = time.monotonic() - start_sec
-    return RegressionResult(
-        label=command.label,
-        argv=list(command.argv),
-        mode=command.mode,
-        exit_code=int(completed.returncode),
-        duration_sec=duration_sec,
-        stdout=completed.stdout,
-        stderr=completed.stderr,
-        command_id=command.command_id,
-        features=tuple(command.features),
-    )
+    finally:
+        heartbeat_stop.set()
+        if heartbeat_thread is not None:
+            heartbeat_thread.join()
 
 
 def summarize_results(results: Sequence[RegressionResult]) -> Dict[str, int]:

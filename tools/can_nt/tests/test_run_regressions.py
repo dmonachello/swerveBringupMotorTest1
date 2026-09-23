@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 from pathlib import Path
+import sys
 import tempfile
 import unittest
 from contextlib import redirect_stdout
@@ -26,6 +27,7 @@ from tools.can_nt.scripts.lib.regression_framework import (
     HISTORY_INDEX_FILE_NAME,
     HISTORY_LATEST_DIRECTORY_NAME,
     MANIFEST_RELATIVE_PATH,
+    REPO_ROOT,
     RegressionCommand,
     RegressionResult,
     STATUS_FIXED,
@@ -44,8 +46,10 @@ from tools.can_nt.scripts.lib.regression_framework import (
     _argv_matches_portably,
     build_suite_commands,
     compare_results_to_baseline,
+    execute_command,
     load_manifest,
     refresh_suite_baseline,
+    run_commands,
     summarize_comparisons,
     summarize_results,
     write_history_for_run,
@@ -66,9 +70,74 @@ KEY_LAST_GREEN_COMMIT = "lastGreenCommit"
 KEY_LAST_GREEN_PATH = "lastGreenPath"
 KEY_LAST_RUN_PATH = "lastRunPath"
 KEY_PREVIOUS_GREEN_COMMIT = "previousGreenCommit"
+PROGRESS_EVENT_START = "start"
+PROGRESS_EVENT_HEARTBEAT = "heartbeat"
+PROGRESS_EVENT_COMPLETE = "complete"
+PROGRESS_TEST_SLEEP_SECONDS = 0.08
+PROGRESS_TEST_INTERVAL_SECONDS = 0.01
 
 
 class RunRegressionsTests(unittest.TestCase):
+    def test_run_commands_reports_start_and_completion_progress(self) -> None:
+        command = RegressionCommand(
+            label="progress-check",
+            argv=("python",),
+            mode=MODE_LOCAL,
+            command_id="progress-check",
+            features=(),
+        )
+        events: list[tuple[str, int, int, str]] = []
+
+        def runner(item: RegressionCommand, _workdir: Path) -> RegressionResult:
+            return RegressionResult(
+                label=item.label,
+                argv=item.argv,
+                mode=item.mode,
+                exit_code=EXIT_OK,
+                duration_sec=0.1,
+                stdout="",
+                stderr="",
+                command_id=item.command_id,
+                features=item.features,
+            )
+
+        def progress(event: str, item: RegressionCommand, index: int, total: int, _elapsed: float) -> None:
+            events.append((event, index, total, item.label))
+
+        run_commands([command], runner=runner, progress_callback=progress)
+
+        self.assertEqual(
+            [
+                (PROGRESS_EVENT_START, 1, 1, "progress-check"),
+                (PROGRESS_EVENT_COMPLETE, 1, 1, "progress-check"),
+            ],
+            events,
+        )
+
+    def test_execute_command_reports_heartbeat_while_child_is_silent(self) -> None:
+        command = RegressionCommand(
+            label="silent-check",
+            argv=(
+                sys.executable,
+                "-c",
+                f"import time; time.sleep({PROGRESS_TEST_SLEEP_SECONDS})",
+            ),
+            mode=MODE_LOCAL,
+            command_id="silent-check",
+            features=(),
+        )
+        heartbeats: list[float] = []
+
+        result = execute_command(
+            command,
+            REPO_ROOT,
+            heartbeat_callback=heartbeats.append,
+            heartbeat_interval_sec=PROGRESS_TEST_INTERVAL_SECONDS,
+        )
+
+        self.assertTrue(result.ok)
+        self.assertTrue(heartbeats)
+
     def test_describe_command_targets_reports_unittest_module(self) -> None:
         targets = _describe_command_targets(
             (
@@ -302,6 +371,30 @@ class RunRegressionsTests(unittest.TestCase):
 
         self.assertEqual(EXIT_OK, exit_code)
         run_commands_mock.assert_called_once()
+
+    @patch("tools.can_nt.scripts.run_regressions.run_commands")
+    def test_main_enables_progress_feedback_by_default(self, run_commands_mock) -> None:
+        run_commands_mock.return_value = [
+            RegressionResult(
+                label="dsl-unit",
+                argv=("python", "-m", "unittest"),
+                mode=MODE_LOCAL,
+                exit_code=EXIT_OK,
+                duration_sec=0.1,
+                stdout="ok",
+                stderr="",
+                command_id="dsl-unit",
+                features=(),
+            )
+        ]
+        output = io.StringIO()
+
+        with redirect_stdout(output):
+            exit_code = main(["--suite", SUITE_DSL, "--no-history"])
+
+        self.assertEqual(EXIT_OK, exit_code)
+        self.assertIn("PROGRESS: suite=dsl commands=2 heartbeat=15s", output.getvalue())
+        self.assertTrue(callable(run_commands_mock.call_args.kwargs["progress_callback"]))
 
     @patch("tools.can_nt.scripts.run_regressions.run_commands")
     def test_main_verbose_prints_plan_before_running(self, run_commands_mock) -> None:

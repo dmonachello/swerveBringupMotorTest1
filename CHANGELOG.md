@@ -2,6 +2,20 @@
 
 All notable user-facing changes are documented in this file.
 
+## 2026-09-23
+
+### Changed - 2026-09-23
+
+- Added a repository-local Windows Python environment with one pinned dependency
+  manifest, installer validation, and launcher discovery.
+- Removed the external Lark dependency from Windows setup and verified that CLI
+  grammar generation works without site packages.
+- Added per-check progress and 15-second heartbeat output to the unified
+  regression runner.
+- Added regression coverage for Windows installation, launcher selection,
+  native failure propagation, and runner progress reporting.
+- Updated Windows setup, first-use, CAN tool, and regression-runner guides.
+
 ## 2026-09-16
 
 ### Changed - 2026-09-16

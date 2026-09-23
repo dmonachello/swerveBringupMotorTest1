@@ -199,6 +199,7 @@ compile_commands.json
 # Python cache
 __pycache__/
 *.pyc
+/.venv/
 
 # Tool scratch data
 tools/save/

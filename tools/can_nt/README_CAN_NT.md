@@ -4,7 +4,7 @@ NAME
     can_nt_bridge.py - Host-side CAN diagnostics bridge for the robot bringup harness
 
 SYNOPSIS
-    python tools\\can_nt\\can_nt_bridge.py [options]
+    .venv\\Scripts\\python.exe -m tools.can_nt.can_nt_bridge [options]
     tools\can_nt\run_can_nt.cmd [python.exe] [options]
 
 DESCRIPTION
@@ -13,12 +13,13 @@ DESCRIPTION
     stream live PCAPNG into Wireshark via a Windows named pipe.
 
 INSTALL
-    py -m pip install python-can
-    py -m pip install pyserial
-    py -m pip install prompt_toolkit
+    From the repository root, run install_windows.cmd. The repository-local
+    requirements-windows.txt file is the dependency-version authority.
+    Plain python examples below assume .venv\Scripts\Activate.ps1 has run in
+    the current PowerShell session. The run_can_nt launchers need no activation.
 
 RUN
-    python tools\\can_nt\\can_nt_bridge.py --rio 172.22.11.2
+    .venv\\Scripts\\python.exe -m tools.can_nt.can_nt_bridge --rio 172.22.11.2
 
     tools\can_nt\run_can_nt.cmd
 
@@ -31,9 +32,8 @@ RUN
 
     tools\can_nt\run_can_nt.cmd C:\Path\To\Python\python.exe --verbose --quick-check
 
-    If neither is set, the helper script:
-    1) uses the first python in PATH
-    2) falls back to %USERPROFILE%\AppData\Local\Programs\Python\Python312\python.exe
+    Without an explicit override, the helper script prefers the repository
+    .venv and then uses the first python in PATH.
 
 VERSIONING
     Purpose: Show and update app versions.
@@ -389,5 +389,3 @@ NOTES
     - --dump-profile cannot distinguish NEO vs FLEX or Kraken vs Falcon.
     - The robot runtime prints status=NO_DATA, ageSec=-, msgCount=- until a device is seen.
     - CANable Pro V2 ships with slcan firmware by default.
-
-
