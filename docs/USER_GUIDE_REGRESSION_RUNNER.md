@@ -290,6 +290,17 @@ Regression coverage:
 - shared selected-test/member-row singleton state tests
 - group contract singleton lock-state tests
 
+### Live Signal Graph Selection And Review
+
+Regression coverage:
+
+- synchronized inspector and watch-list checkbox tests
+- eight-signal and four-lane limit tests
+- graph-pane collapse and session-state tests
+- time-window dropdown and custom zoom tests
+- `LIVE` and `REVIEW` transition tests
+- pause-without-ingestion-pause tests
+
 ## 7. Running from the Command Line
 
 ### 7.1 Default Local Bundle

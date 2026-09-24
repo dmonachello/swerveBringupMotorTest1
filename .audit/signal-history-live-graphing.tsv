@@ -1,0 +1,5 @@
+ts	phase	decision	why	evidence	result
+2026-09-24T18:24:02Z	frame	Use the approved feature spec as the implementation contract	The robot loop, REST API, host history, capture formats, and UI need one shared target	docs/FEATURE_SPEC_SIGNAL_HISTORY_LIVE_GRAPHING_AND_CAPTURE.md	approved, implementation started
+2026-09-24T18:24:02Z	workflow	Implement in independently verified phases	A failure should be caught in the smallest unit that introduced it	docs/FEATURE_SPEC_SIGNAL_HISTORY_LIVE_GRAPHING_AND_CAPTURE.md#delivery-plan	open
+2026-09-24T18:24:02Z	architecture	Keep SampledTelemetrySampler as the sole vendor-read owner	Graphing, REST, and capture must not add hardware reads	src/main/java/frc/robot/telemetry/SampledTelemetrySampler.java	open
+2026-09-24T18:25:02Z	baseline	Recorded the approved graph workflow in the UI rules and regression guide	The operator contract must exist before UI implementation	Current UI And Runtime Rules - V2.md, docs/USER_GUIDE_REGRESSION_RUNNER.md	lockstep test passed

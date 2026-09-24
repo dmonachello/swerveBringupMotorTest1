@@ -1251,6 +1251,32 @@ Current behavior:
 
 - `CAN Visibility` is the raw passive observer visibility lens.
 
+## Live Topology Signal History
+
+Purpose: Define signal selection, graph layout, and time navigation inside Live Topology.
+
+Current behavior:
+
+- Live graphing stays inside Live Topology. It does not add a top-level graph tab.
+- The selected-device inspector contains a **Graphable signals** section.
+- Each signal uses the same standard checkbox-row style as the **Active Group** device list.
+- Checking a signal adds it to the graph and opens the graph pane when it is the first selection.
+- Clearing a signal in either the inspector or watch list removes it from both locations.
+- Selecting another topology device changes the available signal rows without clearing the watch list.
+- The session supports at most eight checked signals and four engineering-dimension lanes.
+- Checkboxes that would exceed either limit are disabled and explain the applicable limit.
+- The graph assigns lanes by engineering dimension. The operator does not assign axes or lanes.
+- The graph pane uses a persistent watch-list column beside aligned graph lanes.
+- Collapsing the graph pane does not stop ingestion, retention, or capture and does not clear graph state.
+- Watch selections last only for the current UI2 process.
+- The time-window dropdown offers 2, 5, 10, 30, and 60 seconds. The default is 10 seconds.
+- Free zoom displays `Custom · <duration>` in the closed dropdown. The custom value is not editable.
+- Pause, pan, and zoom enter `REVIEW`. Selecting a time window while reviewing does not return to `LIVE`.
+- Only **Resume live** returns the viewport to the newest samples.
+- Each numeric lane autoscales independently. Boolean lanes use fixed false and true levels.
+- The shared cursor reports nearest recorded samples without interpolation. Gaps report `No sample`.
+- Runtime stops and device loss keep checked signals visible with stale state or a gap.
+
   
 
 ### Live Topology Active Group
@@ -1474,6 +1500,16 @@ Purpose: Describe common operator scenarios and the code-driven behavior they sh
 - Singleton-backed devices keep distinct lifecycle behavior from normal runtime-owned devices across repeated activate/deactivate workflows.
 
 - UI lock/editability state for singleton-backed devices must come from shared runtime lifecycle semantics, not local label heuristics.
+
+### Live Signal Graph Selection And Review
+
+- Select a topology device and check signals in its **Graphable signals** section.
+- Select other devices to add signals without clearing existing graph selections.
+- Clear a synchronized checkbox in either the inspector or watch list to remove that signal.
+- Use the time-window dropdown for a fixed duration or use mouse zoom for a custom duration.
+- Pause, pan, or zoom to inspect retained data in `REVIEW` while ingestion and capture continue.
+- Select **Resume live** to return to the newest samples.
+- Collapse and reopen the graph pane without losing the current session state.
 
   
 

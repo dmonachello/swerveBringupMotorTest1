@@ -29,6 +29,7 @@ Purpose: These capture design intent for larger features.
 - [Profile tables push specification](./ProfileTablesPushSpec.md)
 - [Byte fingerprinting specification](./FEATURE_SPEC_BYTE_FINGERPRINTING.md)
 - [Live topology operations specification](./FEATURE_SPEC_LIVE_TOPOLOGY_OPS.md)
+- [Signal history, live graphing, and capture specification](./FEATURE_SPEC_SIGNAL_HISTORY_LIVE_GRAPHING_AND_CAPTURE.md)
 - [Config store specification](./FEATURE_SPEC_CONFIG_STORE.md)
 
 ## Diagnostics and AI
