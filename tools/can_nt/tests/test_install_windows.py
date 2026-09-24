@@ -32,6 +32,7 @@ EXPECTED_REQUIREMENTS = {
     "prompt-toolkit==3.0.53",
     "reportlab==5.0.1",
     "python-docx==1.2.0",
+    "matplotlib==3.11.2",
 }
 POWERSHELL_NAMES = ("powershell.exe", "powershell")
 FAILURE_EXIT_CODE = 7

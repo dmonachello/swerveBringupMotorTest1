@@ -1,4 +1,4 @@
-SPEC_STATUS: NOT_IMPLEMENTED
+SPEC_STATUS: PARTIALLY_IMPLEMENTED
 
 # Feature Spec: Signal History, Live Graphing, and Capture
 
@@ -10,7 +10,11 @@ The feature extends the existing robot sampler. It does not add a second telemet
 
 ## Status
 
-This spec defines approved target behavior. No graphing or capture implementation exists yet.
+Substantial portions of phases 1 through 4 are implemented for the initial sampled
+motor-current catalog. The live REST path, Live Topology graph, CSV export, and bounded
+WPILOG recorder are available. Typed boolean acquisition, passive-source clock alignment,
+connected performance measurements, and AdvantageScope acceptance testing remain before
+the complete first-release definition of done. Phase 5 events and MCAP remain deferred.
 
 The user approved the Live Topology graph pane, the selected-device signal picker, and the graph time controls described in this spec. Update `Current UI And Runtime Rules - V2.md` before or with the implementation. Do not update the runtime-rules document before implementation begins.
 

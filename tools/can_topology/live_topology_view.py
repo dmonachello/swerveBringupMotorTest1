@@ -17,7 +17,8 @@ import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import tkinter as tk
-from tkinter import ttk
+from tkinter import filedialog, messagebox, ttk
+from pathlib import Path
 
 from tools.can_nt.passive_discovery_integration_service import (
     ATTACHMENT_KEY_TYPE,
@@ -161,6 +162,14 @@ from tools.can_nt.visibility_constants import (
     VIS_KEY_VISIBILITY,
     VIS_VISIBLE_TRUE,
 )
+from tools.common.telemetry.history import TelemetryHistoryStore
+from tools.common.telemetry.capture import LongFormCsvSink
+from tools.common.telemetry.model import (
+    TelemetryCatalog,
+    TelemetryCaptureStatus,
+    TelemetryHistoryPage,
+)
+from tools.can_topology.signal_history_panel import SignalHistoryPanel
 from tools.can_nt.host_ui_state_service import (
     ACTIVE_GROUP_STATUS_EDITABLE_TEXT as SHARED_ACTIVE_GROUP_STATUS_EDITABLE_TEXT,
     ACTIVE_GROUP_STATUS_EMPTY_TEXT as SHARED_ACTIVE_GROUP_STATUS_EMPTY_TEXT,
@@ -1150,6 +1159,12 @@ class LiveTopologyView(ttk.Frame):
         title_text: str = TITLE_TEXT_DEFAULT,
         fit_on_load: bool = False,
         theme_name: str = UI_THEME_DEFAULT,
+        on_telemetry_capture_toggle: Optional[
+            Callable[[bool], Optional[TelemetryCaptureStatus]]
+        ] = None,
+        on_telemetry_capture_settings: Optional[
+            Callable[[bool, bool], Optional[TelemetryCaptureStatus]]
+        ] = None,
     ) -> None:
         super().__init__(parent)
         self._theme_name = str(theme_name or UI_THEME_DEFAULT)
@@ -1212,12 +1227,20 @@ class LiveTopologyView(ttk.Frame):
         self._on_override_action_cb = on_override_action
         self._on_left_click_cb = on_left_click
         self._on_selection_changed_cb = on_selection_changed
+        self._on_telemetry_capture_toggle_cb = on_telemetry_capture_toggle
+        self._on_telemetry_capture_settings_cb = on_telemetry_capture_settings
         self._group_inspector_name = EMPTY_STRING
         self._group_inspector_targets: List[str] = []
         self._selection_inspector_mode = GROUP_INSPECTOR_MODE_DEVICE
         self._group_inspector_row_widgets: Dict[str, Dict[str, object]] = {}
         self._active_group_row_widgets: Dict[str, Dict[str, object]] = {}
         self._active_group_empty_label: Optional[ttk.Label] = None
+        self._telemetry_store = TelemetryHistoryStore()
+        self._signal_selector_frame: Optional[ttk.LabelFrame] = None
+        self._signal_selector_vars: Dict[str, tk.BooleanVar] = {}
+        self._signal_selector_widgets: Dict[str, ttk.Checkbutton] = {}
+        self._signal_selector_status_var = tk.StringVar(value=EMPTY_STRING)
+        self._graph_panel_visible = False
         self._connection_filter_vars = {
             key: tk.BooleanVar(value=True) for key in CONNECTION_FILTERS_ORDER
         }
@@ -1293,7 +1316,12 @@ class LiveTopologyView(ttk.Frame):
         body = ttk.Frame(self)
         body.pack(fill="both", expand=True, padx=8, pady=8)
 
-        content_pane = ttk.Panedwindow(body, orient="horizontal")
+        self._workspace_pane = ttk.Panedwindow(body, orient=tk.VERTICAL)
+        self._workspace_pane.pack(fill="both", expand=True)
+        topology_workspace = ttk.Frame(self._workspace_pane)
+        self._workspace_pane.add(topology_workspace, weight=5)
+
+        content_pane = ttk.Panedwindow(topology_workspace, orient="horizontal")
         content_pane.pack(fill="both", expand=True)
 
         canvas_frame = ttk.Frame(content_pane)
@@ -1307,7 +1335,7 @@ class LiveTopologyView(ttk.Frame):
         self._canvas.pack(side="left", fill="both", expand=True)
         y_scroll = ttk.Scrollbar(canvas_frame, orient="vertical", command=self._canvas.yview)
         y_scroll.pack(side="right", fill="y")
-        x_scroll = ttk.Scrollbar(body, orient="horizontal", command=self._canvas.xview)
+        x_scroll = ttk.Scrollbar(topology_workspace, orient="horizontal", command=self._canvas.xview)
         x_scroll.pack(side="bottom", fill="x")
         self._canvas.configure(yscrollcommand=y_scroll.set, xscrollcommand=x_scroll.set)
         self._canvas.bind("<Configure>", self._redraw)
@@ -1481,6 +1509,23 @@ class LiveTopologyView(ttk.Frame):
                 clear_button.pack(side="left", padx=(8, 0))
                 self._override_clear_button = clear_button
                 self._apply_override_action_button_state()
+            self._signal_selector_frame = ttk.LabelFrame(
+                self._detail_device_frame,
+                text="Graphable signals",
+                padding=4,
+            )
+            self._signal_selector_frame.grid(
+                row=len(rows) + 1,
+                column=0,
+                columnspan=2,
+                sticky="ew",
+                pady=(8, 0),
+            )
+            ttk.Label(
+                self._signal_selector_frame,
+                textvariable=self._signal_selector_status_var,
+                wraplength=300,
+            ).pack(fill="x")
             active_group_frame = ttk.LabelFrame(
                 details_split_pane,
                 text=ACTIVE_GROUP_FRAME_TEXT,
@@ -1548,7 +1593,217 @@ class LiveTopologyView(ttk.Frame):
             )
             details_split_pane.configure(height=DETAILS_SPLIT_PANE_HEIGHT)
 
+        self._signal_history_panel = SignalHistoryPanel(
+            self._workspace_pane,
+            self._telemetry_store,
+            on_unwatch=self._unwatch_signal,
+            on_collapse=self._collapse_signal_history,
+            on_export_csv=self._export_signal_history_csv,
+            on_capture_toggle=self._on_telemetry_capture_toggle_cb,
+            on_capture_settings=self._on_telemetry_capture_settings_cb,
+        )
+
         self.reload_profile(profile_name)
+
+    def update_telemetry_catalog(self, catalog: TelemetryCatalog) -> None:
+        """
+        NAME
+            update_telemetry_catalog - Apply graphable signal descriptors from REST.
+        """
+        self._telemetry_store.apply_catalog(catalog)
+        self._refresh_signal_selector()
+        self._signal_history_panel.sync_watch_list()
+
+    def update_telemetry_history(self, page: TelemetryHistoryPage) -> None:
+        """
+        NAME
+            update_telemetry_history - Append one validated REST history page.
+        """
+        self._telemetry_store.apply_page(page)
+        self._refresh_signal_selector_values()
+        self._signal_history_panel.refresh_status()
+        if self._graph_panel_visible:
+            self._signal_history_panel.refresh()
+
+    def update_telemetry_capture_status(self, status: TelemetryCaptureStatus) -> None:
+        """Synchronize the lower-pane Record toggle with robot-owned state."""
+        self._signal_history_panel.update_capture_status(status)
+
+    def telemetry_history_query(self) -> Tuple[int, List[str]]:
+        """
+        NAME
+            telemetry_history_query - Return the current cursor and selected IDs.
+        """
+        return (
+            self._telemetry_store.cursor,
+            list(self._telemetry_store.signal_ids_for_query()),
+        )
+
+    def _refresh_signal_selector(self) -> None:
+        if self._signal_selector_frame is None:
+            return
+        for child in self._signal_selector_frame.winfo_children():
+            child.destroy()
+        self._signal_selector_vars.clear()
+        self._signal_selector_widgets.clear()
+        node = self._selected_node
+        if node is None:
+            self._signal_selector_status_var.set("Select a device to choose signals.")
+            ttk.Label(
+                self._signal_selector_frame,
+                textvariable=self._signal_selector_status_var,
+                wraplength=300,
+            ).pack(fill="x")
+            return
+        descriptors = [
+            descriptor
+            for descriptor in self._telemetry_store.catalog_descriptors()
+            if descriptor.graphable
+            and descriptor.device_label.strip().lower() == node.label.strip().lower()
+        ]
+        if not descriptors:
+            self._signal_selector_status_var.set("No graphable signals are currently published.")
+            ttk.Label(
+                self._signal_selector_frame,
+                textvariable=self._signal_selector_status_var,
+                wraplength=300,
+            ).pack(fill="x")
+            return
+        watched_ids = set(self._telemetry_store.signal_ids_for_query())
+        self._signal_selector_status_var.set(EMPTY_STRING)
+        if watched_ids and not self._graph_panel_visible:
+            ttk.Button(
+                self._signal_selector_frame,
+                text="Show graph",
+                command=self._show_signal_history,
+            ).pack(anchor="w", pady=(0, 4))
+        for descriptor in descriptors:
+            selected = descriptor.signal_id in watched_ids
+            variable = tk.BooleanVar(value=selected)
+            self._signal_selector_vars[descriptor.signal_id] = variable
+            latest = self._telemetry_store.latest_sample(descriptor.signal_id)
+            if latest is not None:
+                value_text = (
+                    f"{latest.numeric_value:.3f} "
+                    f"{descriptor.unit_symbol or descriptor.unit} · "
+                    f"{self._telemetry_store.current_quality(descriptor.signal_id)}"
+                )
+            else:
+                value_text = "no samples"
+            label = f"{descriptor.signal_name} — {value_text}"
+            checkbox = ttk.Checkbutton(
+                row := ttk.Frame(self._signal_selector_frame),
+                text=label,
+                variable=variable,
+                command=lambda signal_id=descriptor.signal_id: self._toggle_signal_watch(signal_id),
+            )
+            self._signal_selector_widgets[descriptor.signal_id] = checkbox
+            reason = self._telemetry_store.watch_block_reason(descriptor.signal_id)
+            if reason and not selected:
+                checkbox.configure(text=f"{label} — {reason}")
+                checkbox.configure(state="disabled")
+                checkbox.bind(
+                    "<Enter>",
+                    lambda _event, message=reason: self._signal_selector_status_var.set(message),
+                )
+                checkbox.bind(
+                    "<Leave>",
+                    lambda _event: self._signal_selector_status_var.set(EMPTY_STRING),
+                )
+            row.pack(fill="x")
+            checkbox.pack(side="left")
+            trace_color = self._signal_history_panel.trace_color(descriptor.signal_id)
+            if selected and trace_color:
+                tk.Label(row, text="■", foreground=trace_color).pack(side="left")
+        ttk.Label(
+            self._signal_selector_frame,
+            textvariable=self._signal_selector_status_var,
+            wraplength=300,
+        ).pack(fill="x", pady=(4, 0))
+
+    def _refresh_signal_selector_values(self) -> None:
+        """Update selected-device values without rebuilding checkbox widgets."""
+        descriptors = {
+            descriptor.signal_id: descriptor
+            for descriptor in self._telemetry_store.catalog_descriptors()
+        }
+        for signal_id, checkbox in self._signal_selector_widgets.items():
+            descriptor = descriptors.get(signal_id)
+            if descriptor is None:
+                continue
+            latest = self._telemetry_store.latest_sample(signal_id)
+            if latest is None:
+                value_text = "no samples"
+            else:
+                value_text = (
+                    f"{latest.numeric_value:.3f} "
+                    f"{descriptor.unit_symbol or descriptor.unit} · "
+                    f"{self._telemetry_store.current_quality(signal_id)}"
+                )
+            label = f"{descriptor.signal_name} — {value_text}"
+            reason = self._telemetry_store.watch_block_reason(signal_id)
+            selected = signal_id in self._telemetry_store.signal_ids_for_query()
+            if reason and not selected:
+                label = f"{label} — {reason}"
+            checkbox.configure(text=label)
+
+    def _toggle_signal_watch(self, signal_id: str) -> None:
+        variable = self._signal_selector_vars.get(signal_id)
+        if variable is None:
+            return
+        if variable.get():
+            if not self._telemetry_store.watch(signal_id):
+                variable.set(False)
+                self._signal_selector_status_var.set(
+                    self._telemetry_store.watch_block_reason(signal_id)
+                )
+                return
+            self._show_signal_history()
+        else:
+            self._telemetry_store.unwatch(signal_id)
+        self._signal_history_panel.sync_watch_list()
+        self._signal_history_panel.refresh(force=True)
+        self._refresh_signal_selector()
+
+    def _unwatch_signal(self, signal_id: str) -> None:
+        self._telemetry_store.unwatch(signal_id)
+        self._signal_history_panel.sync_watch_list()
+        self._signal_history_panel.refresh(force=True)
+        self._refresh_signal_selector()
+
+    def _show_signal_history(self) -> None:
+        if self._graph_panel_visible:
+            return
+        self._workspace_pane.add(self._signal_history_panel, weight=2)
+        self._graph_panel_visible = True
+        self._refresh_signal_selector()
+
+    def _collapse_signal_history(self) -> None:
+        if not self._graph_panel_visible:
+            return
+        self._workspace_pane.forget(self._signal_history_panel)
+        self._graph_panel_visible = False
+        self._refresh_signal_selector()
+
+    def _export_signal_history_csv(self) -> None:
+        path = filedialog.asksaveasfilename(
+            parent=self,
+            title="Export signal history",
+            defaultextension=".csv",
+            filetypes=(("CSV files", "*.csv"), ("All files", "*.*")),
+        )
+        if not path:
+            return
+        try:
+            row_count = LongFormCsvSink.export(Path(path), self._telemetry_store)
+        except OSError as ex:
+            messagebox.showerror("Signal history export", str(ex), parent=self)
+            return
+        messagebox.showinfo(
+            "Signal history export",
+            f"Exported {row_count} source samples.",
+            parent=self,
+        )
 
     def set_title_text(self, title_text: str) -> None:
         """
@@ -2883,6 +3138,7 @@ class LiveTopologyView(ttk.Frame):
             return
         self._show_device_inspector()
         node = self._selected_node
+        self._refresh_signal_selector()
         if node is None:
             synthetic_detail = self.__dict__.get("_synthetic_selection_detail", {})
             if (

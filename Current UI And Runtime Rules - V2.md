@@ -1274,8 +1274,11 @@ Current behavior:
 - Pause, pan, and zoom enter `REVIEW`. Selecting a time window while reviewing does not return to `LIVE`.
 - Only **Resume live** returns the viewport to the newest samples.
 - Each numeric lane autoscales independently. Boolean lanes use fixed false and true levels.
-- The shared cursor reports nearest recorded samples without interpolation. Gaps report `No sample`.
+- The shared cursor reports nearest recorded samples without interpolation. Detected gaps break the plotted line and remain visible in the provenance status.
 - Runtime stops and device loss keep checked signals visible with stale state or a gap.
+- **Record** explicitly starts or stops robot-local WPILOG capture and includes the retained pre-trigger window.
+- **Auto: match** and **Auto: exception** are off by default and change only when the operator checks them.
+- **Export CSV** writes retained watched samples without changing acquisition or capture state.
 
   
 
@@ -1510,6 +1513,8 @@ Purpose: Describe common operator scenarios and the code-driven behavior they sh
 - Pause, pan, or zoom to inspect retained data in `REVIEW` while ingestion and capture continue.
 - Select **Resume live** to return to the newest samples.
 - Collapse and reopen the graph pane without losing the current session state.
+- Use **Record** for explicit robot-local WPILOG capture, or opt in to the match or exception trigger.
+- Use **Export CSV** for a portable long-form copy of retained watched samples.
 
   
 

@@ -63,6 +63,12 @@ public final class BringupRestServer {
   private static final String PATH_MONITOR_DISABLE = "/monitor/disable";
   private static final String PATH_PROTOCOL_MONITOR = "/ui/protocol-monitor";
   private static final String PATH_RUNTIME_STATE = "/runtime/state";
+  private static final String PATH_TELEMETRY_CATALOG = "/runtime/telemetry/catalog";
+  private static final String PATH_TELEMETRY_HISTORY = "/runtime/telemetry/history";
+  private static final String PATH_TELEMETRY_CAPTURE = "/runtime/telemetry/capture";
+  private static final String PATH_TELEMETRY_CAPTURE_START = "/runtime/telemetry/capture/start";
+  private static final String PATH_TELEMETRY_CAPTURE_STOP = "/runtime/telemetry/capture/stop";
+  private static final String PATH_TELEMETRY_CAPTURE_SETTINGS = "/runtime/telemetry/capture/settings";
   private static final String PATH_TESTS_STATE = "/tests/state";
   private static final String PATH_CONFIG_CURRENT = "/config/current";
   private static final String PATH_INVENTORY_COMMANDS = "/inventory/commands";
@@ -106,12 +112,22 @@ public final class BringupRestServer {
   private static final String JSON_KEY_SERVICE = "service";
   private static final String JSON_KEY_VERSION = "version";
   private static final String JSON_KEY_AFTER = "after";
+  private static final String JSON_KEY_LIMIT = "limit";
   private static final String JSON_KEY_RESET = "reset";
   private static final String JSON_KEY_TIMESTAMP_MS = "timestampMs";
   private static final String JSON_KEY_RESULT = "result";
+  private static final String JSON_KEY_CATALOG = "catalog";
+  private static final String JSON_KEY_HISTORY = "history";
+  private static final String JSON_KEY_CAPTURE = "capture";
+  private static final String JSON_KEY_AFTER_SEQUENCE = "afterSequence";
+  private static final String JSON_KEY_MAX_RECORDS = "maxRecords";
+  private static final String JSON_KEY_AUTO_MATCH_ENABLED = "autoMatchEnabled";
+  private static final String JSON_KEY_AUTO_EXCEPTION_ENABLED = "autoExceptionEnabled";
   private static final String JSON_KEY_OUTPUT_AVAILABLE = "outputAvailable";
   private static final String JSON_VALUE_SERVER = "bringupRest";
   private static final String JSON_VALUE_SERVICE = "FRC Bringup REST Server";
+  private static final String JSON_LINK_TELEMETRY_CATALOG = "telemetryCatalog";
+  private static final String JSON_LINK_TELEMETRY_HISTORY = "telemetryHistory";
   private static final String STATUS_ACCEPTED = "ACCEPTED";
   private static final String STATUS_RUNNING = "RUNNING";
   private static final String STATUS_FINISHED = "FINISHED";
@@ -188,6 +204,12 @@ public final class BringupRestServer {
   public interface RestCallbacks {
     JsonObject buildDevicesJson();
     JsonObject buildRuntimeStateJson();
+    JsonObject buildTelemetryCatalogJson();
+    JsonObject buildTelemetryHistoryJson(JsonObject request);
+    JsonObject buildTelemetryCaptureStatusJson();
+    JsonObject startTelemetryCaptureJson();
+    JsonObject stopTelemetryCaptureJson();
+    JsonObject configureTelemetryCaptureJson(boolean autoMatch, boolean autoException);
     JsonObject buildTestsStateJson();
     JsonObject buildCurrentConfigJson();
     frc.robot.BridgeUiCommandHandler.RestCommandResult executeCommand(
@@ -360,6 +382,30 @@ public final class BringupRestServer {
       handleRuntimeState(exchange);
       return;
     }
+    if (PATH_TELEMETRY_CATALOG.equals(path)) {
+      handleTelemetryCatalog(exchange);
+      return;
+    }
+    if (PATH_TELEMETRY_HISTORY.equals(path)) {
+      handleTelemetryHistory(exchange);
+      return;
+    }
+    if (PATH_TELEMETRY_CAPTURE.equals(path)) {
+      handleTelemetryCaptureStatus(exchange);
+      return;
+    }
+    if (PATH_TELEMETRY_CAPTURE_START.equals(path)) {
+      handleTelemetryCaptureToggle(exchange, true);
+      return;
+    }
+    if (PATH_TELEMETRY_CAPTURE_STOP.equals(path)) {
+      handleTelemetryCaptureToggle(exchange, false);
+      return;
+    }
+    if (PATH_TELEMETRY_CAPTURE_SETTINGS.equals(path)) {
+      handleTelemetryCaptureSettings(exchange);
+      return;
+    }
     if (PATH_TESTS_STATE.equals(path)) {
       handleTestsState(exchange);
       return;
@@ -418,6 +464,8 @@ public final class BringupRestServer {
     links.addProperty("api", PATH_API);
     links.addProperty("session", PATH_SESSION);
     links.addProperty("runtimeState", PATH_RUNTIME_STATE);
+    links.addProperty(JSON_LINK_TELEMETRY_CATALOG, PATH_TELEMETRY_CATALOG);
+    links.addProperty(JSON_LINK_TELEMETRY_HISTORY, PATH_TELEMETRY_HISTORY);
     links.addProperty("testsState", PATH_TESTS_STATE);
     links.addProperty("commands", PATH_COMMANDS);
     body.add(JSON_KEY_LINKS, links);
@@ -865,6 +913,119 @@ public final class BringupRestServer {
     sendJson(exchange, HTTP_OK, body);
   }
 
+  private void handleTelemetryCatalog(HttpExchange exchange) throws IOException {
+    if (!METHOD_GET.equals(exchange.getRequestMethod())) {
+      sendMethodNotAllowed(exchange);
+      return;
+    }
+    JsonObject body = baseEnvelope(true, MESSAGE_FINISHED);
+    JsonObject catalog = callbacks.buildTelemetryCatalogJson();
+    body.add(JSON_KEY_CATALOG, catalog != null ? catalog : new JsonObject());
+    sendJson(exchange, HTTP_OK, body);
+  }
+
+  private void handleTelemetryHistory(HttpExchange exchange) throws IOException {
+    if (!METHOD_GET.equals(exchange.getRequestMethod())) {
+      sendMethodNotAllowed(exchange);
+      return;
+    }
+    JsonObject request = new JsonObject();
+    try {
+      String after = queryValue(exchange.getRequestURI(), JSON_KEY_AFTER);
+      String limit = queryValue(exchange.getRequestURI(), JSON_KEY_LIMIT);
+      if (after != null) {
+        request.addProperty(JSON_KEY_AFTER_SEQUENCE, Long.parseLong(after));
+      }
+      if (limit != null) {
+        request.addProperty(JSON_KEY_MAX_RECORDS, Integer.parseInt(limit));
+      }
+    } catch (NumberFormatException ex) {
+      sendJson(exchange, HTTP_BAD_REQUEST, baseEnvelope(false, MESSAGE_MALFORMED_JSON));
+      return;
+    }
+    JsonObject body = baseEnvelope(true, MESSAGE_FINISHED);
+    JsonObject history = callbacks.buildTelemetryHistoryJson(request);
+    body.add(JSON_KEY_HISTORY, history != null ? history : new JsonObject());
+    sendJson(exchange, HTTP_OK, body);
+  }
+
+  private void handleTelemetryCaptureStatus(HttpExchange exchange) throws IOException {
+    if (!METHOD_GET.equals(exchange.getRequestMethod())) {
+      sendMethodNotAllowed(exchange);
+      return;
+    }
+    JsonObject body = baseEnvelope(true, MESSAGE_FINISHED);
+    body.add(JSON_KEY_CAPTURE, callbacks.buildTelemetryCaptureStatusJson());
+    sendJson(exchange, HTTP_OK, body);
+  }
+
+  private void handleTelemetryCaptureToggle(HttpExchange exchange, boolean start)
+      throws IOException {
+    if (!METHOD_POST.equals(exchange.getRequestMethod())) {
+      sendMethodNotAllowed(exchange);
+      return;
+    }
+    JsonObject request = parseJsonBody(exchange);
+    if (request == null) {
+      sendJson(exchange, HTTP_BAD_REQUEST, baseEnvelope(false, MESSAGE_MALFORMED_JSON));
+      return;
+    }
+    String clientId = stringArg(request, JSON_KEY_CLIENT_ID);
+    if (clientId == null) {
+      sendJson(exchange, HTTP_BAD_REQUEST, baseEnvelope(false, MESSAGE_CLIENT_REQUIRED));
+      return;
+    }
+    synchronized (stateLock) {
+      if (!isOwnerClient(clientId)) {
+        sendJson(exchange, HTTP_FORBIDDEN, baseEnvelope(false, MESSAGE_OWNER_REQUIRED));
+        return;
+      }
+      sessionLastActivityMs = nowMs();
+    }
+    JsonObject capture =
+        start
+            ? callbacks.startTelemetryCaptureJson()
+            : callbacks.stopTelemetryCaptureJson();
+    JsonObject body = baseEnvelope(true, MESSAGE_FINISHED);
+    body.add(JSON_KEY_CAPTURE, capture);
+    sendJson(exchange, HTTP_OK, body);
+  }
+
+  private void handleTelemetryCaptureSettings(HttpExchange exchange) throws IOException {
+    if (!METHOD_POST.equals(exchange.getRequestMethod())) {
+      sendMethodNotAllowed(exchange);
+      return;
+    }
+    JsonObject request = parseJsonBody(exchange);
+    if (request == null) {
+      sendJson(exchange, HTTP_BAD_REQUEST, baseEnvelope(false, MESSAGE_MALFORMED_JSON));
+      return;
+    }
+    String clientId = stringArg(request, JSON_KEY_CLIENT_ID);
+    if (clientId == null) {
+      sendJson(exchange, HTTP_BAD_REQUEST, baseEnvelope(false, MESSAGE_CLIENT_REQUIRED));
+      return;
+    }
+    synchronized (stateLock) {
+      if (!isOwnerClient(clientId)) {
+        sendJson(exchange, HTTP_FORBIDDEN, baseEnvelope(false, MESSAGE_OWNER_REQUIRED));
+        return;
+      }
+      sessionLastActivityMs = nowMs();
+    }
+    boolean autoMatch =
+        request.has(JSON_KEY_AUTO_MATCH_ENABLED)
+            && request.get(JSON_KEY_AUTO_MATCH_ENABLED).getAsBoolean();
+    boolean autoException =
+        request.has(JSON_KEY_AUTO_EXCEPTION_ENABLED)
+            && request.get(JSON_KEY_AUTO_EXCEPTION_ENABLED).getAsBoolean();
+    JsonObject body = baseEnvelope(true, MESSAGE_FINISHED);
+    body.add(
+        JSON_KEY_CAPTURE,
+        callbacks.configureTelemetryCaptureJson(autoMatch, autoException));
+    sendJson(exchange, HTTP_OK, body);
+  }
+
   private void handleTestsState(HttpExchange exchange) throws IOException {
     if (!METHOD_GET.equals(exchange.getRequestMethod())) {
       sendMethodNotAllowed(exchange);
@@ -1307,6 +1468,12 @@ public final class BringupRestServer {
     endpoints.add(new EndpointDefinition(PATH_MONITOR_DISABLE, "Disable log/session monitor streaming state.", METHOD_POST));
     endpoints.add(new EndpointDefinition(PATH_PROTOCOL_MONITOR, "Read protocol-monitor summary state.", METHOD_GET));
     endpoints.add(new EndpointDefinition(PATH_RUNTIME_STATE, "Read shared robot runtime state JSON.", METHOD_GET));
+    endpoints.add(new EndpointDefinition(PATH_TELEMETRY_CATALOG, "Read the typed telemetry signal catalog.", METHOD_GET));
+    endpoints.add(new EndpointDefinition(PATH_TELEMETRY_HISTORY, "Read telemetry records after a cursor.", METHOD_GET));
+    endpoints.add(new EndpointDefinition(PATH_TELEMETRY_CAPTURE, "Read robot-local WPILOG capture status.", METHOD_GET));
+    endpoints.add(new EndpointDefinition(PATH_TELEMETRY_CAPTURE_START, "Start robot-local WPILOG capture.", METHOD_POST));
+    endpoints.add(new EndpointDefinition(PATH_TELEMETRY_CAPTURE_STOP, "Stop robot-local WPILOG capture.", METHOD_POST));
+    endpoints.add(new EndpointDefinition(PATH_TELEMETRY_CAPTURE_SETTINGS, "Configure opt-in automatic capture triggers.", METHOD_POST));
     endpoints.add(new EndpointDefinition(PATH_TESTS_STATE, "Read shared tests state JSON.", METHOD_GET));
     endpoints.add(new EndpointDefinition(PATH_CONFIG_CURRENT, "Read current config payload for the owning client.", METHOD_GET));
     endpoints.add(new EndpointDefinition(PATH_INVENTORY_COMMANDS, "Read robot local command inventory JSON.", METHOD_GET));

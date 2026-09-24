@@ -15,6 +15,8 @@ import frc.robot.diag.snapshots.SnapshotDetail;
 import frc.robot.registry.RegistrationHeader;
 import frc.robot.telemetry.SampledSignalNames;
 import frc.robot.telemetry.SampledSignalRegistration;
+import frc.robot.telemetry.TelemetryConstants;
+import frc.robot.telemetry.TelemetryUnit;
 import edu.wpi.first.wpilibj.DigitalInput;
 import java.util.List;
 
@@ -408,6 +410,10 @@ public final class RevFlexVortexDevice implements DeviceUnit {
             SampledSignalNames.CURRENT_ACTUAL,
             CURRENT_WINDOW_MS,
             CURRENT_NONZERO_THRESHOLD_A,
+            TelemetryUnit.AMPERE,
+            TelemetryConstants.DEFAULT_NOMINAL_CADENCE_US,
+            TelemetryConstants.DEFAULT_STALE_AFTER_US,
+            true,
             () -> {
               if (device == null || closed) {
                 return null;

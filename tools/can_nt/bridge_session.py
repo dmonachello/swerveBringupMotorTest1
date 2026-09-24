@@ -22,8 +22,22 @@ import urllib.parse
 import urllib.request
 import uuid
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Deque, Dict, List, Optional
+
+from tools.common.telemetry.constants import (
+    DEFAULT_HISTORY_PAGE_RECORDS,
+)
+from tools.common.telemetry.model import (
+    TelemetryCatalog,
+    TelemetryCaptureStatus,
+    TelemetryHistoryPage,
+)
+from tools.common.telemetry.wire import (
+    parse_capture_status,
+    parse_catalog,
+    parse_history_page,
+)
 
 
 @dataclass
@@ -73,6 +87,12 @@ REST_PATH_MONITOR_ENABLE = "/monitor/enable"
 REST_PATH_MONITOR_DISABLE = "/monitor/disable"
 REST_PATH_PROTOCOL_MONITOR = "/ui/protocol-monitor"
 REST_PATH_RUNTIME_STATE = "/runtime/state"
+REST_PATH_TELEMETRY_CATALOG = "/runtime/telemetry/catalog"
+REST_PATH_TELEMETRY_HISTORY = "/runtime/telemetry/history"
+REST_PATH_TELEMETRY_CAPTURE = "/runtime/telemetry/capture"
+REST_PATH_TELEMETRY_CAPTURE_START = "/runtime/telemetry/capture/start"
+REST_PATH_TELEMETRY_CAPTURE_STOP = "/runtime/telemetry/capture/stop"
+REST_PATH_TELEMETRY_CAPTURE_SETTINGS = "/runtime/telemetry/capture/settings"
 REST_PATH_TESTS_STATE = "/tests/state"
 REST_PATH_CONFIG_CURRENT = "/config/current"
 REST_QUERY_AFTER = "after"
@@ -118,6 +138,7 @@ SESSION_COMMANDS = {
     COMMAND_UI_MONITOR_DISABLE,
 }
 REST_PORT_DEFAULT = 5805
+HTTP_STATUS_OK = 200
 REST_TIMEOUT_CONNECT_SEC = 0.5
 REST_TIMEOUT_COMMAND_SEC = 3.5
 LOG_TIMEOUT_SEC = 2.0
@@ -457,6 +478,132 @@ class BridgeSession:
             self._last_state.update(self._flatten_runtime_state(self._last_runtime_state))
             return dict(self._last_runtime_state)
         return {}
+
+    def fetch_telemetry_catalog(self) -> Optional[TelemetryCatalog]:
+        """
+        NAME
+            fetch_telemetry_catalog - Read and validate the robot signal catalog.
+
+        RETURNS
+            An immutable catalog, or None when transport or validation fails.
+        """
+        response = self._http.request(
+            HTTP_METHOD_GET,
+            REST_PATH_TELEMETRY_CATALOG,
+            timeout=REST_TIMEOUT_COMMAND_SEC,
+        )
+        payload = response.get("catalog")
+        if response.get("_http_status") != HTTP_STATUS_OK or not isinstance(payload, dict):
+            return None
+        try:
+            return parse_catalog(payload)
+        except (TypeError, ValueError):
+            return None
+
+    def fetch_telemetry_history(
+        self,
+        after_sequence: int,
+        signal_ids: List[str],
+        max_records: int = DEFAULT_HISTORY_PAGE_RECORDS,
+    ) -> Optional[TelemetryHistoryPage]:
+        """
+        NAME
+            fetch_telemetry_history - Read selected records after a stable cursor.
+
+        RETURNS
+            A validated immutable page, or None on transport/contract failure.
+        """
+        request = {
+            "after": int(after_sequence),
+            "limit": int(max_records),
+        }
+        response = self._http.request(
+            HTTP_METHOD_GET,
+            REST_PATH_TELEMETRY_HISTORY,
+            query=request,
+            timeout=REST_TIMEOUT_COMMAND_SEC,
+        )
+        payload = response.get("history")
+        if response.get("_http_status") != HTTP_STATUS_OK or not isinstance(payload, dict):
+            return None
+        try:
+            page = parse_history_page(payload)
+            received_ns = time.time_ns()
+            received_monotonic_ns = time.monotonic_ns()
+            return replace(
+                page,
+                records=tuple(
+                    replace(
+                        sample,
+                        receive_timestamp_ns=received_ns,
+                        receive_monotonic_ns=received_monotonic_ns,
+                        source_age_at_receive_us=max(
+                            0,
+                            page.robot_reply_us - sample.source_timestamp_us,
+                        ),
+                    )
+                    for sample in page.records
+                ),
+            )
+        except (TypeError, ValueError):
+            return None
+
+    def fetch_telemetry_capture_status(self) -> Optional[TelemetryCaptureStatus]:
+        """Read and validate robot-local WPILOG recorder state."""
+        response = self._http.request(
+            HTTP_METHOD_GET,
+            REST_PATH_TELEMETRY_CAPTURE,
+            timeout=REST_TIMEOUT_COMMAND_SEC,
+        )
+        return self._parse_telemetry_capture_response(response)
+
+    def set_telemetry_capture(
+        self,
+        recording: bool,
+    ) -> Optional[TelemetryCaptureStatus]:
+        """Start or stop robot-local WPILOG capture as the session owner."""
+        path = (
+            REST_PATH_TELEMETRY_CAPTURE_START
+            if recording
+            else REST_PATH_TELEMETRY_CAPTURE_STOP
+        )
+        response = self._http.request(
+            HTTP_METHOD_POST,
+            path,
+            payload={REST_JSON_CLIENT_ID: self._client_id},
+            timeout=REST_TIMEOUT_COMMAND_SEC,
+        )
+        return self._parse_telemetry_capture_response(response)
+
+    def configure_telemetry_capture(
+        self,
+        auto_match: bool,
+        auto_exception: bool,
+    ) -> Optional[TelemetryCaptureStatus]:
+        """Configure the two opt-in automatic robot capture triggers."""
+        response = self._http.request(
+            HTTP_METHOD_POST,
+            REST_PATH_TELEMETRY_CAPTURE_SETTINGS,
+            payload={
+                REST_JSON_CLIENT_ID: self._client_id,
+                "autoMatchEnabled": bool(auto_match),
+                "autoExceptionEnabled": bool(auto_exception),
+            },
+            timeout=REST_TIMEOUT_COMMAND_SEC,
+        )
+        return self._parse_telemetry_capture_response(response)
+
+    @staticmethod
+    def _parse_telemetry_capture_response(
+        response: Dict[str, Any],
+    ) -> Optional[TelemetryCaptureStatus]:
+        payload = response.get("capture")
+        if response.get("_http_status") != HTTP_STATUS_OK or not isinstance(payload, dict):
+            return None
+        try:
+            return parse_capture_status(payload)
+        except (TypeError, ValueError):
+            return None
 
     def fetch_tests_state(self) -> Dict[str, Any]:
         response = self._http.request(

@@ -25,6 +25,42 @@ class SampledTelemetrySamplerTest {
   private static final double DEVICE_ONE_VALUE = 1.0;
   private static final double DEVICE_TWO_VALUE = 2.0;
   private static final long NEXT_NOW_MS = 1020L;
+  private static final long SOURCE_TIMESTAMP_US = 1_234_567L;
+  private static final long NOMINAL_CADENCE_US = 20_000L;
+  private static final long STALE_AFTER_US = 100_000L;
+  private static final int HISTORY_PAGE_LIMIT = 10;
+  private static final long HISTORY_START_CURSOR = 0L;
+
+  @Test
+  void oneReadFeedsSummaryAndTimestampedHistory() {
+    SampledTelemetrySampler sampler = new SampledTelemetrySampler();
+    AtomicInteger reads = new AtomicInteger();
+    DeviceUnit device =
+        new TestDevice(
+            DEVICE_ONE_ID,
+            DEVICE_ONE_LABEL,
+            () -> {
+              reads.incrementAndGet();
+              return DEVICE_ONE_VALUE;
+            });
+
+    sampler.sampleDevices(
+        List.of(device),
+        NOW_MS,
+        SOURCE_TIMESTAMP_US,
+        MAX_SIGNAL_READS_PER_PASS);
+
+    TelemetryJournal.HistoryPage page =
+        sampler.readHistoryAfter(HISTORY_START_CURSOR, HISTORY_PAGE_LIMIT);
+    assertEquals(1, reads.get());
+    assertEquals(
+        DEVICE_ONE_VALUE,
+        sampler.getDeviceSummaries(device).get(SIGNAL_NAME).instantValue);
+    assertEquals(1, page.records().size());
+    assertEquals(SOURCE_TIMESTAMP_US, page.records().get(0).sourceTimestampUs());
+    assertEquals(DEVICE_ONE_VALUE, page.records().get(0).numericValue());
+    assertEquals(TelemetryQuality.GOOD, page.records().get(0).quality());
+  }
 
   @Test
   void boundedSamplingUsesRoundRobinAcrossDevices() {
@@ -145,6 +181,10 @@ class SampledTelemetrySamplerTest {
               SIGNAL_NAME,
               WINDOW_MS,
               NONZERO_THRESHOLD,
+              TelemetryUnit.AMPERE,
+              NOMINAL_CADENCE_US,
+              STALE_AFTER_US,
+              true,
               reader));
     }
   }

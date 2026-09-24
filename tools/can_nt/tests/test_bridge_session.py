@@ -57,6 +57,35 @@ class BridgeSessionTests(unittest.TestCase):
         self.assertEqual({}, payload)
         self.assertEqual({"sessionId": "session-1", "connected": True}, session._last_state)
 
+    def test_capture_status_is_parsed_into_typed_state(self) -> None:
+        session = BridgeSession("127.0.0.1", 5805, auto_handshake=False)
+        session._http = type(
+            "HttpStub",
+            (),
+            {
+                "request": lambda _self, *_args, **_kwargs: {
+                    "_http_status": 200,
+                    "capture": {
+                        "ok": True,
+                        "recording": True,
+                        "path": "/U/logs/test.wpilog",
+                        "storage": "USB",
+                        "droppedRecords": 0,
+                        "lastStopReason": "",
+                        "message": "",
+                        "autoMatchEnabled": False,
+                        "autoExceptionEnabled": False,
+                    },
+                }
+            },
+        )()
+
+        status = session.fetch_telemetry_capture_status()
+
+        self.assertIsNotNone(status)
+        self.assertTrue(status.recording)
+        self.assertEqual("USB", status.storage)
+
 
 if __name__ == "__main__":
     unittest.main()

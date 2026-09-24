@@ -2,6 +2,7 @@ package frc.robot;
 
 //import edu.wpi.first.cameraserver.CameraServer;
 import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.wpilibj.RobotController;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.XboxController;
 import frc.robot.commands.local.RobotLocalAxisCommandId;
@@ -11,6 +12,8 @@ import frc.robot.input.ControllerManager;
 import frc.robot.input.InputAliasResolver;
 import frc.robot.manufacturers.microsoft.XboxControllerDevice;
 import frc.robot.rest.BringupRestServer;
+import frc.robot.rest.TelemetryCaptureJsonCodec;
+import frc.robot.telemetry.capture.WpilogTelemetryRecorder;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -76,6 +79,7 @@ public class Robot extends TimedRobot {
   private final EdgeTrigger edge = new EdgeTrigger();
   private static final int UI_REST_PORT = 5805;
   private BringupRestServer uiRestServer;
+  private WpilogTelemetryRecorder telemetryRecorder;
   private final BringupPrinter.LineListener bringupLineListener = new BringupLineListener();
   private final ConsoleCapture.ConsoleLineSink consoleLineSink = new ConsoleLineSinkImpl();
   private final BringupRestServer.RestCallbacks restCallbacks = new RestCallbacksImpl();
@@ -113,6 +117,7 @@ public class Robot extends TimedRobot {
     runtime = new BringupRuntime(
         canHealth,
         bindings.describeBinding(COMMAND_RUN_TEST));
+    telemetryRecorder = new WpilogTelemetryRecorder(runtime.getSampledTelemetry());
     DriverStation.silenceJoystickConnectionWarning(SILENCE_JOYSTICK_CONNECTION_WARNINGS);
     uiHandler = new BridgeUiCommandHandler(
         runtime,
@@ -186,18 +191,28 @@ public class Robot extends TimedRobot {
    */
   @Override
   public void robotPeriodic() {
-    if (runtime != null) {
-      runtime.sampleTelemetry(System.currentTimeMillis());
+    try {
+      if (runtime != null) {
+        runtime.sampleTelemetry(System.currentTimeMillis(), RobotController.getFPGATime());
+      }
+      if (telemetryRecorder != null) {
+        telemetryRecorder.updateRobotEnabled(DriverStation.isEnabled());
+      }
+      // Sample and publish CAN health every loop.
+      if (diagnostics() != null) {
+        diagnostics().update();
+      }
+      if (uiHandler != null) {
+        boolean xboxConnected = controller0 != null && DriverStation.isJoystickConnected(0);
+        uiHandler.updateSafety(xboxConnected);
+      }
+      frc.robot.diag.app.AppStatusTracker.recordLoop();
+    } catch (RuntimeException ex) {
+      if (telemetryRecorder != null) {
+        telemetryRecorder.onUncaughtException();
+      }
+      throw ex;
     }
-    // Sample and publish CAN health every loop.
-    if (diagnostics() != null) {
-      diagnostics().update();
-    }
-    if (uiHandler != null) {
-      boolean xboxConnected = controller0 != null && DriverStation.isJoystickConnected(0);
-      uiHandler.updateSafety(xboxConnected);
-    }
-    frc.robot.diag.app.AppStatusTracker.recordLoop();
   }
 
   /**
@@ -596,6 +611,56 @@ public class Robot extends TimedRobot {
     @Override
     public com.google.gson.JsonObject buildRuntimeStateJson() {
       return uiHandler != null ? uiHandler.buildRuntimeStateJson() : new com.google.gson.JsonObject();
+    }
+
+    @Override
+    public com.google.gson.JsonObject buildTelemetryCatalogJson() {
+      return runtime != null
+          ? frc.robot.rest.TelemetryRestJsonCodec.encodeCatalog(
+              runtime.getSampledTelemetry().getSignalCatalog())
+          : new com.google.gson.JsonObject();
+    }
+
+    @Override
+    public com.google.gson.JsonObject buildTelemetryHistoryJson(
+        com.google.gson.JsonObject request) {
+      return runtime != null
+          ? frc.robot.rest.TelemetryRestJsonCodec.encodeHistory(
+              runtime.getSampledTelemetry(),
+              request,
+              RobotController.getFPGATime())
+          : new com.google.gson.JsonObject();
+    }
+
+    @Override
+    public com.google.gson.JsonObject buildTelemetryCaptureStatusJson() {
+      return telemetryRecorder != null
+          ? TelemetryCaptureJsonCodec.encode(telemetryRecorder.status())
+          : new com.google.gson.JsonObject();
+    }
+
+    @Override
+    public com.google.gson.JsonObject startTelemetryCaptureJson() {
+      return telemetryRecorder != null
+          ? TelemetryCaptureJsonCodec.encode(telemetryRecorder.start())
+          : new com.google.gson.JsonObject();
+    }
+
+    @Override
+    public com.google.gson.JsonObject stopTelemetryCaptureJson() {
+      return telemetryRecorder != null
+          ? TelemetryCaptureJsonCodec.encode(telemetryRecorder.stop())
+          : new com.google.gson.JsonObject();
+    }
+
+    @Override
+    public com.google.gson.JsonObject configureTelemetryCaptureJson(
+        boolean autoMatch,
+        boolean autoException) {
+      return telemetryRecorder != null
+          ? TelemetryCaptureJsonCodec.encode(
+              telemetryRecorder.configureAutomaticTriggers(autoMatch, autoException))
+          : new com.google.gson.JsonObject();
     }
 
     @Override

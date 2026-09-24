@@ -169,6 +169,12 @@ from .bridge_ops import (
     ui_ping,
 )
 from .bridge_session import BridgeEvent, BridgeSession
+from .telemetry_polling import (
+    TelemetryCaptureStatusUpdate,
+    TelemetryCatalogUpdate,
+    TelemetryHistoryUpdate,
+    TelemetryPollingWorker,
+)
 from .dsl_reference import (
     TEST_SOURCE_REFERENCE_GEOMETRY,
     TEST_SOURCE_REFERENCE_OVERVIEW,
@@ -401,6 +407,7 @@ from tools.can_topology.live_topology_view import (
     TOPOLOGY_LENS_RUNTIME,
     TOPOLOGY_LENS_VISIBILITY,
 )
+from tools.common.telemetry.model import TelemetryCaptureStatus
 from tools.can_nt.visibility_constants import (
     VIS_KEY_DEVICES,
     VIS_KEY_DEVICES_SHOWN,
@@ -2567,6 +2574,7 @@ class BringupControlUI(tk.Tk):
         self._rio_host = rio_host
         self._is_connected = is_connected
         self._session = BridgeSession(rio_host, tcp_port, auto_handshake=False)
+        self._telemetry_worker = TelemetryPollingWorker(self._session)
         self._tcp_connected = False
         self._last_connect_attempt = 0.0
         self._seq = 0
@@ -2791,6 +2799,7 @@ class BringupControlUI(tk.Tk):
         self._ui_pref_vars: Dict[str, tk.BooleanVar] = {}
         self._build_menu()
         self._build_ui()
+        self._telemetry_worker.start()
         self._apply_ui_theme()
         self._apply_profile_selection(self._profile_box.get(), reload_views=True)
         self._record_local_profile_selection_intent(
@@ -3218,6 +3227,8 @@ class BringupControlUI(tk.Tk):
             on_left_click=self._on_live_view_left_click,
             manage_runtime_notice_internally=False,
             theme_name=self._ui_theme_name,
+            on_telemetry_capture_toggle=self._set_telemetry_capture,
+            on_telemetry_capture_settings=self._configure_telemetry_capture,
         )
         self._sync_live_view_action_states()
         self._live_view.set_show_groups(self._live_groups_var.get())
@@ -15707,6 +15718,22 @@ class BringupControlUI(tk.Tk):
             )
         except TypeError:
             self._poll_live_overlay(now)
+        live_view = self.__dict__.get("_live_view")
+        telemetry_worker = self.__dict__.get("_telemetry_worker")
+        if live_view is not None and telemetry_worker is not None:
+            telemetry_cursor, telemetry_signal_ids = live_view.telemetry_history_query()
+            telemetry_worker.update_query(
+                self._tcp_connected,
+                telemetry_cursor,
+                tuple(telemetry_signal_ids),
+            )
+            for telemetry_update in telemetry_worker.drain():
+                if isinstance(telemetry_update, TelemetryCatalogUpdate):
+                    live_view.update_telemetry_catalog(telemetry_update.catalog)
+                elif isinstance(telemetry_update, TelemetryHistoryUpdate):
+                    live_view.update_telemetry_history(telemetry_update.page)
+                elif isinstance(telemetry_update, TelemetryCaptureStatusUpdate):
+                    live_view.update_telemetry_capture_status(telemetry_update.status)
         self._poll_presence_overrides()
         self._poll_visibility_snapshot(now)
         self._update_action_enabled()
@@ -16797,6 +16824,31 @@ class BringupControlUI(tk.Tk):
             )
         self._refresh_selected_test_scope_status()
 
+    def _set_telemetry_capture(
+        self,
+        recording: bool,
+    ) -> Optional[TelemetryCaptureStatus]:
+        """
+        NAME
+            _set_telemetry_capture - Start or stop the robot-local WPILOG recorder.
+        """
+        if not self._tcp_connected:
+            return None
+        return self._session.set_telemetry_capture(recording)
+
+    def _configure_telemetry_capture(
+        self,
+        auto_match: bool,
+        auto_exception: bool,
+    ) -> Optional[TelemetryCaptureStatus]:
+        """
+        NAME
+            _configure_telemetry_capture - Apply opt-in automatic trigger settings.
+        """
+        if not self._tcp_connected:
+            return None
+        return self._session.configure_telemetry_capture(auto_match, auto_exception)
+
     def _handle_close(self) -> None:
         """
         NAME
@@ -16808,6 +16860,9 @@ class BringupControlUI(tk.Tk):
             "Manual duty popup closed: UI shutdown.",
             stop_motor=True,
         )
+        telemetry_worker = self.__dict__.get("_telemetry_worker")
+        if telemetry_worker is not None:
+            telemetry_worker.stop()
         self.release_lock()
         if self._on_close:
             self._on_close()

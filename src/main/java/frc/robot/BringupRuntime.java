@@ -733,6 +733,19 @@ public final class BringupRuntime {
    *   sampleTelemetry - Advance robot-side sampled telemetry for active devices.
    */
   public void sampleTelemetry(long nowMs) {
+    sampleTelemetry(
+        nowMs,
+        nowMs * frc.robot.telemetry.TelemetryConstants.MICROSECONDS_PER_MILLISECOND);
+  }
+
+  /**
+   * NAME
+   *   sampleTelemetry - Advance telemetry with an explicit robot monotonic timestamp.
+   *
+   * PARAMETERS
+   *   sourceTimestampUs - FPGA monotonic observation time in microseconds.
+   */
+  public void sampleTelemetry(long nowMs, long sourceTimestampUs) {
     boolean robotEnabled = DriverStation.isEnabled();
     List<DeviceUnit> devices = Collections.emptyList();
     if (core != null && BringupUtil.isProfileActive()) {
@@ -749,7 +762,7 @@ public final class BringupRuntime {
       }
       devices = activeDevices;
     }
-    sampleTelemetryDevices(devices, nowMs, robotEnabled);
+    sampleTelemetryDevices(devices, nowMs, sourceTimestampUs, robotEnabled);
     long refreshPeriodMs = robotEnabled
         ? PERIODIC_LIFECYCLE_REFRESH_ENABLED_MS
         : PERIODIC_LIFECYCLE_REFRESH_DISABLED_MS;
@@ -770,7 +783,27 @@ public final class BringupRuntime {
    *   robotEnabled - Whether the robot is enabled.
    */
   void sampleTelemetryDevices(List<DeviceUnit> devices, long nowMs, boolean robotEnabled) {
-    sampledTelemetry.sampleDevices(devices, nowMs, sampledTelemetryReadBudget(robotEnabled));
+    sampleTelemetryDevices(
+        devices,
+        nowMs,
+        nowMs * frc.robot.telemetry.TelemetryConstants.MICROSECONDS_PER_MILLISECOND,
+        robotEnabled);
+  }
+
+  /**
+   * NAME
+   *   sampleTelemetryDevices - Sample with an explicit robot monotonic timestamp.
+   */
+  void sampleTelemetryDevices(
+      List<DeviceUnit> devices,
+      long nowMs,
+      long sourceTimestampUs,
+      boolean robotEnabled) {
+    sampledTelemetry.sampleDevices(
+        devices,
+        nowMs,
+        sourceTimestampUs,
+        sampledTelemetryReadBudget(robotEnabled));
   }
 
   /**

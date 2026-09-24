@@ -294,12 +294,13 @@ Regression coverage:
 
 Regression coverage:
 
-- synchronized inspector and watch-list checkbox tests
-- eight-signal and four-lane limit tests
-- graph-pane collapse and session-state tests
-- time-window dropdown and custom zoom tests
-- `LIVE` and `REVIEW` transition tests
-- pause-without-ingestion-pause tests
+- typed catalog/history parsing and bounded primitive-retention tests
+- eight-signal watch-limit tests
+- cursor expiry, generation reset, and late-watch backfill tests
+- extrema-preserving decimation and stable `REVIEW` time-projection tests
+- bounded polling queue and changed-query rejection tests
+- explicit Record and opt-in automatic-trigger tests
+- WPILOG round-trip and long-form CSV preservation tests
 
 ## 7. Running from the Command Line
 

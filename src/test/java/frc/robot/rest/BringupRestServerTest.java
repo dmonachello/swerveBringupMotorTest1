@@ -40,6 +40,13 @@ public final class BringupRestServerTest {
   private static final String TEXT_NAME = "name";
   private static final String TEXT_PATH = "path";
   private static final String TEXT_RUNTIME_STATE = "/runtime/state";
+  private static final String TEXT_TELEMETRY_CATALOG = "/runtime/telemetry/catalog";
+  private static final String TEXT_TELEMETRY_HISTORY = "/runtime/telemetry/history";
+  private static final String TEXT_CATALOG = "catalog";
+  private static final String TEXT_HISTORY = "history";
+  private static final String TEXT_TELEMETRY_CAPTURE = "/runtime/telemetry/capture";
+  private static final String TEXT_TELEMETRY_CAPTURE_START = "/runtime/telemetry/capture/start";
+  private static final String TEXT_CAPTURE = "capture";
   private static final String TEXT_SERVICE = "service";
   private static final String TEXT_COMMAND_ID = "commandId";
   private static final String TEXT_STATUS = "status";
@@ -157,6 +164,45 @@ public final class BringupRestServerTest {
             jsonChunks.get(0).getAsJsonObject().get(TEXT_OUTPUT).getAsString(),
             JsonObject.class);
     assertEquals(STATUS_FINISHED, runtimeStateJson.get(TEXT_STATUS).getAsString());
+  }
+
+  @Test
+  public void telemetryEndpointsExposeCatalogAndCursorQuery() throws Exception {
+    server = new BringupRestServer(0, new TestCallbacks());
+    server.start();
+    HttpClient client = HttpClient.newHttpClient();
+
+    HttpResponse<String> catalogResponse =
+        client.send(get(TEXT_TELEMETRY_CATALOG), HttpResponse.BodyHandlers.ofString());
+    assertEquals(HTTP_OK, catalogResponse.statusCode());
+    JsonObject catalogJson = GSON.fromJson(catalogResponse.body(), JsonObject.class);
+    assertTrue(catalogJson.getAsJsonObject(TEXT_CATALOG).has("signals"));
+
+    HttpResponse<String> historyResponse =
+        client.send(get(TEXT_TELEMETRY_HISTORY + "?after=0&limit=10"), HttpResponse.BodyHandlers.ofString());
+    assertEquals(HTTP_OK, historyResponse.statusCode());
+    JsonObject historyJson = GSON.fromJson(historyResponse.body(), JsonObject.class);
+    assertTrue(historyJson.getAsJsonObject(TEXT_HISTORY).has("records"));
+  }
+
+  @Test
+  public void telemetryCaptureRequiresOwnerAndReturnsRecorderState() throws Exception {
+    server = new BringupRestServer(0, new TestCallbacks());
+    server.start();
+    HttpClient client = HttpClient.newHttpClient();
+
+    HttpResponse<String> statusResponse =
+        client.send(get(TEXT_TELEMETRY_CAPTURE), HttpResponse.BodyHandlers.ofString());
+    assertEquals(HTTP_OK, statusResponse.statusCode());
+
+    JsonObject connect = new JsonObject();
+    connect.addProperty(TEXT_CLIENT_ID, CLIENT_A);
+    client.send(post("/session/connect", connect), HttpResponse.BodyHandlers.ofString());
+    HttpResponse<String> startResponse =
+        client.send(post(TEXT_TELEMETRY_CAPTURE_START, connect), HttpResponse.BodyHandlers.ofString());
+    assertEquals(HTTP_OK, startResponse.statusCode());
+    JsonObject startJson = GSON.fromJson(startResponse.body(), JsonObject.class);
+    assertTrue(startJson.getAsJsonObject(TEXT_CAPTURE).get("recording").getAsBoolean());
   }
 
   @Test
@@ -341,6 +387,57 @@ public final class BringupRestServerTest {
     public JsonObject buildRuntimeStateJson() {
       JsonObject root = new JsonObject();
       root.addProperty(TEXT_STATUS, STATUS_FINISHED);
+      return root;
+    }
+
+    @Override
+    public JsonObject buildTelemetryCatalogJson() {
+      JsonObject root = new JsonObject();
+      root.add("signals", new JsonArray());
+      return root;
+    }
+
+    @Override
+    public JsonObject buildTelemetryHistoryJson(JsonObject request) {
+      JsonObject root = new JsonObject();
+      root.add("records", new JsonArray());
+      return root;
+    }
+
+    @Override
+    public JsonObject buildTelemetryCaptureStatusJson() {
+      JsonObject root = new JsonObject();
+      root.addProperty("ok", true);
+      root.addProperty("recording", false);
+      root.addProperty("path", "");
+      root.addProperty("storage", "test");
+      root.addProperty("droppedRecords", 0);
+      root.addProperty("lastStopReason", "");
+      root.addProperty("message", "");
+      root.addProperty("autoMatchEnabled", false);
+      root.addProperty("autoExceptionEnabled", false);
+      return root;
+    }
+
+    @Override
+    public JsonObject startTelemetryCaptureJson() {
+      JsonObject root = buildTelemetryCaptureStatusJson();
+      root.addProperty("recording", true);
+      return root;
+    }
+
+    @Override
+    public JsonObject stopTelemetryCaptureJson() {
+      return buildTelemetryCaptureStatusJson();
+    }
+
+    @Override
+    public JsonObject configureTelemetryCaptureJson(
+        boolean autoMatch,
+        boolean autoException) {
+      JsonObject root = buildTelemetryCaptureStatusJson();
+      root.addProperty("autoMatchEnabled", autoMatch);
+      root.addProperty("autoExceptionEnabled", autoException);
       return root;
     }
 

@@ -24,6 +24,7 @@ public final class SampledTelemetrySampler {
   private static final int UNBOUNDED_SIGNAL_READS = Integer.MAX_VALUE;
 
   private final Map<String, SignalWindowState> signalStates = new LinkedHashMap<>();
+  private final TelemetryJournal journal = new TelemetryJournal();
   private int periodicReadCursor = 0;
 
   /**
@@ -39,7 +40,11 @@ public final class SampledTelemetrySampler {
    *   current runtime device set.
    */
   public void sampleDevices(List<DeviceUnit> devices, long nowMs) {
-    sampleDevices(devices, nowMs, UNBOUNDED_SIGNAL_READS);
+    sampleDevices(
+        devices,
+        nowMs,
+        nowMs * TelemetryConstants.MICROSECONDS_PER_MILLISECOND,
+        UNBOUNDED_SIGNAL_READS);
   }
 
   /**
@@ -57,6 +62,28 @@ public final class SampledTelemetrySampler {
    *   present in the runtime device set.
    */
   public void sampleDevices(List<DeviceUnit> devices, long nowMs, int maxSignalReads) {
+    sampleDevices(
+        devices,
+        nowMs,
+        nowMs * TelemetryConstants.MICROSECONDS_PER_MILLISECOND,
+        maxSignalReads);
+  }
+
+  /**
+   * NAME
+   *   sampleDevices - Sample a bounded subset with an explicit source timestamp.
+   *
+   * PARAMETERS
+   *   sourceTimestampUs - Monotonic robot-local observation time in microseconds.
+   *
+   * SIDE EFFECTS
+   *   One successful raw read feeds both the rolling summary and history journal.
+   */
+  public void sampleDevices(
+      List<DeviceUnit> devices,
+      long nowMs,
+      long sourceTimestampUs,
+      int maxSignalReads) {
     Set<String> seenKeys = new HashSet<>();
     List<SignalReadPlanEntry> activePlans = new ArrayList<>();
     if (devices != null) {
@@ -81,17 +108,14 @@ public final class SampledTelemetrySampler {
               signalStates.computeIfAbsent(
                   key,
                   ignored ->
-                      new SignalWindowState(
-                          registration.signalName(),
-                          registration.windowMs(),
-                          registration.nonzeroThreshold()));
+                      createSignalWindowState(device, key, registration));
           state.windowMs = registration.windowMs();
           state.nonzeroThreshold = registration.nonzeroThreshold();
           activePlans.add(new SignalReadPlanEntry(key, registration, state));
         }
       }
     }
-    applyBoundedReadPlan(activePlans, nowMs, maxSignalReads);
+    applyBoundedReadPlan(activePlans, nowMs, sourceTimestampUs, maxSignalReads);
     signalStates.keySet().removeIf(key -> !seenKeys.contains(key));
   }
 
@@ -101,7 +125,31 @@ public final class SampledTelemetrySampler {
    */
   public void clearAll() {
     signalStates.clear();
+    journal.clear();
     periodicReadCursor = 0;
+  }
+
+  /** NAME readHistoryAfter - Read one cursor-addressed telemetry history page. */
+  public TelemetryJournal.HistoryPage readHistoryAfter(long afterSequence, int maxRecords) {
+    return journal.readAfter(afterSequence, maxRecords);
+  }
+
+  /** NAME readHistoryAfter - Read a filtered cursor-addressed history page. */
+  public TelemetryJournal.HistoryPage readHistoryAfter(
+      long afterSequence,
+      int maxRecords,
+      Set<String> signalIds) {
+    return journal.readAfter(afterSequence, maxRecords, signalIds);
+  }
+
+  /** NAME getSignalCatalog - Snapshot all registered graphable signals. */
+  public TelemetryJournal.SignalCatalog getSignalCatalog() {
+    return journal.catalog();
+  }
+
+  /** NAME setCaptureListener - Attach or detach the optional capture sink. */
+  public void setCaptureListener(TelemetryJournal.SampleListener listener) {
+    journal.setSampleListener(listener);
   }
 
   /**
@@ -151,6 +199,7 @@ public final class SampledTelemetrySampler {
   private void applyBoundedReadPlan(
       List<SignalReadPlanEntry> activePlans,
       long nowMs,
+      long sourceTimestampUs,
       int maxSignalReads) {
     if (activePlans == null || activePlans.isEmpty()) {
       periodicReadCursor = 0;
@@ -165,7 +214,7 @@ public final class SampledTelemetrySampler {
       for (int offset = 0; offset < normalizedMaxReads; offset++) {
         SignalReadPlanEntry entry = activePlans.get((startCursor + offset) % planSize);
         sampledKeys.add(entry.key);
-        readSignalEntry(entry, nowMs);
+        readSignalEntry(entry, nowMs, sourceTimestampUs);
       }
       periodicReadCursor = (startCursor + normalizedMaxReads) % planSize;
     } else {
@@ -178,7 +227,10 @@ public final class SampledTelemetrySampler {
     }
   }
 
-  private void readSignalEntry(SignalReadPlanEntry entry, long nowMs) {
+  private void readSignalEntry(
+      SignalReadPlanEntry entry,
+      long nowMs,
+      long sourceTimestampUs) {
     if (entry == null || entry.registration == null || entry.state == null) {
       return;
     }
@@ -186,12 +238,58 @@ public final class SampledTelemetrySampler {
       Double value = entry.registration.reader().readNow();
       if (value != null) {
         entry.state.addSample(nowMs, value);
+        if (entry.registration.historyEnabled()) {
+          journal.appendNumeric(
+              entry.state.journalSignalIndex,
+              sourceTimestampUs,
+              value,
+              TelemetryQuality.GOOD);
+        }
       } else {
         entry.state.trim(nowMs);
       }
     } catch (RuntimeException ex) {
       entry.state.trim(nowMs);
     }
+  }
+
+  private SignalWindowState createSignalWindowState(
+      DeviceUnit device,
+      String definitionKey,
+      SampledSignalRegistration registration) {
+    TelemetryUnit unit = registration.unit();
+    TelemetrySignalDescriptor descriptor =
+        new TelemetrySignalDescriptor(
+            definitionKey,
+            "",
+            "",
+            buildDeviceSubjectKey(device),
+            device.getLabel(),
+            registration.signalName(),
+            unit.valueKind(),
+            unit,
+            unit.dimension(),
+            registration.nominalCadenceUs(),
+            registration.staleAfterUs(),
+            registration.historyEnabled());
+    int journalSignalIndex = journal.registerSignal(descriptor);
+    return new SignalWindowState(
+        registration.signalName(),
+        registration.windowMs(),
+        registration.nonzeroThreshold(),
+        journalSignalIndex);
+  }
+
+  private String buildDeviceSubjectKey(DeviceUnit device) {
+    StringBuilder sb = new StringBuilder(KEY_INITIAL_BUILDER_CAPACITY);
+    sb.append(device.getHeader() != null ? device.getHeader().vendor() : "");
+    sb.append('|');
+    sb.append(device.getDeviceType() != null ? device.getDeviceType() : "");
+    sb.append('|');
+    sb.append(device.getCanId());
+    sb.append('|');
+    sb.append(device.getLabel() != null ? device.getLabel() : "");
+    return sb.toString();
   }
 
   private static final class SignalReadPlanEntry {
@@ -214,11 +312,17 @@ public final class SampledTelemetrySampler {
     private final ArrayDeque<ValueSample> samples = new ArrayDeque<>();
     private long windowMs;
     private double nonzeroThreshold;
+    private final int journalSignalIndex;
 
-    private SignalWindowState(String signalName, long windowMs, double nonzeroThreshold) {
+    private SignalWindowState(
+        String signalName,
+        long windowMs,
+        double nonzeroThreshold,
+        int journalSignalIndex) {
       this.signalName = signalName;
       this.windowMs = windowMs;
       this.nonzeroThreshold = nonzeroThreshold;
+      this.journalSignalIndex = journalSignalIndex;
     }
 
     private void addSample(long nowMs, double value) {

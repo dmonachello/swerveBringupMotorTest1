@@ -198,6 +198,12 @@ UI COMMAND PROTOCOL
     - `POST /monitor/enable`
     - `POST /monitor/disable`
     - `GET /inventory/commands`
+    - `GET /runtime/telemetry/catalog`
+    - `GET /runtime/telemetry/history?after=<sequence>&limit=<count>`
+    - `GET /runtime/telemetry/capture`
+    - `POST /runtime/telemetry/capture/start`
+    - `POST /runtime/telemetry/capture/stop`
+    - `POST /runtime/telemetry/capture/settings`
     - sessionId (string)
     - state (object: enabled/estopped/mode)
 
@@ -277,6 +283,18 @@ LIVE TOPOLOGY OVERLAY
         - Orange: weak/stale presence (presenceConfidence 0.05..0.5 or lastSeen >~2s).
         - Gray: presenceConfidence <= 0.05.
         - Vendor color only: no live data for this device.
+
+LIVE SIGNAL HISTORY
+    Purpose: Select, review, and export source-timestamped robot telemetry.
+    - Select a device in Live Topology, then check signals under Graphable signals.
+    - A checked signal is watched and visible. Clearing either synchronized checkbox removes it.
+    - The lower pane supports up to eight traces in four engineering-dimension lanes.
+    - Window choices are 2, 5, 10, 30, and 60 seconds. The default is 10 seconds.
+    - Pause freezes the viewport only. Resume live returns to the newest sample.
+    - Record writes a robot-local WPILOG with the retained pre-trigger window.
+    - Auto: match and Auto: exception are opt-in robot-local capture triggers.
+    - Export CSV writes the retained watched samples in long form for external analysis.
+    - Graph transport uses REST and does not require NetworkTables.
 
 UI SCREENSHOT
     Purpose: Provide a visual reference for the Bringup Control UI layout.
