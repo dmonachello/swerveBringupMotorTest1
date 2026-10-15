@@ -1,255 +1,127 @@
-# Swerve Bringup Diagnostics System
+# FRC Bringup Diagnostics System
 
 ## Purpose
 
-This is the top-level guide to the robot bringup harness, the PC-side diagnostics tools, and the operator surfaces supported in this repo.
+This repository contains one integrated bringup system for FRC robots with two cooperating parts:
 
-## Status
+- Robot-side WPILib Java harness on the roboRIO that actively runs motors, sensors, and staged bringup actions.
+- Host-side Python diagnostics on a Windows Driver Station or dev laptop that passively listens to the CAN bus via CANable/slcan, exposes host-local visibility, and supports supported REST-driven diagnostics surfaces.
+- Shared docs and specs that define CLI behavior, architecture, operator workflows, and pit-side diagnosis guidance.
 
-This project is in release-candidate stabilization for a first team-wide 1.0 release.
-
-Current direction:
-
-- core robot and host tooling are real and usable
-- reliability and shared-state behavior are actively being hardened
-- release/productization work is still in progress
-
-See [docs/RELEASE_1_0_READINESS.md](docs/RELEASE_1_0_READINESS.md) for the current release checklist and [docs/RELEASE_STABILIZATION_REVIEW_2026-08-16.md](docs/RELEASE_STABILIZATION_REVIEW_2026-08-16.md) for the current blocker review.
-
-## System Overview
-
-This repository contains one system with two cooperating parts:
-
-- **Robot-side**: a WPILib Java bringup harness on the roboRIO that instantiates devices, runs tests, commands outputs, and reports robot-local health
-- **PC-side**: Windows-first Python tools that passively observe CAN traffic,
-  consume robot command/log/state over REST, and provide operator-facing
-  surfaces
-
-Key safety rule:
-
-- the PC tool is **read-only on CAN**
+The supported bringup workflow is no longer built around a NetworkTables bridge. Current host tooling is designed around CAN observation plus robot/server data access, not NT-only plumbing.
 
 ## Current architecture
 
-The system uses a client/server model:
-
-- the **robot is the server** and owns actuation
-- the **PC tools are clients** for commands, logs, and diagnostics
-- the **Xbox controller** is a local client of the robot server and has highest priority on control conflicts
-
-Important data boundaries:
-
-- robot-local telemetry comes from vendor APIs on the roboRIO
-- CAN-bus telemetry comes from the host-side passive CAN tool
-- REST command/log/state is a control and reporting channel, not a replacement for those telemetry sources
-
-Start with [Getting Started](docs/GETTING_STARTED.md). For architecture details,
-use the [architecture documentation hub](docs/mocs/architecture.md).
-
-## Main surfaces
-
-These are the operator-facing tools that matter today.
-
-- **Bringup Control UI**
-  - Windows-friendly Tk UI for runtime control, logs, live topology, evidence, tests, and CAN visibility
-- **Bridge CLI**
-  - text-oriented host surface for command execution, config/test workflows, and scripted operation
-- **Topology Editor**
-  - authors `bringup_system.json` devices, profiles, groups, and diagram metadata
-- **Passive CAN Tool**
-  - listens through CANable/slcan, publishes host diagnostics, and can capture PCAP/inventory artifacts
-
-Related docs:
-
-- [docs/OPERATOR_SURFACES.md](docs/OPERATOR_SURFACES.md)
-- [docs/FEATURE_MATRIX.md](docs/FEATURE_MATRIX.md)
-
-## Main files
-
-These are the main code and config entry points.
-
 ### Robot side
+
+The Java code lives under `src/main/java/frc/robot/` and is the active bringup harness for the roboRIO. The main runtime pieces include:
 
 - `src/main/java/frc/robot/Robot.java`
 - `src/main/java/frc/robot/BringupCore.java`
 - `src/main/java/frc/robot/BringupRuntime.java`
 - `src/main/java/frc/robot/BridgeUiCommandHandler.java`
 
+This code owns the 20 ms robot loop, scheduler execution, motor control, and operator-driven bringup actions.
+
 ### Host side
 
-- `tools/can_nt/bringup_ui.py`
-- `tools/can_nt/bridge_cli.py`
-- `tools/can_nt/can_nt_bridge.py`
-- `tools/can_topology/can_top_editor.py`
-- `tools/can_topology/live_topology_view.py`
+The active host-side diagnostics tooling is in `tools/` and is primarily Windows-first.
 
-### Shared config
+- `tools/can_nt/` — passive CAN listener, CLI, local UI/bootstrap surfaces, REST plumbing, and host diagnostics
+- `tools/can_topology/` — topology/editor and live topology views
+- `tools/common/` — shared support code and common host logic
+- `tools/status_codes/` — status/command status metadata and generated artifacts
+
+The most relevant entry points include:
+
+- `tools/can_nt/can_nt_bridge.py`
+- `tools/can_nt/bridge_cli.py`
+- `tools/can_nt/bringup_ui.py`
+- `tools/validate_sync.py`
+- `tools/sync_profiles.py`
+
+### Shared config and generated artifacts
+
+The repo includes both static robot config and generated artifacts used by the toolchain:
 
 - `src/main/deploy/bringup_system.json`
 - `src/main/deploy/bringup_bindings.json`
+- generated command/status artifacts under `tools/status_codes/`
+- formal grammar artifacts for CLI parsing under `tools/can_nt/bridge_cli_ebnf.txt` and linked generated outputs
 
-## What the system does well today
+## Safety and data-boundary rules
 
-- staged robot bringup with controlled actuation
-- profile-backed device and group configuration
-- repeatable DSL-based test execution
-- live host-side control through UI and CLI
-- passive CAN visibility and evidence capture
-- topology-aware live views and editor tooling
-- growing regression coverage across shared host behavior
+These are the operating rules that matter most for current code:
 
-## What to be careful about
+- The PC-side CAN tool is read-only on CAN. It must never transmit frames during supported bringup diagnostics.
+- The only transmission exception is the isolated experimental package `tools/can_tx_poc/`, which must be explicit per invocation, off by default, and used only on a lab bus.
+- Robot-local data and host-side CAN data are intentionally separate. Do not mix or conflate them in logging, diagnostics, or API output.
+- NetworkTables is retired for supported bringup flows. If a reference remains, it is treated as historical, compatibility-only, or a regression unless explicitly justified.
+- Windows is the primary host environment; Linux-only assumptions like `can0` are not the default design target for the supported workflows.
 
-- this repo still contains multiple historical workflows and helper paths
-- not every feature is equally mature
-- the project is not yet packaged as a finished 1.0 operator product
-- some docs and feature specs describe in-progress or future work, not always current supported behavior
+## Real-time reporting discipline
 
-## Recommended starting path
+The robot loop runs on a 20 ms scheduler cycle. Console printing is intentionally avoided in large bursts because it stalls the control loop and risks missed behavior.
 
-This is the practical entry path without pretending the release is more finished than it is.
+Current behavior is to route report-like output through a shared report runner that:
 
-1. Read [Getting Started](docs/GETTING_STARTED.md).
-2. Complete [Windows setup](docs/SETUP.md).
-3. Follow the [new robot bringup workflow](docs/WORKFLOW_01_NEW_ROBOT_BRINGUP.md).
-4. Validate and sync config before using the robot workflow.
-5. Use either the Bringup Control UI or Bridge CLI as the main runtime surface.
+- queues output incrementally across cycles
+- limits per-cycle work and print chunk size
+- keeps reporting readable without starving the scheduler
+- prevents direct print bursts in new report code
 
-## Windows-first host workflow
+Any new report path should use the shared runner rather than emitting large console dumps directly.
 
-This section covers the host assumptions that matter most.
+## Repository layout
 
-The PC-side tools are primarily intended for a Windows Driver Station or development laptop.
-
-Common host tasks:
-
-- run the passive CAN tool against a CANable/slcan COM port
-- connect the UI or CLI to the robot REST command server
-- validate/sync config and tests before robot use
-- capture evidence and logs during bringup
-
-See:
-
-- [Windows setup](docs/SETUP.md)
-- [Windows offline testing](docs/TESTING_WINDOWS_OFFLINE.md)
-
-## Configuration model
-
-This is the shared config model at a high level.
-
-`src/main/deploy/bringup_system.json` is the main system config file and contains:
-
-- shared device inventory
-- one or more profiles
-- group definitions
-- topology/diagram metadata
-- DSL tests under `bridgeConfig`
-
-Rule:
-
-- profiles choose subsets of the shared device inventory
-- host context and robot runtime context are intentionally distinct
-
-See:
-
-- [Bringup profiles schema](docs/bringup_profiles_schema.md)
-- [Profile schema refactor](docs/PROFILE_SCHEMA_REFACTOR.md)
-
-## Safety model
-
-These are the main safety and ownership rules.
-
-- the robot owns actuation
-- the Xbox controller has highest priority over host clients
-- stop/disable/abort behavior is safety-critical
-- Driver Station stop and E-stop still work as the normal keyboard/operator stop path for tests and motion
-- Driver Station disable, E-stop, and explicit robot safety-stop paths stop outputs
-- REST stop, disconnect, and timeout cancellation are known stability gaps until
-  robot-thread cancellation is implemented and verified
-- the PC CAN tool must never transmit by default
-
-See:
-
-- [Architecture documentation hub](docs/mocs/architecture.md)
-- [Historical TCP UI protocol](docs/TCP_UI_PROTOCOL.md)
-
-## Current validation commands
-
-These are the repo checks people use most often.
-
-For local Ollama regression reports and automated Git check-ins, use the
-[local AI automation user guide](docs/LOCAL_AI_AUTOMATION_USER_GUIDE.md).
-
-### Maintained non-robot regressions
-
-```powershell
-python tools/can_nt/scripts/run_regressions.py --suite all
+```text
+.
+├── docs/                          # architecture, specs, operator docs
+├── gradlew, gradlew.bat           # Java build entry points
+├── src/                           # WPILib robot code and deploy config
+├── tools/                         # Python diagnostics, automation, generators
+├── AGENTS.md                      # repo-level task rules and architecture constraints
+├── build.gradle                   # Java project build configuration
+├── settings.gradle                # Gradle project settings
+├── README.md                      # project overview (this file)
+├── profile.json                   # current team profile/config snapshot
+├── bringup_tests.json             # bringup test definitions
+├── can_table.txt                  # CAN inventory/lookup reference
+├── cli.bat / ui.bat / uiNoCan.bat # common host-launch wrappers
+├── requirements-windows.txt       # Windows Python dependencies
+└── docs/GENERATED_ARTIFACTS_POLICY.md
 ```
 
-### Robot-connected non-motion regression
+## Common workflows
 
-```powershell
-python tools/can_nt/scripts/bridge_cli_robot_non_motion_regression.py --rio 172.22.11.2
-```
+For day-to-day use, the main flows are:
 
-### Java unit tests
+1. Follow the setup and bringup docs under `docs/`.
+2. Use the robot harness to run real actuation and bringup tests.
+3. Run the host-side CAN tool on a CANable/slcan COM port to observe passive bus traffic.
+4. Validate config and synchronization with the shared validation tooling.
+5. Use the CLI/UI as the operator-facing surfaces for tests, control, and evidence capture.
 
-```powershell
-.\gradlew.bat test
-```
+## Recommended entry points
 
-### Local AI regression report
+- Start here: `docs/GETTING_STARTED.md`
+- Windows setup: `docs/SETUP.md`
+- Architecture hub: `docs/mocs/architecture.md`
+- Operator surfaces: `docs/OPERATOR_SURFACES.md`
+- Testing: `docs/TESTING.md`
+- AI diagnosis: `docs/AI_DIAGNOSIS.md`
+- Current runtime rules baseline: `Current UI And Runtime Rules - V2.md`
 
-```powershell
-.\tools\local-regression-report.ps1
-```
+## Current status
 
-### Local AI check-in preview
+The repo is active and the project is centered on a real, working robot + PC bringup system rather than a conceptual prototype. The codebase emphasizes:
 
-```powershell
-.\tools\local-checkin.ps1 -DryRun
-```
-
-### Config validation / sync
-
-```powershell
-python -m tools.validate_sync
-```
-
-## Documentation index
-
-These are the docs worth opening first.
-
-### Start here
-
-- [Getting Started](docs/GETTING_STARTED.md)
-- [Windows setup](docs/SETUP.md)
-- [Architecture documentation hub](docs/mocs/architecture.md)
-- [Operator surfaces](docs/OPERATOR_SURFACES.md)
-- [Testing](docs/TESTING.md)
-
-### Release / readiness
-
-- [Alpha release readiness](docs/ALPHA_RELEASE_READINESS.md)
-- [1.0 release readiness](docs/RELEASE_1_0_READINESS.md)
-
-### Contracts / protocols
-
-- [Historical TCP UI protocol](docs/TCP_UI_PROTOCOL.md)
-- [Retired NetworkTables contract](docs/NT_CONTRACT.md)
-- [Bridge CLI full specification](docs/BRIDGE_CLI_FULL_SPEC.md)
+- hardened robot-side bringup behavior
+- passively observed CAN diagnostics on Windows
+- shared CLI/UI contracts
+- data-driven device and profile configuration
+- doc/spec discipline for generated artifacts and operator behavior
 
 ## Notes
 
-This section clarifies what this README is and is not.
-
-This README is intentionally a top-level orientation document.
-
-It does not try to fully describe:
-
-- every feature spec
-- every legacy helper path
-- every experimental reverse-engineering workflow
-- every in-progress architecture refactor
-
-For those, use the detailed docs under `docs/`.
+This README is intentionally a top-level orientation guide. For detailed behavior, architecture context, data contracts, and supported workflows, use the docs under `docs/` and the active code under `src/` and `tools/`.
