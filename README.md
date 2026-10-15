@@ -5,10 +5,10 @@
 This repository contains one integrated bringup system for FRC robots with two cooperating parts:
 
 - Robot-side WPILib Java harness on the roboRIO that actively runs motors, sensors, and staged bringup actions.
-- Host-side Python diagnostics on a Windows Driver Station or dev laptop that passively listens to the CAN bus via CANable/slcan, exposes host-local visibility, and supports supported REST-driven diagnostics surfaces.
+- Host-side Python diagnostics on a Windows Driver Station or dev laptop that passively listens to the CAN bus via CANable/slcan, exposes host-local visibility, and supports REST-driven diagnostics and control via a full robot REST server implementation.
 - Shared docs and specs that define CLI behavior, architecture, operator workflows, and pit-side diagnosis guidance.
 
-The supported bringup workflow is no longer built around a NetworkTables bridge. Current host tooling is designed around CAN observation plus robot/server data access, not NT-only plumbing.
+The supported bringup workflow now uses a full REST server implementation on the robot; host tooling combines passive CAN observation with REST APIs to request commands, logs, and runtime state rather than relying on NetworkTables-only plumbing.
 
 ## Current architecture
 
